@@ -8,7 +8,6 @@
 typeset -gA JUNIPER_ALIASES
 JUNIPER_ALIASES=(
     ["grep"]="gitgrep"
-    ["deploy"]="deployfeature"
     ["-h"]="help"
     ["--help"]="help"
     ["-v"]="version"

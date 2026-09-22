@@ -9,7 +9,8 @@
   ├── juniper.sh           # Script principal (ponto de entrada)
   ├── commands/            # Comandos disponíveis (um por arquivo)
   │   ├── gitgrep.sh       # Comando de busca em commits
-  │   ├── deployfeature.sh # Comando de deploy automatizado
+  │   ├── deploy.sh       # Comando de deploy automatizado
+  │   ├── deployfeature.sh # (Depreciado) alias legado para deploy.sh
   │   ├── help.sh          # Comando de ajuda
   │   ├── version.sh       # Comando de versão
   │   └── template.sh      # Template para criar novos comandos
@@ -311,10 +312,12 @@ juniper gitgrep 4911
 juniper grep "fix bug"
 ```
 
-### `deployfeature` / `deploy`
-Deploy automatizado para branches de feature
+### `deploy`
+Deploy automatizado para branches de feature (`deployfeature` está depreciado, use `deploy`)
 ```bash
+juniper deploy 4911
 juniper deploy 4911 "Fix: corrige bug no login"
+juniper deploy 4911 11b81fbe88ed7867d2759037b9406c39f60666f1 --hash
 ```
 
 ### `version` / `-v` / `--version`

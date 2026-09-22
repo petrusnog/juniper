@@ -49,7 +49,8 @@ juniper meucomando
 ├── commands/           ← Adicione seus comandos aqui
 │   ├── template.sh     ← Use este como base
 │   ├── gitgrep.sh
-│   ├── deployfeature.sh
+│   ├── deploy.sh
+│   ├── deployfeature.sh (depreciado)
 │   ├── help.sh
 │   └── version.sh
 ├── core/
@@ -65,7 +66,7 @@ Edite `~/.juniper/core/dispatcher.sh`:
 ```bash
 JUNIPER_ALIASES=(
     ["grep"]="gitgrep"
-    ["deploy"]="deployfeature"
+    ["grep"]="gitgrep"
     ["mc"]="meucomando"    # ← Adicione aqui
 )
 ```
