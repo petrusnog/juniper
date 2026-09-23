@@ -5,20 +5,19 @@
 ################################################################################
 
 version_run() {
-    cat << 'EOF'
-🌿 JUNIPER - Git Automation Toolkit
+    local user_name=$(_juniper_get_user_name)
+    local version="3.0.0"
+    local release_date="27/08/2026"
+    local last_update=$(git -C "$HOME/.juniper" log -1 --format=%ad --date=format:'%d/%m/%Y %H:%M:%S' 2>/dev/null)
+    [ -z "$last_update" ] && last_update="$release_date"
+
+    cat << EOF
+🌿 JUNIPER: Estou na versão $version, $user_name! 
+    
+    Última atualização: $last_update
+    
+    Fui criada por Petrus Rennan, no dia $release_date.
    
-   Versão: 2.0.0
-   Arquitetura: Modular
-   Autor: Petrus Rennan
-   Data: 2026-08-27
-   
-   📂 Estrutura:
-   ~/.juniper/
-     ├── juniper.sh           # Ponto de entrada
-     ├── commands/            # Comandos modulares
-     ├── core/                # Sistema core
-     └── utils/               # Utilitários (futuro)
 
 EOF
 }

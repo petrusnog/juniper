@@ -6,7 +6,7 @@
 
 help_run() {
     cat << 'EOF'
-🌿 JUNIPER v2.0.0 - Git Automation Toolkit
+🌿 JUNIPER: Olá, sou Juniper, sua assistente de automações favorita!
 
 Uso: juniper <comando> [argumentos]
 

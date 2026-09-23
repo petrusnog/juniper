@@ -12,22 +12,22 @@ _deploy_ensure_branch_exists() {
     # Se a branch já existe (local ou remota), apenas faz checkout e usa a existente
     if git show-ref --verify --quiet "refs/remotes/origin/${target_branch}" || \
        git show-ref --verify --quiet "refs/heads/${target_branch}"; then
-        echo "🔀 Branch ${target_branch} já existe, utilizando a branch existente..."
+        _juniper_say "🔀 Branch ${target_branch} já existe, utilizando a branch existente..."
         git checkout "$target_branch" 2>/dev/null && git pull origin "$target_branch" 2>/dev/null
         return 0
     fi
 
     if ! git show-ref --verify --quiet "refs/remotes/origin/${base_branch}" && \
        ! git show-ref --verify --quiet "refs/heads/${base_branch}"; then
-        echo "⚠️  Branch ${base_branch} não encontrada, pulando ${target_branch}..."
+        _juniper_say "⚠️  Branch ${base_branch} não encontrada, pulando ${target_branch}..."
         return 1
     fi
 
     local resp
-    read "resp?❓ Branch ${target_branch} não existe. Deseja criá-la a partir de ${base_branch}? (s/n): "
+    read "resp?🌿 JUNIPER: ❓ Branch ${target_branch} não existe. Deseja criá-la a partir de ${base_branch}? (s/n): "
     case "$resp" in
         s|S|y|Y|sim)
-            echo "✨ Criando branch ${target_branch} a partir de ${base_branch}..."
+            _juniper_say "✨ Criando branch ${target_branch} a partir de ${base_branch}..."
             git checkout "$base_branch" && \
             git pull origin "$base_branch" 2>/dev/null && \
             git checkout -b "$target_branch" && \
@@ -35,7 +35,7 @@ _deploy_ensure_branch_exists() {
             return $?
             ;;
         *)
-            echo "🚫 Criação de ${target_branch} recusada pelo usuário, pulando..."
+            _juniper_say "🚫 Criação de ${target_branch} recusada pelo usuário, pulando..."
             return 1
             ;;
     esac
@@ -54,39 +54,39 @@ _deploy_apply_commit_to_branch() {
 
     if ! git cherry-pick "$commit_hash" 2>/dev/null; then
         if git status --porcelain | grep -qE '^(UU|AA|DD)'; then
-            echo "⚠️  Conflito de cherry-pick em ${branch_name} para o commit ${commit_hash}"
-            echo "   Arquivos em conflito:"
+            _juniper_say "⚠️  Conflito de cherry-pick em ${branch_name} para o commit ${commit_hash}"
+            _juniper_say "Arquivos em conflito:"
             git diff --name-only --diff-filter=U | sed 's/^/     - /'
             echo ""
             while true; do
                 local resp
-                read "resp?   Resolva os conflitos, faça 'git add' nos arquivos e digite (continuar/abortar): "
+                read "resp?🌿 JUNIPER: Resolva os conflitos, faça 'git add' nos arquivos e digite (continuar/abortar): "
                 case "$resp" in
                     continuar|c)
                         if git cherry-pick --continue; then
                             break
                         else
-                            echo "❌ Ainda há conflitos pendentes ou erro ao continuar."
+                            _juniper_say "❌ Ainda há conflitos pendentes ou erro ao continuar."
                         fi
                         ;;
                     abortar|a)
                         git cherry-pick --abort 2>/dev/null
-                        echo "🚫 Cherry-pick abortado para ${branch_name}."
+                        _juniper_say "🚫 Cherry-pick abortado para ${branch_name}."
                         return 1
                         ;;
                     *)
-                        echo "   Resposta inválida. Digite 'continuar' ou 'abortar'."
+                        _juniper_say "Resposta inválida. Digite 'continuar' ou 'abortar'."
                         ;;
                 esac
             done
         else
-            echo "❌ Erro no cherry-pick para ${branch_name}"
+            _juniper_say "❌ Erro no cherry-pick para ${branch_name}"
             git cherry-pick --abort 2>/dev/null
             return 1
         fi
     fi
 
-    echo "⬆️  Push para ${branch_name}..."
+    _juniper_say "⬆️  Push para ${branch_name}..."
     git push origin "$branch_name" || return 1
 
     return 0
@@ -96,11 +96,12 @@ _deploy_apply_commit_to_branch() {
 _deploy_get_batch_hashes() {
     local feature_id="$1"
     # Parênteses precisam ser escapados: em regex estendida "()" é um grupo, não texto literal
-    # "%H %s" traz hash e mensagem juntos para exibição amigável ao usuário
+    # Campos separados por "|" (hash, data, mensagem) para exibição amigável ao usuário
     git log --extended-regexp --reverse \
         --grep="feature\(${feature_id}\)" \
         --grep="hotfix\(${feature_id}\)" \
-        --pretty=format:"%H %s"
+        --date=format:'%d/%m/%Y %H:%M' \
+        --pretty=format:"%H|%ad|%s"
 }
 
 deploy_run() {
@@ -118,48 +119,51 @@ deploy_run() {
         use_hash_mode=true
     fi
 
+    local user_name=$(_juniper_get_user_name)
     local current_branch=$(git branch --show-current)
     local has_errors=false
 
-    echo "🔍 Buscando branches remotas..."
+    _juniper_say "🔍 Buscando branches remotas..."
     git fetch origin
 
     if [ -z "$second_arg" ]; then
         # Modo em lote: busca commits feature(<id>)/hotfix(<id>) no histórico
-        echo "🔎 Buscando commits com padrão feature(${feature_id}) ou hotfix(${feature_id})..."
+        _juniper_say "🔎 Buscando commits com padrão feature(${feature_id}) ou hotfix(${feature_id})..."
         local hashes_output=$(_deploy_get_batch_hashes "$feature_id")
         if [ -z "$hashes_output" ]; then
-            echo "❌ Nenhum commit encontrado com padrão feature(${feature_id}) ou hotfix(${feature_id})"
+            _juniper_say "❌ Nenhum commit encontrado com padrão feature(${feature_id}) ou hotfix(${feature_id})"
             return 1
         fi
         local commit_lines=("${(@f)hashes_output}")
         commit_hashes=()
-        echo "✅ ${#commit_lines[@]} commit(s) encontrado(s):"
+        _juniper_say "${#commit_lines[@]} commit(s) encontrado(s):"
         for line in "${commit_lines[@]}"; do
-            commit_hashes+=("${line%% *}")
-            echo "   - ${line#* }"
+            local commit_date="${${line#*|}%%|*}"
+            local commit_msg="${line#*|*|}"
+            commit_hashes+=("${line%%|*}")
+            echo "   - ($commit_date) $commit_msg"
         done
     elif [ "$use_hash_mode" = true ]; then
         if ! git rev-parse --verify "${second_arg}^{commit}" >/dev/null 2>&1; then
-            echo "❌ Hash inválido ou não encontrado: ${second_arg}"
+            _juniper_say "❌ Hash inválido ou não encontrado: ${second_arg}"
             return 1
         fi
         commit_hashes=("$(git rev-parse "$second_arg")")
-        echo "🔗 Utilizando commit existente: ${commit_hashes[1]}"
+        _juniper_say "🔗 Utilizando commit existente: ${commit_hashes[1]}"
     else
         local commit_msg="$second_arg"
 
-        echo "📝 Adicionando arquivos..."
+        _juniper_say "📝 Adicionando arquivos..."
         git add .
 
-        echo "💾 Fazendo commit: $commit_msg"
+        _juniper_say "💾 Fazendo commit: $commit_msg"
         if ! git commit -m "$commit_msg"; then
-            echo "❌ Erro ao fazer commit"
+            _juniper_say "❌ Erro ao fazer commit"
             return 1
         fi
 
         commit_hashes=("$(git rev-parse HEAD)")
-        echo "✅ Commit criado: ${commit_hashes[1]}"
+        _juniper_say "Commit criado: ${commit_hashes[1]}"
     fi
 
     # Processa branch develop
@@ -183,13 +187,14 @@ deploy_run() {
     fi
 
     # Retorna à branch original
-    echo "\n↩️  Voltando para branch original: $current_branch"
+    echo ""
+    _juniper_say "↩️  Voltando para branch original: $current_branch"
     git checkout "$current_branch"
 
     if [ "$has_errors" = true ]; then
-        echo "⚠️  Deploy concluído com alguns erros"
+        _juniper_say "⚠️  Deploy concluído com alguns erros, $user_name"
     else
-        echo "✨ Deploy concluído com sucesso!"
+        _juniper_say "✨ Deploy concluído com sucesso, $user_name!"
     fi
     echo "   Feature: $feature_id"
     echo "   Commits: ${#commit_hashes[@]}"

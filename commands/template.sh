@@ -16,7 +16,7 @@ seucomando_run() {
     local argumento="$1"
     
     # Sua lógica aqui
-    echo "✅ Executando comando com: $argumento"
+    echo "🌿 Executando comando com: $argumento"
     
     # Exemplo: executar comando git
     # git status
