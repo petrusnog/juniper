@@ -7,6 +7,18 @@ install_run() {
     _juniper_say "Oi, $user_name! Estou verificando o ambiente..."
     echo "-------------------------------------------------------"
 
+    local conf_example="$HOME/.juniper/.juniper.conf.example"
+    if [ ! -f "$JUNIPER_CONFIG_FILE" ]; then
+        if [ -f "$conf_example" ]; then
+            cp "$conf_example" "$JUNIPER_CONFIG_FILE"
+            _juniper_say "Arquivo de configuração criado em $JUNIPER_CONFIG_FILE."
+        else
+            _juniper_say "⚠️ Arquivo de exemplo $conf_example não encontrado."
+        fi
+    else
+        _juniper_say "Arquivo de configuração já existe, mantendo o atual."
+    fi
+
     # Validação simples de dependências básicas do sistema
     local deps=("git" "grep" "zsh")
     local missing=0
