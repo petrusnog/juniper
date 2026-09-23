@@ -53,7 +53,8 @@ _deploy_apply_commit_to_branch() {
     git checkout "$branch_name" || return 1
 
     if ! git cherry-pick "$commit_hash" 2>/dev/null; then
-        if git status --porcelain | grep -qE '^(UU|AA|DD)'; then
+        # FIX: Expandida a regex para incluir UD e DU (modify/delete conflicts)
+        if git status --porcelain | grep -qE '^(UU|AA|DD|UD|DU)'; then
             _juniper_say "⚠️  Conflito de cherry-pick em ${branch_name} para o commit ${commit_hash}"
             _juniper_say "Arquivos em conflito:"
             git diff --name-only --diff-filter=U | sed 's/^/     - /'
@@ -95,8 +96,6 @@ _deploy_apply_commit_to_branch() {
 # Função auxiliar: Busca hashes de commits feature(<id>) ou hotfix(<id>), do mais antigo ao mais novo
 _deploy_get_batch_hashes() {
     local feature_id="$1"
-    # Parênteses precisam ser escapados: em regex estendida "()" é um grupo, não texto literal
-    # Campos separados por "|" (hash, data, mensagem) para exibição amigável ao usuário
     git log --extended-regexp --reverse \
         --grep="feature\(${feature_id}\)" \
         --grep="hotfix\(${feature_id}\)" \
@@ -127,7 +126,6 @@ deploy_run() {
     git fetch origin
 
     if [ -z "$second_arg" ]; then
-        # Modo em lote: busca commits feature(<id>)/hotfix(<id>) no histórico
         _juniper_say "🔎 Buscando commits com padrão feature(${feature_id}) ou hotfix(${feature_id})..."
         local hashes_output=$(_deploy_get_batch_hashes "$feature_id")
         if [ -z "$hashes_output" ]; then
@@ -166,7 +164,6 @@ deploy_run() {
         _juniper_say "Commit criado: ${commit_hashes[1]}"
     fi
 
-    # Processa branch develop
     local develop_branch="feature/${feature_id}-develop"
     if _deploy_ensure_branch_exists "$develop_branch" "develop"; then
         for commit_hash in "${commit_hashes[@]}"; do
@@ -176,7 +173,6 @@ deploy_run() {
         has_errors=true
     fi
 
-    # Processa branch stage
     local stage_branch="feature/${feature_id}-stage"
     if _deploy_ensure_branch_exists "$stage_branch" "stage"; then
         for commit_hash in "${commit_hashes[@]}"; do
@@ -186,7 +182,6 @@ deploy_run() {
         has_errors=true
     fi
 
-    # Retorna à branch original
     echo ""
     _juniper_say "↩️  Voltando para branch original: $current_branch"
     git checkout "$current_branch"
