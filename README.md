@@ -55,12 +55,6 @@ Automatiza o processo de deploy para branches de feature.
 ```bash
 # Uso básico: juniper deploy <id_tarefa>
 juniper deploy 4911
-
-# Com mensagem personalizada:
-juniper deploy 4911 "Fix: corrige erro de autenticação"
-
-# Via hash do commit:
-juniper deploy 4911 11b81fbe88ed7867d2759037b9406c39f60666f1 --hash
 ```
 
 ### `help`
