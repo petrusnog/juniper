@@ -1,0 +1,1 @@
+"""Abstração de providers de LLM (Ollama, Groq)."""

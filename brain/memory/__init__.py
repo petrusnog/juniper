@@ -1,0 +1,1 @@
+"""Memória da Juniper (sessão + vetorial)."""

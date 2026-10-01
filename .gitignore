@@ -1,1 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtualenv
+.venv/
+venv/
+env/
+ENV/
+
+# Testes / cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Segredos e config local
+.env
+config.yaml
+
+# Runtime da Juniper
+logs/
+*.jsonl
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Logs
 juniper.log

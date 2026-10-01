@@ -1,0 +1,47 @@
+# Juniper v4 — Configuração
+#
+# Copie para `config.yaml` e ajuste. Segredos vão em `.env`.
+# Precedência: env > config.yaml > defaults. Ver ADR-003.
+
+llm:
+  priority: [groq, ollama]
+
+  groq:
+    model: llama-3.3-70b-versatile
+    timeout: 30
+
+  ollama:
+    url: http://localhost:11434
+    model: llama3.1
+    timeout: 120
+
+agent:
+  max_iterations: 5
+  language: pt-BR
+  timezone: America/Sao_Paulo
+
+deployment:
+  # local  = brain roda embutido no processo do cliente (Sprint 1)
+  # server = brain expõe API para clientes remotos (Sprint 2+)
+  mode: local
+
+  server:
+    host: 127.0.0.1
+    port: 8765
+
+tools:
+  security:
+    shell_allowlist:
+      - git
+      - ls
+      - cat
+      - grep
+      - rg
+      - fd
+      - jq
+      - find
+      - wc
+      - head
+      - tail
+    shell_require_confirmation: true
+    confirmation_timeout: 60
