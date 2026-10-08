@@ -48,6 +48,12 @@ juniper search "4911"
 juniper grep "correção de bug"
 ```
 
+Aceita duas ou mais chaves alternativas (OR): retorna commits que contenham qualquer uma delas. Útil para tarefas com subtarefas mergeadas separadamente.
+
+```bash
+juniper search 6531 7432
+```
+
 ### `deploy`
 
 Automatiza o processo de deploy para branches de feature.
@@ -55,6 +61,13 @@ Automatiza o processo de deploy para branches de feature.
 ```bash
 # Uso básico: juniper deploy <id_tarefa>
 juniper deploy 4911
+
+# Multi-task: commits de 6531 e 7432 nas branches da task pai (6531)
+juniper deploy 6531 --tasks 7432
+
+# Escolhendo o destino (sem flag = develop e stage)
+juniper deploy 6531 --tasks 7432 --develop
+juniper deploy 6531 --stage
 ```
 
 ### `help`

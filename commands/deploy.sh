@@ -168,29 +168,76 @@ _deploy_apply_commit_to_branch() {
     return 0
 }
 
-# Função auxiliar: Busca hashes de commits feature(<id>) ou hotfix(<id>), do mais antigo ao mais novo
+# Função auxiliar: Busca hashes de commits feature(<id>) ou hotfix(<id>) de uma ou
+# mais tasks, do mais antigo ao mais novo (sem duplicatas)
+# Uso: _deploy_get_batch_hashes <id1> [id2 ...]
 _deploy_get_batch_hashes() {
-    local feature_id="$1"
-    git log --extended-regexp --reverse \
-        --grep="feature\(${feature_id}\)" \
-        --grep="hotfix\(${feature_id}\)" \
+    local grep_args=()
+    local id
+    for id in "$@"; do
+        grep_args+=(--grep="feature\(${id}\)" --grep="hotfix\(${id}\)")
+    done
+    git log --extended-regexp --reverse "${grep_args[@]}" \
         --date=format:'%d/%m/%Y %H:%M' \
         --pretty=format:"%H|%ad|%s"
 }
 
 deploy_run() {
-    if [ -z "$1" ]; then
+    # Separa flags dos argumentos posicionais
+    local positional=()
+    local extra_tasks=()
+    local use_hash_mode=false
+    local want_develop=false
+    local want_stage=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --hash)    use_hash_mode=true ;;
+            --develop) want_develop=true ;;
+            --stage)   want_stage=true ;;
+            --tasks)
+                shift
+                while [ $# -gt 0 ] && [[ "$1" != -* ]]; do
+                    extra_tasks+=("$1")
+                    shift
+                done
+                continue
+                ;;
+            *) positional+=("$1") ;;
+        esac
+        shift
+    done
+
+    if [ ${#positional[@]} -eq 0 ]; then
         deploy_help
         return 1
     fi
 
-    local feature_id="$1"
-    local second_arg="$2"
-    local use_hash_mode=false
+    local feature_id="${positional[1]}"
+    local second_arg="${positional[2]}"
     local commit_hashes=()   # lista de hashes da task (salva para comparar com cada branch)
 
-    if [ "$3" = "--hash" ]; then
-        use_hash_mode=true
+    # Sem flag de destino, envia para ambos
+    if [ "$want_develop" = false ] && [ "$want_stage" = false ]; then
+        want_develop=true
+        want_stage=true
+    fi
+
+    # Modo multi-task: commits da task pai + tasks extras, todos para as branches da pai
+    local task_ids=("$feature_id")
+    if [ ${#extra_tasks[@]} -gt 0 ]; then
+        if [ -n "$second_arg" ]; then
+            _juniper_say "❌ --tasks só pode ser usado no modo em lote (sem <mensagem> ou --hash)"
+            return 1
+        fi
+        local t
+        for t in "${extra_tasks[@]}"; do
+            if [[ ! "$t" =~ ^[0-9]+$ ]]; then
+                _juniper_say "❌ ID de task inválido em --tasks: ${t}"
+                return 1
+            fi
+            # evita duplicar a task pai ou ids repetidos
+            (( ${task_ids[(Ie)$t]} )) || task_ids+=("$t")
+        done
     fi
 
     local user_name=$(_juniper_get_user_name)
@@ -201,10 +248,10 @@ deploy_run() {
     git fetch origin
 
     if [ -z "$second_arg" ]; then
-        _juniper_say "🔎 Buscando commits com padrão feature(${feature_id}) ou hotfix(${feature_id})..."
-        local hashes_output=$(_deploy_get_batch_hashes "$feature_id")
+        _juniper_say "🔎 Buscando commits com padrão feature(<id>) ou hotfix(<id>) para: ${task_ids[*]}..."
+        local hashes_output=$(_deploy_get_batch_hashes "${task_ids[@]}")
         if [ -z "$hashes_output" ]; then
-            _juniper_say "❌ Nenhum commit encontrado com padrão feature(${feature_id}) ou hotfix(${feature_id})"
+            _juniper_say "❌ Nenhum commit encontrado para as tasks: ${task_ids[*]}"
             return 1
         fi
         local commit_lines=("${(@f)hashes_output}")
@@ -241,18 +288,22 @@ deploy_run() {
 
     # Para cada branch de destino, compara a lista de hashes da task com o que já
     # existe na branch e aplica (cherry-pick) somente a diferença.
-    local develop_branch="feature/${feature_id}-develop"
-    if _deploy_ensure_branch_exists "$develop_branch" "develop"; then
-        _deploy_apply_missing_commits "$develop_branch" "${commit_hashes[@]}" || has_errors=true
-    else
-        has_errors=true
+    if [ "$want_develop" = true ]; then
+        local develop_branch="feature/${feature_id}-develop"
+        if _deploy_ensure_branch_exists "$develop_branch" "develop"; then
+            _deploy_apply_missing_commits "$develop_branch" "${commit_hashes[@]}" || has_errors=true
+        else
+            has_errors=true
+        fi
     fi
 
-    local stage_branch="feature/${feature_id}-stage"
-    if _deploy_ensure_branch_exists "$stage_branch" "stage"; then
-        _deploy_apply_missing_commits "$stage_branch" "${commit_hashes[@]}" || has_errors=true
-    else
-        has_errors=true
+    if [ "$want_stage" = true ]; then
+        local stage_branch="feature/${feature_id}-stage"
+        if _deploy_ensure_branch_exists "$stage_branch" "stage"; then
+            _deploy_apply_missing_commits "$stage_branch" "${commit_hashes[@]}" || has_errors=true
+        else
+            has_errors=true
+        fi
     fi
 
     echo ""
@@ -265,6 +316,7 @@ deploy_run() {
         _juniper_say "✨ Deploy concluído com sucesso, $user_name!"
     fi
     echo "   Feature: $feature_id"
+    [ ${#task_ids[@]} -gt 1 ] && echo "   Tasks: ${task_ids[*]}"
     echo "   Commits: ${#commit_hashes[@]}"
 }
 
@@ -284,6 +336,17 @@ deploy_help() {
   deploy <id-feature> <hash> --hash
       Aplica (cherry-pick e push) um commit já existente nas branches develop e stage
       Exemplo: juniper deploy 4911 11b81fbe88ed7867d2759037b9406c39f60666f1 --hash
+
+  deploy <id-pai> --tasks <id2> [id3 ...]
+      Modo multi-task: reúne os commits da task pai e das tasks informadas e os
+      aplica nas branches da task pai (feature/<id-pai>-develop e -stage).
+      Exemplo: juniper deploy 6531 --tasks 7432
+
+  Flags de destino (valem para todos os modos):
+    --develop   aplica somente em feature/<id>-develop
+    --stage     aplica somente em feature/<id>-stage
+    (sem flag, ou com ambas, aplica em develop e stage)
+      Exemplo: juniper deploy 6531 --tasks 7432 --stage
 
   Observações:
     - Se as branches feature/<id>-develop ou feature/<id>-stage já existirem, elas
