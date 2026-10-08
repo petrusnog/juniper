@@ -76,8 +76,8 @@ await p.aclose()</pre></div>
 <div class="contract">
   <div class="card type"><h3><span class="tag a">health_check()</span></h3>
     Chama <code>models.list()</code>. Devolve <code>True</code> se respondeu. Chave ausente ou qualquer erro do SDK vira <code>False</code>, sem lançar exceção. Consome uma requisição da cota.</div>
-  <div class="card type"><h3><span class="tag r">stream()</span></h3>
-    Ainda lança <code>NotImplementedError</code>. Existe só para o provider poder ser instanciado. A implementação vem na <b>T-014</b>.</div>
+  <div class="card type"><h3><span class="tag g">stream()</span></h3>
+    Implementado na <b>T-014</b>: usa <code>stream=True</code> do SDK e monta as tool calls fragmentadas. Veja <a href="T-014.html">T-014</a>.</div>
 </div>
 
 <h2>7. Decisões proativas (tomadas sem consultar você)</h2>
@@ -119,7 +119,7 @@ EOF</pre>
 
 <h2>9. Limitações conhecidas</h2>
 <div class="card">
-  <p><b>Sem streaming</b> até a T-014.</p>
+  <p><b>Streaming</b> disponível desde a T-014.</p>
   <p><b>Sem teste contra a API real.</b> O mapeamento de erros foi validado com as exceções reais do SDK (v1.7.0), mas o comportamento da Groq em produção (formato exato de erros, limites do tier gratuito) ainda precisa de uma chamada de verdade.</p>
   <p><b>Limite do tier gratuito:</b> a Groq limita requisições e tokens por minuto. O <code>LLMRateLimitError</code> existe para o router cair para o Ollama nesse caso.</p>
   <p><b>Sem retry próprio:</b> uma falha transitória de rede vira erro imediato. É intencional (decisão 2).</p>

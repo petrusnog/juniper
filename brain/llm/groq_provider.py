@@ -73,15 +73,7 @@ class GroqProvider(LLMProvider):
         max_tokens: int | None = None,
     ) -> LLMResponse:
         client = self._get_client()
-        kwargs: dict[str, Any] = {
-            "model": self._model,
-            "messages": [m.to_openai() for m in messages],
-            "temperature": temperature,
-        }
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
-        if tools:
-            kwargs["tools"] = tools
+        kwargs = self._request_kwargs(messages, tools, temperature, max_tokens)
 
         try:
             completion = await client.chat.completions.create(**kwargs)
@@ -106,7 +98,7 @@ class GroqProvider(LLMProvider):
             finish_reason=choice.finish_reason,
         )
 
-    def stream(
+    async def stream(
         self,
         messages: list[Message],
         *,
@@ -114,7 +106,39 @@ class GroqProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        raise NotImplementedError("Streaming será implementado na T-014")
+        client = self._get_client()
+        kwargs = self._request_kwargs(messages, tools, temperature, max_tokens)
+        fragments: dict[int, _ToolCallFragment] = {}
+        finish_reason: str | None = None
+        usage: TokenUsage | None = None
+
+        try:
+            sdk_stream = await client.chat.completions.create(stream=True, **kwargs)
+            async with sdk_stream:
+                async for chunk in sdk_stream:
+                    xg = getattr(chunk, "x_groq", None)
+                    if getattr(xg, "error", None):
+                        raise LLMError("Groq: erro reportado no meio do stream")
+                    # Groq reports usage in x_groq.usage (the SDK has no stream_options).
+                    usage = _parse_usage(getattr(xg, "usage", None) or chunk.usage) or usage
+                    for choice in chunk.choices or []:
+                        delta = choice.delta
+                        for tc in delta.tool_calls or []:
+                            fragments.setdefault(tc.index, _ToolCallFragment()).add(tc)
+                        if choice.finish_reason:
+                            finish_reason = choice.finish_reason
+                        if delta.content:
+                            yield StreamChunk(delta=delta.content)
+        except groq.GroqError as exc:
+            raise self._map_error(exc) from None
+
+        if finish_reason is None:
+            raise LLMUnavailableError("Groq: stream interrompido antes do fim")
+        yield StreamChunk(
+            tool_calls=tuple(frag.build() for _, frag in sorted(fragments.items())),
+            usage=usage,
+            finish_reason=finish_reason,
+        )
 
     async def health_check(self) -> bool:
         try:
@@ -123,6 +147,24 @@ class GroqProvider(LLMProvider):
         except (LLMAuthError, groq.GroqError):
             return False
         return True
+
+    def _request_kwargs(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        temperature: float,
+        max_tokens: int | None,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": [m.to_openai() for m in messages],
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        if tools:
+            kwargs["tools"] = tools
+        return kwargs
 
     def _map_error(self, exc: groq.GroqError) -> LLMError:
         """Translate SDK exceptions into typed errors.
@@ -150,19 +192,41 @@ class GroqProvider(LLMProvider):
         return text.replace(self._api_key, "***") if self._api_key else text
 
 
-def _parse_tool_call(raw: Any) -> ToolCall:
-    fn = raw.function
-    if not getattr(fn, "name", None):
+def _build_tool_call(call_id: str | None, name: str | None, arguments: str | None) -> ToolCall:
+    if not name:
         raise LLMError("Groq: tool_call sem nome")
     # Groq returns arguments as a JSON *string*; the model may emit it empty.
-    text = fn.arguments or "{}"
     try:
-        args = json.loads(text)
+        args = json.loads(arguments or "{}")
     except ValueError as exc:
-        raise LLMError(f"Groq: argumentos de tool_call não são JSON válido ({fn.name})") from exc
+        raise LLMError(f"Groq: argumentos de tool_call não são JSON válido ({name})") from exc
     if not isinstance(args, dict):
-        raise LLMError(f"Groq: argumentos de tool_call inválidos ({fn.name})")
-    return ToolCall(id=raw.id or f"call_{uuid.uuid4().hex[:12]}", name=fn.name, arguments=args)
+        raise LLMError(f"Groq: argumentos de tool_call inválidos ({name})")
+    return ToolCall(id=call_id or f"call_{uuid.uuid4().hex[:12]}", name=name, arguments=args)
+
+
+def _parse_tool_call(raw: Any) -> ToolCall:
+    fn = raw.function
+    return _build_tool_call(raw.id, getattr(fn, "name", None), fn.arguments)
+
+
+class _ToolCallFragment:
+    """Accumulates one tool call that the API sends in pieces (keyed by ``index``)."""
+
+    def __init__(self) -> None:
+        self.id: str | None = None
+        self.name: str | None = None
+        self.arguments = ""
+
+    def add(self, delta: Any) -> None:
+        self.id = delta.id or self.id
+        fn = delta.function
+        if fn is not None:
+            self.name = fn.name or self.name
+            self.arguments += fn.arguments or ""
+
+    def build(self) -> ToolCall:
+        return _build_tool_call(self.id, self.name, self.arguments)
 
 
 def _parse_usage(usage: Any) -> TokenUsage | None:

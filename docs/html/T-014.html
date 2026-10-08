@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-014 · Streaming — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / LLM / T-014</div>
+<h1>T-014 — Streaming</h1>
+<p class="lead">Implementa <code>stream()</code> nos dois providers: a resposta chega em pedaços, à medida que o modelo escreve, em vez de aparecer inteira no fim. Arquivos: <code>brain/llm/ollama_provider.py</code> e <code>brain/llm/groq_provider.py</code>.</p>
+
+<h2>1. O que ele faz</h2>
+<p class="lead">O contrato da T-011 já previa <code>stream()</code> devolvendo um <code>AsyncIterator[StreamChunk]</code>. Agora ele funciona: cada pedaço de texto sai como um chunk com <code>delta</code>, e o <b>último</b> chunk traz o que só se sabe no fim.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>chunk</b><small><code>delta="Olá, "</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>chunk</b><small><code>delta="tudo "</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>chunk</b><small><code>delta="bem?"</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>chunk final</b><small><code>tool_calls</code> · <code>usage</code> · <code>finish_reason</code></small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Regra de ouro: juntar todos os <code>delta</code> dá o mesmo texto que <code>chat()</code> devolveria. Os testes verificam isso.</p>
+</div>
+
+<h2>2. Uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Exemplo</h3>
+<pre>p = GroqProvider()
+async for c in p.stream([Message("user", "oi")]):
+    print(c.delta, end="", flush=True)
+    if c.finish_reason:        # chunk final
+        print(c.usage, c.tool_calls)</pre></div>
+  <div class="card type"><h3>O que cada chunk traz</h3>
+    <ul><li><b>Intermediários:</b> só <code>delta</code> (texto novo)</li><li><b>Final:</b> <code>delta=""</code>, <code>tool_calls</code> completas, <code>usage</code> e <code>finish_reason</code></li></ul></div>
+</div>
+<p><code>stream()</code> é um gerador assíncrono: nada acontece até você começar a iterar, e os erros (seção 5) são lançados durante a iteração, não na chamada.</p>
+
+<h2>3. Como cada provider recebe o stream</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Ponto</th><th>Ollama</th><th>Groq</th></tr>
+    <tr><td>Como pede</td><td><code>POST /api/chat</code> com <code>stream:true</code></td><td><code>create(stream=True)</code> no SDK</td></tr>
+    <tr><td>Formato</td><td>NDJSON: um objeto JSON por linha</td><td>chunks do SDK (<code>delta</code> por escolha)</td></tr>
+    <tr><td>Fim do stream</td><td>linha com <code>done: true</code></td><td><code>finish_reason</code> preenchido</td></tr>
+    <tr><td>Tool calls</td><td>já chegam <b>completas</b> numa linha</td><td>chegam <b>em fragmentos</b> (por <code>index</code>): precisam ser montadas</td></tr>
+    <tr><td>Usage</td><td><code>prompt_eval_count</code> / <code>eval_count</code> na linha final</td><td><code>x_groq.usage</code> no último chunk (ou <code>usage</code> no topo)</td></tr>
+  </table>
+</div>
+
+<h3 style="margin-top:20px">Montando tool calls fragmentadas (Groq)</h3>
+<p>A Groq manda uma chamada de ferramenta aos poucos. O <code>id</code> e o <code>name</code> vêm no primeiro fragmento; os <code>arguments</code> (uma string JSON) vêm em pedaços que precisam ser concatenados. Várias chamadas podem se intercalar, separadas por <code>index</code>.</p>
+<pre>fragmento 1: index=0  id="c1" name="open_app" args=""
+fragmento 2: index=0                          args='{"target"'
+fragmento 3: index=1  id="c2" name="get_time" args="{}"
+fragmento 4: index=0                          args=': "firefox"}'
+        ↓ no fim, json.loads em cada uma
+ToolCall(c1, open_app, {"target": "firefox"})   ToolCall(c2, get_time, {})</pre>
+<p>Só no fim, com a string completa, o JSON é interpretado. Se estiver inválido, é <code>LLMError</code> (igual ao <code>chat()</code>). A função de montagem é a mesma do <code>chat()</code> (<code>_build_tool_call</code>), então as duas rotas se comportam igual.</p>
+
+<h2>4. Por que tool calls só no chunk final?</h2>
+<p class="lead">Uma ferramenta pela metade não serve para nada: o agente (T-030) só consegue executá-la inteira. Por isso os dois providers entregam as chamadas completas e juntas no último chunk, mesmo que o Ollama as envie antes. O texto continua fluindo normalmente enquanto isso.</p>
+
+<h2>5. Erros</h2>
+<p class="lead">Mesma tabela do <code>chat()</code>. A diferença é <b>quando</b> aparecem: podem estourar no meio da resposta, depois de você já ter recebido parte do texto.</p>
+<div class="tree">
+  <div class="err"><span class="mono">falha ao abrir (conexão, 401, 429, 5xx…)</span><span>Antes do primeiro chunk. O router poderá trocar de provider sem o usuário ver nada.</span><span class="act tag a">mesmos tipos do chat()</span></div>
+  <div class="err"><span class="mono">falha no meio do stream</span><span>Conexão cai ou estoura o timeout depois de alguns chunks. O texto parcial já foi entregue.</span><span class="act tag a">LLMUnavailableError / LLMTimeoutError</span></div>
+  <div class="err"><span class="mono">stream termina sem sinal de fim</span><span>Sem <code>done:true</code> (Ollama) ou sem <code>finish_reason</code> (Groq): resposta truncada.</span><span class="act tag a">LLMUnavailableError</span></div>
+  <div class="err"><span class="mono">erro dentro do stream</span><span>Linha <code>{"error": …}</code> (Ollama) ou <code>x_groq.error</code> (Groq).</span><span class="act tag r">LLMError</span></div>
+  <div class="err"><span class="mono">linha que não é JSON / tool sem nome / argumentos inválidos</span><span>Resposta fora do esperado.</span><span class="act tag r">LLMError</span></div>
+</div>
+<p>As garantias da T-013 valem aqui também: a chave da Groq nunca aparece nas mensagens, e a chave ausente vira <code>LLMAuthError</code>.</p>
+
+<h2>6. Decisões proativas (tomadas sem consultar você)</h2>
+<p class="lead">A spec da T-014 era curta. Estas foram as escolhas que fiz; cada uma é fácil de reverter.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Stream cortado vira <code>LLMUnavailableError</code></b> (sem <code>done</code>/<code>finish_reason</code>).</td><td>Entregar uma resposta pela metade como se fosse completa seria pior que um erro. É o mesmo tipo de "provider falhou" que o router já trata.</td></tr>
+    <tr><td>2</td><td><b>Não envio <code>stream_options</code> à Groq.</b></td><td>O SDK instalado (1.7.0) não tem esse parâmetro. O uso de tokens vem em <code>x_groq.usage</code>, e o código aceita também <code>usage</code> no topo, caso a API mude.</td></tr>
+    <tr><td>3</td><td><b>Tool calls (inclusive as do Ollama) saem só no chunk final.</b></td><td>Contrato uniforme para os dois providers, como a spec pedia. O consumidor não precisa saber qual provider respondeu.</td></tr>
+    <tr><td>4</td><td><b>Chunks intermediários não trazem <code>usage</code> nem <code>finish_reason</code>.</b></td><td>Esses campos só existem de verdade no fim; assim "chunk com <code>finish_reason</code>" identifica o último sem ambiguidade.</td></tr>
+    <tr><td>5</td><td><b>Refatoração mínima no <code>chat()</code></b>: o corpo do pedido e o tratamento de status HTTP passaram para funções compartilhadas (<code>_payload</code>/<code>_status_error</code> no Ollama, <code>_request_kwargs</code>/<code>_build_tool_call</code> na Groq).</td><td>Evita duplicar a lógica entre <code>chat()</code> e <code>stream()</code>. O comportamento do <code>chat()</code> não mudou, e os testes antigos continuam passando.</td></tr>
+    <tr><td>6</td><td><b>Sem retry de stream.</b></td><td>Retomar um stream no meio duplicaria texto. Falha no meio é erro; o router (T-015) decide o que fazer.</td></tr>
+    <tr><td>7</td><td><b>Atualizei as páginas T-012 e T-013</b> onde diziam que <code>stream()</code> lançava <code>NotImplementedError</code>.</td><td>Para a documentação não ficar contraditória.</td></tr>
+  </table>
+</div>
+
+<h2>7. Como testar</h2>
+<div class="grid">
+  <div class="card type"><h3>Automatizado (sem rede)</h3>
+<pre>pytest tests/test_ollama_provider.py \
+       tests/test_groq_provider.py -v</pre>
+    Ollama: <code>httpx.MockTransport</code> devolvendo NDJSON, inclusive uma conexão que cai no meio. Groq: stream falso com fragmentos de tool call. Cada um verifica a regra "deltas == <code>chat()</code>".</div>
+  <div class="card type"><h3>Manual (Ollama real)</h3>
+<pre>python - &lt;&lt;'EOF'
+import asyncio
+from brain.llm.ollama_provider import OllamaProvider
+from brain.llm.types import Message
+async def main():
+    p = OllamaProvider()
+    async for c in p.stream([Message("user", "conte até 5")]):
+        print(c.delta, end="", flush=True)
+    await p.aclose()
+asyncio.run(main())
+EOF</pre>
+    Não executado nesta task: o ambiente de desenvolvimento não tem Ollama nem acesso à Groq.</div>
+</div>
+
+<h2>8. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Sem teste contra servidor real.</b> O formato do NDJSON do Ollama e dos chunks da Groq foi reproduzido a partir da documentação e do SDK; falta confirmar com uma chamada de verdade (principalmente onde a Groq coloca o <code>usage</code> no stream).</p>
+  <p><b>Tool calls só no fim:</b> não dá para mostrar "executando ferramenta…" enquanto o modelo ainda decide os argumentos.</p>
+  <p><b>Parar no meio:</b> se o consumidor interromper a iteração, a conexão é fechada, mas ainda não há um mecanismo de cancelamento explícito (<code>Ctrl+C</code> amigável fica para o cliente, T-040).</p>
+  <p><b>Sem failover ainda:</b> trocar de provider antes do primeiro chunk é trabalho da T-015.</p>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

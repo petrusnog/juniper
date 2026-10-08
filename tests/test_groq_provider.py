@@ -54,7 +54,10 @@ def raw_tool_call(
 class FakeClient:
     """Mimics the slice of AsyncGroq used by the provider."""
 
-    def __init__(self, result: Any = None, error: Exception | None = None) -> None:
+    def __init__(
+        self, result: Any = None, error: Exception | None = None, stream: FakeStream | None = None
+    ) -> None:
+        self.stream_obj = stream
         self.calls: list[dict[str, Any]] = []
         self.closed = False
         self._result, self._error = result, error
@@ -65,6 +68,8 @@ class FakeClient:
         self.calls.append(kwargs)
         if self._error:
             raise self._error
+        if kwargs.get("stream"):
+            return self.stream_obj
         return self._result
 
     async def _list(self) -> Any:
@@ -239,6 +244,201 @@ async def test_aclose() -> None:
     await GroqProvider(api_key=None).aclose()  # no client built: no-op
 
 
-def test_stream_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        make(FakeClient()).stream([Message("user", "oi")])
+# --- streaming (T-014) ---------------------------------------------------------------
+
+
+def tc_delta(
+    index: int, id_: str | None = None, name: str | None = None, args: str | None = None
+) -> Any:
+    fn = SimpleNamespace(name=name, arguments=args)
+    return SimpleNamespace(index=index, id=id_, function=fn)
+
+
+def sdk_chunk(
+    content: str | None = None,
+    tool_calls: list[Any] | None = None,
+    finish_reason: str | None = None,
+    xg_usage: Any = None,
+    xg_error: Any = None,
+) -> Any:
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)],
+        usage=None,
+        x_groq=SimpleNamespace(usage=xg_usage, error=xg_error),
+    )
+
+
+USAGE = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+
+
+class FakeStream:
+    """Async-iterable, async-context-managed stand-in for the SDK's AsyncStream."""
+
+    def __init__(self, chunks: list[Any], error: Exception | None = None) -> None:
+        self._chunks, self._error = chunks, error
+        self.closed = False
+
+    async def __aenter__(self) -> FakeStream:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.closed = True
+
+    def __aiter__(self) -> FakeStream:
+        self._it = iter(self._chunks)
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return next(self._it)
+        except StopIteration:
+            if self._error:
+                raise self._error from None
+            raise StopAsyncIteration from None
+
+
+def stream_client(
+    chunks: list[Any], error: Exception | None = None, create_error: Exception | None = None
+) -> FakeClient:
+    return FakeClient(error=create_error, stream=FakeStream(chunks, error))
+
+
+async def collect(client: FakeClient, **kw: Any) -> list[Any]:
+    return [c async for c in make(client).stream([Message("user", "oi")], **kw)]
+
+
+async def test_stream_text_deltas_and_final_chunk() -> None:
+    client = stream_client(
+        [
+            sdk_chunk(content="ol"),
+            sdk_chunk(content="á"),
+            sdk_chunk(content="!"),
+            sdk_chunk(finish_reason="stop", xg_usage=USAGE),
+        ]
+    )
+    chunks = await collect(client, temperature=0.1, max_tokens=9)
+
+    assert [c.delta for c in chunks] == ["ol", "á", "!", ""]
+    assert chunks[-1].finish_reason == "stop"
+    assert chunks[-1].usage is not None and chunks[-1].usage.total_tokens == 15
+    assert all(c.finish_reason is None and c.usage is None for c in chunks[:-1])
+    (call,) = client.calls
+    assert call["stream"] is True
+    assert call["temperature"] == 0.1 and call["max_tokens"] == 9
+    assert "stream_options" not in call  # not supported by the SDK
+    assert client.stream_obj.closed
+
+
+async def test_stream_matches_chat() -> None:
+    """Acceptance: concatenated deltas == chat() content, same usage and finish_reason."""
+    parts = ["Olá, ", "tudo ", "bem?"]
+    client = stream_client(
+        [*(sdk_chunk(content=p) for p in parts), sdk_chunk(finish_reason="stop", xg_usage=USAGE)]
+    )
+    client._result = completion(content="".join(parts))
+
+    provider = make(client)
+    chunks = [c async for c in provider.stream([Message("user", "oi")])]
+    resp = await provider.chat([Message("user", "oi")])
+
+    assert "".join(c.delta for c in chunks) == resp.message.content
+    assert chunks[-1].usage == resp.usage
+    assert chunks[-1].finish_reason == resp.finish_reason
+
+
+async def test_stream_accumulates_fragmented_tool_calls() -> None:
+    client = stream_client(
+        [
+            sdk_chunk(tool_calls=[tc_delta(0, "c1", "open_app", "")]),
+            sdk_chunk(tool_calls=[tc_delta(0, None, None, '{"target"')]),
+            sdk_chunk(tool_calls=[tc_delta(1, "c2", "get_time", "{}")]),
+            sdk_chunk(tool_calls=[tc_delta(0, None, None, ': "firefox"}')]),
+            sdk_chunk(finish_reason="tool_calls", xg_usage=USAGE),
+        ]
+    )
+    chunks = await collect(client)
+
+    assert [c.delta for c in chunks] == [""]  # tool calls only in the final chunk
+    first, second = chunks[-1].tool_calls
+    assert (first.id, first.name, first.arguments) == ("c1", "open_app", {"target": "firefox"})
+    assert (second.id, second.name, second.arguments) == ("c2", "get_time", {})
+    assert chunks[-1].finish_reason == "tool_calls"
+
+
+async def test_stream_usage_can_come_from_top_level_and_be_missing() -> None:
+    top = sdk_chunk(finish_reason="stop")
+    top.usage = USAGE
+    assert (await collect(stream_client([top])))[-1].usage is not None
+    assert (await collect(stream_client([sdk_chunk(finish_reason="stop")])))[-1].usage is None
+
+
+async def test_stream_skips_chunks_without_choices() -> None:
+    empty = SimpleNamespace(choices=[], usage=None, x_groq=None)
+    chunks = await collect(
+        stream_client([empty, sdk_chunk(content="a"), sdk_chunk(finish_reason="stop")])
+    )
+    assert [c.delta for c in chunks] == ["a", ""]
+
+
+async def test_stream_invalid_tool_arguments_and_missing_name() -> None:
+    bad_json = [
+        sdk_chunk(tool_calls=[tc_delta(0, "c1", "t", "{oops")]),
+        sdk_chunk(finish_reason="stop"),
+    ]
+    with pytest.raises(LLMError, match="argumentos"):
+        await collect(stream_client(bad_json))
+    no_name = [
+        sdk_chunk(tool_calls=[tc_delta(0, "c1", None, "{}")]),
+        sdk_chunk(finish_reason="stop"),
+    ]
+    with pytest.raises(LLMError, match="sem nome"):
+        await collect(stream_client(no_name))
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (status_error(groq.AuthenticationError, 401), LLMAuthError),
+        (status_error(groq.RateLimitError, 429), LLMRateLimitError),
+        (status_error(groq.InternalServerError, 503), LLMUnavailableError),
+        (groq.APITimeoutError(request=REQ), LLMTimeoutError),
+        (groq.APIConnectionError(request=REQ), LLMUnavailableError),
+    ],
+)
+async def test_stream_error_when_opening(error: Exception, expected: type[LLMError]) -> None:
+    with pytest.raises(expected):
+        await collect(stream_client([], create_error=error))
+
+
+async def test_stream_failure_after_first_chunk_is_typed() -> None:
+    client = stream_client(
+        [sdk_chunk(content="parcial")], error=groq.APIConnectionError(request=REQ)
+    )
+    received: list[str] = []
+    with pytest.raises(LLMUnavailableError):
+        async for c in make(client).stream([Message("user", "oi")]):
+            received.append(c.delta)
+    assert received == ["parcial"]
+    assert client.stream_obj.closed
+
+
+async def test_stream_truncated_and_error_in_payload() -> None:
+    with pytest.raises(LLMUnavailableError, match="interrompido"):
+        await collect(stream_client([sdk_chunk(content="a")]))
+    with pytest.raises(LLMError, match="meio do stream"):
+        await collect(stream_client([sdk_chunk(content="a", xg_error={"message": "x"})]))
+
+
+async def test_stream_missing_key_is_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "groq_api_key", None)
+    with pytest.raises(LLMAuthError):
+        async for _ in GroqProvider().stream([Message("user", "x")]):
+            pass
+
+
+async def test_stream_error_does_not_leak_key() -> None:
+    err = status_error(groq.BadRequestError, 400, f"bad key {SECRET}")
+    with pytest.raises(LLMError) as exc:
+        await collect(stream_client([], create_error=err))
+    assert SECRET not in str(exc.value)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any, ClassVar
@@ -46,17 +47,7 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> LLMResponse:
-        options: dict[str, Any] = {"temperature": temperature}
-        if max_tokens is not None:
-            options["num_predict"] = max_tokens
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": [_to_ollama(m) for m in messages],
-            "stream": False,
-            "options": options,
-        }
-        if tools:
-            payload["tools"] = tools
+        payload = self._payload(messages, tools, temperature, max_tokens, stream=False)
 
         data = await self._post("/api/chat", payload)
         raw = data.get("message")
@@ -76,7 +67,7 @@ class OllamaProvider(LLMProvider):
             finish_reason=data.get("done_reason"),
         )
 
-    def stream(
+    async def stream(
         self,
         messages: list[Message],
         *,
@@ -84,7 +75,40 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        raise NotImplementedError("Streaming será implementado na T-014")
+        payload = self._payload(messages, tools, temperature, max_tokens, stream=True)
+        tool_calls: list[ToolCall] = []
+        done: dict[str, Any] | None = None
+
+        try:
+            async with self._client.stream("POST", "/api/chat", json=payload) as resp:
+                if resp.status_code >= 400:
+                    await resp.aread()
+                    raise _status_error(resp)
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    data = _parse_json_line(line)
+                    if data.get("error"):
+                        raise LLMError(f"Ollama: {str(data['error'])[:200]}")
+                    raw = data.get("message") or {}
+                    tool_calls.extend(_parse_tool_call(tc) for tc in raw.get("tool_calls") or [])
+                    if delta := raw.get("content") or "":
+                        yield StreamChunk(delta=delta)
+                    if data.get("done"):
+                        done = data
+                        break
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError("Ollama: timeout em /api/chat (stream)") from exc
+        except httpx.HTTPError as exc:
+            raise LLMUnavailableError(f"Ollama indisponível: {exc!r}") from exc
+
+        if done is None:
+            raise LLMUnavailableError("Ollama: stream interrompido antes do fim")
+        yield StreamChunk(
+            tool_calls=tuple(tool_calls),
+            usage=_parse_usage(done),
+            finish_reason=done.get("done_reason"),
+        )
 
     async def health_check(self) -> bool:
         try:
@@ -92,6 +116,28 @@ class OllamaProvider(LLMProvider):
         except httpx.HTTPError:
             return False
         return resp.is_success
+
+    def _payload(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        temperature: float,
+        max_tokens: int | None,
+        *,
+        stream: bool,
+    ) -> dict[str, Any]:
+        options: dict[str, Any] = {"temperature": temperature}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": [_to_ollama(m) for m in messages],
+            "stream": stream,
+            "options": options,
+        }
+        if tools:
+            payload["tools"] = tools
+        return payload
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -101,10 +147,8 @@ class OllamaProvider(LLMProvider):
         except httpx.HTTPError as exc:  # connection refused, reset, etc.
             raise LLMUnavailableError(f"Ollama indisponível: {exc!r}") from exc
 
-        if resp.status_code >= 500:
-            raise LLMUnavailableError(f"Ollama: HTTP {resp.status_code}")
         if resp.status_code >= 400:
-            raise LLMError(f"Ollama: HTTP {resp.status_code}: {resp.text[:200]}")
+            raise _status_error(resp)
         try:
             data = resp.json()
         except ValueError as exc:
@@ -112,6 +156,22 @@ class OllamaProvider(LLMProvider):
         if not isinstance(data, dict):
             raise LLMError("Ollama: formato de resposta inesperado")
         return data
+
+
+def _status_error(resp: httpx.Response) -> LLMError:
+    if resp.status_code >= 500:
+        return LLMUnavailableError(f"Ollama: HTTP {resp.status_code}")
+    return LLMError(f"Ollama: HTTP {resp.status_code}: {resp.text[:200]}")
+
+
+def _parse_json_line(line: str) -> dict[str, Any]:
+    try:
+        data = json.loads(line)
+    except ValueError as exc:
+        raise LLMError("Ollama: linha do stream não é JSON válido") from exc
+    if not isinstance(data, dict):
+        raise LLMError("Ollama: formato de linha inesperado no stream")
+    return data
 
 
 def _to_ollama(msg: Message) -> dict[str, Any]:

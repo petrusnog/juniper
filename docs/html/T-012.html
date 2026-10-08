@@ -89,8 +89,8 @@ await p.aclose()</pre></div>
 <div class="contract">
   <div class="card type"><h3><span class="tag a">health_check()</span></h3>
     <code>GET /api/tags</code>. Devolve <code>True</code> se respondeu 2xx. Qualquer falha de rede vira <code>False</code>, sem lançar exceção.</div>
-  <div class="card type"><h3><span class="tag r">stream()</span></h3>
-    Ainda lança <code>NotImplementedError</code>. Existe só para o provider poder ser instanciado. A implementação vem na <b>T-014</b>.</div>
+  <div class="card type"><h3><span class="tag g">stream()</span></h3>
+    Implementado na <b>T-014</b>: lê o NDJSON linha a linha e emite <code>StreamChunk</code>s. Veja <a href="T-014.html">T-014</a>.</div>
 </div>
 
 <h2>6. Como testar</h2>
@@ -105,7 +105,7 @@ await p.aclose()</pre></div>
 
 <h2>7. Limitações conhecidas</h2>
 <div class="card">
-  <p><b>Sem streaming</b> até a T-014: a resposta aparece inteira, depois da espera.</p>
+  <p><b>Streaming</b> disponível desde a T-014 (<code>chat()</code> continua devolvendo a resposta inteira, depois da espera).</p>
   <p><b>CPU, não GPU:</b> no WSL o Ollama não enxerga a RX 590 (<code>ollama ps</code> mostra 100% CPU). O provider não controla isso; o tempo de resposta é maior, e o <code>timeout</code> de 120 s é a folga.</p>
   <p><b>Contexto de 4096 tokens</b> (padrão do Ollama): conversas longas serão cortadas. A persona sozinha já usa cerca de 800 tokens.</p>
   <p><b>Qualidade do 8B:</b> o <code>llama3.1</code> segue persona e tool calling pior que o 70B da Groq; por isso é o fallback.</p>

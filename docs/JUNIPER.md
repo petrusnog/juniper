@@ -30,7 +30,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `pyproject.toml`, `requirements.txt`, `.gitignore` | ✅ |
 | `scripts/dev.sh` (setup idempotente: venv, symlink global, PATH) | ✅ |
 | `scripts/uninstall.sh` (`--yes`, `--purge-repo`) | ✅ |
-| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013) + testes | ✅ |
+| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013), streaming (T-014) + testes | ✅ |
 | `brain/config.py` (pydantic-settings) + `tests/test_config.py` (8 testes) | ✅ |
 | `brain/clients/cli.py` (placeholder typer) | ✅ funcional |
 | Binário `juniper` em `~/.local/bin/` | ✅ |
@@ -39,8 +39,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 ### Stubs (pendentes)
 | Componente | Task |
 |---|---|
-| Streaming | T-014 ← **próxima** |
-| `brain/llm/router.py` | T-015 |
+| `brain/llm/router.py` | T-015 ← **próxima** |
 | `brain/tools/base.py` | T-020 |
 | `brain/tools/registry.py` | T-021 |
 | `brain/tools/system.py` (`open_app`, `run_shell`) | T-022, T-023 |
