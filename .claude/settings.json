@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.venv/**)",
+      "Read(./**/__pycache__/**)",
+      "Read(./*.egg-info/**)",
+      "Read(./.pytest_cache/**)",
+      "Read(./.mypy_cache/**)",
+      "Read(./.ruff_cache/**)",
+      "Read(./logs/**)",
+      "Read(./*.log)",
+      "Read(./.env)",
+      "Read(./.juniper.conf)"
+    ]
+  }
+}
