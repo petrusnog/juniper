@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-013 · GroqProvider — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / LLM / T-013</div>
+<h1>T-013 — GroqProvider</h1>
+<p class="lead">Provider primário: implementa o contrato <code>LLMProvider</code> (T-011) falando com a nuvem da Groq pelo SDK oficial <code>groq</code>. Arquivo: <code>brain/llm/groq_provider.py</code>.</p>
+
+<h2>1. O que ele faz</h2>
+<p class="lead">Irmão do <code>OllamaProvider</code>: mesma interface, outro "idioma". A Groq fala o formato OpenAI, então a ida é direta (<code>Message.to_openai()</code>); o trabalho está em ler a volta e traduzir os erros do SDK.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>chat(messages, tools)</b><small>vocabulário Juniper</small></div>
+    <div class="arrow">→</div>
+    <div class="node v"><b>to_openai()</b><small>já é o formato da Groq</small></div>
+    <div class="arrow">→</div>
+    <div class="node a"><b>AsyncGroq</b><small><code>chat.completions.create</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>LLMResponse</b><small>Message + TokenUsage</small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Exceções do SDK viram <code>LLM*Error</code> tipado (seção 4).</p>
+</div>
+
+<h2>2. Configuração e uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Construtor</h3>
+    <ul><li><code>api_key</code>: padrão <code>settings.groq_api_key</code> (<code>JUNIPER_GROQ_API_KEY</code> no <code>.env</code>)</li><li><code>model</code>: padrão <code>settings.llm.groq.model</code> (<code>llama-3.3-70b-versatile</code>)</li><li><code>timeout</code>: padrão <code>settings.llm.groq.timeout</code> (30 s)</li><li><code>client</code>: só para testes (cliente falso)</li></ul></div>
+  <div class="card type"><h3>Exemplo</h3>
+<pre>p = GroqProvider()
+r = await p.chat([
+  Message("user", "oi")
+])
+print(r.message.content)
+await p.aclose()</pre></div>
+</div>
+<p>Use <code>aclose()</code> ao terminar para fechar a conexão HTTP.</p>
+
+<h2>3. Diferenças em relação ao Ollama</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Ponto</th><th>Ollama (T-012)</th><th>Groq (T-013)</th></tr>
+    <tr><td>Transporte</td><td><code>httpx</code> direto</td><td>SDK <code>groq</code> (<code>AsyncGroq</code>)</td></tr>
+    <tr><td>Envio das mensagens</td><td>conversão própria (<code>_to_ollama</code>)</td><td><code>Message.to_openai()</code>, sem conversão</td></tr>
+    <tr><td><code>arguments</code> da tool</td><td>já é dict</td><td><b>string JSON</b> → <code>json.loads</code></td></tr>
+    <tr><td>id da chamada</td><td>sempre gerado por nós</td><td>vem da Groq; gerado só se faltar</td></tr>
+    <tr><td><code>max_tokens</code></td><td><code>options.num_predict</code></td><td><code>max_tokens</code></td></tr>
+    <tr><td>Credencial</td><td>nenhuma</td><td>chave de API (segredo)</td></tr>
+  </table>
+</div>
+<p style="margin-top:12px">Detalhe de parsing: se o modelo mandar <code>arguments</code> vazio, vira <code>{}</code>. Se vier JSON quebrado, ou um JSON que não seja objeto (<code>[1,2]</code>, <code>"x"</code>), é <code>LLMError</code>.</p>
+
+<h2>4. Erros</h2>
+<p class="lead">O provider nunca deixa vazar exceção do SDK: tudo vira um tipo da T-011. A ordem dos testes importa, porque <code>APITimeoutError</code> é filho de <code>APIConnectionError</code>; o timeout é checado primeiro.</p>
+<div class="tree">
+  <div class="err"><span class="mono">chave ausente</span><span>Sem <code>JUNIPER_GROQ_API_KEY</code>. Lançado na primeira chamada, não no construtor.</span><span class="act tag a">LLMAuthError</span></div>
+  <div class="err"><span class="mono">AuthenticationError / PermissionDeniedError</span><span>HTTP 401/403: chave inválida ou sem permissão.</span><span class="act tag a">LLMAuthError</span></div>
+  <div class="err"><span class="mono">RateLimitError</span><span>HTTP 429.</span><span class="act tag a">LLMRateLimitError</span></div>
+  <div class="err"><span class="mono">APITimeoutError</span><span>Passou do <code>timeout</code>.</span><span class="act tag a">LLMTimeoutError</span></div>
+  <div class="err"><span class="mono">APIConnectionError / InternalServerError</span><span>Sem rede, DNS, ou 5xx.</span><span class="act tag a">LLMUnavailableError</span></div>
+  <div class="err"><span class="mono">outros 4xx (ex.: 400, 404)</span><span>Erro de pedido ou de modelo: configuração, não disponibilidade.</span><span class="act tag r">LLMError</span></div>
+  <div class="err"><span class="mono">sem <code>choices</code> / tool sem nome / JSON inválido</span><span>Resposta fora do esperado.</span><span class="act tag r">LLMError</span></div>
+</div>
+
+<h2>5. Segurança da chave</h2>
+<div class="card">
+  <p>A chave é um <code>SecretStr</code> nas settings e só é "aberta" na hora de criar o cliente. As mensagens de erro são montadas por nós (código HTTP + trecho curto), nunca copiando o <code>str(exc)</code> do SDK. Se o corpo do erro ecoar a chave, ela é trocada por <code>***</code>. A exceção original é suprimida (<code>from None</code>), então a chave também não aparece no encadeamento do traceback. Há um teste que verifica isso.</p>
+</div>
+
+<h2>6. health_check e stream</h2>
+<div class="contract">
+  <div class="card type"><h3><span class="tag a">health_check()</span></h3>
+    Chama <code>models.list()</code>. Devolve <code>True</code> se respondeu. Chave ausente ou qualquer erro do SDK vira <code>False</code>, sem lançar exceção. Consome uma requisição da cota.</div>
+  <div class="card type"><h3><span class="tag r">stream()</span></h3>
+    Ainda lança <code>NotImplementedError</code>. Existe só para o provider poder ser instanciado. A implementação vem na <b>T-014</b>.</div>
+</div>
+
+<h2>7. Decisões proativas (tomadas sem consultar você)</h2>
+<p class="lead">O briefing deixava estes pontos em aberto. Escolhi o que recomendo; cada um é fácil de reverter.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Chave ausente falha na primeira chamada</b>, não no construtor.</td><td>O router (T-015) instancia todos os providers de <code>llm.priority</code>. Se o construtor lançasse, um <code>.env</code> sem chave derrubaria o boot em vez de cair para o Ollama. A spec do router já prevê failover em <code>LLMAuthError</code>.</td></tr>
+    <tr><td>2</td><td><b><code>max_retries=0</code></b> no SDK (o padrão é 2).</td><td>Retry e failover são responsabilidade do router. Com retries internos, uma Groq fora do ar seguraria o usuário por vários timeouts antes de cair para o Ollama.</td></tr>
+    <tr><td>3</td><td><b>Cliente do SDK criado sob demanda</b> (lazy) e injetável pelo parâmetro <code>client</code>.</td><td>Consequência da decisão 1, e permite testar sem rede nem mock global.</td></tr>
+    <tr><td>4</td><td><b>Mensagens de erro próprias</b>, sem repassar o texto do SDK.</td><td>Garante o aceite "chave nunca aparece em logs/exceções". Custo: perde-se parte do detalhe do erro original.</td></tr>
+    <tr><td>5</td><td><b>403 (<code>PermissionDeniedError</code>) também é <code>LLMAuthError</code></b>.</td><td>A spec listava só <code>AuthenticationError</code>, mas a hierarquia da T-011 documenta "401/403" para este erro.</td></tr>
+    <tr><td>6</td><td><b>Outros 4xx viram <code>LLMError</code> genérico</b> (sem failover).</td><td>Mesmo critério do Ollama: 400/404 indicam erro de pedido ou modelo, e outro provider não resolve.</td></tr>
+    <tr><td>7</td><td><b>Testes com cliente falso</b> (<code>FakeClient</code>) em vez de <code>httpx.MockTransport</code>.</td><td>A spec pede "cliente SDK mockado". Os erros do SDK são construídos de verdade (<code>groq.RateLimitError</code> etc.), então o mapeamento é testado de ponta a ponta.</td></tr>
+    <tr><td>8</td><td><b>Sem ajuste em <code>config.py</code>, ADRs ou demais providers.</b></td><td>Escopo mínimo. Observação: <code>ollama_provider.py:94</code> tem um aviso do mypy strict (<code>no-any-return</code>), anterior a esta task.</td></tr>
+  </table>
+</div>
+
+<h2>8. Como testar</h2>
+<div class="grid">
+  <div class="card type"><h3>Automatizado (sem rede)</h3>
+<pre>pytest tests/test_groq_provider.py -v</pre>
+    Cobre texto, tool call, argumentos inválidos, histórico de tools, todos os mapeamentos de erro, chave ausente, vazamento da chave, <code>health_check</code> e <code>aclose</code>. Não precisa de chave nem de internet.</div>
+  <div class="card type"><h3>Manual (Groq real)</h3>
+<pre>export JUNIPER_GROQ_API_KEY=gsk_...
+python - &lt;&lt;'EOF'
+import asyncio
+from brain.llm.groq_provider import GroqProvider
+from brain.llm.types import Message
+async def main():
+    p = GroqProvider()
+    r = await p.chat([Message("user", "oi")])
+    print(r.message.content, r.usage)
+    await p.aclose()
+asyncio.run(main())
+EOF</pre>
+    Não foi executado nesta task: o ambiente de desenvolvimento não tem chave nem acesso à Groq.</div>
+</div>
+
+<h2>9. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Sem streaming</b> até a T-014.</p>
+  <p><b>Sem teste contra a API real.</b> O mapeamento de erros foi validado com as exceções reais do SDK (v1.7.0), mas o comportamento da Groq em produção (formato exato de erros, limites do tier gratuito) ainda precisa de uma chamada de verdade.</p>
+  <p><b>Limite do tier gratuito:</b> a Groq limita requisições e tokens por minuto. O <code>LLMRateLimitError</code> existe para o router cair para o Ollama nesse caso.</p>
+  <p><b>Sem retry próprio:</b> uma falha transitória de rede vira erro imediato. É intencional (decisão 2).</p>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

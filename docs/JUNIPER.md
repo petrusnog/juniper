@@ -30,6 +30,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `pyproject.toml`, `requirements.txt`, `.gitignore` | ✅ |
 | `scripts/dev.sh` (setup idempotente: venv, symlink global, PATH) | ✅ |
 | `scripts/uninstall.sh` (`--yes`, `--purge-repo`) | ✅ |
+| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013) + testes | ✅ |
 | `brain/config.py` (pydantic-settings) + `tests/test_config.py` (8 testes) | ✅ |
 | `brain/clients/cli.py` (placeholder typer) | ✅ funcional |
 | Binário `juniper` em `~/.local/bin/` | ✅ |
@@ -38,10 +39,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 ### Stubs (pendentes)
 | Componente | Task |
 |---|---|
-| `brain/llm/{types,errors,base}.py` | T-011 ← **próxima** |
-| `brain/llm/ollama_provider.py` | T-012 |
-| `brain/llm/groq_provider.py` | T-013 |
-| Streaming | T-014 |
+| Streaming | T-014 ← **próxima** |
 | `brain/llm/router.py` | T-015 |
 | `brain/tools/base.py` | T-020 |
 | `brain/tools/registry.py` | T-021 |
@@ -209,7 +207,7 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 Ordem de dependência: **T-011 → T-012/T-013 → T-014 → T-015 → T-020 → T-021 → T-022…T-026 → T-030 → T-031 → T-040 → T-041 → T-042.**
 Prefira tasks pequenas e verificáveis. Antes de começar uma task com decisões em aberto, **pergunte ao usuário** (ele quer participar das decisões).
 
-### T-011 — Interface `LLMProvider` *(próxima)*
+### T-011 — Interface `LLMProvider`
 **Decisões em aberto** (recomendações entre parênteses): sync vs async (**só async**); streaming por `AsyncIterator` vs callback (**AsyncIterator**); tipos em `base.py` vs `types.py` (**`types.py` separado**); `TokenUsage` com campos opcionais (**sim**).
 
 **Arquivos:** `brain/llm/types.py`, `brain/llm/errors.py`, `brain/llm/base.py`, `tests/test_llm_base.py`.
