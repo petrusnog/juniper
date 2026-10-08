@@ -3,85 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Juniper T-011 — O vocabulário</title>
-<style>
-:root{
-  --bg:#f7f6f2; --card:#fff; --ink:#1d2330; --muted:#5d6678; --line:#d9dbe1;
-  --blue:#2f5fd0; --blue-bg:#e6edfb;
-  --green:#1f7a4d; --green-bg:#e3f4eb;
-  --amber:#a86a00; --amber-bg:#fbf0d9;
-  --red:#b3382c; --red-bg:#fbe5e2;
-  --violet:#6a45b8; --violet-bg:#eee7fa;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#14171f; --card:#1d212c; --ink:#e8eaf0; --muted:#9aa3b5; --line:#343a4a;
-    --blue:#7fa2f5; --blue-bg:#1f2a47;
-    --green:#5cc592; --green-bg:#16301f;
-    --amber:#e5b04d; --amber-bg:#3a2f14;
-    --red:#ef8a7e; --red-bg:#3d1f1b;
-    --violet:#b79cf0; --violet-bg:#2b2243;
-  }
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
-h1{font-size:28px;margin:0 0 4px}
-h2{font-size:20px;margin:40px 0 6px}
-p.lead{color:var(--muted);margin:0 0 8px}
-p{margin:6px 0}
-code,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88em}
-section{margin-top:8px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
-.flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-top:14px}
-.node{flex:1 1 150px;border-radius:10px;padding:12px;border:1.5px solid var(--line);background:var(--card)}
-.node b{display:block;margin-bottom:2px}
-.node small{color:var(--muted)}
-.node.b{border-color:var(--blue);background:var(--blue-bg)}
-.node.g{border-color:var(--green);background:var(--green-bg)}
-.node.a{border-color:var(--amber);background:var(--amber-bg)}
-.node.v{border-color:var(--violet);background:var(--violet-bg)}
-.arrow{align-self:center;color:var(--muted);font-size:22px}
-.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:.8em;font-weight:600;
-  font-family:ui-monospace,Menlo,monospace}
-.tag.b{background:var(--blue-bg);color:var(--blue)}
-.tag.g{background:var(--green-bg);color:var(--green)}
-.tag.a{background:var(--amber-bg);color:var(--amber)}
-.tag.r{background:var(--red-bg);color:var(--red)}
-.tag.v{background:var(--violet-bg);color:var(--violet)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px}
-.type h3{margin:0 0 6px;font-size:16px}
-.type ul{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:.93em}
-.type li{margin:2px 0}
-.chat{display:flex;flex-direction:column;gap:8px;margin-top:14px}
-.row{display:flex;gap:10px;align-items:flex-start}
-.row .who{flex:0 0 96px;text-align:right;padding-top:8px}
-.bubble{flex:1;border-radius:10px;padding:8px 12px;border:1.5px solid var(--line);background:var(--card)}
-.bubble.b{border-color:var(--blue);background:var(--blue-bg)}
-.bubble.g{border-color:var(--green);background:var(--green-bg)}
-.bubble.a{border-color:var(--amber);background:var(--amber-bg)}
-.bubble.v{border-color:var(--violet);background:var(--violet-bg)}
-.bubble .mono{display:block;margin-top:4px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
-.tree{margin-top:14px;display:grid;gap:8px}
-.err{display:grid;grid-template-columns:200px 1fr 130px;gap:10px;align-items:center;
-  padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card)}
-.err.top{border-color:var(--red);background:var(--red-bg)}
-.err .act{justify-self:end}
-.stream{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center}
-.chunk{border:1.5px solid var(--blue);background:var(--blue-bg);border-radius:8px;padding:4px 10px}
-.chunk.last{border-color:var(--green);background:var(--green-bg)}
-.contract{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px}
-pre{margin:8px 0 0;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;
-  overflow-x:auto;font-size:.82em}
-@media (max-width:640px){
-  .err{grid-template-columns:1fr}.err .act{justify-self:start}
-  .row{flex-direction:column;gap:2px}.row .who{text-align:left;flex-basis:auto;padding:0}
-  .arrow{display:none}
-}
-</style>
+<title>T-011 · Vocabulário LLM — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<main>
+<main id="content">
 <h1>T-011 — O vocabulário da Juniper</h1>
 <p class="lead">Nenhuma IA é chamada ainda. A task define <b>como</b> a Juniper vai conversar com qualquer modelo: o formato das mensagens, os erros possíveis e o contrato que cada provider assina.</p>
 
@@ -169,5 +95,6 @@ pre{margin:8px 0 0;padding:10px 12px;background:var(--bg);border:1px solid var(-
   <p><b>T-030 (agente)</b> usa só <code>Message</code>, <code>ToolCall</code> e o contrato, sem saber qual modelo está por trás.</p>
 </div>
 </main>
+<script src="assets/layout.js"></script>
 </body>
 </html>

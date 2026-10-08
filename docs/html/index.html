@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Índice — Livro de bolso Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main id="content">
+  <h1>Livro de bolso da Juniper</h1>
+  <p class="lead">Uma página de referência técnica por feature desenvolvida: o que é, como se encaixa e como usar. Para o plano completo de tasks, veja <code>docs/JUNIPER.md</code>.</p>
+
+  <h2>Features</h2>
+  <p class="lead">As marcadas como "pronta" têm página. As demais aparecem quando forem implementadas.</p>
+  <div class="cards" id="feature-cards"></div>
+
+  <h2>Como adicionar uma página nova</h2>
+  <div class="card">
+    <p>1. Copie <code>T-011.html</code> como base (mantenha o <code>&lt;link&gt;</code> do CSS, <code>&lt;main id="content"&gt;</code> e o <code>&lt;script&gt;</code> do <code>layout.js</code>).</p>
+    <p>2. Em <code>assets/layout.js</code>, na lista <code>FEATURES</code>, preencha <code>file</code> e troque <code>status</code> para <code>"done"</code>. A barra lateral e os cards do índice se atualizam sozinhos.</p>
+  </div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>
