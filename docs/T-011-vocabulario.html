@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juniper T-011 — O vocabulário</title>
+<style>
+:root{
+  --bg:#f7f6f2; --card:#fff; --ink:#1d2330; --muted:#5d6678; --line:#d9dbe1;
+  --blue:#2f5fd0; --blue-bg:#e6edfb;
+  --green:#1f7a4d; --green-bg:#e3f4eb;
+  --amber:#a86a00; --amber-bg:#fbf0d9;
+  --red:#b3382c; --red-bg:#fbe5e2;
+  --violet:#6a45b8; --violet-bg:#eee7fa;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#14171f; --card:#1d212c; --ink:#e8eaf0; --muted:#9aa3b5; --line:#343a4a;
+    --blue:#7fa2f5; --blue-bg:#1f2a47;
+    --green:#5cc592; --green-bg:#16301f;
+    --amber:#e5b04d; --amber-bg:#3a2f14;
+    --red:#ef8a7e; --red-bg:#3d1f1b;
+    --violet:#b79cf0; --violet-bg:#2b2243;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}
+h2{font-size:20px;margin:40px 0 6px}
+p.lead{color:var(--muted);margin:0 0 8px}
+p{margin:6px 0}
+code,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88em}
+section{margin-top:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-top:14px}
+.node{flex:1 1 150px;border-radius:10px;padding:12px;border:1.5px solid var(--line);background:var(--card)}
+.node b{display:block;margin-bottom:2px}
+.node small{color:var(--muted)}
+.node.b{border-color:var(--blue);background:var(--blue-bg)}
+.node.g{border-color:var(--green);background:var(--green-bg)}
+.node.a{border-color:var(--amber);background:var(--amber-bg)}
+.node.v{border-color:var(--violet);background:var(--violet-bg)}
+.arrow{align-self:center;color:var(--muted);font-size:22px}
+.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:.8em;font-weight:600;
+  font-family:ui-monospace,Menlo,monospace}
+.tag.b{background:var(--blue-bg);color:var(--blue)}
+.tag.g{background:var(--green-bg);color:var(--green)}
+.tag.a{background:var(--amber-bg);color:var(--amber)}
+.tag.r{background:var(--red-bg);color:var(--red)}
+.tag.v{background:var(--violet-bg);color:var(--violet)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px}
+.type h3{margin:0 0 6px;font-size:16px}
+.type ul{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:.93em}
+.type li{margin:2px 0}
+.chat{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.row{display:flex;gap:10px;align-items:flex-start}
+.row .who{flex:0 0 96px;text-align:right;padding-top:8px}
+.bubble{flex:1;border-radius:10px;padding:8px 12px;border:1.5px solid var(--line);background:var(--card)}
+.bubble.b{border-color:var(--blue);background:var(--blue-bg)}
+.bubble.g{border-color:var(--green);background:var(--green-bg)}
+.bubble.a{border-color:var(--amber);background:var(--amber-bg)}
+.bubble.v{border-color:var(--violet);background:var(--violet-bg)}
+.bubble .mono{display:block;margin-top:4px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.tree{margin-top:14px;display:grid;gap:8px}
+.err{display:grid;grid-template-columns:200px 1fr 130px;gap:10px;align-items:center;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card)}
+.err.top{border-color:var(--red);background:var(--red-bg)}
+.err .act{justify-self:end}
+.stream{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.chunk{border:1.5px solid var(--blue);background:var(--blue-bg);border-radius:8px;padding:4px 10px}
+.chunk.last{border-color:var(--green);background:var(--green-bg)}
+.contract{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px}
+pre{margin:8px 0 0;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  overflow-x:auto;font-size:.82em}
+@media (max-width:640px){
+  .err{grid-template-columns:1fr}.err .act{justify-self:start}
+  .row{flex-direction:column;gap:2px}.row .who{text-align:left;flex-basis:auto;padding:0}
+  .arrow{display:none}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>T-011 — O vocabulário da Juniper</h1>
+<p class="lead">Nenhuma IA é chamada ainda. A task define <b>como</b> a Juniper vai conversar com qualquer modelo: o formato das mensagens, os erros possíveis e o contrato que cada provider assina.</p>
+
+<h2>1. O mapa geral</h2>
+<p class="lead">O agente só conhece o contrato. Quem fala com Groq ou Ollama é o provider, e o provider traduz.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Agent</b><small>decide o que fazer</small><br><span class="tag b">T-030</span></div>
+    <div class="arrow">→</div>
+    <div class="node v"><b>LLMProvider</b><small>o contrato (tomada padrão)</small><br><span class="tag v">base.py · T-011</span></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>GroqProvider</b><small>fala com a nuvem</small><br><span class="tag g">T-013</span></div>
+    <div class="node g"><b>OllamaProvider</b><small>fala com a GPU local</small><br><span class="tag g">T-012</span></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Trocar de modelo, ou adicionar um novo, não exige mexer no agente. É isso que o contrato garante.</p>
+</div>
+
+<h2>2. As palavras: os tipos</h2>
+<p class="lead">Arquivo <code>types.py</code>. Todos são imutáveis: depois de criados, não mudam.</p>
+<div class="grid">
+  <div class="card type"><h3><span class="tag b">Message</span></h3>
+    Uma "carta" da conversa.
+    <ul><li><code>role</code>: system, user, assistant ou tool</li><li><code>content</code>: o texto (pode ser vazio)</li><li><code>tool_calls</code>: pedidos de ferramenta</li><li><code>tool_call_id</code>: a qual pedido responde</li></ul></div>
+  <div class="card type"><h3><span class="tag a">ToolCall</span></h3>
+    O modelo pedindo uma ferramenta.
+    <ul><li><code>id</code>: identifica o pedido</li><li><code>name</code>: ex. <code>open_app</code></li><li><code>arguments</code>: dict já pronto, não texto JSON</li></ul></div>
+  <div class="card type"><h3><span class="tag g">LLMResponse</span></h3>
+    A resposta completa.
+    <ul><li><code>message</code>: a Message do assistente</li><li><code>model</code> e <code>provider</code></li><li><code>usage</code>: TokenUsage (opcional)</li><li><code>finish_reason</code></li></ul></div>
+  <div class="card type"><h3><span class="tag v">StreamChunk</span></h3>
+    Um pedaço da resposta, no modo streaming.
+    <ul><li><code>delta</code>: o texto novo</li><li><code>tool_calls</code>: só no fim, completos</li><li><code>usage</code> e <code>finish_reason</code>: só no último</li></ul></div>
+  <div class="card type"><h3><span class="tag r">TokenUsage</span></h3>
+    O consumo. Todos os campos são opcionais, porque nem todo provider informa.
+    <ul><li><code>prompt_tokens</code></li><li><code>completion_tokens</code></li><li><code>total_tokens</code></li></ul></div>
+</div>
+
+<h2>3. As palavras em ação</h2>
+<p class="lead">Exemplo: "abre o Firefox pra mim". Cada balão é uma <code>Message</code>.</p>
+<div class="card">
+  <div class="chat">
+    <div class="row"><div class="who tag v">system</div><div class="bubble v">Você é a Juniper, sarcástica e técnica…<span class="mono">Message(role="system", content="…")</span></div></div>
+    <div class="row"><div class="who tag b">user</div><div class="bubble b">Abre o Firefox pra mim<span class="mono">Message(role="user", content="Abre o Firefox pra mim")</span></div></div>
+    <div class="row"><div class="who tag a">assistant</div><div class="bubble a">(sem texto) pede uma ferramenta<span class="mono">Message(role="assistant", content=None,
+        tool_calls=(ToolCall(id="c1", name="open_app", arguments={"target": "firefox"}),))</span></div></div>
+    <div class="row"><div class="who tag g">tool</div><div class="bubble g">A ferramenta devolve o resultado<span class="mono">Message(role="tool", content="ok", tool_call_id="c1", name="open_app")</span></div></div>
+    <div class="row"><div class="who tag a">assistant</div><div class="bubble a">"Pronto, Firefox aberto. De nada."<span class="mono">Message(role="assistant", content="Pronto, Firefox aberto. De nada.")</span></div></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">O <code>tool_call_id="c1"</code> liga a resposta da ferramenta ao pedido. Esse ciclo se repete até o modelo responder só com texto.</p>
+</div>
+
+<h2>4. Os avisos de problema: os erros</h2>
+<p class="lead">Arquivo <code>errors.py</code>. O tipo do erro diz ao router (T-015) o que fazer. A ação à direita é o que se planeja para o router, ainda não implementado.</p>
+<div class="tree">
+  <div class="err top"><span class="mono"><b>LLMError</b></span><span>Mãe de todos. Capturar este pega qualquer falha de LLM.</span><span class="act"></span></div>
+  <div class="err"><span class="mono">└ LLMTimeoutError</span><span>Demorou demais para responder.</span><span class="act tag a">tenta o próximo</span></div>
+  <div class="err"><span class="mono">└ LLMRateLimitError</span><span>Limite de uso estourado (429).</span><span class="act tag a">tenta o próximo</span></div>
+  <div class="err"><span class="mono">└ LLMUnavailableError</span><span>Fora do ar: conexão recusada ou erro 5xx.</span><span class="act tag a">tenta o próximo</span></div>
+  <div class="err"><span class="mono">└ LLMAuthError</span><span>Chave ausente ou inválida (401/403).</span><span class="act tag r">avisa e tenta o próximo</span></div>
+</div>
+
+<h2>5. O contrato: o que todo provider precisa saber fazer</h2>
+<p class="lead">Arquivo <code>base.py</code>. Um provider que não implementa os três métodos nem consegue ser criado.</p>
+<div class="contract">
+  <div class="card type"><h3><span class="tag g">chat()</span></h3>Manda as mensagens e espera a resposta inteira.<pre>await provider.chat(msgs, tools=…)
+→ LLMResponse</pre></div>
+  <div class="card type"><h3><span class="tag b">stream()</span></h3>Manda as mensagens e recebe a resposta aos pedaços, para mostrar na tela enquanto chega.<pre>async for c in provider.stream(msgs):
+    print(c.delta)</pre></div>
+  <div class="card type"><h3><span class="tag a">health_check()</span></h3>Pergunta "você está vivo?". Útil para o router e para diagnóstico.<pre>await provider.health_check()
+→ True | False</pre></div>
+</div>
+<div class="card" style="margin-top:12px">
+  <b>Como o streaming chega</b>
+  <div class="stream">
+    <span class="chunk mono">"Pr"</span><span class="chunk mono">"onto"</span><span class="chunk mono">", Fire"</span><span class="chunk mono">"fox aberto."</span>
+    <span class="chunk last mono">"" + finish_reason="stop" + usage</span>
+  </div>
+  <p style="margin-top:10px;color:var(--muted)">Juntando todos os <code>delta</code> você obtém o mesmo texto que o <code>chat()</code> devolveria. O último pedaço traz o motivo do fim e o consumo.</p>
+</div>
+
+<h2>6. Quem usa o quê</h2>
+<div class="card">
+  <p><b>T-012 / T-013</b> implementam o contrato e traduzem entre o formato do modelo e as <code>Message</code>/<code>ToolCall</code>, e entre os erros do modelo e os <code>LLM*Error</code>.</p>
+  <p><b>T-015 (router)</b> usa os tipos de erro para trocar de provider.</p>
+  <p><b>T-030 (agente)</b> usa só <code>Message</code>, <code>ToolCall</code> e o contrato, sem saber qual modelo está por trás.</p>
+</div>
+</main>
+</body>
+</html>
