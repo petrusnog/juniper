@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-012 · OllamaProvider — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / LLM / T-012</div>
+<h1>T-012 — OllamaProvider</h1>
+<p class="lead">Primeiro provider de verdade: implementa o contrato <code>LLMProvider</code> (T-011) falando com um servidor Ollama local pela API HTTP. Arquivo: <code>brain/llm/ollama_provider.py</code>.</p>
+
+<h2>1. O que ele faz</h2>
+<p class="lead">É o "motorista" que sabe a língua do Ollama. Recebe <code>Message</code>s no vocabulário da Juniper, traduz, faz a chamada e traduz a resposta de volta.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>chat(messages, tools)</b><small>vocabulário Juniper</small></div>
+    <div class="arrow">→</div>
+    <div class="node v"><b>_to_ollama()</b><small>traduz as mensagens</small></div>
+    <div class="arrow">→</div>
+    <div class="node a"><b>POST /api/chat</b><small>httpx, <code>stream:false</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>LLMResponse</b><small>Message + TokenUsage</small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Se algo der errado no caminho, o erro de rede ou HTTP vira um <code>LLM*Error</code> tipado (seção 4).</p>
+</div>
+
+<h2>2. Configuração e uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Construtor</h3>
+    <ul><li><code>url</code>: padrão <code>settings.llm.ollama.url</code></li><li><code>model</code>: padrão <code>settings.llm.ollama.model</code></li><li><code>timeout</code>: padrão <code>settings.llm.ollama.timeout</code> (120 s)</li><li><code>transport</code>: só para testes (servidor falso)</li></ul></div>
+  <div class="card type"><h3>Exemplo</h3>
+<pre>p = OllamaProvider()
+r = await p.chat([
+  Message("user", "oi")
+])
+print(r.message.content)
+await p.aclose()</pre></div>
+</div>
+<p>Use <code>aclose()</code> ao terminar para fechar a conexão HTTP.</p>
+
+<h2>3. A tradução: Juniper → Ollama</h2>
+<p class="lead">O Ollama é parecido com o formato OpenAI, mas não igual. Por isso o provider tem sua própria conversão em vez de usar <code>Message.to_openai()</code>.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Campo</th><th>OpenAI (<code>to_openai</code>)</th><th>Ollama (<code>_to_ollama</code>)</th></tr>
+    <tr><td><code>content</code> vazio</td><td><code>null</code></td><td><code>""</code></td></tr>
+    <tr><td><code>arguments</code> da tool</td><td>string JSON</td><td><b>dict</b></td></tr>
+    <tr><td>id da chamada</td><td>sempre presente</td><td>ausente; <b>geramos</b> <code>call_&lt;12 hex&gt;</code> na resposta</td></tr>
+    <tr><td>resposta de tool</td><td><code>tool_call_id</code></td><td><code>tool_name</code></td></tr>
+    <tr><td><code>max_tokens</code></td><td><code>max_tokens</code></td><td><code>options.num_predict</code></td></tr>
+    <tr><td><code>temperature</code></td><td>raiz</td><td><code>options.temperature</code></td></tr>
+  </table>
+</div>
+
+<h3 style="margin-top:20px">Pedido enviado</h3>
+<pre>POST http://localhost:11434/api/chat
+{
+  "model": "llama3.1",
+  "messages": [{"role": "user", "content": "oi"}],
+  "stream": false,
+  "options": {"temperature": 0.7, "num_predict": 50},
+  "tools": [ ... ]            // só se houver ferramentas
+}</pre>
+<h3>Resposta lida</h3>
+<pre>{
+  "model": "llama3.1",
+  "message": {"role": "assistant", "content": "", "tool_calls": [
+      {"function": {"name": "open_app", "arguments": {"target": "firefox"}}}]},
+  "done_reason": "stop",
+  "prompt_eval_count": 10,     // → prompt_tokens
+  "eval_count": 5              // → completion_tokens (total = soma)
+}</pre>
+<p>Sem os campos de contagem, <code>usage</code> fica <code>None</code>. Um <code>content</code> vazio vira <code>None</code>.</p>
+
+<h2>4. Erros</h2>
+<p class="lead">O provider nunca deixa vazar exceção do <code>httpx</code>: tudo vira um tipo da T-011.</p>
+<div class="tree">
+  <div class="err"><span class="mono">ConnectError / erro de rede</span><span>Ollama desligado, porta errada, conexão resetada.</span><span class="act tag a">LLMUnavailableError</span></div>
+  <div class="err"><span class="mono">TimeoutException</span><span>Passou do <code>timeout</code>.</span><span class="act tag a">LLMTimeoutError</span></div>
+  <div class="err"><span class="mono">HTTP 5xx</span><span>Servidor com problema.</span><span class="act tag a">LLMUnavailableError</span></div>
+  <div class="err"><span class="mono">HTTP 4xx</span><span>Ex.: 404 modelo não encontrado. É erro de configuração, não de disponibilidade.</span><span class="act tag r">LLMError</span></div>
+  <div class="err"><span class="mono">JSON inválido / sem <code>message</code> / tool sem nome</span><span>Resposta fora do esperado.</span><span class="act tag r">LLMError</span></div>
+</div>
+
+<h2>5. health_check e stream</h2>
+<div class="contract">
+  <div class="card type"><h3><span class="tag a">health_check()</span></h3>
+    <code>GET /api/tags</code>. Devolve <code>True</code> se respondeu 2xx. Qualquer falha de rede vira <code>False</code>, sem lançar exceção.</div>
+  <div class="card type"><h3><span class="tag r">stream()</span></h3>
+    Ainda lança <code>NotImplementedError</code>. Existe só para o provider poder ser instanciado. A implementação vem na <b>T-014</b>.</div>
+</div>
+
+<h2>6. Como testar</h2>
+<div class="grid">
+  <div class="card type"><h3>Automatizado (sem rede)</h3>
+<pre>pytest tests/test_ollama_provider.py -v</pre>
+    10 testes com <code>httpx.MockTransport</code>: um servidor falso devolve respostas do "roteiro", então não precisa de Ollama ligado.</div>
+  <div class="card type"><h3>Manual (Ollama real)</h3>
+<pre>python scripts/try_ollama.py</pre>
+    REPL descartável com a persona de <code>prompts/juniper.md</code>. Será substituído pelo <code>juniper chat</code> (T-040).</div>
+</div>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Sem streaming</b> até a T-014: a resposta aparece inteira, depois da espera.</p>
+  <p><b>CPU, não GPU:</b> no WSL o Ollama não enxerga a RX 590 (<code>ollama ps</code> mostra 100% CPU). O provider não controla isso; o tempo de resposta é maior, e o <code>timeout</code> de 120 s é a folga.</p>
+  <p><b>Contexto de 4096 tokens</b> (padrão do Ollama): conversas longas serão cortadas. A persona sozinha já usa cerca de 800 tokens.</p>
+  <p><b>Qualidade do 8B:</b> o <code>llama3.1</code> segue persona e tool calling pior que o 70B da Groq; por isso é o fallback.</p>
+  <p><b>Texto inválido:</b> o provider espera UTF-8 válido. Bytes quebrados vindos do terminal precisam ser tratados pelo cliente (já feito no REPL, a fazer na T-040).</p>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

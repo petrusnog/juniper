@@ -3,7 +3,8 @@
 const FEATURES = [
   { group: "LLM", id: "T-011", title: "Vocabulário LLM", file: "T-011.html",
     desc: "Tipos, erros e o contrato LLMProvider.", status: "done" },
-  { group: "LLM", id: "T-012", title: "OllamaProvider", desc: "Provider local via HTTP.", status: "planned" },
+  { group: "LLM", id: "T-012", title: "OllamaProvider", file: "T-012.html",
+    desc: "Provider local via HTTP.", status: "done" },
   { group: "LLM", id: "T-013", title: "GroqProvider", desc: "Provider em nuvem via SDK.", status: "planned" },
   { group: "LLM", id: "T-014", title: "Streaming", desc: "Tokens em tempo real.", status: "planned" },
   { group: "LLM", id: "T-015", title: "LLMRouter", desc: "Failover Groq → Ollama.", status: "planned" },
