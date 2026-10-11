@@ -173,13 +173,13 @@ a.fcard:hover{border-color:var(--blue)}
 .sprint small{color:var(--muted);display:block;line-height:1.35}
 @media (max-width:760px){.layer{grid-template-columns:1fr}}
 
-/* identidade visual: logo pixelada + alternância de tema */
-.logo{display:block;box-sizing:content-box;image-rendering:pixelated;background:#c0c0c0;padding:3px;
-  box-shadow:inset -1px -1px #808080,inset 1px 1px #fff,inset -2px -2px #404040,inset 2px 2px #dfdfdf}
+/* identidade visual: logo + alternância de tema */
+.logo{display:block;box-sizing:content-box;object-fit:cover;background:var(--card);
+  border:1px solid var(--line);border-radius:12px}
 .side .brand{display:flex;align-items:center;gap:10px}
 .side .brand .logo{width:64px;height:64px;flex:0 0 auto}
 .hero{display:flex;align-items:center;gap:16px;margin-bottom:4px}
-.hero .logo{width:128px;height:128px;padding:4px;flex:0 0 auto}
+.hero .logo{width:128px;height:128px;flex:0 0 auto}
 .hero h1{margin:0}
 .themebtn{margin-top:18px;width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);
   border-radius:8px;padding:7px 10px;cursor:pointer;font:inherit;font-size:.88em;text-align:left}

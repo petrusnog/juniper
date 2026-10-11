@@ -28,7 +28,7 @@ const FEATURES = [
   window.JUNIPER_FEATURES = FEATURES;
 
   const groups = [...new Set(FEATURES.map((f) => f.group))];
-  let nav = `<a class="brand" href="index.html"><img class="logo" src="assets/logo.png" alt="" width="64" height="64"><span>Juniper · Livro de bolso</span></a>
+  let nav = `<a class="brand" href="index.html"><img class="logo" src="assets/logo.jpg" alt="" width="64" height="64"><span>Juniper · Livro de bolso</span></a>
     <div class="sub">Referências técnicas por feature</div>
     <a class="item ${page === "index.html" ? "active" : ""}" href="index.html">Índice</a>`;
   for (const g of groups) {
