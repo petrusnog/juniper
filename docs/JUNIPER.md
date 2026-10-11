@@ -31,7 +31,10 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `scripts/dev.sh` (setup idempotente: venv, symlink global, PATH) | ✅ |
 | `scripts/uninstall.sh` (`--yes`, `--purge-repo`) | ✅ |
 | `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013), streaming (T-014), `router.py` (T-015) + testes | ✅ |
-| `brain/config.py` (pydantic-settings) + `tests/test_config.py` (8 testes) | ✅ |
+| `brain/tools/base.py` (T-020: `Tool`, `ToolResult`, `Tier`, `Locality`), `registry.py` (T-021: `@register_tool`, auto-descoberta) + testes | ✅ |
+| `brain/config.py` (pydantic-settings, inclui bloco `google` e validação de fuso) + `tests/test_config.py` | ✅ |
+| `brain/core/clock.py` (hora atual com fuso, para o prompt) + `scripts/check_google.py` (valida conta de serviço e agendas) | ✅ |
+| `brain/tools/google_calendar.py` (T-022: `list_events`, `create_event`, `delete_event`) + `tests/test_google_calendar.py` + POC `scripts/try_calendar.py` | ✅ |
 | `brain/clients/cli.py` (placeholder typer) | ✅ funcional |
 | Binário `juniper` em `~/.local/bin/` | ✅ |
 | ADRs 001, 002, 003, 006, 007 | ✅ |
@@ -39,9 +42,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 ### Stubs (pendentes)
 | Componente | Task |
 |---|---|
-| `brain/tools/base.py` | T-020 ← **próxima** |
-| `brain/tools/registry.py` | T-021 |
-| `brain/tools/system.py` (`open_app`, `run_shell`) | T-022, T-023 |
+| `brain/tools/system.py` (`run_shell`, `open_app`) | T-023 ← **próxima**, T-027 |
 | `brain/tools/web.py` (`web_fetch`, `web_search`) | T-024, T-025 |
 | `brain/tools/juniper_cmds.py` (bridge gitgrep/deploy) | T-026 |
 | `brain/core/agent.py`, `dispatcher.py`, `session.py` | T-030 |
@@ -74,6 +75,8 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 3. **Tools são plugins.** Cada tool declara seu schema e se auto-registra. Tool nova = arquivo novo em `brain/tools/`.
 4. **Shell é HMI, Python é cérebro.** `shell/juniper.sh` é wrapper; lógica vive em `brain/`.
 5. **Um só ponto de config.** Nenhum módulo lê `os.environ`, YAML ou `.env` diretamente — tudo via `from brain.config import settings`.
+
+> **Visão visual:** `docs/html/architecture.html` mostra a arquitetura em camadas da versão final, com o que já está pronto.
 
 ### 4.2 Fluxo (Sprint 1, local)
 ```
@@ -139,8 +142,8 @@ Regras: tool sem classificação = **WRITE**. `run_shell` aceita **um único bin
 ```yaml
 llm:
   priority: [groq, ollama]        # só "groq" e "ollama" são válidos
-  groq:   {model: llama-3.3-70b-versatile, timeout: 30}
-  ollama: {url: "http://localhost:11434", model: llama3.1, timeout: 120}
+  groq:   {model: openai/gpt-oss-120b, timeout: 30, reasoning_effort: low}
+  ollama: {url: "http://localhost:11434", model: llama3.1, timeout: 300}
 agent:
   max_iterations: 5
   language: pt-BR
@@ -149,6 +152,12 @@ deployment:
   mode: local                     # local | server
   server: {host: 127.0.0.1, port: 8765}
   auth:   {token_file: ~/.juniper/token}
+google:                           # ADR-008
+  credentials_file: ~/.juniper/certs/gcp-key.json
+  calendar_id: <id da agenda Juniper>
+  read_calendar_ids: []           # agendas só lidas (conflitos)
+  default_duration_minutes: 60
+  reminder_minutes: 30
 tools:
   security:
     shell_allowlist: [git, ls, cat, grep, rg, fd, jq, find, wc, head, tail]
@@ -196,13 +205,14 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 | 002 | Tools no formato **OpenAI Function Calling**; classe Python com `name`, `description` (PT-BR, diz *o que faz e quando usar*), `parameters` (JSON Schema), `tier`, `run()`; auto-registro por `@register_tool`; retorno `ToolResult`. |
 | 003 | Config: YAML + `.env` + ENV com prefixo `JUNIPER_`. |
 | 006 | Segurança em 4 tiers; default WRITE; `run_shell` binário único + allowlist; web = dado. |
+| 008 | **(Proposto)** Primeira tool = Google Calendar via conta de serviço; calendário "Juniper" para escrita; relógio do sistema + fuso injetado no prompt. |
 | 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
 
 ---
 
 ## 9. Backlog Sprint 1 — Especificação das Tasks
 
-Ordem de dependência: **T-011 → T-012/T-013 → T-014 → T-015 → T-020 → T-021 → T-022…T-026 → T-030 → T-031 → T-040 → T-041 → T-042.**
+Ordem de dependência: **T-011 → T-012/T-013 → T-014 → T-015 → T-020 → T-021 → T-022…T-027 → T-030 → T-031 → T-040 → T-041 → T-042.**
 Prefira tasks pequenas e verificáveis. Antes de começar uma task com decisões em aberto, **pergunte ao usuário** (ele quer participar das decisões).
 
 ### T-011 — Interface `LLMProvider`
@@ -271,9 +281,14 @@ Validar no `__init_subclass__` (ou no registro) que `name` é snake_case e `para
 `@register_tool` registra a classe; `registry.get(name)`, `registry.all()`, `registry.schemas()`. Nome duplicado → erro. Auto-descoberta: importar todos os módulos de `brain/tools/` via `pkgutil.iter_modules` (pular `base`, `registry`).
 **Aceite:** adicionar um arquivo de tool novo em teste (tmp package) a torna visível sem editar lista central.
 
-### T-022 — `open_app`
-Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.exe`/`cmd.exe /c start`; Linux: `xdg-open`. Sem `shell=True` (usar `asyncio.create_subprocess_exec`). Validar que URL tem esquema `http(s)`; nomes de app só `[A-Za-z0-9._-]`.
-**Aceite:** subprocess mockado; entrada com metacaracteres rejeitada.
+### T-022 — Agenda Google (`list_events`, `create_event`, `delete_event`)
+Primeira tool real (ADR-008, **proposto**): marcar compromissos por conversa. Conta de serviço do Google (chave em `~/.juniper/certs/gcp-key.json`, `600`, no `.gitignore`); escrita só no calendário "Juniper" (`google.calendar_id`); leitura de conflitos também no principal **[a confirmar]**. Bibliotecas síncronas → `asyncio.to_thread`.
+- `list_events` (READ, CLOUD): intervalo → título e horário (sem descrição/local/convidados).
+- `create_event` (WRITE, CLOUD): título, início (ISO 8601 com offset), fim ou duração (padrão 1 h **[a confirmar]**); recusa datas no passado; se houver conflito, **não cria** e devolve `ToolResult(success=False)` com nome, horário e id do evento; descrição com "Agendado pela Juniper".
+- `delete_event` (DESTRUCTIVE, CLOUD): só no calendário Juniper.
+- Pré-requisitos **já prontos**: `brain/core/clock.py`, configuração `google.*` (+ testes), dependências `google-api-python-client` e `google-auth`, conta de serviço e agenda Juniper validadas por `scripts/check_google.py`.
+- Quem faz o quê: **Petrus** cria a conta de serviço, a chave e o calendário e compartilha as agendas; a Juniper cuida do código.
+**Aceite:** testes com o cliente Google mockado: listar; criar sem conflito; conflito não cria e informa nome/horário; apagar só no calendário configurado; data passada recusada; chave nunca aparece em logs/exceções. Provavelmente se divide em subtasks ao começar.
 
 ### T-023 — `run_shell`
 Tier dinâmico: classificar o comando (leitura da allowlist → READ; `git commit`/`add` → WRITE; `rm`, `git reset --hard`, `push --force` → DESTRUCTIVE; `rm -rf /`, `mkfs`, `dd`, escrita em `/etc` → FORBIDDEN; binário fora da allowlist → rejeitado). Parse com `shlex.split`; rejeitar operadores compostos; executar com `create_subprocess_exec`, timeout, truncamento de saída (ex.: 20 KB).
@@ -287,6 +302,10 @@ Tier READ, `Locality.CLOUD`. Provider de busca a decidir com o usuário (opçõe
 
 ### T-026 — Bridge de comandos legados
 Tool(s) que invocam `shell/juniper.sh <cmd>` para `gitgrep` e `deployfeature` (só argumentos validados, sem `shell=True`). `deployfeature` = DESTRUCTIVE/WRITE conforme o que o script faz — **ler o script antes de classificar**.
+
+### T-027 — `open_app`
+Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.exe`/`cmd.exe /c start`; Linux: `xdg-open`. Sem `shell=True` (usar `asyncio.create_subprocess_exec`). Validar que URL tem esquema `http(s)`; nomes de app só `[A-Za-z0-9._-]`.
+**Aceite:** subprocess mockado; entrada com metacaracteres rejeitada.
 
 ### T-030 — Agent loop + Dispatcher + Session
 - `Session`: lista de `Message`, system prompt carregado de `prompts/juniper.md` (+ data/hora no timezone configurado).

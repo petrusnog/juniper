@@ -62,6 +62,8 @@ class TokenUsage:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    # Prompt tokens served from the provider's cache (they don't count toward Groq rate limits).
+    cached_tokens: int | None = None
 
 
 @dataclass(frozen=True)

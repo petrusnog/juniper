@@ -63,9 +63,7 @@ def test_loads_from_yaml(config_yaml: Path) -> None:
     assert s.agent.max_iterations == 3
 
 
-def test_env_overrides_yaml(
-    config_yaml: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_env_overrides_yaml(config_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Variável de ambiente vence config.yaml."""
     monkeypatch.setenv("JUNIPER_LLM__OLLAMA__URL", "http://from-env:9999")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
@@ -74,9 +72,7 @@ def test_env_overrides_yaml(
     assert s.llm.ollama.model == "from-yaml-model"
 
 
-def test_groq_api_key_redacted(
-    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_groq_api_key_redacted(isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Segredo nunca aparece em repr()."""
     monkeypatch.setenv("JUNIPER_GROQ_API_KEY", "super-secret-123")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
@@ -111,8 +107,59 @@ def test_invalid_max_iterations_rejected(
         Settings(_env_file=None)  # type: ignore[call-arg]
 
 
-def test_ollama_url_trailing_slash_stripped(config_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ollama_url_trailing_slash_stripped(
+    config_yaml: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """URL do Ollama perde barra final."""
     monkeypatch.setenv("JUNIPER_LLM__OLLAMA__URL", "http://localhost:11434/")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.llm.ollama.url == "http://localhost:11434"
+
+
+def test_google_defaults(
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sem bloco google, a integração fica desconfigurada mas com defaults seguros."""
+    monkeypatch.chdir(tmp_path)  # sem config.yaml à vista: nada do repositório real vaza
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.google.calendar_id is None
+    assert s.google.read_calendar_ids == []
+    assert s.google.default_duration_minutes == 60
+    assert s.google.credentials_file == isolated_home / ".juniper" / "certs" / "gcp-key.json"
+
+
+def test_google_from_yaml_expands_home(
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """credentials_file com ~ é expandido; calendar_id e leituras vêm do YAML."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "google:\n  credentials_file: ~/k/key.json\n  calendar_id: abc@group.calendar.google.com\n"
+        "  read_calendar_ids: [eu@gmail.com]\n  reminder_minutes: 10\n"
+    )
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(cfg))
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.google.credentials_file == isolated_home / "k" / "key.json"
+    assert s.google.calendar_id == "abc@group.calendar.google.com"
+    assert s.google.read_calendar_ids == ["eu@gmail.com"]
+    assert s.google.reminder_minutes == 10
+
+
+def test_invalid_timezone_is_rejected(isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fuso inexistente falha cedo, em vez de quebrar o relógio depois."""
+    monkeypatch.setenv("JUNIPER_AGENT__TIMEZONE", "Marte/Olympus")
+    with pytest.raises(ValueError, match="timezone"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_groq_reasoning_effort_default_and_validation(
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """reasoning_effort é opcional e só aceita low/medium/high."""
+    monkeypatch.chdir(tmp_path)
+    assert Settings(_env_file=None).llm.groq.reasoning_effort is None  # type: ignore[call-arg]
+    monkeypatch.setenv("JUNIPER_LLM__GROQ__REASONING_EFFORT", "low")
+    assert Settings(_env_file=None).llm.groq.reasoning_effort == "low"  # type: ignore[call-arg]
+    monkeypatch.setenv("JUNIPER_LLM__GROQ__REASONING_EFFORT", "extreme")
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        Settings(_env_file=None)  # type: ignore[call-arg]

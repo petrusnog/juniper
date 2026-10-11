@@ -42,6 +42,7 @@ class GroqProvider(LLMProvider):
         cfg = settings.llm.groq
         self._model = model or cfg.model
         self._timeout = timeout or cfg.timeout
+        self._reasoning_effort = cfg.reasoning_effort
         if api_key is None and settings.groq_api_key is not None:
             api_key = settings.groq_api_key.get_secret_value()
         self._api_key = api_key or None
@@ -162,6 +163,8 @@ class GroqProvider(LLMProvider):
         }
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if self._reasoning_effort:
+            kwargs["reasoning_effort"] = self._reasoning_effort
         if tools:
             kwargs["tools"] = tools
         return kwargs
@@ -232,8 +235,10 @@ class _ToolCallFragment:
 def _parse_usage(usage: Any) -> TokenUsage | None:
     if usage is None:
         return None
+    details = getattr(usage, "prompt_tokens_details", None)
     return TokenUsage(
         prompt_tokens=getattr(usage, "prompt_tokens", None),
         completion_tokens=getattr(usage, "completion_tokens", None),
         total_tokens=getattr(usage, "total_tokens", None),
+        cached_tokens=getattr(details, "cached_tokens", None),
     )

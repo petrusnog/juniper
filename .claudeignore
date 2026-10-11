@@ -18,6 +18,13 @@ htmlcov/
 !.env.example
 config.yaml
 .juniper.conf
+google-service-account*.json
+*service-account*.json
+client_secret*.json
+token.json
+
+# Certificados e chaves (tudo dentro de certs/)
+certs/
 
 # Runtime
 logs/

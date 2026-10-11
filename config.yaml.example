@@ -9,11 +9,12 @@ llm:
   groq:
     model: openai/gpt-oss-120b
     timeout: 30
+    reasoning_effort: low   # só gpt-oss: menos tokens de raciocínio (economiza o limite do Groq)
 
   ollama:
     url: http://localhost:11434
     model: llama3.1
-    timeout: 120
+    timeout: 300            # CPU: o primeiro pedido carrega o modelo
 
 agent:
   max_iterations: 5
@@ -45,3 +46,11 @@ tools:
       - tail
     shell_require_confirmation: true
     confirmation_timeout: 60
+
+google:
+  # Conta de serviço (ADR-008). A chave fica em certs/ (ignorada pelo git).
+  credentials_file: ~/.juniper/certs/gcp-key.json
+  calendar_id: SEU_ID_DA_AGENDA@group.calendar.google.com   # agenda "Juniper" (escrita)
+  read_calendar_ids: []                                      # agendas só lidas, ex.: [seu@gmail.com]
+  default_duration_minutes: 60
+  reminder_minutes: 30

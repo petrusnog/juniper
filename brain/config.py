@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import (
@@ -38,6 +39,8 @@ class LLMGroqSettings(BaseModel):
 
     model: str = "openai/gpt-oss-20b"
     timeout: int = Field(default=30, ge=1, le=600)
+    # gpt-oss only: "low" cuts the (billed) reasoning tokens. None = provider default.
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
 
 
 class LLMOllamaSettings(BaseModel):
@@ -81,6 +84,15 @@ class AgentSettings(BaseModel):
     max_iterations: int = Field(default=5, ge=1, le=50)
     language: str = "pt-BR"
     timezone: str = "America/Sao_Paulo"
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"agent.timezone inválido: {v!r}") from exc
+        return v
 
 
 class ServerSettings(BaseModel):
@@ -130,6 +142,25 @@ class ToolsSettings(BaseModel):
     """Configuração agregada das tools."""
 
     security: SecuritySettings = Field(default_factory=SecuritySettings)
+
+
+class GoogleSettings(BaseModel):
+    """Integração com o Google Calendar via conta de serviço (ver ADR-008)."""
+
+    credentials_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "certs" / "gcp-key.json"
+    )
+    # Agenda "Juniper": a única onde a Juniper cria e apaga eventos.
+    calendar_id: str | None = None
+    # Agendas só lidas, para detectar conflitos (ex.: o Gmail pessoal).
+    read_calendar_ids: list[str] = Field(default_factory=list)
+    default_duration_minutes: int = Field(default=60, ge=5, le=1440)
+    reminder_minutes: int = Field(default=30, ge=0, le=40320)
+
+    @field_validator("credentials_file")
+    @classmethod
+    def _expand_user(cls, v: Path) -> Path:
+        return v.expanduser()
 
 
 class PathsSettings(BaseModel):
@@ -184,6 +215,7 @@ class Settings(BaseSettings):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     deployment: DeploymentSettings = Field(default_factory=DeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
+    google: GoogleSettings = Field(default_factory=GoogleSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
@@ -227,9 +259,7 @@ class Settings(BaseSettings):
         ]
 
         if config_path.exists():
-            sources.append(
-                YamlConfigSettingsSource(settings_cls, yaml_file=config_path)
-            )
+            sources.append(YamlConfigSettingsSource(settings_cls, yaml_file=config_path))
 
         sources.append(file_secret_settings)
         return tuple(sources)

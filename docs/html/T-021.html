@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-021 · Registry de Tools — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Tools / T-021</div>
+<h1>T-021 — Registry de Tools</h1>
+<p class="lead">A lista de tools da Juniper, que se monta sozinha. Quem cria uma tool só escreve a classe e coloca <code>@register_tool</code> em cima; ninguém edita uma lista central. Arquivo: <code>brain/tools/registry.py</code>.</p>
+
+<h2>1. O que ele faz</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Arquivo da tool</b><small><code>@register_tool</code> na classe</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>registry</b><small>nome → classe</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Dispatcher</b><small><code>get(nome)</code> (T-030)</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>LLM</b><small><code>schemas()</code></small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">O registry guarda <b>classes</b>, não instâncias. O dispatcher cria a instância na hora de executar. O LLM só enxerga o que o registry devolve em <code>schemas()</code>.</p>
+</div>
+
+<h2>2. Uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Registrar uma tool</h3>
+<pre>from brain.tools.base import Tool, ToolResult
+from brain.tools.registry import register_tool
+
+@register_tool
+class ListEvents(Tool):
+    name = "list_events"
+    description = "..."
+    parameters = {...}
+    async def run(self, **kw): ...</pre></div>
+  <div class="card type"><h3>Consultar</h3>
+<pre>from brain.tools.registry import registry
+
+registry.discover()            # na partida
+registry.get("list_events")    # classe ou None
+registry.all()                 # todas as classes
+registry.schemas()             # para o campo tools do LLM</pre></div>
+</div>
+
+<h2>3. Auto-descoberta</h2>
+<p class="lead"><code>registry.discover()</code> importa todos os módulos de <code>brain/tools/</code>. Importar um módulo executa o <code>@register_tool</code> das classes dele, e é assim que a tool entra na lista.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Módulo</th><th>O que acontece</th></tr>
+    <tr><td><code>base</code> e <code>registry</code></td><td>Ignorados: são infraestrutura, não registram nada.</td></tr>
+    <tr><td>Nome começando com <code>_</code></td><td>Ignorado: convenção de módulo privado.</td></tr>
+    <tr><td>Qualquer outro (<code>web.py</code>, <code>google_calendar.py</code>…)</td><td>Importado. Se tiver tools decoradas, entram no registry.</td></tr>
+  </table>
+</div>
+<p><b>Tool nova = arquivo novo.</b> Basta criar o arquivo em <code>brain/tools/</code>. O teste da task faz exatamente isso, com um pacote temporário.</p>
+
+<h2>4. Erros</h2>
+<div class="tree">
+  <div class="err"><span class="mono">nome já registrado por outra classe</span><span>Duas tools com o mesmo <code>name</code> confundiriam o LLM.</span><span class="act tag r">ValueError</span></div>
+  <div class="err"><span class="mono">não é uma subclasse concreta de Tool</span><span>Registrar a classe abstrata <code>Tool</code> ou qualquer outra coisa.</span><span class="act tag r">TypeError</span></div>
+  <div class="err"><span class="mono">módulo de tool que não importa</span><span>Dependência faltando ou erro no arquivo. Falha alto na partida em vez de sumir da lista.</span><span class="act tag r">ImportError</span></div>
+  <div class="err"><span class="mono">get() de nome desconhecido</span><span>Devolve <code>None</code>. O dispatcher (T-030) transforma isso em <code>ToolResult(success=False)</code> para o LLM.</span><span class="act tag a">None</span></div>
+</div>
+<p>Registrar de novo <b>a mesma</b> classe (por exemplo, ao recarregar um módulo) não é erro.</p>
+
+<h2>5. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Há um objeto <code>registry</code> e o decorator <code>register_tool</code> aponta para ele.</b></td><td>Combina com a spec (<code>registry.get(...)</code>) e deixa criar registries separados nos testes (<code>ToolRegistry()</code>).</td></tr>
+    <tr><td>2</td><td><b><code>get()</code> devolve <code>None</code></b> em vez de levantar erro.</td><td>Tool desconhecida é caso esperado: o LLM pode inventar um nome. O dispatcher trata sem <code>try/except</code>.</td></tr>
+    <tr><td>3</td><td><b>Erro de importação na descoberta propaga.</b></td><td>Uma tool quebrada que some em silêncio é pior que um erro claro na partida.</td></tr>
+    <tr><td>4</td><td><b><code>discover()</code> é explícito</b> (ninguém chama sozinho).</td><td>Fica visível quando a descoberta acontece. O agente (T-030) vai chamá-lo na partida; esquecer significa registry vazio.</td></tr>
+    <tr><td>5</td><td><b><code>discover(package=...)</code> aceita outro pacote.</b></td><td>Permite testar com um pacote temporário, como a spec pediu.</td></tr>
+    <tr><td>6</td><td><b>A validação dos metadados fica na T-020</b> (<code>Tool.__init_subclass__</code>).</td><td>O registry não repete checagem: quando a classe chega aqui, já foi validada.</td></tr>
+  </table>
+</div>
+
+<h2>6. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Estado global.</b> O <code>registry</code> padrão é um objeto do módulo. Os testes isolam isso trocando o conteúdo dele; em código normal, ele vive o processo inteiro.</p>
+  <p><b>Sem desregistro.</b> Não há <code>unregister</code>: tools só entram. Não fez falta até agora.</p>
+  <p><b>Ordem de descoberta.</b> Segue a ordem em que o Python lista os módulos; <code>all()</code> e <code>schemas()</code> não prometem ordem estável entre arquivos.</p>
+  <p><b>Tools remotas (Sprint 5).</b> Executores anunciarão suas tools por WebSocket (ADR-007). Esse catálogo dinâmico ainda não existe e será tratado nessa época.</p>
+</div>
+
+<h2>7. Como testar</h2>
+<pre>pytest tests/test_tools_registry.py -v</pre>
+<p>Cobre: registrar e consultar, <code>get()</code> desconhecido, <code>all()</code>/<code>schemas()</code>, nome duplicado, registro idempotente, classe abstrata e não-tool rejeitadas, o decorator no registry global, e a auto-descoberta com pacotes temporários (arquivos novos aparecem sem lista central, módulos <code>base</code>/<code>registry</code>/<code>_privados</code> são ignorados e erros de importação propagam).</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-020 · Base de Tools — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Tools / T-020</div>
+<h1>T-020 — Base de Tools</h1>
+<p class="lead">O molde de toda ferramenta da Juniper: o que ela precisa declarar para o LLM conseguir escolhê-la, que nível de segurança ela tem e como devolve o resultado. Arquivo: <code>brain/tools/base.py</code>.</p>
+
+<h2>1. O que existe</h2>
+<div class="grid">
+  <div class="card type"><h3><code>Tool</code></h3>
+    <p>Classe abstrata. Cada ferramenta herda dela, declara metadados como atributos de classe e implementa <code>async run()</code>.</p></div>
+  <div class="card type"><h3><code>ToolResult</code></h3>
+    <p><code>success</code>, <code>output</code>, <code>error</code>, <code>metadata</code>. Retorno único de toda tool (ADR-002). Imutável.</p></div>
+  <div class="card type"><h3><code>Tier</code></h3>
+    <p><code>READ</code> · <code>WRITE</code> · <code>DESTRUCTIVE</code> · <code>FORBIDDEN</code> (ADR-006).</p></div>
+  <div class="card type"><h3><code>Locality</code></h3>
+    <p><code>CLOUD</code> · <code>EXECUTOR</code>: onde a tool roda (ADR-007). No Sprint 1 tudo roda local.</p></div>
+</div>
+
+<h2>2. Como escrever uma tool</h2>
+<pre>class OpenApp(Tool):
+    name = "open_app"                       # snake_case, único
+    description = "Abre um aplicativo ou URL ..."   # PT-BR: o que faz e quando usar
+    parameters = {                          # JSON Schema
+        "type": "object",
+        "properties": {"target": {"type": "string", "description": "..."}},
+        "required": ["target"],
+    }
+    tier = Tier.WRITE                       # opcional (default WRITE)
+    locality = Locality.EXECUTOR            # opcional (default EXECUTOR)
+
+    async def run(self, **kwargs) -&gt; ToolResult:
+        ...
+        return ToolResult(success=True, output="abri firefox")</pre>
+
+<h2>3. O que o LLM enxerga: <code>to_schema()</code></h2>
+<p class="lead">O método de classe <code>Tool.to_schema()</code> converte os metadados para o formato OpenAI function calling do ADR-002, exatamente o que Groq e Ollama esperam no campo <code>tools</code>.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Classe Tool</b><small><code>name</code> · <code>description</code> · <code>parameters</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>to_schema()</b><small><code>{"type":"function","function":{…}}</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>LLM</b><small>decide se e como chamar</small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)"><code>tier</code> e <code>locality</code> ficam de fora do schema: são assunto do dispatcher (T-030), não do modelo. O schema devolvido é uma cópia; alterá-lo não muda a classe.</p>
+</div>
+
+<h2>4. Validação na definição da classe</h2>
+<p class="lead">Quando o módulo da tool é importado, <code>__init_subclass__</code> confere os metadados. Uma tool malformada falha na hora do import, não no meio de uma conversa.</p>
+<div class="tree">
+  <div class="err"><span class="mono">name</span><span>Precisa ser snake_case (<code>open_app</code>, não <code>OpenApp</code> nem <code>open-app</code>).</span><span class="act tag r">ValueError</span></div>
+  <div class="err"><span class="mono">description</span><span>Texto não vazio.</span><span class="act tag r">ValueError</span></div>
+  <div class="err"><span class="mono">parameters</span><span>Objeto JSON Schema: <code>type: "object"</code>, <code>properties</code> dict, e <code>required</code> só com chaves existentes em <code>properties</code>.</span><span class="act tag r">ValueError</span></div>
+  <div class="err"><span class="mono">tier / locality</span><span>Têm que ser membros dos enums (uma string solta como <code>"read"</code> é rejeitada).</span><span class="act tag r">ValueError</span></div>
+</div>
+<p>Classes abstratas intermediárias (sem <code>run</code>) não são validadas, então dá para criar uma base comum que só preenche parte dos metadados.</p>
+
+<h2>5. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Validação em <code>__init_subclass__</code></b> (a spec dava a opção de validar no registro).</td><td>Falha mais cedo e independe do registry. A T-021 não precisa repetir a checagem.</td></tr>
+    <tr><td>2</td><td><b>Erro de validação é <code>ValueError</code></b> com o nome da classe na mensagem.</td><td>Simples e fácil de localizar o culpado.</td></tr>
+    <tr><td>3</td><td><b><code>ToolResult</code> é <code>frozen</code></b> (a spec dizia <code>@dataclass</code> simples).</td><td>Segue os tipos de <code>brain/llm/types.py</code>; um resultado não deveria mudar depois de devolvido.</td></tr>
+    <tr><td>4</td><td><b>Enums são <code>StrEnum</code></b> com valores em minúsculas (<code>"read"</code>, <code>"write"</code>…).</td><td>Serializam bem para logs JSON (T-031).</td></tr>
+    <tr><td>5</td><td><b>Valida que <code>required</code> ⊆ <code>properties</code></b> (além do pedido).</td><td>Um <code>required</code> apontando para parâmetro inexistente faria o LLM ser instruído a mandar algo que a tool ignoraria.</td></tr>
+    <tr><td>6</td><td><b>Só <code>to_schema()</code> copia o <code>parameters</code></b> (<code>deepcopy</code>).</td><td>O dicionário é compartilhado pela classe; sem cópia, quem mexer no schema alteraria a tool.</td></tr>
+    <tr><td>7</td><td><b>Gancho opcional <code>precheck()</code></b> (adicionado com a T-022).</td><td>Roda <i>antes</i> do <code>[y/N]</code>: a tool pode recusar uma entrada inválida ou em conflito sem incomodar o usuário nem gastar uma volta do LLM. O padrão devolve <code>None</code> (segue em frente).</td></tr>
+  </table>
+</div>
+
+<h2>6. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Não valida os argumentos em tempo de execução.</b> A checagem do JSON Schema contra o que o LLM enviou fica com o dispatcher (T-030).</p>
+  <p><b>A validação do schema é rasa.</b> Confere a estrutura mínima (<code>object</code>, <code>properties</code>, <code>required</code>), não se cada propriedade é um JSON Schema válido.</p>
+  <p><b>Tier fixo por classe.</b> A <code>run_shell</code> (T-023) terá tier dinâmico, decidido pelo comando; isso será resolvido nela e no dispatcher, e o <code>tier</code> da classe servirá como piso.</p>
+  <p><b>Ainda não há registro.</b> Declarar a classe não a torna visível ao agente; isso é a T-021 (<code>@register_tool</code>).</p>
+</div>
+
+<h2>7. Como testar</h2>
+<pre>pytest tests/test_tools_base.py -v</pre>
+<p>Cobre: classe não instanciável, <code>to_schema()</code> igual ao formato do ADR-002 (e cópia independente), tier padrão WRITE e locality padrão EXECUTOR, <code>run()</code> devolvendo <code>ToolResult</code>, enums, classe intermediária abstrata e cada regra de validação (nomes inválidos, descrição vazia, <code>parameters</code> malformado, <code>required</code> inconsistente, tier/locality inválidos).</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

@@ -25,6 +25,10 @@ htmlcov/
 # Segredos e config local
 .env
 config.yaml
+google-service-account*.json
+*service-account*.json
+client_secret*.json
+token.json
 
 # Runtime da Juniper
 logs/
@@ -39,3 +43,6 @@ logs/
 
 # Logs
 juniper.log
+
+# Certificados
+certs/

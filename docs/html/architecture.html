@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitetura em camadas — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Visão geral</div>
+<h1>Arquitetura em camadas</h1>
+<p class="lead">Como a Juniper funciona por inteiro quando estiver pronta, e quanto disso já existe. Cada task do backlog (T-0xx) é um dos blocos abaixo.</p>
+
+<h2>1. A ideia em uma imagem</h2>
+<div class="card">
+  <p>A Juniper segue a lógica do J.A.R.V.I.S.: <b>um cérebro só, sempre ligado, e vários "corpos"</b> (seu PC, seu celular, a casa) que executam o que o cérebro decide. Você fala com ela por uma <b>interface fina</b> (terminal, celular, voz), que só leva sua mensagem e mostra a resposta. Quem pensa é o cérebro.</p>
+  <p style="color:var(--muted)">Analogia: a interface é o balcão de um restaurante, o cérebro é o chef, as <b>tools</b> são os equipamentos da cozinha e a <b>memória</b> é o caderno de receitas e de pedidos antigos. O balcão nunca cozinha, e o chef nunca atende na rua.</p>
+</div>
+
+<h2>2. O mapa completo (versão final)</h2>
+<p class="lead">Leia de cima para baixo: seu pedido desce pelas camadas até o mundo real, e a resposta sobe de volta.</p>
+<div class="legend">
+  <span class="tag g">pronto</span>
+  <span class="tag a">próximo</span>
+  <span class="tag b">Sprint 1, a fazer</span>
+  <span class="tag v">sprints futuros</span>
+</div>
+
+<div class="layers">
+  <div class="layer">
+    <div class="lname"><b>5 · Interfaces</b><small>Onde você fala com ela. Finas: só capturam e exibem.</small></div>
+    <div class="lblocks">
+      <div class="blk todo"><b>CLI</b><small>T-040 · <code>juniper chat</code>, streaming, confirmação [y/N]</small></div>
+      <div class="blk future"><b>App web / celular</b><small>Sprint 2</small></div>
+      <div class="blk future"><b>Voz</b><small>Sprint 4 · STT, TTS, wake word</small></div>
+    </div>
+  </div>
+  <div class="lgap">↓ mensagem &nbsp;·&nbsp; resposta em stream ↑</div>
+
+  <div class="layer">
+    <div class="lname"><b>4 · Transporte</b><small>Só existe quando o cérebro roda na nuvem. No Sprint 1 ele vive dentro da CLI e esta camada é pulada.</small></div>
+    <div class="lblocks">
+      <div class="blk future"><b>API HTTPS + WebSocket</b><small>Sprint 2 · <code>clients/server.py</code></small></div>
+      <div class="blk future"><b>Token + Tailscale</b><small>Sprint 2 · sem portas públicas</small></div>
+    </div>
+  </div>
+  <div class="lgap">↓ ↑</div>
+
+  <div class="layer">
+    <div class="lname"><b>3 · Cérebro</b><small>Decide o que fazer. É o coração do projeto (<code>brain/core/</code>).</small></div>
+    <div class="lblocks">
+      <div class="blk todo"><b>Agent loop</b><small>T-030 · decide → chama tool → reavalia (até 5 voltas)</small></div>
+      <div class="blk todo"><b>Dispatcher</b><small>T-030 · acha a tool, checa o tier, pede confirmação</small></div>
+      <div class="blk todo"><b>Session</b><small>T-030 · persona + histórico da conversa</small></div>
+      <div class="blk done"><b>Persona</b><small><code>prompts/juniper.md</code></small></div>
+    </div>
+  </div>
+  <div class="lgap">↓ pede &nbsp;·&nbsp; devolve ↑</div>
+
+  <div class="layer">
+    <div class="lname"><b>2 · Capacidades</b><small>O que o cérebro usa para pensar, agir e lembrar.</small></div>
+    <div class="lblocks">
+      <div class="blk done"><b>LLM Router</b><small>T-015 · Groq primeiro, Ollama se falhar</small></div>
+      <div class="blk done"><b>Providers + streaming</b><small>T-011 a T-014 · Groq e Ollama</small></div>
+      <div class="blk done"><b>Base de tools</b><small>T-020 · <code>Tool</code>, <code>Tier</code>, <code>ToolResult</code></small></div>
+      <div class="blk done"><b>Registry de tools</b><small>T-021 · <code>@register_tool</code> + auto-descoberta</small></div>
+      <div class="blk done"><b>Agenda Google</b><small>T-022 · ler, marcar e desmarcar compromissos</small></div>
+      <div class="blk todo"><b>Tools: shell, abrir app</b><small>T-023, T-027</small></div>
+      <div class="blk todo"><b>Tools: web</b><small>T-024 buscar página · T-025 pesquisar</small></div>
+      <div class="blk todo"><b>Tools: comandos legados</b><small>T-026 · gitgrep, deploy</small></div>
+      <div class="blk future"><b>Memória</b><small>Sprint 3 · conversa + busca por contexto (RAG)</small></div>
+    </div>
+  </div>
+  <div class="lgap">↓ ↑</div>
+
+  <div class="layer">
+    <div class="lname"><b>1 · Mundo externo</b><small>Fora do código da Juniper.</small></div>
+    <div class="lblocks">
+      <div class="blk done"><b>Groq</b><small>LLM na nuvem (primário)</small></div>
+      <div class="blk done"><b>Ollama</b><small>LLM local (reserva)</small></div>
+      <div class="blk done"><b>Google Calendar</b><small>sua agenda, via conta de serviço</small></div>
+      <div class="blk todo"><b>Internet</b><small>páginas e buscas</small></div>
+      <div class="blk todo"><b>Seu PC</b><small>apps e shell, via tools</small></div>
+      <div class="blk future"><b>Celular e casa</b><small>Sprint 5 · executores</small></div>
+      <div class="blk future"><b>Banco de dados</b><small>Sprint 3 · MongoDB</small></div>
+    </div>
+  </div>
+</div>
+
+<div class="layer side-layer" style="margin-top:12px">
+  <div class="lname"><b>Transversais</b><small>Atravessam todas as camadas.</small></div>
+  <div class="lblocks">
+    <div class="blk done"><b>Configuração</b><small><code>config.yaml</code> + <code>.env</code> · um só ponto de acesso</small></div>
+    <div class="blk done"><b>Segurança em 4 tiers</b><small>READ · WRITE · DESTRUCTIVE · FORBIDDEN (modelo pronto; a aplicação vem no Dispatcher)</small></div>
+    <div class="blk todo"><b>Logging estruturado</b><small>T-031 · tudo que ela faz fica registrado</small></div>
+  </div>
+</div>
+
+<h2>3. Uma frase sua, passo a passo</h2>
+<p class="lead">Exemplo: você digita <b>"amanhã quero uma ida ao dentista, às 16h"</b>. Esta é a viagem completa pela arquitetura.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>O que acontece</th><th>Camada</th><th>Estado</th></tr>
+    <tr><td>1</td><td>A CLI recebe sua frase e a entrega ao agente.</td><td>Interface</td><td><span class="tag b">T-040</span></td></tr>
+    <tr><td>2</td><td>O agente monta o pedido ao LLM: persona, histórico, <b>data e hora de agora</b> (é isso que permite entender "amanhã") e a lista de tools.</td><td>Cérebro</td><td><span class="tag b">T-022</span> <span class="tag b">T-030</span></td></tr>
+    <tr><td>3</td><td>O router envia ao Groq. Se ele falhar (limite, queda, chave), tenta o Ollama com a mesma conversa.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
+    <tr><td>4</td><td>O LLM pede <code>create_event</code> direto, com título e horário já resolvidos a partir da data de agora.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
+    <tr><td>5</td><td>O dispatcher acha a tool no registry, e o <code>precheck</code> consulta o Google Calendar <b>antes</b> de te perguntar qualquer coisa.</td><td>Cérebro</td><td><span class="tag g">registry</span> <span class="tag g">precheck</span> <span class="tag b">T-030</span></td></tr>
+    <tr><td>6</td><td>Se já houver algo às 16h, o LLM pergunta: <b>"Já existe «Fisioterapia» às 16h. Desmarco para marcar o dentista?"</b></td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
+    <tr><td>7</td><td>Sem conflito (ou depois do seu "sim" e do <code>delete_event</code>), a Juniper pergunta <b>"Marcar «Dentista», 12/10, 16h–17h? [y/N]"</b> com os dados exatos.</td><td>Cérebro</td><td><span class="tag b">T-030</span></td></tr>
+    <tr><td>8</td><td>Você confirma, o evento é criado no calendário "Juniper" e aparece no seu celular. A resposta chega palavra por palavra.</td><td>Capacidades → Interface</td><td><span class="tag g">streaming pronto</span></td></tr>
+    <tr><td>9</td><td>Tudo é registrado no log e, no futuro, guardado na memória.</td><td>Transversal</td><td><span class="tag b">T-031</span> <span class="tag v">Sprint 3</span></td></tr>
+  </table>
+</div>
+
+<h2>4. Onde estamos</h2>
+<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>8 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
+<div class="card">
+  <div class="bar"><i style="width:44%"></i></div>
+  <p style="color:var(--muted);font-size:.9em">8 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022</p>
+  <div class="sprints" style="margin-top:14px">
+    <div class="sprint"><b>LLM</b><span class="tag g">5 de 5</span><small>providers, streaming, failover</small></div>
+    <div class="sprint"><b>Tools</b><span class="tag a">3 de 8</span><small>base, registry e agenda Google prontos</small></div>
+    <div class="sprint now"><b>Cérebro</b><span class="tag a">0 de 2</span><small>agent loop (T-030) é o próximo passo</small></div>
+    <div class="sprint"><b>Interface</b><span class="tag b">0 de 3</span><small>CLI, legados, <code>juniper tools</code></small></div>
+  </div>
+</div>
+
+<h3 style="margin-top:20px">O caminho mais curto até a primeira conversa de verdade</h3>
+<div class="card">
+  <div class="flow">
+    <div class="node g"><b>T-021</b><small>Registry (pronto)</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>T-022</b><small>Agenda Google (pronta)</small></div>
+    <div class="arrow">→</div>
+    <div class="node a"><b>T-030</b><small>Agent loop + Dispatcher</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>T-040</b><small>CLI: <code>juniper chat</code></small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Depois da T-040, você conversa com a Juniper, ela decide usar uma ferramenta e executa de verdade. As outras tasks (shell, web, logging, legados) são acréscimos a partir daí. Até lá, o <code>scripts/try_groq.py</code> é o jeito de conversar com o LLM.</p>
+</div>
+
+<h2>5. O que vem depois do Sprint 1</h2>
+<div class="sprints">
+  <div class="sprint now"><b>Sprint 1 · agora</b><small>Hello Agent: local, via terminal.</small></div>
+  <div class="sprint"><b>Sprint 2</b><small>Cérebro na VPS, acesso de vários dispositivos.</small></div>
+  <div class="sprint"><b>Sprint 3</b><small>Memória de longo prazo (MongoDB + RAG).</small></div>
+  <div class="sprint"><b>Sprint 4</b><small>Voz: ouvir, falar, wake word.</small></div>
+  <div class="sprint"><b>Sprint 5</b><small>Executores: PC, celular, casa.</small></div>
+  <div class="sprint"><b>Sprint 6</b><small>Iniciativa: tarefas agendadas, proatividade.</small></div>
+</div>
+
+<h2>6. Quatro regras que mantêm tudo simples</h2>
+<div class="grid">
+  <div class="card type"><h3>O cérebro não conhece as interfaces</h3><p>O <code>core/</code> nunca importa de <code>clients/</code>. Por isso a mesma Juniper serve terminal, celular e voz.</p></div>
+  <div class="card type"><h3>Providers são trocáveis</h3><p>O cérebro fala com "um LLM", nunca com Groq ou Ollama especificamente. O router escolhe.</p></div>
+  <div class="card type"><h3>Tool nova = arquivo novo</h3><p>Cada capacidade é um plugin que se registra sozinho. Nada no cérebro muda.</p></div>
+  <div class="card type"><h3>Perigo exige permissão</h3><p>Ler é livre; alterar pede <code>[y/N]</code>; destruir pede aviso de irreversibilidade; coisas como <code>rm -rf /</code> são bloqueadas.</p></div>
+</div>
+
+<h2>7. Onde cada camada mora no código</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Camada</th><th>Pasta / arquivo</th><th>Referência</th></tr>
+    <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td>T-040 a T-042</td></tr>
+    <tr><td>Transporte</td><td><code>brain/clients/server.py</code></td><td>ADR-007</td></tr>
+    <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td>T-030</td></tr>
+    <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a></td></tr>
+    <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · T-023 a T-027</td></tr>
+    <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 3</td></tr>
+    <tr><td>Configuração</td><td><code>brain/config.py</code></td><td>ADR-003</td></tr>
+  </table>
+  <p style="color:var(--muted);margin-top:10px">Este mapa descreve o plano atual (ADR-001, 002, 003, 006 e 007). Quando uma decisão mudar, esta página muda junto. O <a href="status.html">painel de status</a> mostra, ao vivo, até onde a Juniper está funcional.</p>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

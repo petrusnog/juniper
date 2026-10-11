@@ -442,3 +442,33 @@ async def test_stream_error_does_not_leak_key() -> None:
     with pytest.raises(LLMError) as exc:
         await collect(stream_client([], create_error=err))
     assert SECRET not in str(exc.value)
+
+
+async def test_reasoning_effort_is_sent_only_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings.llm.groq, "reasoning_effort", None)  # ignore the local config
+    client = FakeClient(completion())
+    await make(client).chat([Message("user", "oi")])
+    assert "reasoning_effort" not in client.calls[0]  # default: provider decides
+
+    monkeypatch.setattr(settings.llm.groq, "reasoning_effort", "low")
+    client = FakeClient(completion())
+    await make(client).chat([Message("user", "oi")])
+    assert client.calls[0]["reasoning_effort"] == "low"
+
+
+async def test_cached_prompt_tokens_are_reported() -> None:
+    usage = SimpleNamespace(
+        prompt_tokens=1500,
+        completion_tokens=40,
+        total_tokens=1540,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=1280),
+    )
+    resp = await make(FakeClient(completion(usage=usage))).chat([Message("user", "x")])
+    assert resp.usage is not None and resp.usage.cached_tokens == 1280
+
+
+async def test_cached_tokens_absent_is_none() -> None:
+    resp = await make(FakeClient(completion())).chat([Message("user", "x")])
+    assert resp.usage is not None and resp.usage.cached_tokens is None

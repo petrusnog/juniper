@@ -143,19 +143,19 @@ window.JUNIPER_STATUS = {
       "task": "T-020",
       "name": "Base de tools",
       "file": "brain/tools/base.py",
-      "implemented": false
+      "implemented": true
     },
     {
       "task": "T-021",
       "name": "Registry de tools",
       "file": "brain/tools/registry.py",
-      "implemented": false
+      "implemented": true
     },
     {
       "task": "T-022",
-      "name": "Tools de sistema",
-      "file": "brain/tools/system.py",
-      "implemented": false
+      "name": "Tools de agenda (Google Calendar)",
+      "file": "brain/tools/google_calendar.py",
+      "implemented": true
     },
     {
       "task": "T-024",
