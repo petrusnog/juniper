@@ -137,7 +137,7 @@ window.JUNIPER_STATUS = {
       "task": "T-015",
       "name": "Router com failover",
       "file": "brain/llm/router.py",
-      "implemented": false
+      "implemented": true
     },
     {
       "task": "T-020",

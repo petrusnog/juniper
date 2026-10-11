@@ -9,7 +9,7 @@ const FEATURES = [
     desc: "Provider em nuvem via SDK.", status: "done" },
   { group: "LLM", id: "T-014", title: "Streaming", file: "T-014.html",
     desc: "Tokens em tempo real.", status: "done" },
-  { group: "LLM", id: "T-015", title: "LLMRouter", desc: "Failover Groq → Ollama.", status: "planned" },
+  { group: "LLM", id: "T-015", title: "LLMRouter", file: "T-015.html", desc: "Failover Groq → Ollama.", status: "done" },
   { group: "Tools", id: "T-020", title: "Base de Tools", desc: "Tool, Tier, ToolResult.", status: "planned" },
   { group: "Tools", id: "T-021", title: "Registry", desc: "Auto-descoberta de tools.", status: "planned" },
   { group: "Agente", id: "T-030", title: "Agent loop", desc: "Decide → chama tool → reavalia.", status: "planned" },
