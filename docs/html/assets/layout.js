@@ -14,6 +14,8 @@ const FEATURES = [
   { group: "Tools", id: "T-021", title: "Registry", desc: "Auto-descoberta de tools.", status: "planned" },
   { group: "Agente", id: "T-030", title: "Agent loop", desc: "Decide → chama tool → reavalia.", status: "planned" },
   { group: "Clientes", id: "T-040", title: "CLI", desc: "juniper chat completo.", status: "planned" },
+  { group: "Ferramentas", id: "Status", title: "Painel de status", file: "status.html",
+    desc: "Testa até onde a Juniper está funcional.", status: "tool" },
 ];
 
 (function () {
@@ -49,7 +51,8 @@ const FEATURES = [
   const holder = document.getElementById("feature-cards");
   if (holder) {
     holder.innerHTML = FEATURES.map((f) => {
-      const tag = f.status === "done" ? `<span class="tag g">pronta</span>` : `<span class="tag a">planejada</span>`;
+      const tag = { done: `<span class="tag g">pronta</span>`, tool: `<span class="tag v">ferramenta</span>` }[f.status]
+        || `<span class="tag a">planejada</span>`;
       const body = `${tag} <span class="tag b">${f.id}</span><h3>${esc(f.title)}</h3><p>${esc(f.desc)}</p>`;
       return f.file ? `<a class="fcard" href="${f.file}">${body}</a>` : `<div class="fcard soon">${body}</div>`;
     }).join("");

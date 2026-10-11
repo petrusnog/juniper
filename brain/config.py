@@ -36,7 +36,7 @@ from pydantic_settings import (
 class LLMGroqSettings(BaseModel):
     """Configuração do provider Groq."""
 
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "openai/gpt-oss-20b"
     timeout: int = Field(default=30, ge=1, le=600)
 
 

@@ -7,7 +7,7 @@ llm:
   priority: [groq, ollama]
 
   groq:
-    model: llama-3.3-70b-versatile
+    model: openai/gpt-oss-120b
     timeout: 30
 
   ollama:
