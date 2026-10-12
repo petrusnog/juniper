@@ -52,9 +52,9 @@
   <div class="layer">
     <div class="lname"><b>3 · Cérebro</b><small>Decide o que fazer. É o coração do projeto (<code>brain/core/</code>).</small></div>
     <div class="lblocks">
-      <div class="blk todo"><b>Agent loop</b><small>T-030 · decide → chama tool → reavalia (até 5 voltas)</small></div>
-      <div class="blk todo"><b>Dispatcher</b><small>T-030 · acha a tool, checa o tier, pede confirmação</small></div>
-      <div class="blk todo"><b>Session</b><small>T-030 · persona + histórico da conversa</small></div>
+      <div class="blk done"><b>Agent loop</b><small>T-030 · decide → chama tool → reavalia (até 5 voltas)</small></div>
+      <div class="blk done"><b>Dispatcher</b><small>T-030 · acha a tool, checa o tier, pede confirmação</small></div>
+      <div class="blk done"><b>Session</b><small>T-030 · persona + histórico da conversa</small></div>
       <div class="blk done"><b>Persona</b><small><code>prompts/juniper.md</code></small></div>
     </div>
   </div>
@@ -117,14 +117,14 @@
 </div>
 
 <h2>4. Onde estamos</h2>
-<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>8 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
+<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>9 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
 <div class="card">
-  <div class="bar"><i style="width:44%"></i></div>
-  <p style="color:var(--muted);font-size:.9em">8 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022</p>
+  <div class="bar"><i style="width:50%"></i></div>
+  <p style="color:var(--muted);font-size:.9em">9 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030</p>
   <div class="sprints" style="margin-top:14px">
     <div class="sprint"><b>LLM</b><span class="tag g">5 de 5</span><small>providers, streaming, failover</small></div>
     <div class="sprint"><b>Tools</b><span class="tag a">3 de 8</span><small>base, registry e agenda Google prontos</small></div>
-    <div class="sprint now"><b>Cérebro</b><span class="tag a">0 de 2</span><small>agent loop (T-030) é o próximo passo</small></div>
+    <div class="sprint now"><b>Cérebro</b><span class="tag a">1 de 2</span><small>agent loop pronto; falta o log (T-031)</small></div>
     <div class="sprint"><b>Interface</b><span class="tag b">0 de 3</span><small>CLI, legados, <code>juniper tools</code></small></div>
   </div>
 </div>
@@ -136,7 +136,7 @@
     <div class="arrow">→</div>
     <div class="node g"><b>T-022</b><small>Agenda Google (pronta)</small></div>
     <div class="arrow">→</div>
-    <div class="node a"><b>T-030</b><small>Agent loop + Dispatcher</small></div>
+    <div class="node g"><b>T-030</b><small>Agent loop (pronto)</small></div>
     <div class="arrow">→</div>
     <div class="node b"><b>T-040</b><small>CLI: <code>juniper chat</code></small></div>
   </div>
@@ -167,7 +167,7 @@
     <tr><th>Camada</th><th>Pasta / arquivo</th><th>Referência</th></tr>
     <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td>T-040 a T-042</td></tr>
     <tr><td>Transporte</td><td><code>brain/clients/server.py</code></td><td>ADR-007</td></tr>
-    <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td>T-030</td></tr>
+    <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a></td></tr>
     <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a></td></tr>
     <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · T-023 a T-027</td></tr>
     <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 3</td></tr>

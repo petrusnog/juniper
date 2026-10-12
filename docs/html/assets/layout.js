@@ -15,7 +15,7 @@ const FEATURES = [
   { group: "Tools", id: "T-020", title: "Base de Tools", file: "T-020.html", desc: "Tool, Tier, ToolResult.", status: "done" },
   { group: "Tools", id: "T-021", title: "Registry", file: "T-021.html", desc: "Auto-descoberta de tools.", status: "done" },
   { group: "Tools", id: "T-022", title: "Agenda Google", file: "T-022.html", desc: "Ler e marcar compromissos.", status: "done" },
-  { group: "Agente", id: "T-030", title: "Agent loop", desc: "Decide → chama tool → reavalia.", status: "planned" },
+  { group: "Agente", id: "T-030", title: "Agent loop", file: "T-030.html", desc: "Decide → chama tool → reavalia.", status: "done" },
   { group: "Clientes", id: "T-040", title: "CLI", desc: "juniper chat completo.", status: "planned" },
   { group: "Ferramentas", id: "Status", title: "Painel de status", file: "status.html",
     desc: "Testa até onde a Juniper está funcional.", status: "tool" },

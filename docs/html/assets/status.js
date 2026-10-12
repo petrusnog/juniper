@@ -173,7 +173,7 @@ window.JUNIPER_STATUS = {
       "task": "T-030",
       "name": "Agent loop",
       "file": "brain/core/agent.py",
-      "implemented": false
+      "implemented": true
     },
     {
       "task": "T-040",
