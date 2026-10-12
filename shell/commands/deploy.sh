@@ -24,7 +24,7 @@ _deploy_ensure_branch_exists() {
     fi
 
     local resp
-    read "resp?🌿 JUNIPER: ❓ Branch ${target_branch} não existe. Deseja criá-la a partir de ${base_branch}? (s/n): "
+    _juniper_ask "❓ Branch ${target_branch} não existe. Deseja criá-la a partir de ${base_branch}? (s/n)" resp
     case "$resp" in
         s|S|y|Y|sim)
             _juniper_say "✨ Criando branch ${target_branch} a partir de ${base_branch}..."
@@ -136,7 +136,7 @@ _deploy_apply_commit_to_branch() {
             echo ""
             while true; do
                 local resp
-                read "resp?🌿 JUNIPER: Resolva os conflitos, faça 'git add' nos arquivos e digite (continuar/abortar): " || resp=abortar  # sem terminal (EOF): aborta em vez de repetir para sempre
+                _juniper_ask "Resolva os conflitos, faça 'git add' nos arquivos e digite (continuar/abortar)" resp || resp=abortar  # sem terminal (EOF): aborta em vez de repetir para sempre
                 case "$resp" in
                     continuar|c)
                         if git cherry-pick --continue; then

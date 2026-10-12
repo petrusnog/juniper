@@ -43,6 +43,10 @@ _juniper_dispatch() {
     if declare -f "$run_func" > /dev/null; then
         _juniper_log_info "Comando executado: $command $*"
         $run_func "$@"
+    elif [ -x "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper" ]; then
+        # Não é um comando do shell (chat, tools...): quem responde é o cérebro em Python.
+        _juniper_log_info "Delegando ao cérebro: $command $*"
+        "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper" "$command" "$@"
     else
         _juniper_log_error "Comando desconhecido: $command $*"
         _juniper_say "❌ Comando desconhecido: $command"
@@ -71,10 +75,10 @@ _juniper_ask_user_name() {
 
     _juniper_say "Oi! Ainda não sei seu nome."
     if [ -n "$suggested_name" ]; then
-        read "resp?🌿 JUNIPER: Posso te chamar de ${suggested_name}? (enter para confirmar, ou digite outro nome): "
+        _juniper_ask "Posso te chamar de ${suggested_name}? (enter para confirmar, ou digite outro nome)" resp
         [ -z "$resp" ] && resp="$suggested_name"
     else
-        read "resp?🌿 JUNIPER: Como posso te chamar? "
+        _juniper_ask "Como posso te chamar?" resp
     fi
 
     if [ -n "$resp" ]; then

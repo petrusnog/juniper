@@ -45,7 +45,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `brain/tools/system.py` (`run_shell`, `open_app`) | T-023, T-027 |
 | `brain/tools/web.py` (`web_fetch`, `web_search`) | T-024, T-025 |
 
-> **Atenção (divergências repo × plano):** o repo hoje contém `brain/tools/shell.py` (stub) e **não** contém `BACKLOG.md`, `CHANGELOG.md` nem `.env.example`; os ADRs estão nomeados `ADR-00X.md` (sem slug). Os comandos legados chamam-se `search` e `deploy` (aliases `grep`/`gitgrep`/`deployfeature` no CLI); seus scripts em `shell/` vêm da `origin/master`, mais nova que a v4. Ao tocar nesses pontos, reconcilie e registre no commit.
+> **Atenção (divergências repo × plano):** o repo hoje contém `brain/tools/shell.py` (stub) e **não** contém `BACKLOG.md` nem `CHANGELOG.md`; os ADRs estão nomeados `ADR-00X.md` (sem slug). Os comandos legados chamam-se `search` e `deploy` (aliases `grep`/`gitgrep`/`deployfeature` no CLI); seus scripts em `shell/` vêm da `origin/master`, mais nova que a v4. Ao tocar nesses pontos, reconcilie e registre no commit.
 
 ---
 
@@ -339,7 +339,7 @@ Lista tools registradas: nome, tier, locality, descrição (tabela `rich`).
 1. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
 2. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados pelos ADRs).
 4. Sem CI — rodar pytest/ruff/mypy manualmente (sugestão: GitHub Actions).
-5. `.env.example` ausente.
+5. ~~`.env.example` ausente~~ — na verdade já existia; o instalador (`scripts/install.sh`, guia em `docs/html/install.html`) o usa para criar o `.env`.
 6. `brain/tools/shell.py` stub coexiste com o plano `system.py` — decidir e remover um.
 
 ---

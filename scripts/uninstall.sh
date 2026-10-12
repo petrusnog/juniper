@@ -54,7 +54,7 @@ for arg in "$@"; do
             exit 0
             ;;
         *)
-            echo "Flag desconhecida: $arg" >&2
+            printf '🌿 JUNIPER: Opção desconhecida: %s\n' "$arg" >&2
             exit 1
             ;;
     esac
@@ -73,14 +73,20 @@ else
     C_DIM="\033[2m"
 fi
 
-ok()    { printf "${C_GREEN}[ OK ]${C_RESET} %s\n" "$1"; }
-warn()  { printf "${C_YELLOW}[WARN]${C_RESET} %s\n" "$1"; }
-info()  { printf "${C_DIM}[ .. ]${C_RESET} %s\n" "$1"; }
-skip()  { printf "${C_DIM}[SKIP]${C_RESET} %s\n" "$1"; }
-title() { printf "\n${C_BOLD}== %s ==${C_RESET}\n" "$1"; }
+# Mesmo prefixo de fala de shell/core/voice.sh e brain/clients/voice.py.
+JUNIPER_TAG="🌿 JUNIPER:"
+USER_TAG="👤 VOCÊ:"
+
+say()   { printf "%s %s\n" "$JUNIPER_TAG" "$1"; }
+ok()    { printf "%s ${C_GREEN}✔${C_RESET} %s\n" "$JUNIPER_TAG" "$1"; }
+warn()  { printf "%s ${C_YELLOW}⚠${C_RESET} %s\n" "$JUNIPER_TAG" "$1"; }
+info()  { printf "%s ${C_DIM}…${C_RESET} %s\n" "$JUNIPER_TAG" "$1"; }
+skip()  { printf "%s ${C_DIM}–${C_RESET} %s\n" "$JUNIPER_TAG" "$1"; }
+bad()   { printf "%s ${C_RED}✖${C_RESET} %s\n" "$JUNIPER_TAG" "$1" >&2; }
+title() { printf "\n%s ${C_BOLD}▸ %s${C_RESET}\n" "$JUNIPER_TAG" "$1"; }
 run()   {
     if [ "$DRY_RUN" = true ]; then
-        printf "${C_DIM}[DRY ]${C_RESET} %s\n" "$*"
+        printf "%s ${C_DIM}(simulação)${C_RESET} %s\n" "$JUNIPER_TAG" "$*"
     else
         "$@"
     fi
@@ -88,7 +94,7 @@ run()   {
 
 # --- Banner -----------------------------------------------------------
 
-title "Juniper v4 - Desinstalação"
+say "Entendi, você quer me desinstalar. Vou limpar com cuidado."
 
 if [ "$DRY_RUN" = true ]; then
     warn "Modo DRY-RUN — nada será removido de verdade"
@@ -116,10 +122,11 @@ if [ "$SKIP_CONFIRM" = false ] && [ "$DRY_RUN" = false ]; then
         printf "  ${C_RED}- o diretório INTEIRO do repo ($JUNIPER_ROOT)${C_RESET}\n"
     fi
     printf "\n"
-    read -r -p "Confirma? [y/N] " response
+    say "Tem certeza? Vou embora do seu sistema. [y/N]"
+    read -r -p "$USER_TAG " response
     case "$response" in
         [yY]|[yY][eE][sS]) ;;
-        *) echo "Cancelado."; exit 0 ;;
+        *) say "Combinado, não removi nada. Fico por aqui."; exit 0 ;;
     esac
 fi
 
@@ -133,6 +140,12 @@ if [ -d "$VENV_DIR" ]; then
     ok ".venv/ removido"
 else
     skip ".venv/ não existe"
+fi
+
+if [ -d "$JUNIPER_ROOT/.tools" ]; then
+    info "Removendo Python/uv isolados ($JUNIPER_ROOT/.tools)"
+    run rm -rf "$JUNIPER_ROOT/.tools"
+    ok ".tools/ removido"
 fi
 
 if [ -d "$LEGACY_VENV_DIR" ]; then
@@ -178,7 +191,7 @@ clean_rc_file() {
         return 0
     fi
 
-    if ! grep -qF "$PATH_MARKER" "$rc_file"; then
+    if ! grep -qE "# Juniper - (PATH|shell)" "$rc_file"; then
         skip "Nenhum marker da Juniper em $rc_file"
         return 0
     fi
@@ -198,7 +211,7 @@ clean_rc_file() {
         BEGIN { buf = "" }
         {
             # Se a linha contém o marker, pulamos ela e a próxima
-            if (index($0, marker) > 0) {
+            if ($0 ~ /# Juniper - (PATH|shell)/) {
                 skip_next = 1
                 next
             }
@@ -274,15 +287,15 @@ if [ "$PURGE_REPO" = true ]; then
 
     # Guard clause: nunca remover / ou $HOME por acidente
     if [ "$JUNIPER_ROOT" = "/" ] || [ "$JUNIPER_ROOT" = "$HOME" ]; then
-        printf "${C_RED}[FAIL]${C_RESET} Caminho perigoso detectado: %s\n" "$JUNIPER_ROOT"
-        printf "${C_RED}[FAIL]${C_RESET} Abortando para evitar dano.\n"
+        bad "Caminho perigoso detectado: $JUNIPER_ROOT"
+        bad "Abortando para evitar dano."
         exit 1
     fi
 
     # Guard clause: confirmar que parece ser um repo Juniper
     if [ ! -f "$JUNIPER_ROOT/pyproject.toml" ]; then
-        printf "${C_RED}[FAIL]${C_RESET} %s não parece ser um repo Juniper\n" "$JUNIPER_ROOT"
-        printf "${C_RED}[FAIL]${C_RESET} Abortando por segurança.\n"
+        bad "$JUNIPER_ROOT não parece ser um repo Juniper"
+        bad "Abortando por segurança."
         exit 1
     fi
 
@@ -319,21 +332,16 @@ fi
 # --- Resumo -----------------------------------------------------------
 
 if [ "$DRY_RUN" = false ]; then
-    printf "\n${C_BOLD}---------------------------------------------${C_RESET}\n"
-    printf "${C_BOLD}  Desinstalação concluída${C_RESET}\n"
-    printf "${C_BOLD}---------------------------------------------${C_RESET}\n"
-
+    printf "\n"
+    say "Pronto, desinstalação concluída."
     if [ "$PURGE_REPO" = false ]; then
-        printf "  O repo foi preservado em:\n"
-        printf "    %s\n\n" "$JUNIPER_ROOT"
-        printf "  Para rodar de novo:\n"
-        printf "    cd %s && ./scripts/install.sh\n" "$JUNIPER_ROOT"
+        say "Preservei a pasta em $JUNIPER_ROOT. Para me chamar de volta:"
+        printf "       cd %s && bash scripts/install.sh\n" "$JUNIPER_ROOT"
     else
-        printf "  Tudo removido. Nada da Juniper permanece no sistema.\n"
+        say "Removi tudo. Nada de mim permanece no sistema."
     fi
-
-    printf "\n  ${C_DIM}Nota: abra um terminal novo para o PATH antigo sair da sessão.${C_RESET}\n"
-    printf "${C_BOLD}---------------------------------------------${C_RESET}\n\n"
+    say "Abra um terminal novo para o PATH antigo sair da sessão."
+    printf "\n"
 fi
 
 exit 0

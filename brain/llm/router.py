@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any, ClassVar
 
 from brain.config import settings
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
+from brain.llm.compact import compact_messages, compact_tools
 from brain.llm.errors import (
     LLMAuthError,
     LLMError,
@@ -48,6 +49,9 @@ class LLMRouter(LLMProvider):
         self._providers = list(providers)
         # Name of the provider that served the latest call (None before the first success).
         self.last_provider: str | None = None
+        # Optional hook for clients: ``(failed_provider, error, next_provider_or_None)``. Lets a UI
+        # tell the user that a slower fallback is taking over instead of going silent.
+        self.on_failover: Callable[[str, LLMError, str | None], None] | None = None
 
     @property
     def providers(self) -> tuple[LLMProvider, ...]:
@@ -68,15 +72,16 @@ class LLMRouter(LLMProvider):
         max_tokens: int | None = None,
     ) -> LLMResponse:
         failures: list[tuple[str, LLMError]] = []
-        for provider in self._providers:
+        for index, provider in enumerate(self._providers):
             try:
+                send_messages, send_tools = self._prepare(provider, messages, tools)
                 response = await provider.chat(
-                    messages, tools=tools, temperature=temperature, max_tokens=max_tokens
+                    send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 )
                 self.last_provider = provider.name
                 return response
             except _FAILOVER_ERRORS as exc:
-                self._record_failure(provider, exc, failures)
+                self._record_failure(index, exc, failures)
         raise self._all_failed(failures)
 
     async def stream(
@@ -88,11 +93,12 @@ class LLMRouter(LLMProvider):
         max_tokens: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
         failures: list[tuple[str, LLMError]] = []
-        for provider in self._providers:
+        for index, provider in enumerate(self._providers):
             started = False
             try:
+                send_messages, send_tools = self._prepare(provider, messages, tools)
                 async for chunk in provider.stream(
-                    messages, tools=tools, temperature=temperature, max_tokens=max_tokens
+                    send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 ):
                     started = True
                     self.last_provider = provider.name
@@ -101,7 +107,7 @@ class LLMRouter(LLMProvider):
             except _FAILOVER_ERRORS as exc:
                 if started:
                     raise
-                self._record_failure(provider, exc, failures)
+                self._record_failure(index, exc, failures)
         raise self._all_failed(failures)
 
     async def health_check(self) -> bool:
@@ -109,12 +115,26 @@ class LLMRouter(LLMProvider):
         return any(results)
 
     @staticmethod
+    def _prepare(
+        provider: LLMProvider, messages: list[Message], tools: list[dict[str, Any]] | None
+    ) -> tuple[list[Message], list[dict[str, Any]] | None]:
+        """What this provider should receive: compact for slow local ones, as-is otherwise."""
+        if provider.compact_prompt:
+            return compact_messages(messages), compact_tools(tools)
+        return messages, tools
+
     def _record_failure(
-        provider: LLMProvider, exc: LLMError, failures: list[tuple[str, LLMError]]
+        self, index: int, exc: LLMError, failures: list[tuple[str, LLMError]]
     ) -> None:
+        provider = self._providers[index]
         failures.append((provider.name, exc))
         event_log.log("failover", provider=provider.name, type=type(exc).__name__, message=str(exc))
         logger.warning("Failover: %s falhou (%s: %s)", provider.name, type(exc).__name__, exc)
+        if self.on_failover is not None:
+            following = (
+                self._providers[index + 1].name if index + 1 < len(self._providers) else None
+            )
+            self.on_failover(provider.name, exc, following)
 
     @staticmethod
     def _all_failed(failures: list[tuple[str, LLMError]]) -> LLMError:

@@ -20,6 +20,8 @@ class LLMProvider(ABC):
     """
 
     name: ClassVar[str]
+    # Slow local providers (CPU) ask the router for a shorter persona and tool descriptions.
+    compact_prompt: ClassVar[bool] = False
 
     @abstractmethod
     async def chat(

@@ -8,8 +8,8 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from brain.clients import cli
-from brain.llm.errors import LLMAuthError, LLMError
+from brain.clients import cli, voice
+from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError, LLMUnavailableError
 from brain.llm.router import LLMRouter
 from brain.tools.base import Tier
 from tests.test_agent import FakeProvider, call, say
@@ -29,14 +29,14 @@ def use_provider(monkeypatch: pytest.MonkeyPatch, provider: FakeProvider) -> Non
 def test_version() -> None:
     result = runner.invoke(cli.app, ["version"])
     assert result.exit_code == 0
-    assert "Juniper" in result.output
+    assert result.output.startswith(voice.JUNIPER_TAG) and "versão" in result.output
 
 
 def test_one_shot_streams_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("Oi, ", "pessoa.")]))
     result = runner.invoke(cli.app, ["chat", "oi"])
     assert result.exit_code == 0
-    assert "juniper>" in result.output and "Oi, pessoa." in result.output
+    assert f"{voice.JUNIPER_TAG} Oi, pessoa." in result.output
 
 
 def test_reply_with_brackets_is_not_treated_as_markup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -87,7 +87,7 @@ def test_repl_survives_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([]))
     result = runner.invoke(cli.app, ["chat"], input="oi\n/sair\n")
     assert result.exit_code == 0
-    assert "Nenhum LLM respondeu" in result.output
+    assert "Não consegui falar com nenhum LLM" in result.output
 
 
 def test_friendly_error_hints() -> None:
@@ -233,3 +233,190 @@ def test_tools_command_lists_registered_tools(monkeypatch: pytest.MonkeyPatch) -
     assert result.exit_code == 0
     for text in ("echo", "write_thing", "nuke", "read", "forbidden", "executor"):
         assert text in result.output
+
+
+# --- Voz da Juniper (padrão de fala) ------------------------------------------------
+
+
+def test_every_line_juniper_says_carries_the_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    use_provider(monkeypatch, FakeProvider([say("Oi.")]))
+    result = runner.invoke(cli.app, ["chat"], input="oi\n/sair\n")
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert lines[0].startswith(voice.JUNIPER_TAG)  # greeting
+    assert any(f"{voice.JUNIPER_TAG} Oi." in line for line in lines)  # AI reply
+    assert lines[-1].endswith(f"{voice.JUNIPER_TAG} Até logo!")  # goodbye (after the prompt)
+
+
+def test_repl_prompt_uses_the_user_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    prompts: list[str] = []
+
+    async def fake_read(self: cli.LineReader, prompt: str) -> str:
+        prompts.append(prompt)
+        raise EOFError
+
+    use_provider(monkeypatch, FakeProvider([]))
+    monkeypatch.setattr(cli.LineReader, "read", fake_read)
+    result = runner.invoke(cli.app, ["chat"])
+    assert prompts == [f"{voice.USER_TAG} "] and result.exit_code == 0
+
+
+def test_no_arguments_greets_and_lists_commands() -> None:
+    result = runner.invoke(cli.app, [])
+    assert result.exit_code == 0
+    assert result.output.startswith(f"{voice.JUNIPER_TAG} Olá, sou Juniper")
+    assert "search" in result.output and "chat" in result.output
+
+
+def test_tools_command_introduces_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_agent import make_registry
+
+    monkeypatch.setattr(cli, "registry", make_registry()[0])
+    assert runner.invoke(cli.app, ["tools"]).output.startswith(voice.JUNIPER_TAG)
+
+
+def test_unknown_provider_is_said_by_juniper() -> None:
+    result = runner.invoke(cli.app, ["chat", "oi", "-p", "gpt"])
+    assert result.exit_code == 2 and result.output.startswith(voice.JUNIPER_TAG)
+
+
+async def test_confirmation_is_asked_by_juniper_and_answered_by_the_user() -> None:
+    confirm, reader, out = make_confirm("y")
+    assert await confirm("create_event", {"title": "x"}, Tier.WRITE) is True
+    shown = out.export_text(clear=False)
+    assert shown.startswith(voice.JUNIPER_TAG) and "[y/N]" in shown
+    assert reader.prompts == [f"{voice.USER_TAG} "]
+
+
+def test_say_formats_single_and_multiline_speech() -> None:
+    out = Console(record=True, width=80)
+    voice.say(out, "primeira\nsegunda")
+    assert out.export_text(clear=False) == f"{voice.JUNIPER_TAG} primeira\n   segunda\n"
+
+
+def test_say_never_parses_markup() -> None:
+    out = Console(record=True, width=80)
+    voice.say(out, "use [bold]isto[/bold] e [x]")
+    assert "[bold]isto[/bold] e [x]" in out.export_text(clear=False)
+
+
+def test_no_stray_tag_when_the_llm_fails_before_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
+    use_provider(monkeypatch, FakeProvider([]))
+    result = runner.invoke(cli.app, ["chat", "oi"])
+    assert not any(line.strip() == voice.JUNIPER_TAG for line in result.output.splitlines())
+
+
+def test_shell_and_python_voices_are_identical() -> None:
+    """shell/core/voice.sh is the shell twin of brain/clients/voice.py: same strings."""
+    from pathlib import Path
+
+    text = (Path(cli.__file__).resolve().parents[2] / "shell" / "core" / "voice.sh").read_text()
+    assert f'JUNIPER_TAG="{voice.JUNIPER_TAG}"' in text
+    assert f'JUNIPER_USER_TAG="{voice.USER_TAG}"' in text
+    for script in ("install.sh", "uninstall.sh"):
+        body = (Path(cli.__file__).resolve().parents[2] / "scripts" / script).read_text()
+        assert f'JUNIPER_TAG="{voice.JUNIPER_TAG}"' in body
+        assert f'USER_TAG="{voice.USER_TAG}"' in body
+
+
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        (["🌿 JUNIPER: ", "Oi!"], "Oi!"),
+        (["Jun", "iper", ": Oi", "!"], "Oi!"),
+        (["juniper: oi"], "oi"),
+        (
+            ["Oi, ", "tudo bem? Aqui vai uma resposta comprida."],
+            "Oi, tudo bem? Aqui vai uma resposta comprida.",
+        ),
+        (["Oi"], "Oi"),  # shorter than the look-ahead window: flushed at the end of the reply
+        (
+            ["Falei com a Juniper: ela disse oi"],
+            "Falei com a Juniper: ela disse oi",
+        ),  # not at start
+    ],
+)
+def test_model_echo_of_its_own_name_is_dropped(tokens: list[str], expected: str) -> None:
+    out = Console(record=True, width=120)
+    printer = cli.Printer(out)
+    printer.begin_reply()
+    for token in tokens:
+        printer.token(token)
+    printer.end_line()
+    assert out.export_text(clear=False) == f"{voice.JUNIPER_TAG} {expected}\n"
+
+
+def test_tag_is_reprinted_after_a_fixed_line() -> None:
+    """Text streamed after a confirmation (a new Juniper line) gets its own tag."""
+    out = Console(record=True, width=120)
+    printer = cli.Printer(out)
+    printer.begin_reply()
+    printer.token("Vou olhar a agenda, um segundo.")
+    printer.say("Posso executar create_event? [y/N]")
+    printer.token("Marquei!")
+    printer.end_line()
+    lines = out.export_text(clear=False).splitlines()
+    assert [line.split(":")[0] for line in lines] == ["🌿 JUNIPER"] * 3
+
+
+def test_unknown_command_is_said_by_juniper() -> None:
+    result = runner.invoke(cli.app, ["fooo"])
+    assert result.exit_code == 2
+    assert result.output.startswith(f"{voice.JUNIPER_TAG} Não conheço o comando 'fooo'")
+
+
+# --- Failover visível ---------------------------------------------------------------
+
+
+def failover_router() -> LLMRouter:
+    from tests.test_llm_router import ScriptedProvider
+
+    return LLMRouter(
+        [
+            ScriptedProvider("groq", error=LLMAuthError("credenciais recusadas (HTTP 401)")),
+            ScriptedProvider("ollama", chunks=("Oi, ", "sou o Ollama.")),
+        ]
+    )
+
+
+def test_failover_is_announced_in_juniper_voice(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "build_router", lambda name: failover_router())
+    result = runner.invoke(cli.app, ["chat", "oi"])
+    assert result.exit_code == 0
+    assert "O groq recusou as credenciais. Vou tentar o ollama." in result.output
+    assert "Sem GPU" in result.output
+    assert "Oi, sou o Ollama." in result.output
+    assert "Failover:" not in result.output  # no raw library warning in the conversation
+
+
+def test_router_calls_on_failover_with_the_next_provider() -> None:
+    import asyncio
+
+    router = failover_router()
+    seen: list[tuple[str, str, str | None]] = []
+    router.on_failover = lambda failed, exc, nxt: seen.append((failed, type(exc).__name__, nxt))
+
+    async def drain() -> None:
+        async for _ in router.stream([]):
+            pass
+
+    asyncio.run(drain())
+    assert seen == [("groq", "LLMAuthError", "ollama")]
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (LLMRateLimitError("x"), "O limite do groq acabou"),
+        (LLMUnavailableError("x"), "O groq não respondeu"),
+    ],
+)
+def test_failover_reasons(exc: LLMError, expected: str) -> None:
+    out = Console(record=True, width=120)
+    cli.Printer(out).notify_failover("groq", exc, "ollama")
+    assert expected in out.export_text(clear=False)
+
+
+def test_last_provider_failing_is_said_without_a_next_step() -> None:
+    out = Console(record=True, width=120)
+    cli.Printer(out).notify_failover("ollama", LLMUnavailableError("x"), None)
+    assert "Falhou: o ollama não respondeu." in out.export_text(clear=False)

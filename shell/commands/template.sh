@@ -9,14 +9,14 @@
 seucomando_run() {
     # Validação de argumentos (opcional)
     if [ -z "$1" ]; then
-        echo "❌ Uso: juniper seucomando <argumento>"
+        _juniper_say "❌ Uso: juniper seucomando <argumento>"
         return 1
     fi
     
     local argumento="$1"
     
     # Sua lógica aqui
-    echo "🌿 Executando comando com: $argumento"
+    _juniper_say "Executando comando com: $argumento"
     
     # Exemplo: executar comando git
     # git status

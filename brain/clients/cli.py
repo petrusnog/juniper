@@ -9,33 +9,66 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
+import re
 import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
 import subprocess
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Any, Optional
 
 import typer
 from rich.console import Console
-from rich.markup import escape
+from rich.status import Status
 from rich.table import Table
+from rich.text import Text
+from typer.core import TyperGroup
 
 from brain import __version__
+from brain.clients import voice
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
-from brain.llm.errors import LLMError
+from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
 
+console = Console()
+
+# The terminal speaks only through voice.py; library warnings (e.g. the router's failover
+# warning) go to the structured event log instead of leaking raw into the conversation.
+logging.getLogger("brain").addHandler(logging.NullHandler())
+
+
+class JuniperGroup(TyperGroup):
+    """Command group that reports an unknown command in Juniper's voice.
+
+    Typed loosely on purpose: typer >= 0.2x vendors click, older versions depend on it,
+    so ``click`` cannot be imported by name here.
+    """
+
+    def resolve_command(self, ctx: Any, args: list[str]) -> Any:
+        try:
+            return super().resolve_command(ctx, args)
+        except Exception as exc:
+            if type(exc).__name__ != "UsageError" or not args:
+                raise
+            voice.say(
+                console,
+                f"Não conheço o comando '{args[0]}'. Rode `juniper` para ver o que sei fazer.",
+                "red",
+            )
+            ctx.exit(2)
+
+
 app = typer.Typer(
     name="juniper",
     help="Juniper — agente autônomo de automação e conversação.",
-    no_args_is_help=True,
+    cls=JuniperGroup,
 )
-
-console = Console()
 
 _YES = {"y", "yes", "s", "sim"}
 _EXIT = {"/sair", "/exit"}
@@ -84,22 +117,96 @@ def _resolve(future: asyncio.Future[str], value: str | None, exc: BaseException 
         future.set_result(value or "")
 
 
+# The model sometimes opens with its own name ("Juniper:", "🌿 JUNIPER:"); the terminal already
+# printed the tag, so a leading echo of it is dropped.
+_SELF_TAG = re.compile(r"^\s*(?:🌿\s*)?juniper\s*:\s*", re.IGNORECASE)
+# How much of a reply is held back to look for that echo (a token or two).
+_HEAD_CHARS = 16
+
+
 class Printer:
-    """Console output that tracks whether the cursor is mid-line (streaming)."""
+    """Console output that tracks whether the cursor is mid-line (streaming).
+
+    The Juniper tag is printed lazily, right before the first text of a reply, so a turn that
+    fails before producing text does not leave an empty "🌿 JUNIPER:" line behind.
+    """
 
     def __init__(self, out: Console) -> None:
         self.out = out
         self._mid_line = False
+        self._need_tag = False
+        self._head: str | None = None  # start of the reply, held while we look for a self-tag
+        self._status: Status | None = None
+
+    def begin_reply(self) -> None:
+        """The next streamed token opens a Juniper line; until it arrives, show a spinner."""
+        self._need_tag = True
+        self._head = ""
+        self._spin("pensando...")
+
+    def _spin(self, text: str) -> None:
+        """Spinner for the wait (cold LLMs can take minutes). Only on a real terminal."""
+        self._unspin()
+        if self.out.is_terminal:
+            self._status = self.out.status(Text.assemble(voice.tag_text(), (text, "dim")))
+            self._status.start()
+
+    def _unspin(self) -> None:
+        if self._status is not None:
+            self._status.stop()
+            self._status = None
+
+    def notify_failover(self, failed: str, exc: LLMError, following: str | None) -> None:
+        """A provider failed and another takes over: say so instead of going silent."""
+        if isinstance(exc, LLMAuthError):
+            why = f"o {failed} recusou as credenciais"
+        elif isinstance(exc, LLMRateLimitError):
+            why = f"o limite do {failed} acabou"
+        else:
+            why = f"o {failed} não respondeu"
+        if following is None:
+            self.say(f"Falhou: {why}.", "yellow")
+            return
+        extra = " Sem GPU isso pode levar alguns minutos." if following == "ollama" else ""
+        self.say(f"{why[0].upper()}{why[1:]}. Vou tentar o {following}.{extra}", "yellow")
+        self._spin(f"esperando o {following}...")
 
     def token(self, text: str) -> None:
+        if self._head is not None:
+            self._head += text
+            if len(self._head) < _HEAD_CHARS and "\n" not in self._head:
+                return
+            self._flush_head()
+            return
+        self._write(text)
+
+    def _flush_head(self) -> None:
+        head, self._head = self._head or "", None
+        head = _SELF_TAG.sub("", head, count=1)
+        if head:
+            self._write(head)
+
+    def _write(self, text: str) -> None:
+        self._unspin()
+        if self._need_tag:
+            voice.start_reply(self.out)
+            self._need_tag = False
         self.out.print(text, end="", markup=False, highlight=False, soft_wrap=True)
         self._mid_line = not text.endswith("\n")
 
-    def start_reply(self) -> None:
-        self.out.print("[bold magenta]juniper>[/bold magenta] ", end="")
-        self._mid_line = True
+    def say(self, text: str, style: str | None = None) -> None:
+        """A fixed Juniper line (always on its own line, after any streamed text)."""
+        self._unspin()
+        self.end_line()
+        voice.say(self.out, text, style)
+        self._need_tag = True  # whatever the model streams next is a new Juniper line
+        self._head = ""
 
     def end_line(self) -> None:
+        self._unspin()
+        if self._head:
+            self._flush_head()
+        self._head = None
         if self._mid_line:
             self.out.print()
             self._mid_line = False
@@ -111,20 +218,15 @@ def make_confirm(
     """Build the dispatcher's ``confirm`` callback (the timeout is enforced by the dispatcher)."""
 
     async def confirm(name: str, args: dict[str, Any], tier: Tier) -> bool:
-        printer.end_line()
         if tier is Tier.DESTRUCTIVE:
-            printer.out.print(f"[bold red]⚠ {name}[/bold red] [red](IRREVERSÍVEL)[/red]")
+            printer.say(f"Posso executar {name}? Isso é IRREVERSÍVEL. [y/N]", "bold red")
         else:
-            printer.out.print(
-                f"[bold yellow]⚠ {name}[/bold yellow] [yellow](altera coisas)[/yellow]"
-            )
+            printer.say(f"Posso executar {name}? Isso altera coisas. [y/N]", "yellow")
         printer.out.print(
-            f"  [dim]{escape(json.dumps(args, ensure_ascii=False))}[/dim]",
-            markup=True,
-            highlight=False,
+            Text(f"   {json.dumps(args, ensure_ascii=False)}", style="dim"), highlight=False
         )
         try:
-            answer = await reader.read("  Confirma? [y/N] ")
+            answer = await reader.read(voice.user_prompt())
         except (EOFError, KeyboardInterrupt):
             return False
         return answer.strip().lower() in _YES
@@ -133,7 +235,7 @@ def make_confirm(
 
 
 def friendly_error(exc: LLMError) -> str:
-    """Translate an LLM failure into an actionable PT-BR message."""
+    """Translate an LLM failure into an actionable PT-BR message (plain text)."""
     detail = str(exc)
     hints: list[str] = []
     if "chave de API ausente" in detail or "LLMAuthError" in detail:
@@ -142,10 +244,10 @@ def friendly_error(exc: LLMError) -> str:
         hints.append("Limite da Groq atingido: espere um minuto e tente de novo.")
     if "ollama" in detail and ("LLMUnavailableError" in detail or "LLMTimeoutError" in detail):
         hints.append("Ollama não respondeu: ele está rodando? (`ollama serve`)")
-    text = "Nenhum LLM respondeu."
+    text = "Não consegui falar com nenhum LLM agora."
     if hints:
-        text += "\n" + "\n".join(f"  · {h}" for h in hints)
-    return f"{text}\n[dim]{escape(detail)}[/dim]"
+        text += "\n" + "\n".join(f"· {h}" for h in hints)
+    return f"{text}\nDetalhe técnico: {detail}"
 
 
 def build_router(provider: str | None) -> LLMRouter:
@@ -153,7 +255,7 @@ def build_router(provider: str | None) -> LLMRouter:
     if provider is None:
         return LLMRouter()
     if provider not in PROVIDERS:
-        raise typer.BadParameter(
+        raise ValueError(
             f"provider desconhecido: {provider!r} (use {' ou '.join(sorted(PROVIDERS))})"
         )
     return LLMRouter([PROVIDERS[provider]()])
@@ -165,23 +267,24 @@ async def converse(agent: Agent, printer: Printer, reader: LineReader, message: 
     while True:
         if pending is None:
             try:
-                text = (await reader.read("você> ")).strip()
+                text = (await reader.read(voice.user_prompt())).strip()
             except EOFError:
                 printer.out.print()
+                printer.say("Até logo!")
                 return 0
             if text in _EXIT:
+                printer.say("Até logo!")
                 return 0
             if not text:
                 continue
         else:
             text = pending
-        printer.start_reply()
+        printer.begin_reply()
         code = 0
         try:
             await agent.run(text, on_token=printer.token)
         except LLMError as exc:
-            printer.end_line()
-            printer.out.print(f"[red]{friendly_error(exc)}[/red]")
+            printer.say(friendly_error(exc), "red")
             code = 1
         printer.end_line()
         if message is not None:
@@ -194,23 +297,35 @@ async def _chat(message: str | None, provider: str | None) -> int:
     registry.discover()
     router = build_router(provider)
     printer = Printer(console)
+    router.on_failover = printer.notify_failover
     reader = LineReader()
     agent = Agent(router, Dispatcher(make_confirm(printer, reader)))
     if message is None:
-        console.print(
-            f"[bold green]🌿 Juniper v{__version__}[/bold green] [dim]· /sair para encerrar[/dim]\n"
-        )
+        printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
+        console.print()
     try:
         return await converse(agent, printer, reader, message)
     finally:
         await router.aclose()
 
 
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Sem comando, a Juniper se apresenta e mostra o que sabe fazer."""
+    if ctx.invoked_subcommand is None:
+        voice.say(console, "Olá, sou Juniper, sua assistente de automações favorita!")
+        voice.say(console, "Use `juniper chat` para conversar. O resto está logo abaixo:")
+        console.print()
+        console.print(ctx.get_help())
+        raise typer.Exit(0)
+
+
 @app.command()
 def version() -> None:
     """Exibe a versão da Juniper."""
-    console.print(f"[bold green]🌿 Juniper v{__version__}[/bold green]")
-    console.print("[dim]Arquitetura v4 — brain/core + brain/clients[/dim]")
+    voice.say(
+        console, f"Estou na versão {__version__} (arquitetura v4: brain/core + brain/clients)."
+    )
 
 
 @app.command()
@@ -227,8 +342,12 @@ def chat(
     """Conversa com a Juniper: `juniper chat "oi"` ou `juniper chat` (interativo)."""
     try:
         code = asyncio.run(_chat(message, provider))
+    except ValueError as exc:  # unknown --provider
+        voice.say(console, f"{exc}", "red")
+        raise typer.Exit(2) from None
     except KeyboardInterrupt:
-        console.print("\n[dim]Até logo.[/dim]")
+        console.print()
+        voice.say(console, "Até logo!")
         raise typer.Exit(130) from None
     if code:
         raise typer.Exit(code)
@@ -239,7 +358,7 @@ def run_legacy_command(args: list[str]) -> int:
     try:
         return subprocess.run(legacy_argv(args), check=False).returncode
     except FileNotFoundError:
-        console.print("[red]zsh não encontrado: os comandos legados precisam dele.[/red]")
+        voice.say(console, "Não achei o zsh, e esses comandos dependem dele.", "red")
         return 127
 
 
@@ -265,6 +384,19 @@ def deploy(ctx: typer.Context) -> None:
     raise typer.Exit(run_legacy_command(["deploy", *ctx.args]))
 
 
+INSTALL_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "install.sh"
+
+
+@app.command("install", context_settings=_PASSTHROUGH)
+def install(ctx: typer.Context) -> None:
+    """Instala/repara a Juniper (venv + dependências). Opções: --dev, --clean, --check, --yes."""
+    if not INSTALL_SCRIPT.exists():
+        voice.say(console, f"Não encontrei o instalador ({INSTALL_SCRIPT}).", "red")
+        raise typer.Exit(1)
+    # exec: this process lives inside the venv the installer may rebuild, so it must not stay alive.
+    os.execvp("bash", ["bash", str(INSTALL_SCRIPT), *ctx.args])
+
+
 @app.command()
 def tools() -> None:
     """Lista as tools registradas: nome, tier, locality e descrição."""
@@ -283,6 +415,7 @@ def tools() -> None:
         table.add_row(
             tool.name, f"[{color}]{tool.tier}[/{color}]", str(tool.locality), tool.description
         )
+    voice.say(console, "Isto é o que sei fazer hoje:")
     console.print(table)
 
 

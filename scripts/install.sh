@@ -1,354 +1,560 @@
 #!/usr/bin/env bash
 #
-# Juniper v4 - Setup de ambiente de desenvolvimento (idempotente)
+# Juniper v4 - Instalador do cérebro (idempotente, sem configuração manual)
 #
 # Uso:
-#   ./scripts/install.sh              # setup completo
-#   ./scripts/install.sh --clean      # recria o venv do zero
-#   ./scripts/install.sh --no-ollama  # pula validação do Ollama
-#   ./scripts/install.sh --ci         # modo CI (sem cores, sem alterar .zshrc)
+#   juniper install                    # (shell) ou ./scripts/install.sh
+#   ./scripts/install.sh --dev         # inclui ferramentas de desenvolvimento (pytest, ruff, mypy)
+#   ./scripts/install.sh --clean       # apaga o ambiente e instala do zero
+#   ./scripts/install.sh --check       # só verifica; não altera nada
+#   ./scripts/install.sh --yes         # não faz perguntas (CI, scripts)
+#   ./scripts/install.sh --no-rc       # não mexe em ~/.zshrc / ~/.bashrc
 #
-# O que este script faz:
-#   1. Valida Python >= 3.11
-#   2. Cria/reaproveita .venv/ na raiz do repo
-#   3. Instala dependências (pip install -e ".[dev]")
-#   4. Cria config.yaml e .env a partir dos exemplos
-#   5. Cria symlink ~/.local/bin/juniper -> .venv/bin/juniper
-#   6. Adiciona ~/.local/bin ao PATH do .zshrc/.bashrc (se necessário)
-#   7. Aplica o PATH na sessão atual (funciona imediatamente)
-#   8. Valida que 'juniper version' funciona em shell novo
-#
-# Após rodar, 'juniper' funciona em qualquer terminal, sem ativar venv.
+# Funciona em máquina SEM Python. Tudo vive dentro de ~/.juniper (ambiente virtual .venv/):
+#   1. Python >= 3.11 do sistema (se existir e funcionar) ou um Python isolado baixado
+#      pelo uv (sem root, sem tocar no Python da máquina).
+#   2. Reaproveita o que já existe e está saudável; apaga e reinstala só o que está com defeito.
+#   3. Cria config.yaml e .env, o atalho ~/.local/bin/juniper e o gancho do shell.
+#   4. Termina com um teste real. Se terminar com sucesso, a Juniper está pronta.
 
 set -euo pipefail
 
-# --- Configuração -----------------------------------------------------
+# --- Caminhos -----------------------------------------------------------
 
 JUNIPER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$JUNIPER_ROOT/.venv"
 LEGACY_VENV_DIR="$JUNIPER_ROOT/venv"
+TOOLS_DIR="$JUNIPER_ROOT/.tools"
 LOCAL_BIN="$HOME/.local/bin"
 LOG_DIR="$HOME/.juniper/logs"
+LOG_FILE="$LOG_DIR/install.log"
 PATH_MARKER='# Juniper - PATH'
+HOOK_MARKER='# Juniper - shell'
+PYTHON_VERSION_WANTED="3.12"
+UV_BASE_URL="https://github.com/astral-sh/uv/releases/latest/download"
 
-# --- Flags ------------------------------------------------------------
+# --- Flags ----------------------------------------------------------------
 
+WITH_DEV=false
 CLEAN=false
-CHECK_OLLAMA=true
-CI_MODE=false
+CHECK_ONLY=false
+ASSUME_YES=false
+TOUCH_RC=true
 
-for arg in "$@"; do
-    case "$arg" in
-        --clean)     CLEAN=true ;;
-        --no-ollama) CHECK_OLLAMA=false ;;
-        --ci)        CI_MODE=true ;;
-        -h|--help)
-            sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
-            exit 0
-            ;;
-        *)
-            echo "Flag desconhecida: $arg" >&2
-            exit 1
-            ;;
-    esac
-done
+parse_flags() {
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --dev)       WITH_DEV=true ;;
+            --clean)     CLEAN=true ;;
+            --check)     CHECK_ONLY=true ;;
+            --yes|--ci)  ASSUME_YES=true ;;
+            --no-rc)     TOUCH_RC=false ;;
+            --no-ollama) ;; # aceito por compatibilidade; o Ollama é opcional
+            -h|--help)
+                sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+                exit 0
+                ;;
+            *)
+                printf '🌿 JUNIPER: Opção desconhecida: %s (use --help)\n' "$arg" >&2
+                exit 2
+                ;;
+        esac
+    done
+}
 
-# --- Cores ------------------------------------------------------------
+# --- Saída --------------------------------------------------------------------
 
-if [ "$CI_MODE" = true ] || [ ! -t 1 ]; then
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    C_RESET=$'\033[0m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'
+    C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+else
     C_RESET=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_BOLD=""; C_DIM=""
-else
-    C_RESET="\033[0m"
-    C_GREEN="\033[32m"
-    C_YELLOW="\033[33m"
-    C_RED="\033[31m"
-    C_BOLD="\033[1m"
-    C_DIM="\033[2m"
 fi
 
-ok()    { printf "${C_GREEN}[ OK ]${C_RESET} %s\n" "$1"; }
-warn()  { printf "${C_YELLOW}[WARN]${C_RESET} %s\n" "$1"; }
-fail()  { printf "${C_RED}[FAIL]${C_RESET} %s\n" "$1" >&2; }
-info()  { printf "${C_DIM}[ .. ]${C_RESET} %s\n" "$1"; }
-title() { printf "\n${C_BOLD}== %s ==${C_RESET}\n" "$1"; }
+# A Juniper fala sempre com o mesmo prefixo (igual a shell/core/voice.sh e brain/clients/voice.py);
+# o usuário responde com o dele.
+JUNIPER_TAG="🌿 JUNIPER:"
+USER_TAG="👤 VOCÊ:"
 
-declare -a SUMMARY=()
-add_summary() { SUMMARY+=("$1"); }
+say()   { printf '%s %s\n' "$JUNIPER_TAG" "$1"; }
+ok()    { printf '%s %s✔%s %s\n' "$JUNIPER_TAG" "$C_GREEN" "$C_RESET" "$1"; }
+warn()  { printf '%s %s⚠%s %s\n' "$JUNIPER_TAG" "$C_YELLOW" "$C_RESET" "$1"; }
+info()  { printf '%s %s…%s %s\n' "$JUNIPER_TAG" "$C_DIM" "$C_RESET" "$1"; }
+fail()  { printf '%s %s✖%s %s\n' "$JUNIPER_TAG" "$C_RED" "$C_RESET" "$1" >&2; }
+title() { printf '\n%s %s▸ %s%s\n' "$JUNIPER_TAG" "$C_BOLD" "$1" "$C_RESET"; }
 
-# --- Guard clauses ----------------------------------------------------
-
-title "Juniper v4 - Setup"
-
-if [ ! -f "$JUNIPER_ROOT/pyproject.toml" ]; then
-    fail "pyproject.toml não encontrado em $JUNIPER_ROOT"
-    fail "Execute este script de dentro do repositório Juniper."
+die() {
+    fail "$1"
+    [ -n "${2:-}" ] && printf '%s %s\n' "$JUNIPER_TAG" "$2" >&2
+    printf '%s Detalhes técnicos: %s\n' "$JUNIPER_TAG" "$LOG_FILE" >&2
     exit 1
-fi
-info "Raiz do projeto: $JUNIPER_ROOT"
+}
 
-# --- Python >= 3.11 ---------------------------------------------------
+# --- Execução com log e retentativas -------------------------------------------
 
-PYTHON_BIN=""
-for candidate in python3.13 python3.12 python3.11 python3; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-        version=$("$candidate" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        major=${version%%.*}
-        minor=${version##*.}
-        if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
-            PYTHON_BIN="$candidate"
-            break
+# Roda o comando com a saída indo para o log (o usuário só vê o resumo).
+run_logged() {
+    mkdir -p "$LOG_DIR"
+    printf '\n$ %s\n' "$*" >> "$LOG_FILE"
+    "$@" >> "$LOG_FILE" 2>&1
+}
+
+# Redes falham à toa: tenta até 3 vezes, esperando um pouco entre elas.
+retry() {
+    local attempt=1
+    while true; do
+        if run_logged "$@"; then
+            return 0
         fi
-    fi
-done
+        if [ "$attempt" -ge 3 ]; then
+            return 1
+        fi
+        info "Falhou, tentando de novo ($((attempt + 1))/3)..."
+        sleep $((attempt * 2))
+        attempt=$((attempt + 1))
+    done
+}
 
-if [ -z "$PYTHON_BIN" ]; then
-    fail "Python >= 3.11 não encontrado."
-    fail "Instale em https://www.python.org/downloads/"
-    exit 1
-fi
-PY_VERSION=$("$PYTHON_BIN" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
-ok "Python $PY_VERSION ($PYTHON_BIN)"
-add_summary "[OK] Python $PY_VERSION"
-
-# --- Limpeza / reconciliação de venv ----------------------------------
-
-if [ "$CLEAN" = true ]; then
-    [ -d "$VENV_DIR" ] && rm -rf "$VENV_DIR" && info "Removido .venv/ (--clean)"
-    [ -d "$LEGACY_VENV_DIR" ] && rm -rf "$LEGACY_VENV_DIR" && info "Removido venv/ legado (--clean)"
-fi
-
-# Remover venv legado sem ponto (não dá para mover: shebangs são absolutos)
-if [ -d "$LEGACY_VENV_DIR" ]; then
-    info "Removendo venv legado em 'venv/' (não pode ser movido)"
-    rm -rf "$LEGACY_VENV_DIR"
-    ok "Venv legado removido"
-    add_summary "[OK] Venv legado limpo"
-fi
-
-# --- Criar venv -------------------------------------------------------
-
-if [ ! -d "$VENV_DIR" ]; then
-    info "Criando .venv/ em $VENV_DIR"
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
-    ok "Venv criado"
-    add_summary "[OK] .venv/ criado"
-else
-    ok ".venv/ já existe"
-    add_summary "[OK] .venv/ existente"
-fi
-
-# shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
-
-# Sanity check do python do venv
-if ! command -v python >/dev/null 2>&1 || ! python -c 'import sys' >/dev/null 2>&1; then
-    fail "Python do venv não funciona"
-    fail "Rode: rm -rf .venv && ./scripts/install.sh"
-    exit 1
-fi
-
-# --- pip + dependências -----------------------------------------------
-
-info "Atualizando pip"
-python -m pip install --quiet --upgrade pip
-
-info "Instalando dependências (editable + dev)"
-if ! python -m pip install --quiet -e ".[dev]"; then
-    fail "Falha ao instalar dependências"
-    exit 1
-fi
-ok "Dependências instaladas"
-add_summary "[OK] Dependências instaladas"
-
-# --- Validar binário juniper ------------------------------------------
-
-JUNIPER_BIN="$VENV_DIR/bin/juniper"
-
-if [ ! -x "$JUNIPER_BIN" ]; then
-    fail "Binário juniper não encontrado em $JUNIPER_BIN"
-    fail "Verifique se [project.scripts] está no pyproject.toml"
-    exit 1
-fi
-
-if [ ! -s "$JUNIPER_BIN" ]; then
-    fail "Binário juniper está vazio (0 bytes)"
-    fail "Tente: pip install --force-reinstall --no-deps -e ."
-    exit 1
-fi
-
-if ! "$JUNIPER_BIN" version >/dev/null 2>&1; then
-    fail "Binário juniper não executa corretamente"
-    fail "Rode manualmente: $JUNIPER_BIN version"
-    exit 1
-fi
-ok "Binário juniper funcional"
-add_summary "[OK] Binário funcional"
-
-# --- jq (aviso) -------------------------------------------------------
-
-if command -v jq >/dev/null 2>&1; then
-    ok "jq instalado"
-    add_summary "[OK] jq"
-else
-    warn "jq não encontrado (recomendado para tools JSON)"
-    add_summary "[WARN] jq ausente"
-fi
-
-# --- Ollama (aviso) ---------------------------------------------------
-
-if [ "$CHECK_OLLAMA" = true ]; then
-    if command -v ollama >/dev/null 2>&1 && curl -sS --max-time 2 http://localhost:11434 >/dev/null 2>&1; then
-        ok "Ollama online em localhost:11434"
-        add_summary "[OK] Ollama online"
+online() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSI --max-time 8 https://pypi.org >/dev/null 2>&1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --spider --timeout=8 https://pypi.org 2>/dev/null
     else
-        warn "Ollama não disponível (opcional, use Groq)"
-        add_summary "[WARN] Ollama offline"
+        return 1
     fi
-else
-    info "Validação do Ollama pulada"
-    add_summary "[SKIP] Ollama"
-fi
+}
 
-# --- config.yaml ------------------------------------------------------
+network_hint() {
+    if online; then
+        echo "A internet está acessível, mas a instalação falhou. Rode de novo; se persistir, envie o log."
+    else
+        echo "Sem conexão com a internet (pypi.org inacessível). Conecte-se e rode 'juniper install' de novo."
+    fi
+}
 
-if [ ! -f "$JUNIPER_ROOT/config.yaml" ] && [ -f "$JUNIPER_ROOT/config.yaml.example" ]; then
-    cp "$JUNIPER_ROOT/config.yaml.example" "$JUNIPER_ROOT/config.yaml"
-    ok "config.yaml criado"
-    add_summary "[OK] config.yaml criado"
-elif [ -f "$JUNIPER_ROOT/config.yaml" ]; then
-    ok "config.yaml já existe"
-    add_summary "[OK] config.yaml existente"
-fi
+# --- Download e uv ----------------------------------------------------------------
 
-# --- .env -------------------------------------------------------------
+download() { # download <url> <destino>
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --retry 3 --connect-timeout 15 -o "$2" "$1"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --tries=3 --timeout=30 -O "$2" "$1"
+    else
+        return 127
+    fi
+}
 
-if [ ! -f "$JUNIPER_ROOT/.env" ] && [ -f "$JUNIPER_ROOT/.env.example" ]; then
-    cp "$JUNIPER_ROOT/.env.example" "$JUNIPER_ROOT/.env"
-    ok ".env criado (preencher GROQ_API_KEY depois)"
-    add_summary "[OK] .env criado"
-elif [ -f "$JUNIPER_ROOT/.env" ]; then
-    ok ".env já existe"
-    add_summary "[OK] .env existente"
-fi
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
 
-# --- Diretório de logs ------------------------------------------------
+# Triplo de plataforma do uv: uv_triple <uname -s> <uname -m> <musl|gnu>
+uv_triple() {
+    local os="$1" arch="$2" libc="${3:-gnu}"
+    case "$arch" in
+        arm64) arch="aarch64" ;;
+        amd64) arch="x86_64" ;;
+    esac
+    case "$os-$arch" in
+        Linux-x86_64|Linux-aarch64) echo "$arch-unknown-linux-$libc" ;;
+        Darwin-x86_64|Darwin-aarch64) echo "$arch-apple-darwin" ;;
+        *) return 1 ;;
+    esac
+}
 
-mkdir -p "$LOG_DIR"
-ok "Logs em $LOG_DIR"
-add_summary "[OK] ~/.juniper/logs/"
+detect_libc() {
+    if ls /lib/ld-musl-* >/dev/null 2>&1 || (ldd --version 2>&1 | grep -qi musl); then
+        echo musl
+    else
+        echo gnu
+    fi
+}
 
-# --- Symlink global ---------------------------------------------------
+UV_BIN=""
+VENV_FRESH=false
 
-mkdir -p "$LOCAL_BIN"
-ln -sf "$JUNIPER_BIN" "$LOCAL_BIN/juniper"
-ok "Symlink: $LOCAL_BIN/juniper"
-add_summary "[OK] Symlink global criado"
-
-# --- Injeção de PATH (robusta, no FINAL do arquivo) -------------------
-
-inject_path() {
-    local rc_file="$1"
-
-    [ -f "$rc_file" ] || return 0
-
-    # Já existe linha NÃO-COMENTADA com ~/.local/bin?
-    if grep -qE '^[[:space:]]*[^#].*HOME/\.local/bin' "$rc_file"; then
-        info "PATH já configurado em $rc_file"
+# Define UV_BIN: o uv do sistema, o já baixado em .tools/, ou baixa (com checksum) para .tools/.
+ensure_uv() {
+    [ -n "$UV_BIN" ] && return 0
+    if command -v uv >/dev/null 2>&1; then
+        UV_BIN="$(command -v uv)"
+        return 0
+    fi
+    export UV_PYTHON_INSTALL_DIR="$TOOLS_DIR/python"
+    export UV_CACHE_DIR="$TOOLS_DIR/cache"
+    if [ -x "$TOOLS_DIR/bin/uv" ] && "$TOOLS_DIR/bin/uv" --version >/dev/null 2>&1; then
+        UV_BIN="$TOOLS_DIR/bin/uv"
         return 0
     fi
 
-    # Remover marker antigo (se houver) e a linha que ele precede
-    if grep -qF "$PATH_MARKER" "$rc_file"; then
-        info "Removendo marker antigo em $rc_file"
-        # Remove o marker e a linha seguinte (o export)
-        sed -i.bak "/$PATH_MARKER/,+1d" "$rc_file"
-        rm -f "$rc_file.bak"
+    info "Baixando o uv (gerenciador de Python isolado, ~20 MB)..."
+    local triple tmp archive expected actual
+    triple="$(uv_triple "$(uname -s)" "$(uname -m)" "$(detect_libc)")" ||
+        die "Sistema não suportado ($(uname -s) $(uname -m))." \
+            "Instale Python 3.11 ou mais novo e rode de novo."
+    command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 ||
+        die "Faltam curl ou wget para baixar o Python." \
+            "Instale um deles (ex.: sudo apt install curl) e rode 'juniper install' de novo."
+    tmp="$(mktemp -d)"
+    archive="$tmp/uv.tar.gz"
+    retry download "$UV_BASE_URL/uv-$triple.tar.gz" "$archive" ||
+        die "Não consegui baixar o uv." "$(network_hint)"
+    retry download "$UV_BASE_URL/uv-$triple.tar.gz.sha256" "$archive.sha256" ||
+        die "Não consegui baixar o checksum do uv." "$(network_hint)"
+    expected="$(awk '{print $1}' "$archive.sha256")"
+    actual="$(sha256_of "$archive")"
+    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+        rm -rf "$tmp"
+        die "O arquivo baixado do uv não confere com o checksum (download corrompido)." \
+            "Tente de novo; se repetir, a rede pode estar alterando o arquivo."
     fi
-
-    # Injetar no FINAL (depois de tudo, inclusive Oh My Zsh)
-    {
-        echo ""
-        echo "$PATH_MARKER"
-        echo 'export PATH="$HOME/.local/bin:$PATH"'
-    } >> "$rc_file"
-
-    ok "PATH injetado no final de $rc_file"
+    run_logged tar -xzf "$archive" -C "$tmp" || die "Não consegui extrair o uv."
+    mkdir -p "$TOOLS_DIR/bin"
+    cp "$tmp/uv-$triple/uv" "$TOOLS_DIR/bin/uv"
+    chmod +x "$TOOLS_DIR/bin/uv"
+    rm -rf "$tmp"
+    "$TOOLS_DIR/bin/uv" --version >/dev/null 2>&1 || die "O uv baixado não executa nesta máquina."
+    UV_BIN="$TOOLS_DIR/bin/uv"
+    ok "uv pronto (dentro de ~/.juniper/.tools, nada instalado no sistema)"
 }
 
-inject_path "$HOME/.zshrc"
-inject_path "$HOME/.bashrc"
+# --- Python ----------------------------------------------------------------------
 
-# --- Aplicar PATH na sessão atual -------------------------------------
-
-# Detecta o shell atual pelo $SHELL
-CURRENT_SHELL_NAME="$(basename "${SHELL:-bash}")"
-export PATH="$HOME/.local/bin:$PATH"
-ok "PATH aplicado na sessão atual (via export)"
-add_summary "[OK] PATH ativo nesta sessão"
-
-# --- Validar que PATH funciona em shell NOVO --------------------------
-
-SHELL_TEST_PASSED=false
-
-for shell_to_test in zsh bash; do
-    if command -v "$shell_to_test" >/dev/null 2>&1; then
-        if "$shell_to_test" -ic 'command -v juniper >/dev/null 2>&1' 2>/dev/null; then
-            ok "Shell novo ($shell_to_test) encontra 'juniper'"
-            add_summary "[OK] PATH funciona em $shell_to_test"
-            SHELL_TEST_PASSED=true
-        else
-            warn "Shell novo ($shell_to_test) NÃO encontra 'juniper'"
-            add_summary "[WARN] PATH não validado em $shell_to_test"
+# Python >= 3.11 do sistema que sabe criar venv de verdade (no Debian/Ubuntu costuma faltar
+# o pacote python3-venv, e aí ele NÃO serve). Imprime o caminho ou nada.
+find_system_python() {
+    local candidate tmp
+    for candidate in python3.13 python3.12 python3.11 python3 python; do
+        command -v "$candidate" >/dev/null 2>&1 || continue
+        "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
+            >/dev/null 2>&1 || continue
+        tmp="$(mktemp -d)"
+        if "$candidate" -m venv "$tmp/probe" >/dev/null 2>&1 &&
+            "$tmp/probe/bin/python" -m pip --version >/dev/null 2>&1; then
+            rm -rf "$tmp"
+            command -v "$candidate"
+            return 0
         fi
-    fi
-done
-
-if [ "$SHELL_TEST_PASSED" = false ]; then
-    warn "Nenhum shell novo conseguiu encontrar 'juniper'."
-    warn "Verifique se $HOME/.local/bin existe e se o shell carrega o rc file."
-fi
-
-# --- Smoke test -------------------------------------------------------
-
-title "Smoke test"
-
-if python -m brain version >/dev/null 2>&1; then
-    ok "python -m brain version OK"
-    add_summary "[OK] Smoke test (módulo)"
-else
-    fail "python -m brain version falhou"
-    exit 1
-fi
-
-if "$JUNIPER_BIN" version >/dev/null 2>&1; then
-    ok "binário juniper OK"
-    add_summary "[OK] Smoke test (binário)"
-else
-    fail "binário juniper falhou"
-    exit 1
-fi
-
-# --- Resumo final -----------------------------------------------------
-
-if [ "$CI_MODE" = false ]; then
-    printf "\n${C_BOLD}---------------------------------------------${C_RESET}\n"
-    printf "${C_BOLD}  Juniper v4 - Setup concluído${C_RESET}\n"
-    printf "${C_BOLD}---------------------------------------------${C_RESET}\n"
-    for line in "${SUMMARY[@]}"; do
-        printf "  %s\n" "$line"
+        rm -rf "$tmp"
     done
-    printf "${C_BOLD}---------------------------------------------${C_RESET}\n"
-    if [ "$SHELL_TEST_PASSED" = true ]; then
-        printf "  Pronto! Abra um terminal novo e rode:\n"
-        printf "    juniper version\n"
-        printf "  Ou, nesta sessão:\n"
-        printf "    juniper version   (já funciona)\n"
+    return 0
+}
+
+venv_python_ok() {
+    [ -x "$VENV_DIR/bin/python" ] &&
+        "$VENV_DIR/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
+            >/dev/null 2>&1
+}
+
+venv_has_pip() {
+    "$VENV_DIR/bin/python" -m pip --version >/dev/null 2>&1
+}
+
+create_venv() {
+    local system_python
+    system_python="$(find_system_python)"
+    rm -rf "$VENV_DIR"
+    VENV_FRESH=true
+    if [ -n "$system_python" ]; then
+        info "Criando o ambiente virtual com $("$system_python" -V 2>&1)..."
+        run_logged "$system_python" -m venv "$VENV_DIR" || die "Não consegui criar o ambiente virtual."
+        ok "Ambiente virtual criado (Python do sistema)"
     else
-        printf "  ${C_YELLOW}⚠  Ação necessária:${C_RESET}\n"
-        printf "  Abra um terminal novo e rode 'juniper version'.\n"
-        printf "  Se falhar, verifique se seu shell carrega ~/.zshrc.\n"
+        info "Python 3.11+ não encontrado na máquina: usando um Python isolado."
+        ensure_uv
+        retry "$UV_BIN" venv --python "$PYTHON_VERSION_WANTED" "$VENV_DIR" ||
+            die "Não consegui preparar o Python." "$(network_hint)"
+        ok "Ambiente virtual criado (Python $PYTHON_VERSION_WANTED isolado)"
     fi
-    printf "${C_BOLD}---------------------------------------------${C_RESET}\n\n"
+}
+
+# --- Pacotes ----------------------------------------------------------------------
+
+PKG_TARGET="."
+
+pkg_install() { # pkg_install <args do pip install>
+    if venv_has_pip; then
+        retry "$VENV_DIR/bin/python" -m pip install --disable-pip-version-check --quiet \
+            --retries 5 --timeout 30 "$@"
+    else
+        ensure_uv
+        retry "$UV_BIN" pip install --python "$VENV_DIR/bin/python" --quiet "$@"
+    fi
+}
+
+pkg_uninstall() { # pkg_uninstall <nomes...>; falhar aqui não é grave
+    [ "$#" -gt 0 ] || return 0
+    if venv_has_pip; then
+        run_logged "$VENV_DIR/bin/python" -m pip uninstall -y --disable-pip-version-check "$@" || true
+    else
+        ensure_uv
+        run_logged "$UV_BIN" pip uninstall --python "$VENV_DIR/bin/python" "$@" || true
+    fi
+}
+
+# Dependências ausentes/quebradas, uma por linha (vazio = tudo certo).
+broken_packages() {
+    local flag=""
+    [ "$WITH_DEV" = true ] && flag="--dev"
+    "$VENV_DIR/bin/python" "$JUNIPER_ROOT/scripts/check_env.py" $flag 2>>"$LOG_FILE" |
+        sed '/^[[:space:]]*$/d'
+}
+
+install_packages() {
+    local target="$JUNIPER_ROOT"
+    [ "$WITH_DEV" = true ] && target="$JUNIPER_ROOT[dev]"
+    pkg_install -e "$target" ||
+        die "Falha ao instalar as dependências." "$(network_hint)"
+}
+
+# Garante que o ambiente tem tudo, reinstalando SÓ o que está com defeito.
+ensure_packages() {
+    local broken
+    broken="$(broken_packages || true)"
+    if [ -z "$broken" ]; then
+        ok "Dependências já instaladas e saudáveis (nada a fazer)"
+        return 0
+    fi
+
+    if [ "$VENV_FRESH" = true ]; then
+        info "Instalando dependências..."
+    else
+        info "Reinstalando o que está faltando ou com defeito: $(printf '%s' "$broken" | tr '\n' ' ')"
+        # shellcheck disable=SC2046
+        pkg_uninstall $(printf '%s' "$broken" | tr '\n' ' ')
+    fi
+    install_packages
+
+    broken="$(broken_packages || true)"
+    if [ -n "$broken" ]; then
+        warn "Ainda há defeitos ($(printf '%s' "$broken" | tr '\n' ' ')); recriando o ambiente do zero."
+        create_venv
+        install_packages
+        broken="$(broken_packages || true)"
+        [ -z "$broken" ] ||
+            die "Não consegui deixar as dependências saudáveis: $(printf '%s' "$broken" | tr '\n' ' ')" \
+                "$(network_hint)"
+    fi
+    ok "Dependências instaladas"
+}
+
+# --- Configuração -----------------------------------------------------------------
+
+ensure_config_files() {
+    if [ ! -f "$JUNIPER_ROOT/config.yaml" ] && [ -f "$JUNIPER_ROOT/config.yaml.example" ]; then
+        cp "$JUNIPER_ROOT/config.yaml.example" "$JUNIPER_ROOT/config.yaml"
+        ok "config.yaml criado com os valores padrão"
+    fi
+    if [ ! -f "$JUNIPER_ROOT/.env" ] && [ -f "$JUNIPER_ROOT/.env.example" ]; then
+        cp "$JUNIPER_ROOT/.env.example" "$JUNIPER_ROOT/.env"
+        ok ".env criado"
+    fi
+    [ -f "$JUNIPER_ROOT/.env" ] && chmod 600 "$JUNIPER_ROOT/.env"
+    mkdir -p "$LOG_DIR"
+    return 0
+}
+
+groq_key_present() {
+    [ -f "$JUNIPER_ROOT/.env" ] &&
+        grep -Eq '^JUNIPER_GROQ_API_KEY=[^[:space:]]+' "$JUNIPER_ROOT/.env"
+}
+
+# Pergunta a chave da Groq (única coisa que a Juniper não consegue descobrir sozinha).
+ensure_groq_key() {
+    groq_key_present && { ok "Chave da Groq configurada"; return 0; }
+    if [ "$ASSUME_YES" = true ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+        warn "Falta a chave da Groq (grátis em https://console.groq.com/keys): coloque em $JUNIPER_ROOT/.env"
+        return 0
+    fi
+    local key=""
+    say "Preciso de uma chave da Groq, meu cérebro principal (é grátis)."
+    say "Crie em https://console.groq.com/keys e cole aqui (Enter para pular; a digitação fica oculta)."
+    printf '%s ' "$USER_TAG"
+    read -rs key || true
+    printf '\n'
+    key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    if [ -z "$key" ]; then
+        warn "Sem chave por enquanto. Depois, coloque JUNIPER_GROQ_API_KEY=... em $JUNIPER_ROOT/.env"
+        return 0
+    fi
+    if ! printf '%s' "$key" | grep -Eq '^[A-Za-z0-9_-]{20,}$'; then
+        warn "Isso não parece uma chave da Groq; não salvei. Edite $JUNIPER_ROOT/.env depois."
+        return 0
+    fi
+    local tmp
+    tmp="$(mktemp)"
+    if grep -q '^JUNIPER_GROQ_API_KEY=' "$JUNIPER_ROOT/.env"; then
+        awk -v k="$key" '/^JUNIPER_GROQ_API_KEY=/ {print "JUNIPER_GROQ_API_KEY=" k; next} {print}' \
+            "$JUNIPER_ROOT/.env" > "$tmp"
+    else
+        cat "$JUNIPER_ROOT/.env" > "$tmp"
+        printf 'JUNIPER_GROQ_API_KEY=%s\n' "$key" >> "$tmp"
+    fi
+    cat "$tmp" > "$JUNIPER_ROOT/.env"
+    rm -f "$tmp"
+    chmod 600 "$JUNIPER_ROOT/.env"
+    ok "Chave da Groq salva em .env"
+}
+
+# --- Atalho e shell -----------------------------------------------------------------
+
+link_binary() {
+    mkdir -p "$LOCAL_BIN"
+    ln -sf "$VENV_DIR/bin/juniper" "$LOCAL_BIN/juniper"
+    ok "Atalho: $LOCAL_BIN/juniper"
+}
+
+backup_once() {
+    [ -f "$1.juniper.bak" ] || cp "$1" "$1.juniper.bak"
+}
+
+# rc_add_path <arquivo>: põe ~/.local/bin no PATH, uma única vez.
+rc_add_path() {
+    local rc="$1"
+    [ -f "$rc" ] || return 0
+    if grep -qF "$PATH_MARKER" "$rc" || grep -qE '^[[:space:]]*[^#].*(HOME|~)/\.local/bin' "$rc"; then
+        return 0
+    fi
+    backup_once "$rc"
+    printf '\n%s\nexport PATH="$HOME/.local/bin:$PATH"\n' "$PATH_MARKER" >> "$rc"
+    ok "PATH ajustado em $rc"
+}
+
+# rc_add_hook <arquivo>: carrega as funções do shell (search, deploy...) e troca a linha antiga
+# (~/.juniper/juniper.sh) pelo caminho novo (~/.juniper/shell/juniper.sh). Só zsh.
+rc_add_hook() {
+    local rc="$1"
+    [ -f "$rc" ] || return 0
+    local new='[ -f "$HOME/.juniper/shell/juniper.sh" ] && source "$HOME/.juniper/shell/juniper.sh"'
+    if grep -qF 'juniper/shell/juniper.sh' "$rc"; then
+        return 0
+    fi
+    backup_once "$rc"
+    if grep -qE '\.juniper/juniper\.sh' "$rc"; then
+        local tmp
+        tmp="$(mktemp)"
+        grep -vE '\.juniper/juniper\.sh' "$rc" > "$tmp"
+        cat "$tmp" > "$rc"
+        rm -f "$tmp"
+    fi
+    printf '\n%s\n%s\n' "$HOOK_MARKER" "$new" >> "$rc"
+    ok "Comandos do shell carregados em $rc"
+}
+
+setup_shell() {
+    if [ "$TOUCH_RC" != true ]; then
+        info "Arquivos de shell não alterados (--no-rc)"
+        return 0
+    fi
+    # Cria o .zshrc se o zsh é o shell do usuário e o arquivo ainda não existe.
+    case "${SHELL:-}" in */zsh) [ -f "$HOME/.zshrc" ] || : > "$HOME/.zshrc" ;; esac
+    rc_add_path "$HOME/.zshrc"
+    rc_add_path "$HOME/.bashrc"
+    if command -v zsh >/dev/null 2>&1; then
+        rc_add_hook "$HOME/.zshrc"
+    fi
+}
+
+# --- Verificação final ----------------------------------------------------------------
+
+smoke_test() {
+    "$VENV_DIR/bin/python" -m brain version >/dev/null 2>&1 ||
+        die "O teste final falhou: 'python -m brain version'." "Rode com --clean para recomeçar."
+    # Importa todas as tools: pega dependência faltando que o 'version' não toca.
+    "$VENV_DIR/bin/juniper" tools >/dev/null 2>&1 ||
+        die "O teste final falhou: 'juniper tools'." "Rode com --clean para recomeçar."
+    if ! env -i HOME="$HOME" PATH="$LOCAL_BIN:/usr/bin:/bin" "$LOCAL_BIN/juniper" version >/dev/null 2>&1; then
+        die "O atalho $LOCAL_BIN/juniper não executa." "Rode com --clean para recomeçar."
+    fi
+    ok "Teste final passou: a Juniper executa"
+}
+
+optional_tools_report() {
+    command -v git >/dev/null 2>&1 || warn "git não encontrado (os comandos search/deploy precisam dele)"
+    command -v zsh >/dev/null 2>&1 || warn "zsh não encontrado (os comandos search/deploy precisam dele)"
+    if command -v ollama >/dev/null 2>&1 && curl -fs --max-time 2 http://localhost:11434 >/dev/null 2>&1; then
+        ok "Ollama detectado (será o plano B se a Groq falhar)"
+    fi
+    return 0
+}
+
+# --- Fluxo principal ----------------------------------------------------------------------
+
+main() {
+    parse_flags "$@"
+    mkdir -p "$LOG_DIR"
+    printf '\n=== install.sh %s (%s) ===\n' "$*" "$(date '+%F %T')" >> "$LOG_FILE"
+
+    if [ "$CHECK_ONLY" = true ]; then
+        say "Deixa eu ver como eu estou..."
+    else
+        say "Oi! Vou deixar tudo pronto por aqui. Pode relaxar."
+    fi
+    [ -f "$JUNIPER_ROOT/pyproject.toml" ] || die "pyproject.toml não encontrado em $JUNIPER_ROOT"
+    info "Pasta: $JUNIPER_ROOT"
+
+    if [ "$JUNIPER_ROOT" != "$HOME/.juniper" ]; then
+        warn "A Juniper deve ficar em ~/.juniper (está em $JUNIPER_ROOT); alguns comandos podem não achar os scripts."
+    fi
+
+    if [ "$CHECK_ONLY" = true ]; then
+        venv_python_ok || { fail "Ambiente virtual ausente ou quebrado."; exit 1; }
+        local broken
+        broken="$(broken_packages || true)"
+        if [ -n "$broken" ]; then
+            fail "Dependências com defeito: $(printf '%s' "$broken" | tr '\n' ' ')"
+            exit 1
+        fi
+        ok "Juniper instalada e saudável"
+        exit 0
+    fi
+
+    if [ "$CLEAN" = true ]; then
+        info "Removendo o ambiente anterior (--clean)"
+        rm -rf "$VENV_DIR" "$LEGACY_VENV_DIR"
+    elif [ -d "$LEGACY_VENV_DIR" ]; then
+        info "Removendo venv/ antigo (não pode ser movido)"
+        rm -rf "$LEGACY_VENV_DIR"
+    fi
+
+    title "Ambiente"
+    if venv_python_ok; then
+        ok "Ambiente virtual existente e funcional"
+    else
+        [ -e "$VENV_DIR" ] && warn "Ambiente virtual quebrado (Python removido ou incompatível): recriando"
+        create_venv
+    fi
+
+    title "Dependências"
+    ensure_packages
+
+    title "Configuração"
+    ensure_config_files
+    ensure_groq_key
+    link_binary
+    setup_shell
+    optional_tools_report
+
+    title "Verificação"
+    smoke_test
+
+    printf '\n'
+    say "Pronto! Estou instalada e funcionando."
+    say "Abra um terminal novo (ou rode: exec \$SHELL) e me chame:"
+    printf '       juniper chat           conversar comigo\n'
+    printf '       juniper search 1234    buscar commits\n'
+    printf '       juniper tools          ver o que eu sei fazer\n\n'
+}
+
+# Permite carregar as funções sem executar (usado nos testes).
+if [ "${JUNIPER_INSTALL_LIB:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
 fi
 
-exit 0
+main "$@"

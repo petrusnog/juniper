@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia de instalação — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Guias / Instalação</div>
+<h1>Guia de instalação</h1>
+<p class="lead">Como instalar a Juniper e todas as dependências de desenvolvimento, a partir de uma máquina limpa. <b>Não precisa ter Python instalado</b> e nada é instalado no sistema: tudo fica dentro de <code>~/.juniper</code>, num ambiente virtual.</p>
+
+<h2>1. Instalação rápida</h2>
+<div class="card">
+  <p>Você precisa só de <code>git</code>, <code>bash</code> e <code>curl</code> (ou <code>wget</code>).</p>
+<pre>git clone git@github.com:petrusnog/juniper.git ~/.juniper
+bash ~/.juniper/scripts/install.sh</pre>
+  <p>No final aparece <b>"Juniper instalada e pronta para uso"</b>. Abra um terminal novo e rode:</p>
+<pre>juniper chat</pre>
+  <p style="color:var(--muted)">Depois da primeira instalação o comando também existe dentro do shell: <code>juniper install</code> faz o mesmo (veja a seção 4).</p>
+</div>
+<p>Durante a instalação ela pede <b>uma coisa</b> que não tem como descobrir sozinha: a chave grátis da Groq (<a href="https://console.groq.com/keys">console.groq.com/keys</a>). Cole e pronto; Enter pula, e você pode colocar depois em <code>~/.juniper/.env</code>.</p>
+
+<h2>2. O que o instalador faz</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Python</b><small>do sistema ou isolado</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>.venv</b><small>ambiente virtual</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Dependências</b><small>só o que falta</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Configuração</b><small>config, .env, atalho</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>Teste final</b><small>ela executa de verdade</small></div>
+  </div>
+</div>
+
+<h3>Python: sem Python na máquina</h3>
+<p>O instalador procura um Python 3.11+ que consiga criar ambientes virtuais. Se achar, usa. Se não achar (ou se for um Python incompleto, como o do Ubuntu sem <code>python3-venv</code>), baixa o <a href="https://docs.astral.sh/uv/">uv</a> com <b>verificação de checksum</b> e usa-o para baixar um Python 3.12 isolado. Os dois ficam em <code>~/.juniper/.tools/</code>, sem root e sem tocar no que já existe.</p>
+
+<h3>Reaproveita o que existe, repara o que está com defeito</h3>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Componente</th><th>Como é verificado</th><th>Se está saudável</th><th>Se está com defeito</th></tr>
+    <tr><td>Ambiente virtual <code>.venv</code></td><td>O Python dele executa e é 3.11+.</td><td>Reutiliza.</td><td>Apaga e recria (ex.: o Python base foi removido).</td></tr>
+    <tr><td>Cada dependência</td><td>Está instalada, na versão mínima do <code>pyproject.toml</code>, e <b>importa</b>.</td><td>Pula.</td><td>Desinstala só ela e reinstala. Se continuar ruim, recria o ambiente.</td></tr>
+    <tr><td>O pacote <code>juniper</code></td><td>Importa a partir de <code>~/.juniper</code>.</td><td>Pula.</td><td>Reinstala em modo editável.</td></tr>
+    <tr><td><code>config.yaml</code>, <code>.env</code></td><td>Existem?</td><td>Nunca sobrescreve.</td><td>Cria a partir dos exemplos.</td></tr>
+  </table>
+</div>
+<p>Rodar o instalador de novo é seguro: numa instalação saudável ele só confirma ("nada a fazer") em poucos segundos.</p>
+
+<h3>Falhas de rede</h3>
+<p>Cada download e instalação é tentado até 3 vezes. Se mesmo assim falhar, a mensagem diz a causa em português (por exemplo, "sem conexão com a internet") e o detalhe técnico fica em <code>~/.juniper/logs/install.log</code>. O instalador só termina com sucesso se o teste final passar.</p>
+
+<h2>3. Dependências</h2>
+<div class="grid">
+  <div class="card type"><h3>Execução (sempre)</h3>
+<pre>httpx          pydantic
+pydantic-settings   pyyaml
+python-dotenv  rich
+typer          groq
+google-api-python-client
+google-auth</pre></div>
+  <div class="card type"><h3>Desenvolvimento (<code>--dev</code>)</h3>
+<pre>pytest           pytest-asyncio
+ruff             mypy</pre>
+  <p style="color:var(--muted)">A fonte de verdade é o <code>pyproject.toml</code>.</p></div>
+</div>
+<p><b>Ferramentas do sistema</b> (o instalador só avisa, não consegue instalar sem root): <code>git</code> e <code>zsh</code> para os comandos <code>search</code>/<code>deploy</code>. O Ollama é opcional (plano B se a Groq falhar).</p>
+
+<h2>4. Opções</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Opção</th><th>Efeito</th></tr>
+    <tr><td><code>--dev</code></td><td>Instala também pytest, pytest-asyncio, ruff e mypy.</td></tr>
+    <tr><td><code>--check</code></td><td>Só verifica e diz se está saudável; não altera nada.</td></tr>
+    <tr><td><code>--clean</code></td><td>Apaga o ambiente e instala do zero.</td></tr>
+    <tr><td><code>--yes</code></td><td>Sem perguntas (scripts e CI).</td></tr>
+    <tr><td><code>--no-rc</code></td><td>Não altera <code>~/.zshrc</code> nem <code>~/.bashrc</code>.</td></tr>
+  </table>
+</div>
+<pre>juniper install --dev          # dentro do shell (zsh), ou:
+juniper install --check        # pelo binário Python
+bash ~/.juniper/scripts/install.sh --dev</pre>
+
+<h2>5. Ambiente de desenvolvimento</h2>
+<div class="card">
+<pre>bash ~/.juniper/scripts/install.sh --dev
+source ~/.juniper/.venv/bin/activate
+
+pytest tests/ -v          # testes (não usam rede nem chave real)
+ruff check brain/ tests/  # lint
+mypy brain/               # tipos (strict)</pre>
+  <p>Uma task só está pronta quando os três passam (Definition of Done em <code>docs/JUNIPER.md</code>).</p>
+</div>
+
+<h3>Sem o instalador (manual)</h3>
+<pre>python3 -m venv ~/.juniper/.venv
+~/.juniper/.venv/bin/pip install -e "~/.juniper[dev]"
+cp ~/.juniper/config.yaml.example ~/.juniper/config.yaml
+cp ~/.juniper/.env.example ~/.juniper/.env      # preencha JUNIPER_GROQ_API_KEY</pre>
+
+<h2>6. O que é alterado na sua máquina</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Onde</th><th>O quê</th></tr>
+    <tr><td><code>~/.juniper/.venv/</code></td><td>Ambiente virtual com as dependências.</td></tr>
+    <tr><td><code>~/.juniper/.tools/</code></td><td>uv e Python isolado (só se não havia Python utilizável).</td></tr>
+    <tr><td><code>~/.juniper/config.yaml</code>, <code>.env</code></td><td>Configuração (o <code>.env</code> fica com permissão 600).</td></tr>
+    <tr><td><code>~/.local/bin/juniper</code></td><td>Atalho para o executável.</td></tr>
+    <tr><td><code>~/.zshrc</code></td><td>Linha que carrega os comandos do shell (<code>search</code>, <code>deploy</code>...). Troca a linha antiga <code>~/.juniper/juniper.sh</code> pela nova.</td></tr>
+    <tr><td><code>~/.zshrc</code>, <code>~/.bashrc</code></td><td>Inclui <code>~/.local/bin</code> no PATH, se ainda não estiver.</td></tr>
+    <tr><td><code>~/.juniper/logs/</code></td><td>Log da instalação e os logs de uso.</td></tr>
+  </table>
+</div>
+<p>Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado dele (<code>.zshrc.juniper.bak</code>). Para desfazer tudo: <code>bash ~/.juniper/scripts/uninstall.sh</code>.</p>
+
+<h2>7. Opcionais</h2>
+<div class="card">
+  <p><b>Ollama (plano B local).</b> Instale em <a href="https://ollama.com">ollama.com</a> e rode <code>ollama pull llama3.1</code>. A Juniper usa quando a Groq falha ou está sem chave.</p>
+  <p><b>Agenda do Google.</b> Precisa de conta de serviço e agenda própria; o passo a passo está na página <a href="T-022.html">T-022</a>. Valide com <code>python scripts/check_google.py</code>.</p>
+</div>
+
+<h2>8. Se algo der errado</h2>
+<div class="tree">
+  <div class="err"><span class="mono">"Faltam curl ou wget"</span><span>Só acontece sem Python na máquina: instale um deles (<code>sudo apt install curl</code>) e rode de novo.</span><span class="act tag a">1 comando</span></div>
+  <div class="err"><span class="mono">"Sem conexão com a internet"</span><span>Conecte-se e rode de novo; o que já foi instalado é reaproveitado.</span><span class="act tag a">repetir</span></div>
+  <div class="err"><span class="mono">juniper: command not found</span><span>Abra um terminal novo (o PATH foi ajustado agora). Se persistir: <code>~/.local/bin/juniper version</code>.</span><span class="act tag a">novo terminal</span></div>
+  <div class="err"><span class="mono">Algo estranho no ambiente</span><span><code>juniper install --clean</code> recria tudo e é seguro.</span><span class="act tag g">--clean</span></div>
+  <div class="err"><span class="mono">Qualquer outra falha</span><span>O detalhe técnico está em <code>~/.juniper/logs/install.log</code>.</span><span class="act tag r">log</span></div>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

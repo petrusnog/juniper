@@ -19,6 +19,7 @@ class OllamaProvider(LLMProvider):
     """Talks to a local Ollama server. Defaults come from ``settings.llm.ollama``."""
 
     name: ClassVar[str] = "ollama"
+    compact_prompt: ClassVar[bool] = True
 
     def __init__(
         self,

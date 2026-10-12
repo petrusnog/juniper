@@ -3,6 +3,10 @@
 const FEATURES = [
   { group: "Visão geral", id: "Mapa", title: "Arquitetura em camadas", file: "architecture.html",
     desc: "Como a Juniper funciona por inteiro, e onde estamos.", status: "guide" },
+  { group: "Visão geral", id: "Guia", title: "Instalação", file: "install.html",
+    desc: "Instalar a Juniper e as dependências de desenvolvimento.", status: "guide" },
+  { group: "Visão geral", id: "Guia", title: "Voz da Juniper", file: "voz.html",
+    desc: "Como ela fala: prefixos, fala fixa x gerada por IA.", status: "guide" },
   { group: "LLM", id: "T-011", title: "Vocabulário LLM", file: "T-011.html",
     desc: "Tipos, erros e o contrato LLMProvider.", status: "done" },
   { group: "LLM", id: "T-012", title: "OllamaProvider", file: "T-012.html",

@@ -46,3 +46,5 @@ juniper.log
 
 # Certificados
 certs/
+# Ambiente isolado do instalador (Python e uv baixados)
+.tools/
