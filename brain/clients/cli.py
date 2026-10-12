@@ -42,24 +42,19 @@ logging.getLogger("brain").addHandler(logging.NullHandler())
 
 
 class JuniperGroup(TyperGroup):
-    """Command group that reports an unknown command in Juniper's voice.
+    """Command group where anything that is not a command is a chat.
 
-    Typed loosely on purpose: typer >= 0.2x vendors click, older versions depend on it,
-    so ``click`` cannot be imported by name here.
+    ``juniper`` opens the chat, ``juniper <mensagem>`` sends one message. Typed loosely on
+    purpose: typer >= 0.2x vendors click, older versions depend on it.
     """
 
-    def resolve_command(self, ctx: Any, args: list[str]) -> Any:
-        try:
-            return super().resolve_command(ctx, args)
-        except Exception as exc:
-            if type(exc).__name__ != "UsageError" or not args:
-                raise
-            voice.say(
-                console,
-                f"Não conheço o comando '{args[0]}'. Rode `juniper` para ver o que sei fazer.",
-                "red",
-            )
-            ctx.exit(2)
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        args = list(args)
+        if args and args[0] in ("--help", "-h"):
+            return super().parse_args(ctx, args)
+        if not args or args[0] not in self.commands:
+            args = [CHAT_COMMAND, *args]
+        return super().parse_args(ctx, args)
 
 
 app = typer.Typer(
@@ -71,6 +66,7 @@ app = typer.Typer(
 # Gendered article + display name, so the messages read right ("a Groq", "o Ollama").
 _PROVIDER_PT = {"deepinfra": ("a", "DeepInfra"), "groq": ("a", "Groq"), "ollama": ("o", "Ollama")}
 _EXIT = {"/sair", "/exit"}
+CHAT_COMMAND = "_chat"
 
 
 class LineReader:
@@ -295,15 +291,9 @@ async def _chat(message: str | None, provider: str | None) -> int:
         await router.aclose()
 
 
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    """Sem comando, a Juniper se apresenta e mostra o que sabe fazer."""
-    if ctx.invoked_subcommand is None:
-        voice.say(console, "Olá, sou Juniper, sua assistente de automações favorita!")
-        voice.say(console, "Use `juniper chat` para conversar. O resto está logo abaixo:")
-        console.print()
-        console.print(ctx.get_help())
-        raise typer.Exit(0)
+@app.callback()
+def main() -> None:
+    """Sem comando, abre o chat; `juniper <mensagem>` manda uma mensagem isolada."""
 
 
 @app.command()
@@ -314,10 +304,10 @@ def version() -> None:
     )
 
 
-@app.command()
+@app.command(CHAT_COMMAND, hidden=True)
 def chat(
-    message: Annotated[
-        Optional[str],  # noqa: UP045  (typer needs a runtime-evaluable annotation)
+    words: Annotated[
+        Optional[list[str]],  # noqa: UP045  (typer needs a runtime-evaluable annotation)
         typer.Argument(help="Mensagem única. Sem ela, abre o chat interativo."),
     ] = None,
     provider: Annotated[
@@ -327,9 +317,10 @@ def chat(
         ),
     ] = None,
 ) -> None:
-    """Conversa com a Juniper: `juniper chat "oi"` ou `juniper chat` (interativo)."""
+    """Conversa com a Juniper: `juniper oi` (uma mensagem) ou `juniper` (chat interativo)."""
+    message = " ".join(words).strip() if words else None
     try:
-        code = asyncio.run(_chat(message, provider))
+        code = asyncio.run(_chat(message or None, provider))
     except ValueError as exc:  # unknown --provider
         voice.say(console, f"{exc}", "red")
         raise typer.Exit(2) from None

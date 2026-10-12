@@ -89,7 +89,7 @@ resposta = await agent.run("marca dentista amanhã às 16h", on_token=print)</pr
 
 <h2>6. Limitações conhecidas</h2>
 <div class="card">
-  <p><b>Ninguém chama o Agent ainda.</b> O <code>juniper chat</code> é um placeholder até a T-040, e o <code>try_calendar.py</code> ainda usa seu próprio loop.</p>
+  <p><b>Ninguém chama o Agent ainda.</b> O <code>juniper</code> é um placeholder até a T-040, e o <code>try_calendar.py</code> ainda usa seu próprio loop.</p>
   <p><b>Tools em sequência.</b> Várias tool calls da mesma resposta rodam uma após a outra, não em paralelo, para as confirmações não se misturarem.</p>
   <p><b>Sem log estruturado.</b> Só <code>logging</code> comum por enquanto; os eventos em JSONL são a T-031.</p>
   <p><b>Memória só da sessão.</b> O histórico vive no processo e some ao encerrar (memória persistente é Sprint 3).</p>

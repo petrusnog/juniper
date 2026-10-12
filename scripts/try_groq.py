@@ -1,4 +1,4 @@
-"""Throwaway REPL to try LLMRouter (Groq → Ollama) by hand (replaced by `juniper chat` in T-040).
+"""Throwaway REPL to try LLMRouter (Groq → Ollama) by hand (replaced by `juniper` in T-040).
 
 Usage: python scripts/try_groq.py                  (type /sair or Ctrl+D to quit)
        python scripts/try_groq.py --simulate-down  (Groq gets an invalid key → watch the failover)

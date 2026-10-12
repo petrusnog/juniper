@@ -44,7 +44,7 @@ juniper deploy 4911 11b81fb --hash               # um commit já existente</pre>
   <div class="card type"><h3><code>git_deploy</code> · DESTRUCTIVE</h3>
     <p>Parâmetros: <code>feature_id</code>, <code>extra_tasks</code> (opcional), <code>target</code> (<code>both</code>, <code>develop</code> ou <code>stage</code>). Faz push, então sempre pede <code>[y/N]</code> com aviso de irreversível.</p></div>
 </div>
-<p>As duas agem no <b>repositório do diretório atual</b>: rode <code>juniper chat</code> dentro do projeto. Fora de um repo git, a tool avisa em vez de falhar misteriosamente.</p>
+<p>As duas agem no <b>repositório do diretório atual</b>: rode <code>juniper</code> dentro do projeto. Fora de um repo git, a tool avisa em vez de falhar misteriosamente.</p>
 
 <h3>O que o <code>git_deploy</code> verifica antes de te perguntar</h3>
 <div class="tree">
@@ -82,7 +82,7 @@ juniper deploy 4911 11b81fb --hash               # um commit já existente</pre>
 <h2>8. Como testar</h2>
 <pre>pytest tests/test_juniper_cmds.py tests/test_cli.py -v</pre>
 <p>Os testes usam repositórios git temporários de verdade, sem rede: busca (sem cores, OU entre termos, sem resultado, metacaracteres literais, termos inválidos, fora de repo), validações do deploy, e um deploy completo contra um remoto local, inclusive rodá-lo duas vezes sem duplicar commits e a recusa de criar branch sem terminal. No CLI: repasse de argumentos, aliases escondidos, código de saída e a tabela de <code>tools</code>.</p>
-<p>Ao vivo: <code>cd seu-projeto &amp;&amp; juniper chat "busque os commits da feature 1339"</code>.</p>
+<p>Ao vivo: <code>cd seu-projeto &amp;&amp; juniper "busque os commits da feature 1339"</code>.</p>
 </main>
 <script src="assets/layout.js"></script>
 </body>

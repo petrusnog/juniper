@@ -556,7 +556,7 @@ main() {
     printf '\n'
     say "Pronto! Estou instalada e funcionando."
     say "Abra um terminal novo (ou rode: exec \$SHELL) e me chame:"
-    printf '       juniper chat           conversar comigo\n'
+    printf '       juniper                  conversar comigo\n'
     printf '       juniper search 1234    buscar commits\n'
     printf '       juniper tools          ver o que eu sei fazer\n\n'
 }

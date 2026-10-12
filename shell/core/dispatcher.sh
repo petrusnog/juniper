@@ -25,9 +25,15 @@ _juniper_load_commands() {
 _juniper_dispatch() {
     local command="$1"
     
-    # Caso especial: comando vazio mostra saudação
+    local brain="${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper"
+
+    # Comando vazio: abre o chat do cérebro (sem o cérebro, só a saudação)
     if [ -z "$command" ]; then
-        _juniper_greeting
+        if [ -x "$brain" ]; then
+            "$brain"
+        else
+            _juniper_greeting
+        fi
         return 0
     fi
     
@@ -43,10 +49,10 @@ _juniper_dispatch() {
     if declare -f "$run_func" > /dev/null; then
         _juniper_log_info "Comando executado: $command $*"
         $run_func "$@"
-    elif [ -x "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper" ]; then
-        # Não é um comando do shell (chat, tools...): quem responde é o cérebro em Python.
+    elif [ -x "$brain" ]; then
+        # Não é um comando do shell (tools, mensagem livre...): quem responde é o cérebro em Python.
         _juniper_log_info "Delegando ao cérebro: $command $*"
-        "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper" "$command" "$@"
+        "$brain" "$command" "$@"
     else
         _juniper_log_error "Comando desconhecido: $command $*"
         _juniper_say "❌ Comando desconhecido: $command"

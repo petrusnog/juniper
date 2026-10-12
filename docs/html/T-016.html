@@ -42,7 +42,7 @@
 <div class="card">
   <p><b>Atenção:</b> se você já tinha um <code>config.yaml</code>, a linha <code>priority</code> dele vence o padrão do código. Atualize para <code>[deepinfra, groq, ollama]</code>. Sem a chave da DeepInfra a Juniper não quebra: o provider falha com "chave ausente" e o router começa pela Groq.</p>
 </div>
-<pre>juniper chat -p deepinfra "oi"     # força só a DeepInfra, sem failover</pre>
+<pre>juniper -p deepinfra "oi"     # força só a DeepInfra, sem failover</pre>
 
 <h2>3. Como fala com a API</h2>
 <div class="card">

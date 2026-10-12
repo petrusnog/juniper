@@ -4,7 +4,7 @@
     👤 VOCÊ: <what the user types>       (later: the user's name, once memory exists)
 
 Two kinds of speech share the same prefix:
-  * generated (``juniper chat``): streamed from the LLM after ``start_reply``;
+  * generated (``juniper``): streamed from the LLM after ``start_reply``;
   * fixed (version, tools, install, errors, confirmations...): ``say`` with a canned text.
 The shell side (``shell/core/voice.sh``) uses the same strings; a test keeps them in sync.
 """

@@ -17,16 +17,16 @@
 <h2>1. Uso</h2>
 <div class="grid">
   <div class="card type"><h3>Uma mensagem</h3>
-<pre>juniper chat "o que tenho amanhã?"</pre>
+<pre>juniper "o que tenho amanhã?"</pre>
 <p style="color:var(--muted)">Responde e sai. Código de saída 1 se nenhum LLM respondeu.</p></div>
   <div class="card type"><h3>Conversa (REPL)</h3>
-<pre>juniper chat
+<pre>juniper
 você&gt; oi
 juniper&gt; ...
 você&gt; /sair</pre>
 <p style="color:var(--muted)"><code>/sair</code>, <code>/exit</code> ou Ctrl+D encerram. Ctrl+C também.</p></div>
 </div>
-<pre>juniper chat --provider ollama "oi"    # força um provider, sem failover
+<pre>juniper --provider ollama "oi"    # força um provider, sem failover
 python -m brain chat                    # equivalente, sem instalar</pre>
 
 <h2>2. Como funciona</h2>
@@ -77,7 +77,7 @@ python -m brain chat                    # equivalente, sem instalar</pre>
 <h2>7. Como testar</h2>
 <pre>pytest tests/test_cli.py -v</pre>
 <p>Cobre: versão, mensagem única com streaming, colchetes literais, REPL até <code>/sair</code> e até EOF, <code>--provider</code> inválido e válido, chave Groq ausente (instrução do <code>.env</code>, exit 1), REPL sobrevivendo a erro de LLM, dicas de <code>friendly_error</code>, respostas do <code>[y/N]</code>, aviso de IRREVERSÍVEL, o reaproveitamento da thread após timeout e um fluxo completo com confirmação negada.</p>
-<p>Para ver ao vivo, com a chave no <code>.env</code>: <code>juniper chat "marca um teste amanhã às 10h"</code>.</p>
+<p>Para ver ao vivo, com a chave no <code>.env</code>: <code>juniper "marca um teste amanhã às 10h"</code>.</p>
 </main>
 <script src="assets/layout.js"></script>
 </body>

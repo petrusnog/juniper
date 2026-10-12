@@ -1,4 +1,4 @@
-"""Throwaway REPL to try OllamaProvider by hand (replaced by `juniper chat` in T-040).
+"""Throwaway REPL to try OllamaProvider by hand (replaced by `juniper` in T-040).
 
 Usage: python scripts/try_ollama.py   (type /sair or Ctrl+D to quit)
 """

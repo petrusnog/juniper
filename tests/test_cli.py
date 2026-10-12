@@ -33,33 +33,33 @@ def test_version() -> None:
 
 def test_one_shot_streams_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("Oi, ", "pessoa.")]))
-    result = runner.invoke(cli.app, ["chat", "oi"])
+    result = runner.invoke(cli.app, ["oi"])
     assert result.exit_code == 0
     assert f"{voice.JUNIPER_TAG} Oi, pessoa." in result.output
 
 
 def test_reply_with_brackets_is_not_treated_as_markup(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("use [bold]isso[/bold] e [x]")]))
-    result = runner.invoke(cli.app, ["chat", "oi"])
+    result = runner.invoke(cli.app, ["oi"])
     assert "[bold]isso[/bold] e [x]" in result.output
 
 
 def test_repl_runs_until_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("um"), say("dois")]))
-    result = runner.invoke(cli.app, ["chat"], input="oi\ntchau\n/sair\n")
+    result = runner.invoke(cli.app, [], input="oi\ntchau\n/sair\n")
     assert result.exit_code == 0
     assert "um" in result.output and "dois" in result.output
 
 
 def test_repl_ends_on_eof_and_skips_blank_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("um")]))
-    result = runner.invoke(cli.app, ["chat"], input="\noi\n")
+    result = runner.invoke(cli.app, [], input="\noi\n")
     assert result.exit_code == 0
     assert "um" in result.output
 
 
 def test_unknown_provider_is_rejected() -> None:
-    result = runner.invoke(cli.app, ["chat", "oi", "--provider", "gpt"])
+    result = runner.invoke(cli.app, ["oi", "--provider", "gpt"])
     assert result.exit_code != 0
     assert "provider desconhecido" in result.output
 
@@ -76,7 +76,7 @@ def test_missing_groq_key_shows_env_instruction(monkeypatch: pytest.MonkeyPatch)
             yield  # pragma: no cover
 
     use_provider(monkeypatch, NoKey([]))
-    result = runner.invoke(cli.app, ["chat", "oi"])
+    result = runner.invoke(cli.app, ["oi"])
     assert result.exit_code == 1
     assert ".env" in result.output
 
@@ -84,7 +84,7 @@ def test_missing_groq_key_shows_env_instruction(monkeypatch: pytest.MonkeyPatch)
 def test_repl_survives_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # First turn: no script left → LLMUnavailableError; the REPL keeps going.
     use_provider(monkeypatch, FakeProvider([]))
-    result = runner.invoke(cli.app, ["chat"], input="oi\n/sair\n")
+    result = runner.invoke(cli.app, [], input="oi\n/sair\n")
     assert result.exit_code == 0
     assert "Não consegui falar com nenhum LLM" in result.output
 
@@ -180,7 +180,7 @@ def test_tools_command_lists_registered_tools(monkeypatch: pytest.MonkeyPatch) -
 
 def test_every_line_juniper_says_carries_the_tag(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([say("Oi.")]))
-    result = runner.invoke(cli.app, ["chat"], input="oi\n/sair\n")
+    result = runner.invoke(cli.app, [], input="oi\n/sair\n")
     lines = [line for line in result.output.splitlines() if line.strip()]
     assert lines[0].startswith(voice.JUNIPER_TAG)  # greeting
     assert any(f"{voice.JUNIPER_TAG} Oi." in line for line in lines)  # AI reply
@@ -196,15 +196,26 @@ def test_repl_prompt_uses_the_user_tag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     use_provider(monkeypatch, FakeProvider([]))
     monkeypatch.setattr(cli.LineReader, "read", fake_read)
-    result = runner.invoke(cli.app, ["chat"])
+    result = runner.invoke(cli.app, [])
     assert prompts == [f"{voice.USER_TAG} "] and result.exit_code == 0
 
 
-def test_no_arguments_greets_and_lists_commands() -> None:
-    result = runner.invoke(cli.app, [])
-    assert result.exit_code == 0
-    assert result.output.startswith(f"{voice.JUNIPER_TAG} Olá, sou Juniper")
-    assert "search" in result.output and "chat" in result.output
+def test_no_arguments_opens_the_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+    use_provider(monkeypatch, FakeProvider([]))
+    result = runner.invoke(cli.app, [], input="/sair\n")
+    assert result.exit_code == 0 and "tô te ouvindo" in result.output
+
+
+def test_free_words_are_one_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = FakeProvider([say("Oi!")])
+    use_provider(monkeypatch, provider)
+    result = runner.invoke(cli.app, ["o", "que", "tenho", "amanhã?"])
+    assert result.exit_code == 0 and "Oi!" in result.output
+
+
+def test_help_still_lists_commands() -> None:
+    output = runner.invoke(cli.app, ["--help"]).output
+    assert "search" in output and "_chat" not in output
 
 
 def test_tools_command_introduces_itself(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,7 +244,7 @@ def test_say_never_parses_markup() -> None:
 
 def test_no_stray_tag_when_the_llm_fails_before_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
     use_provider(monkeypatch, FakeProvider([]))
-    result = runner.invoke(cli.app, ["chat", "oi"])
+    result = runner.invoke(cli.app, ["oi"])
     assert not any(line.strip() == voice.JUNIPER_TAG for line in result.output.splitlines())
 
 
@@ -290,12 +301,6 @@ def test_tag_is_reprinted_after_a_fixed_line() -> None:
     assert [line.split(":")[0] for line in lines] == ["🌿 JUNIPER"] * 3
 
 
-def test_unknown_command_is_said_by_juniper() -> None:
-    result = runner.invoke(cli.app, ["fooo"])
-    assert result.exit_code == 2
-    assert result.output.startswith(f"{voice.JUNIPER_TAG} Não conheço o comando 'fooo'")
-
-
 # --- Failover visível ---------------------------------------------------------------
 
 
@@ -312,7 +317,7 @@ def failover_router() -> LLMRouter:
 
 def test_failover_is_announced_in_juniper_voice(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "build_router", lambda name: failover_router())
-    result = runner.invoke(cli.app, ["chat", "oi"])
+    result = runner.invoke(cli.app, ["oi"])
     assert result.exit_code == 0
     assert "A Groq recusou as credenciais. Vou tentar o Ollama." in result.output
     assert "Sem GPU" in result.output
@@ -382,7 +387,7 @@ def test_chat_confirms_by_conversation_not_by_a_yn_prompt(monkeypatch: pytest.Mo
             ]
         ),
     )
-    result = runner.invoke(cli.app, ["chat"], input="cancela os de amanhã\nSim.\n/sair\n")
+    result = runner.invoke(cli.app, [], input="cancela os de amanhã\nSim.\n/sair\n")
     assert result.exit_code == 0
     assert "Posso apagar esses dois agendamentos? É irreversível." in result.output
     assert "Apagado!" in result.output
@@ -404,6 +409,6 @@ def test_chat_answering_no_leaves_everything_untouched(monkeypatch: pytest.Monke
             [several(("wipe", {"id": "1"})), say("Posso apagar?"), say("Tranquilo, deixei.")]
         ),
     )
-    result = runner.invoke(cli.app, ["chat"], input="apaga\nNão\n/sair\n")
+    result = runner.invoke(cli.app, [], input="apaga\nNão\n/sair\n")
     assert result.exit_code == 0 and ran == []
     assert "Tranquilo, deixei." in result.output

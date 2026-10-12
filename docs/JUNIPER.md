@@ -322,7 +322,7 @@ Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.e
 JSONL em `settings.paths.logs/` (um arquivo por dia). Eventos: `llm_request/response` (provider, modelo, latência, usage), `tool_call` (nome, tier, args, decisão, resultado), `error`, `failover`. Redigir segredos. Sem `print` em `brain/` fora de `clients/`.
 
 ### T-040 — CLI completo
-`juniper chat "msg"` (one-shot) e `juniper chat` (REPL) com `rich`, streaming de tokens, confirmação na conversa (sem `[y/N]`), `--provider` opcional, saída de erros amigável em PT-BR (ex.: chave Groq ausente → instrução do `.env`).
+`juniper msg` (one-shot) e `juniper` (REPL) com `rich`, streaming de tokens, confirmação na conversa (sem `[y/N]`), `--provider` opcional, saída de erros amigável em PT-BR (ex.: chave Groq ausente → instrução do `.env`).
 
 ### T-041 — Subcomandos legados
 `juniper gitgrep ...` e `juniper deployfeature ...` delegando ao `shell/` (comportamento idêntico ao v2).

@@ -35,7 +35,7 @@
     <p style="color:var(--muted)">Tudo com servidores e SDKs falsos: não precisa de rede.</p></div>
   <div class="card"><b>CLI atual</b>
     <div class="cmd"><pre id="c6">juniper version</pre><button data-copy="c6">Copiar</button></div>
-    <p style="color:var(--muted)"><code>juniper chat</code> ainda é um placeholder (T-040).</p></div>
+    <p style="color:var(--muted)"><code>juniper</code> ainda é um placeholder (T-040).</p></div>
 </div>
 </main>
 <script src="assets/status.js" onerror="void 0"></script>
@@ -82,8 +82,8 @@
 
   const noChat = R.roadmap.find((r) => r.task === "T-040");
   const verdict = noChat && noChat.implemented
-    ? "O <code>juniper chat</code> está implementado. Teste-o direto."
-    : "O <code>juniper chat</code> ainda <b>não conversa</b> (T-040). Hoje dá para falar com os modelos por <code>scripts/try_ollama.py</code>, sem ferramentas e sem memória.";
+    ? "O <code>juniper</code> está implementado. Teste-o direto."
+    : "O <code>juniper</code> ainda <b>não conversa</b> (T-040). Hoje dá para falar com os modelos por <code>scripts/try_ollama.py</code>, sem ferramentas e sem memória.";
   html += `<div class="card" style="margin-top:12px">${verdict}</div>`;
 
   // checks agrupados

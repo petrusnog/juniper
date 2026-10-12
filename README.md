@@ -19,7 +19,7 @@ git clone git@github.com:petrusnog/juniper.git ~/.juniper
 bash ~/.juniper/scripts/install.sh
 ```
 
-Não precisa ter Python: o instalador cria um ambiente virtual em `~/.juniper/.venv` (baixando um Python isolado se for preciso), reaproveita o que já estiver instalado, reinstala só o que estiver com defeito, cria `config.yaml` e `.env`, configura o `~/.zshrc` e termina com um teste real. Abra um terminal novo e use `juniper chat`.
+Não precisa ter Python: o instalador cria um ambiente virtual em `~/.juniper/.venv` (baixando um Python isolado se for preciso), reaproveita o que já estiver instalado, reinstala só o que estiver com defeito, cria `config.yaml` e `.env`, configura o `~/.zshrc` e termina com um teste real. Abra um terminal novo e use `juniper`.
 
 Depois da primeira instalação, `juniper install` faz o mesmo (`--dev` inclui pytest/ruff/mypy, `--check` só verifica, `--clean` recomeça do zero). Guia completo: `docs/html/install.html`.
 
