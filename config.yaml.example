@@ -4,7 +4,12 @@
 # Precedência: env > config.yaml > defaults. Ver ADR-003.
 
 llm:
-  priority: [groq, ollama]
+  # Ordem do failover: se o primeiro cair, tenta o próximo.
+  priority: [deepinfra, groq, ollama]
+
+  deepinfra:
+    model: deepseek-ai/DeepSeek-V4-Flash-0731   # precisa suportar tool calling
+    timeout: 30
 
   groq:
     model: openai/gpt-oss-120b

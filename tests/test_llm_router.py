@@ -71,9 +71,12 @@ def test_requires_providers() -> None:
         LLMRouter([])
 
 
-def test_builds_providers_from_priority() -> None:
+def test_builds_providers_from_priority(monkeypatch: pytest.MonkeyPatch) -> None:
+    from brain.config import settings
+
+    monkeypatch.setattr(settings.llm, "priority", ["deepinfra", "groq", "ollama"])
     router = LLMRouter()
-    assert [p.name for p in router._providers] == ["groq", "ollama"]
+    assert [p.name for p in router._providers] == ["deepinfra", "groq", "ollama"]
 
 
 async def test_chat_first_ok_skips_second() -> None:

@@ -120,6 +120,14 @@ def check_groq_key() -> tuple[str, str]:
     return OK, "chave presente (valor não exibido)"
 
 
+def check_deepinfra_key() -> tuple[str, str]:
+    from brain.config import settings
+
+    if settings.deepinfra_api_key is None:
+        return SKIP, "JUNIPER_DEEPINFRA_API_KEY ausente no .env (sem teste ao vivo)"
+    return OK, "chave presente (valor não exibido)"
+
+
 def check_mypy() -> tuple[str, str]:
     res = _run([sys.executable, "-m", "mypy", "brain/"])
     summary = (res.stdout.strip().splitlines() or ["(sem saída)"])[-1]
@@ -131,12 +139,11 @@ def check_mypy() -> tuple[str, str]:
 
 async def _live_provider(provider_name: str) -> list[Check]:
     from brain.llm.errors import LLMError
-    from brain.llm.groq_provider import GroqProvider
-    from brain.llm.ollama_provider import OllamaProvider
+    from brain.llm.router import PROVIDERS
     from brain.llm.types import Message
 
     group = f"Ao vivo · {provider_name}"
-    provider = OllamaProvider() if provider_name == "ollama" else GroqProvider()
+    provider = PROVIDERS[provider_name]()
     checks: list[Check] = []
     prompt = [Message("user", "Responda apenas com a palavra: ok")]
 
@@ -192,6 +199,7 @@ ROADMAP: list[tuple[str, str, str]] = [
     ("T-012", "OllamaProvider", "brain/llm/ollama_provider.py"),
     ("T-013", "GroqProvider", "brain/llm/groq_provider.py"),
     ("T-015", "Router com failover", "brain/llm/router.py"),
+    ("T-016", "DeepInfraProvider", "brain/llm/deepinfra_provider.py"),
     ("T-020", "Base de tools", "brain/tools/base.py"),
     ("T-021", "Registry de tools", "brain/tools/registry.py"),
     ("T-022", "Tools de sistema", "brain/tools/system.py"),
@@ -240,6 +248,8 @@ async def collect(live: bool, full: bool) -> list[Check]:
         lambda: _pytest("tests/test_ollama_provider.py"))
     add("T-013 · Groq", "testes (SDK falso)", lambda: _pytest("tests/test_groq_provider.py"))
     add("T-013 · Groq", "chave configurada", check_groq_key)
+    add("DeepInfra", "testes (HTTP falso)", lambda: _pytest("tests/test_deepinfra_provider.py"))
+    add("DeepInfra", "chave configurada", check_deepinfra_key)
     if full:
         console.print("[dim]Rodando mypy…[/dim]")
         add("Qualidade", "mypy --strict", check_mypy)
@@ -249,11 +259,15 @@ async def collect(live: bool, full: bool) -> list[Check]:
         checks += await _live_provider("ollama")
         if (proc := ollama_processor()) is not None:
             checks.append(proc)
-        key_ok = next(c for c in checks if c.name == "chave configurada").status == OK
-        if key_ok:
-            checks += await _live_provider("groq")
-        else:
-            checks.append(Check("Ao vivo · groq", "chat/stream", SKIP, "sem chave da Groq"))
+        for name, label in (("deepinfra", "DeepInfra"), ("groq", "Groq")):
+            key_check = next(
+                c for c in checks if c.name == "chave configurada" and label in c.group
+            )
+            if key_check.status == OK:
+                checks += await _live_provider(name)
+            else:
+                skipped = Check(f"Ao vivo · {name}", "chat/stream", SKIP, f"sem chave da {label}")
+                checks.append(skipped)
     return checks
 
 

@@ -23,7 +23,7 @@ bash ~/.juniper/scripts/install.sh</pre>
 <pre>juniper chat</pre>
   <p style="color:var(--muted)">Depois da primeira instalação o comando também existe dentro do shell: <code>juniper install</code> faz o mesmo (veja a seção 4).</p>
 </div>
-<p>Durante a instalação ela pede <b>uma coisa</b> que não tem como descobrir sozinha: a chave grátis da Groq (<a href="https://console.groq.com/keys">console.groq.com/keys</a>). Cole e pronto; Enter pula, e você pode colocar depois em <code>~/.juniper/.env</code>.</p>
+<p>Durante a instalação ela pede <b>só uma coisa</b> que não tem como descobrir sozinha: as chaves dos LLMs: DeepInfra, o cérebro principal (<a href="https://deepinfra.com/dash/api_keys">deepinfra.com/dash/api_keys</a>), e Groq, o plano B grátis (<a href="https://console.groq.com/keys">console.groq.com/keys</a>). Cole e pronto; Enter pula, e você pode colocar depois em <code>~/.juniper/.env</code>.</p>
 
 <h2>2. O que o instalador faz</h2>
 <div class="card">
@@ -123,7 +123,7 @@ cp ~/.juniper/.env.example ~/.juniper/.env      # preencha JUNIPER_GROQ_API_KEY<
 
 <h2>7. Opcionais</h2>
 <div class="card">
-  <p><b>Ollama (plano B local).</b> Instale em <a href="https://ollama.com">ollama.com</a> e rode <code>ollama pull llama3.1</code>. A Juniper usa quando a Groq falha ou está sem chave.</p>
+  <p><b>Ollama (reserva local, o último da fila).</b> Instale em <a href="https://ollama.com">ollama.com</a> e rode <code>ollama pull llama3.1</code>. A Juniper usa quando a DeepInfra e a Groq falham.</p>
   <p><b>Agenda do Google.</b> Precisa de conta de serviço e agenda própria; o passo a passo está na página <a href="T-022.html">T-022</a>. Valide com <code>python scripts/check_google.py</code>.</p>
 </div>
 

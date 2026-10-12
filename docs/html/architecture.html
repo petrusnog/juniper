@@ -63,8 +63,8 @@
   <div class="layer">
     <div class="lname"><b>2 · Capacidades</b><small>O que o cérebro usa para pensar, agir e lembrar.</small></div>
     <div class="lblocks">
-      <div class="blk done"><b>LLM Router</b><small>T-015 · Groq primeiro, Ollama se falhar</small></div>
-      <div class="blk done"><b>Providers + streaming</b><small>T-011 a T-014 · Groq e Ollama</small></div>
+      <div class="blk done"><b>LLM Router</b><small>T-015 · DeepInfra, depois Groq, depois Ollama</small></div>
+      <div class="blk done"><b>Providers + streaming</b><small>T-011 a T-016 · DeepInfra, Groq e Ollama</small></div>
       <div class="blk done"><b>Base de tools</b><small>T-020 · <code>Tool</code>, <code>Tier</code>, <code>ToolResult</code></small></div>
       <div class="blk done"><b>Registry de tools</b><small>T-021 · <code>@register_tool</code> + auto-descoberta</small></div>
       <div class="blk done"><b>Agenda Google</b><small>T-022 · ler, marcar e desmarcar compromissos</small></div>
@@ -79,7 +79,8 @@
   <div class="layer">
     <div class="lname"><b>1 · Mundo externo</b><small>Fora do código da Juniper.</small></div>
     <div class="lblocks">
-      <div class="blk done"><b>Groq</b><small>LLM na nuvem (primário)</small></div>
+      <div class="blk done"><b>DeepInfra</b><small>LLM na nuvem (principal)</small></div>
+      <div class="blk done"><b>Groq</b><small>LLM na nuvem (segunda opção)</small></div>
       <div class="blk done"><b>Ollama</b><small>LLM local (reserva)</small></div>
       <div class="blk done"><b>Google Calendar</b><small>sua agenda, via conta de serviço</small></div>
       <div class="blk todo"><b>Internet</b><small>páginas e buscas</small></div>
@@ -106,7 +107,7 @@
     <tr><th>#</th><th>O que acontece</th><th>Camada</th><th>Estado</th></tr>
     <tr><td>1</td><td>A CLI recebe sua frase e a entrega ao agente.</td><td>Interface</td><td><span class="tag b">T-040</span></td></tr>
     <tr><td>2</td><td>O agente monta o pedido ao LLM: persona, histórico, <b>data e hora de agora</b> (é isso que permite entender "amanhã") e a lista de tools.</td><td>Cérebro</td><td><span class="tag b">T-022</span> <span class="tag b">T-030</span></td></tr>
-    <tr><td>3</td><td>O router envia ao Groq. Se ele falhar (limite, queda, chave), tenta o Ollama com a mesma conversa.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
+    <tr><td>3</td><td>O router envia à DeepInfra. Se ela falhar (limite, queda, chave), tenta a Groq e, por último, o Ollama, com a mesma conversa.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
     <tr><td>4</td><td>O LLM pede <code>create_event</code> direto, com título e horário já resolvidos a partir da data de agora.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
     <tr><td>5</td><td>O dispatcher acha a tool no registry, e o <code>precheck</code> consulta o Google Calendar <b>antes</b> de te perguntar qualquer coisa.</td><td>Cérebro</td><td><span class="tag g">registry</span> <span class="tag g">precheck</span> <span class="tag b">T-030</span></td></tr>
     <tr><td>6</td><td>Se já houver algo às 16h, o LLM pergunta: <b>"Já existe «Fisioterapia» às 16h. Desmarco para marcar o dentista?"</b></td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
@@ -117,12 +118,12 @@
 </div>
 
 <h2>4. Onde estamos</h2>
-<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>14 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
+<p class="lead">Sprint 1 ("Hello Agent") tem 19 tasks. <b>15 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
 <div class="card">
-  <div class="bar"><i style="width:78%"></i></div>
-  <p style="color:var(--muted);font-size:.9em">14 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030, T-026, T-031, T-040, T-041, T-042</p>
+  <div class="bar"><i style="width:79%"></i></div>
+  <p style="color:var(--muted);font-size:.9em">15 de 19 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-016, T-020, T-021, T-022, T-030, T-026, T-031, T-040, T-041, T-042</p>
   <div class="sprints" style="margin-top:14px">
-    <div class="sprint"><b>LLM</b><span class="tag g">5 de 5</span><small>providers, streaming, failover</small></div>
+    <div class="sprint"><b>LLM</b><span class="tag g">6 de 6</span><small>providers, streaming, failover</small></div>
     <div class="sprint"><b>Tools</b><span class="tag a">4 de 8</span><small>base, registry, agenda e git prontos</small></div>
     <div class="sprint now"><b>Cérebro</b><span class="tag g">2 de 2</span><small>agent loop e logging prontos</small></div>
     <div class="sprint"><b>Interface</b><span class="tag g">3 de 3</span><small>CLI, legados, <code>juniper tools</code></small></div>
@@ -156,7 +157,7 @@
 <h2>6. Quatro regras que mantêm tudo simples</h2>
 <div class="grid">
   <div class="card type"><h3>O cérebro não conhece as interfaces</h3><p>O <code>core/</code> nunca importa de <code>clients/</code>. Por isso a mesma Juniper serve terminal, celular e voz.</p></div>
-  <div class="card type"><h3>Providers são trocáveis</h3><p>O cérebro fala com "um LLM", nunca com Groq ou Ollama especificamente. O router escolhe.</p></div>
+  <div class="card type"><h3>Providers são trocáveis</h3><p>O cérebro fala com "um LLM", nunca com DeepInfra, Groq ou Ollama especificamente. O router escolhe.</p></div>
   <div class="card type"><h3>Tool nova = arquivo novo</h3><p>Cada capacidade é um plugin que se registra sozinho. Nada no cérebro muda.</p></div>
   <div class="card type"><h3>Perigo exige permissão</h3><p>Ler é livre; alterar pede <code>[y/N]</code>; destruir pede aviso de irreversibilidade; coisas como <code>rm -rf /</code> são bloqueadas.</p></div>
 </div>
@@ -168,7 +169,7 @@
     <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td><a href="T-040.html">T-040</a> · <a href="T-026.html">T-041 · T-042</a></td></tr>
     <tr><td>Transporte</td><td><code>brain/clients/server.py</code></td><td>ADR-007</td></tr>
     <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a> · <a href="T-031.html">T-031</a></td></tr>
-    <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a></td></tr>
+    <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a> · <a href="T-016.html">T-016</a></td></tr>
     <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · <a href="T-026.html">T-026</a> · T-023, T-024, T-025, T-027</td></tr>
     <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 3</td></tr>
     <tr><td>Configuração</td><td><code>brain/config.py</code></td><td>ADR-003</td></tr>

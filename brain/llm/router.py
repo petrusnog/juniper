@@ -1,4 +1,4 @@
-"""Provider router with failover, following ``settings.llm.priority`` (default Groq → Ollama)."""
+"""Provider router with failover along ``settings.llm.priority`` (DeepInfra → Groq → Ollama)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from brain.config import settings
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.compact import compact_messages, compact_tools
+from brain.llm.deepinfra_provider import DeepInfraProvider
 from brain.llm.errors import (
     LLMAuthError,
     LLMError,
@@ -24,7 +25,11 @@ from brain.llm.types import LLMResponse, Message, StreamChunk
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS: dict[str, type[LLMProvider]] = {"groq": GroqProvider, "ollama": OllamaProvider}
+PROVIDERS: dict[str, type[LLMProvider]] = {
+    "deepinfra": DeepInfraProvider,
+    "groq": GroqProvider,
+    "ollama": OllamaProvider,
+}
 
 # Errors that make a provider unusable for this call; the next one gets a chance.
 # Any other LLMError (bad request, malformed response) would repeat elsewhere: it propagates.

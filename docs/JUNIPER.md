@@ -30,7 +30,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `pyproject.toml`, `requirements.txt`, `.gitignore` | ✅ |
 | `scripts/dev.sh` (setup idempotente: venv, symlink global, PATH) | ✅ |
 | `scripts/uninstall.sh` (`--yes`, `--purge-repo`) | ✅ |
-| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013), streaming (T-014), `router.py` (T-015) + testes | ✅ |
+| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013), streaming (T-014), `router.py` (T-015), `deepinfra_provider.py` (T-016) + testes | ✅ |
 | `brain/tools/base.py` (T-020: `Tool`, `ToolResult`, `Tier`, `Locality`), `registry.py` (T-021: `@register_tool`, auto-descoberta) + testes | ✅ |
 | `brain/config.py` (pydantic-settings, inclui bloco `google` e validação de fuso) + `tests/test_config.py` | ✅ |
 | `brain/core/clock.py` (hora atual com fuso, para o prompt) + `scripts/check_google.py` (valida conta de serviço e agendas) | ✅ |
@@ -55,8 +55,10 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 - **Runtime:** `httpx>=0.27`, `pydantic>=2.8`, `pydantic-settings>=2.4`, `pyyaml>=6.0`, `python-dotenv>=1.0`, `rich>=13.7`, `typer>=0.12`, `groq>=0.9`
 - **Dev:** `pytest>=8`, `pytest-asyncio>=0.23` (modo `auto`), `ruff>=0.5`, `mypy>=1.10`
 - **LLM:**
-  - **Groq** (primário): `llama-3.3-70b-versatile`, tier gratuito, tool calling confiável.
-  - **Ollama** (fallback): `llama3.1`, local (GPU RX 590 8GB), usado quando Groq falha/offline.
+  - **DeepInfra** (principal, ADR-009): API compatível com a da OpenAI via `httpx`, modelo configurável (`deepseek-ai/DeepSeek-V4-Flash-0731`), tool calling.
+  - **Groq** (segunda opção): `openai/gpt-oss-120b`, tier gratuito, tool calling confiável.
+  - **Ollama** (reserva): `llama3.1`, local, usado quando DeepInfra e Groq falham/offline (recebe prompt compacto).
+  - **Failover:** `llm.priority = [deepinfra, groq, ollama]`.
 - **Hospedagem futura:** VPS (~US$5/mês) rodando o brain; clientes remotos via Tailscale.
 
 ---
@@ -65,7 +67,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
 ### 4.1 Princípios inegociáveis
 1. **`core/` ↔ `clients/` separados.** O core é agnóstico de transporte e **nunca importa de `clients/`**. Clientes são finos: capturam input, exibem output.
-2. **Providers intercambiáveis.** O agente fala com `LLMProvider` (abstrato), nunca com `OllamaProvider`/`GroqProvider` diretamente.
+2. **Providers intercambiáveis.** O agente fala com `LLMProvider` (abstrato), nunca com `DeepInfraProvider`/`GroqProvider`/`OllamaProvider` diretamente.
 3. **Tools são plugins.** Cada tool declara seu schema e se auto-registra. Tool nova = arquivo novo em `brain/tools/`.
 4. **Shell é HMI, Python é cérebro.** `shell/juniper.sh` é wrapper; lógica vive em `brain/`.
 5. **Um só ponto de config.** Nenhum módulo lê `os.environ`, YAML ou `.env` diretamente — tudo via `from brain.config import settings`.
@@ -74,7 +76,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
 ### 4.2 Fluxo (Sprint 1, local)
 ```
-usuário → clients/cli.py → core/agent.py ──► llm/router.py ──► Groq | Ollama
+usuário → clients/cli.py → core/agent.py ──► llm/router.py ──► DeepInfra | Groq | Ollama
                                │  ▲
                  tool_calls    ▼  │ ToolResult
                           core/dispatcher.py → tools/registry.py → Tool.run()
@@ -112,7 +114,7 @@ Regras: tool sem classificação = **WRITE**. `run_shell` aceita **um único bin
 │   ├── config.py                 # ✅ settings singleton
 │   ├── core/    agent.py · dispatcher.py · session.py
 │   ├── clients/ cli.py ✅ · server.py (Sprint 2)
-│   ├── llm/     types.py* · errors.py* · base.py · ollama_provider.py · groq_provider.py · router.py
+│   ├── llm/     types.py* · errors.py* · base.py · ollama_provider.py · groq_provider.py · deepinfra_provider.py · router.py
 │   ├── tools/   base.py · registry.py · system.py · web.py · juniper_cmds.py* (· shell.py stub)
 │   └── memory/  session.py · vector.py   (Sprint 3)
 ├── shell/       juniper.sh · commands/{gitgrep,deployfeature,help,version}.sh · core/{dispatcher,loader}.sh
@@ -129,13 +131,14 @@ Regras: tool sem classificação = **WRITE**. `run_shell` aceita **um único bin
 
 - `config.yaml` = preferências; `.env` = segredos. **Precedência:** args do construtor > ENV > `.env` > YAML > defaults.
 - Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` → `llm.ollama.url`.
-- Segredo: `JUNIPER_GROQ_API_KEY` (obter em https://console.groq.com/keys). Acesso: `settings.groq_api_key.get_secret_value()`.
+- Segredos: `JUNIPER_DEEPINFRA_API_KEY` (https://deepinfra.com/dash/api_keys) e `JUNIPER_GROQ_API_KEY` (https://console.groq.com/keys). Acesso: `settings.deepinfra_api_key` / `settings.groq_api_key` (`.get_secret_value()`).
 - Localização do YAML: `JUNIPER_CONFIG_PATH` → `~/.juniper/config.yaml` → `./config.yaml`.
 - `settings.paths.{home,logs,config}` são calculados, não configuráveis.
 
 ```yaml
 llm:
-  priority: [groq, ollama]        # só "groq" e "ollama" são válidos
+  priority: [deepinfra, groq, ollama]   # só estes três são válidos; a ordem é a do failover
+  deepinfra: {model: "deepseek-ai/DeepSeek-V4-Flash-0731", timeout: 30}
   groq:   {model: openai/gpt-oss-120b, timeout: 30, reasoning_effort: low}
   ollama: {url: "http://localhost:11434", model: llama3.1, timeout: 300}
 agent:
@@ -172,8 +175,8 @@ tools:
 - **Nomes:** `snake_case` funções/variáveis, `PascalCase` classes, `UPPER_CASE` constantes.
 - **Async:** I/O de LLM e tools é `async`. Testes async sem decorator (modo `auto`).
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), prefixados pela task quando aplicável (ex.: `feat(T-011): ...`).
-- **Testes:** nenhum teste pode depender de rede, de chave real da Groq ou de Ollama rodando — use mocks (`httpx.MockTransport`, fakes).
-- **Segredos:** nunca logar nem imprimir `groq_api_key`.
+- **Testes:** nenhum teste pode depender de rede, de chave real (DeepInfra/Groq) ou de Ollama rodando — use mocks (`httpx.MockTransport`, fakes).
+- **Segredos:** nunca logar nem imprimir `groq_api_key` / `deepinfra_api_key`.
 
 ### Definition of Done (toda task)
 1. Critérios de aceite da task atendidos.
@@ -195,11 +198,12 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 
 | ADR | Decisão |
 |---|---|
-| 001 | Interação em PT-BR; código/logs em inglês. Providers: Groq + Ollama com prioridade configurável. `commands/chat.sh` legado removido — conversa via `python -m brain chat`. |
+| 001 | Interação em PT-BR; código/logs em inglês. Providers com prioridade configurável (Groq + Ollama; DeepInfra desde o ADR-009). `commands/chat.sh` legado removido — conversa via `python -m brain chat`. |
 | 002 | Tools no formato **OpenAI Function Calling**; classe Python com `name`, `description` (PT-BR, diz *o que faz e quando usar*), `parameters` (JSON Schema), `tier`, `run()`; auto-registro por `@register_tool`; retorno `ToolResult`. |
 | 003 | Config: YAML + `.env` + ENV com prefixo `JUNIPER_`. |
 | 006 | Segurança em 4 tiers; default WRITE; `run_shell` binário único + allowlist; web = dado. |
 | 008 | **(Proposto)** Primeira tool = Google Calendar via conta de serviço; calendário "Juniper" para escrita; relógio do sistema + fuso injetado no prompt. |
+| 009 | DeepInfra como provider principal (API compatível com OpenAI, via `httpx`); failover `deepinfra → groq → ollama`. |
 | 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
 
 ---
@@ -254,8 +258,12 @@ Implementar `stream()` em ambos providers. Ollama: NDJSON linha a linha. Groq: `
 **Aceite:** concatenar `delta`s == conteúdo de `chat()` equivalente; testes de tool call em stream.
 
 ### T-015 — `LLMRouter`
-Itera `settings.llm.priority`; instancia providers por nome (registro `{"groq": GroqProvider, "ollama": OllamaProvider}`). Failover para o próximo em `LLMUnavailableError`, `LLMTimeoutError`, `LLMRateLimitError` **e** `LLMAuthError` (provider inutilizável) — mas registra warning. Se todos falham, lança `LLMError` agregando causas. Expõe a mesma interface de `LLMProvider` (`chat`/`stream`). Em `stream`, só faz failover **antes** do primeiro chunk emitido.
+Itera `settings.llm.priority`; instancia providers por nome (registro `{"deepinfra": DeepInfraProvider, "groq": GroqProvider, "ollama": OllamaProvider}`). Failover para o próximo em `LLMUnavailableError`, `LLMTimeoutError`, `LLMRateLimitError` **e** `LLMAuthError` (provider inutilizável) — mas registra warning. Se todos falham, lança `LLMError` agregando causas. Expõe a mesma interface de `LLMProvider` (`chat`/`stream`). Em `stream`, só faz failover **antes** do primeiro chunk emitido.
 **Aceite:** testes com providers fake cobrindo: 1º ok; 1º falha→2º ok; todos falham; falha no meio do stream não duplica saída.
+
+### T-016 — `DeepInfraProvider` (extra, ADR-009)
+Provider na nuvem via `httpx` contra `https://api.deepinfra.com/v1/openai/chat/completions` (Bearer `JUNIPER_DEEPINFRA_API_KEY`, lazy: sem chave → `LLMAuthError`). SSE com `[DONE]`, tool calls fragmentadas acumuladas por `index`, `arguments` string JSON, `usage` no chunk final ou à parte. 401/402/403 → `LLMAuthError`, 429 → `LLMRateLimitError`, 5xx/conexão → `LLMUnavailableError`, timeout → `LLMTimeoutError`, demais 4xx → `LLMError` sem failover. Entra primeiro em `llm.priority`.
+**Aceite:** testes com `httpx.MockTransport` (`tests/test_deepinfra_provider.py`); a chave nunca aparece em erros ou logs.
 
 ### T-020 — Base de Tools
 ```python

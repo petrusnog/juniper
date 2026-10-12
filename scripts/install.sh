@@ -360,46 +360,55 @@ ensure_config_files() {
     return 0
 }
 
-groq_key_present() {
+api_key_present() { # api_key_present <VARIÁVEL>
     [ -f "$JUNIPER_ROOT/.env" ] &&
-        grep -Eq '^JUNIPER_GROQ_API_KEY=[^[:space:]]+' "$JUNIPER_ROOT/.env"
+        grep -Eq "^$1=[^[:space:]]+" "$JUNIPER_ROOT/.env"
 }
 
-# Pergunta a chave da Groq (única coisa que a Juniper não consegue descobrir sozinha).
-ensure_groq_key() {
-    groq_key_present && { ok "Chave da Groq configurada"; return 0; }
+# Pergunta uma chave de API (a única coisa que a Juniper não consegue descobrir sozinha).
+# ensure_api_key <VARIÁVEL> <nome> <url> <papel>
+ensure_api_key() {
+    local var="$1" name="$2" url="$3" role="$4"
+    api_key_present "$var" && { ok "Chave $name configurada"; return 0; }
     if [ "$ASSUME_YES" = true ] || [ ! -t 0 ] || [ ! -t 1 ]; then
-        warn "Falta a chave da Groq (grátis em https://console.groq.com/keys): coloque em $JUNIPER_ROOT/.env"
+        warn "Falta a chave $name ($role): crie em $url e coloque $var em $JUNIPER_ROOT/.env"
         return 0
     fi
     local key=""
-    say "Preciso de uma chave da Groq, meu cérebro principal (é grátis)."
-    say "Crie em https://console.groq.com/keys e cole aqui (Enter para pular; a digitação fica oculta)."
+    say "Preciso de uma chave $name ($role)."
+    say "Crie em $url e cole aqui (Enter para pular; a digitação fica oculta)."
     printf '%s ' "$USER_TAG"
     read -rs key || true
     printf '\n'
     key="$(printf '%s' "$key" | tr -d '[:space:]')"
     if [ -z "$key" ]; then
-        warn "Sem chave por enquanto. Depois, coloque JUNIPER_GROQ_API_KEY=... em $JUNIPER_ROOT/.env"
+        warn "Sem a chave $name por enquanto. Depois, coloque $var=... em $JUNIPER_ROOT/.env"
         return 0
     fi
-    if ! printf '%s' "$key" | grep -Eq '^[A-Za-z0-9_-]{20,}$'; then
-        warn "Isso não parece uma chave da Groq; não salvei. Edite $JUNIPER_ROOT/.env depois."
+    if ! printf '%s' "$key" | grep -Eq '^[A-Za-z0-9_.-]{16,}$'; then
+        warn "Isso não parece uma chave $name; não salvei. Edite $JUNIPER_ROOT/.env depois."
         return 0
     fi
     local tmp
     tmp="$(mktemp)"
-    if grep -q '^JUNIPER_GROQ_API_KEY=' "$JUNIPER_ROOT/.env"; then
-        awk -v k="$key" '/^JUNIPER_GROQ_API_KEY=/ {print "JUNIPER_GROQ_API_KEY=" k; next} {print}' \
+    if grep -q "^$var=" "$JUNIPER_ROOT/.env"; then
+        awk -v var="$var" -v k="$key" 'index($0, var "=") == 1 {print var "=" k; next} {print}' \
             "$JUNIPER_ROOT/.env" > "$tmp"
     else
         cat "$JUNIPER_ROOT/.env" > "$tmp"
-        printf 'JUNIPER_GROQ_API_KEY=%s\n' "$key" >> "$tmp"
+        printf '%s=%s\n' "$var" "$key" >> "$tmp"
     fi
     cat "$tmp" > "$JUNIPER_ROOT/.env"
     rm -f "$tmp"
     chmod 600 "$JUNIPER_ROOT/.env"
-    ok "Chave da Groq salva em .env"
+    ok "Chave $name salva em .env"
+}
+
+ensure_api_keys() {
+    ensure_api_key JUNIPER_DEEPINFRA_API_KEY DeepInfra https://deepinfra.com/dash/api_keys \
+        "meu cérebro principal"
+    ensure_api_key JUNIPER_GROQ_API_KEY Groq https://console.groq.com/keys \
+        "plano B, é grátis"
 }
 
 # --- Atalho e shell -----------------------------------------------------------------
@@ -536,7 +545,7 @@ main() {
 
     title "Configuração"
     ensure_config_files
-    ensure_groq_key
+    ensure_api_keys
     link_binary
     setup_shell
     optional_tools_report

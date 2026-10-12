@@ -168,15 +168,20 @@ def test_missing_rc_files_are_skipped(tmp_path: Path) -> None:
     assert not (tmp_path / "nao-existe").exists()
 
 
-def test_groq_key_detection(tmp_path: Path) -> None:
+def test_api_key_detection(tmp_path: Path) -> None:
     env = tmp_path / ".env"
-    probe = f'JUNIPER_ROOT="{tmp_path}"; groq_key_present && echo yes || echo no'
-    env.write_text("JUNIPER_GROQ_API_KEY=\n")
-    assert sh(probe).stdout.strip() == "no"
-    env.write_text("JUNIPER_GROQ_API_KEY=gsk_abc123\n")
-    assert sh(probe).stdout.strip() == "yes"
+
+    def present(var: str) -> str:
+        probe = f'JUNIPER_ROOT="{tmp_path}"; api_key_present {var} && echo yes || echo no'
+        return sh(probe).stdout.strip()
+
+    env.write_text("JUNIPER_GROQ_API_KEY=\nJUNIPER_DEEPINFRA_API_KEY=\n")
+    assert present("JUNIPER_GROQ_API_KEY") == "no" and present("JUNIPER_DEEPINFRA_API_KEY") == "no"
+    env.write_text("JUNIPER_GROQ_API_KEY=gsk_abc123\nJUNIPER_DEEPINFRA_API_KEY=\n")
+    assert present("JUNIPER_GROQ_API_KEY") == "yes"
+    assert present("JUNIPER_DEEPINFRA_API_KEY") == "no"  # one key does not stand in for the other
     env.unlink()
-    assert sh(probe).stdout.strip() == "no"
+    assert present("JUNIPER_GROQ_API_KEY") == "no"
 
 
 def test_no_system_python_is_detected(tmp_path: Path) -> None:

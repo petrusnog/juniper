@@ -51,9 +51,12 @@ def redact(value: Any, _key: str = "") -> Any:
 
 
 def _mask_known_key(text: str) -> str:
-    """Mask the configured Groq key even if it does not match a known pattern."""
-    secret = settings.groq_api_key.get_secret_value() if settings.groq_api_key else ""
-    return text.replace(secret, REDACTED) if len(secret) >= 8 else text
+    """Mask the configured provider keys even if they do not match a known pattern."""
+    for key in (settings.groq_api_key, settings.deepinfra_api_key):
+        secret = key.get_secret_value() if key else ""
+        if len(secret) >= 8:
+            text = text.replace(secret, REDACTED)
+    return text
 
 
 class EventLog:

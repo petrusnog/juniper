@@ -71,6 +71,8 @@ app = typer.Typer(
 )
 
 _YES = {"y", "yes", "s", "sim"}
+# Gendered article + display name, so the messages read right ("a Groq", "o Ollama").
+_PROVIDER_PT = {"deepinfra": ("a", "DeepInfra"), "groq": ("a", "Groq"), "ollama": ("o", "Ollama")}
 _EXIT = {"/sair", "/exit"}
 
 
@@ -158,18 +160,20 @@ class Printer:
 
     def notify_failover(self, failed: str, exc: LLMError, following: str | None) -> None:
         """A provider failed and another takes over: say so instead of going silent."""
+        art, name = _PROVIDER_PT.get(failed, ("o", failed))
         if isinstance(exc, LLMAuthError):
-            why = f"o {failed} recusou as credenciais"
+            why = f"{art} {name} recusou as credenciais"
         elif isinstance(exc, LLMRateLimitError):
-            why = f"o limite do {failed} acabou"
+            why = f"o limite d{art} {name} acabou"
         else:
-            why = f"o {failed} não respondeu"
+            why = f"{art} {name} não respondeu"
         if following is None:
             self.say(f"Falhou: {why}.", "yellow")
             return
+        next_art, next_name = _PROVIDER_PT.get(following, ("o", following))
         extra = " Sem GPU isso pode levar alguns minutos." if following == "ollama" else ""
-        self.say(f"{why[0].upper()}{why[1:]}. Vou tentar o {following}.{extra}", "yellow")
-        self._spin(f"esperando o {following}...")
+        self.say(f"{why[0].upper()}{why[1:]}. Vou tentar {next_art} {next_name}.{extra}", "yellow")
+        self._spin(f"esperando {next_art} {next_name}...")
 
     def token(self, text: str) -> None:
         if self._head is not None:
@@ -234,15 +238,22 @@ def make_confirm(
     return confirm
 
 
+_KEY_VARS = {"deepinfra": "JUNIPER_DEEPINFRA_API_KEY", "groq": "JUNIPER_GROQ_API_KEY"}
+
+
 def friendly_error(exc: LLMError) -> str:
     """Translate an LLM failure into an actionable PT-BR message (plain text)."""
     detail = str(exc)
     hints: list[str] = []
-    if "chave de API ausente" in detail or "LLMAuthError" in detail:
-        hints.append("Groq sem chave válida: defina JUNIPER_GROQ_API_KEY no arquivo .env.")
-    if "LLMRateLimitError" in detail:
-        hints.append("Limite da Groq atingido: espere um minuto e tente de novo.")
-    if "ollama" in detail and ("LLMUnavailableError" in detail or "LLMTimeoutError" in detail):
+    for name in re.findall(r"(\w+): LLMAuthError", detail):
+        if name in _KEY_VARS:
+            hints.append(
+                f"{_PROVIDER_PT[name][1]} sem chave válida: defina {_KEY_VARS[name]} no .env."
+            )
+    for name in re.findall(r"(\w+): LLMRateLimitError", detail):
+        art, shown = _PROVIDER_PT.get(name, ("o", name))
+        hints.append(f"Limite d{art} {shown} atingido: espere um minuto.")
+    if re.search(r"ollama: (LLMUnavailableError|LLMTimeoutError)", detail):
         hints.append("Ollama não respondeu: ele está rodando? (`ollama serve`)")
     text = "Não consegui falar com nenhum LLM agora."
     if hints:
@@ -336,7 +347,9 @@ def chat(
     ] = None,
     provider: Annotated[
         Optional[str],  # noqa: UP045
-        typer.Option("--provider", "-p", help="Força um provider (groq ou ollama), sem failover."),
+        typer.Option(
+            "--provider", "-p", help="Força um provider (deepinfra, groq ou ollama), sem failover."
+        ),
     ] = None,
 ) -> None:
     """Conversa com a Juniper: `juniper chat "oi"` ou `juniper chat` (interativo)."""

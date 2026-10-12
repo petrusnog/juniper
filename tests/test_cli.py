@@ -382,7 +382,7 @@ def test_failover_is_announced_in_juniper_voice(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(cli, "build_router", lambda name: failover_router())
     result = runner.invoke(cli.app, ["chat", "oi"])
     assert result.exit_code == 0
-    assert "O groq recusou as credenciais. Vou tentar o ollama." in result.output
+    assert "A Groq recusou as credenciais. Vou tentar o Ollama." in result.output
     assert "Sem GPU" in result.output
     assert "Oi, sou o Ollama." in result.output
     assert "Failover:" not in result.output  # no raw library warning in the conversation
@@ -406,8 +406,8 @@ def test_router_calls_on_failover_with_the_next_provider() -> None:
 @pytest.mark.parametrize(
     ("exc", "expected"),
     [
-        (LLMRateLimitError("x"), "O limite do groq acabou"),
-        (LLMUnavailableError("x"), "O groq não respondeu"),
+        (LLMRateLimitError("x"), "O limite da Groq acabou"),
+        (LLMUnavailableError("x"), "A Groq não respondeu"),
     ],
 )
 def test_failover_reasons(exc: LLMError, expected: str) -> None:
@@ -419,4 +419,4 @@ def test_failover_reasons(exc: LLMError, expected: str) -> None:
 def test_last_provider_failing_is_said_without_a_next_step() -> None:
     out = Console(record=True, width=120)
     cli.Printer(out).notify_failover("ollama", LLMUnavailableError("x"), None)
-    assert "Falhou: o ollama não respondeu." in out.export_text(clear=False)
+    assert "Falhou: o Ollama não respondeu." in out.export_text(clear=False)

@@ -47,7 +47,9 @@ def config_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_defaults_when_no_config(isolated_home: Path) -> None:
     """Sem config.yaml e sem env, usa defaults do código."""
     s = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert s.llm.priority == ["groq", "ollama"]
+    assert s.llm.priority == ["deepinfra", "groq", "ollama"]
+    assert s.llm.deepinfra.model.startswith("deepseek-ai/")
+    assert s.deepinfra_api_key is None
     assert s.llm.ollama.model == "llama3.1"
     assert s.agent.max_iterations == 5
     assert s.deployment.mode == "local"
@@ -182,3 +184,23 @@ def test_env_file_is_found_from_any_directory(
     monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(tmp_path / "nao-existe.yaml"))
     s = Settings(_env_file=(home_env, ".env"))  # type: ignore[call-arg]
     assert s.groq_api_key is not None and s.groq_api_key.get_secret_value() == "chave-do-home"
+
+
+def test_deepinfra_key_and_settings_from_env(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JUNIPER_DEEPINFRA_API_KEY", "di-secret-123456")
+    monkeypatch.setenv("JUNIPER_LLM__DEEPINFRA__MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.deepinfra_api_key is not None
+    assert s.deepinfra_api_key.get_secret_value() == "di-secret-123456"
+    assert "di-secret" not in repr(s)  # SecretStr never leaks through repr
+    assert s.llm.deepinfra.model == "meta-llama/Meta-Llama-3.1-70B-Instruct"
+
+
+def test_priority_accepts_deepinfra_in_any_order(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JUNIPER_LLM__PRIORITY", '["ollama", "deepinfra"]')
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.llm.priority == ["ollama", "deepinfra"]

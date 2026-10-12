@@ -30,8 +30,15 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
-
 # --- Submodelos -------------------------------------------------------
+
+
+class LLMDeepInfraSettings(BaseModel):
+    """Configuração do provider DeepInfra (API compatível com a da OpenAI)."""
+
+    # Modelo usado nos exemplos de tool calling da própria documentação da DeepInfra.
+    model: str = "deepseek-ai/DeepSeek-V4-Flash-0731"
+    timeout: int = Field(default=30, ge=1, le=600)
 
 
 class LLMGroqSettings(BaseModel):
@@ -59,14 +66,15 @@ class LLMOllamaSettings(BaseModel):
 class LLMSettings(BaseModel):
     """Configuração agregada dos providers de LLM."""
 
-    priority: list[str] = Field(default_factory=lambda: ["groq", "ollama"])
+    priority: list[str] = Field(default_factory=lambda: ["deepinfra", "groq", "ollama"])
+    deepinfra: LLMDeepInfraSettings = Field(default_factory=LLMDeepInfraSettings)
     groq: LLMGroqSettings = Field(default_factory=LLMGroqSettings)
     ollama: LLMOllamaSettings = Field(default_factory=LLMOllamaSettings)
 
     @field_validator("priority")
     @classmethod
     def _validate_priority(cls, v: list[str]) -> list[str]:
-        allowed = {"groq", "ollama"}
+        allowed = {"deepinfra", "groq", "ollama"}
         if not v:
             raise ValueError("llm.priority não pode ser vazio")
         unknown = set(v) - allowed
@@ -219,6 +227,7 @@ class Settings(BaseSettings):
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
+    deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
 
     # Paths (calculados no model_post_init)
     paths: PathsSettings | None = None
