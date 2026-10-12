@@ -162,6 +162,12 @@ class GoogleSettings(BaseModel):
     calendar_id: str | None = None
     # Agendas só lidas, para detectar conflitos (ex.: o Gmail pessoal).
     read_calendar_ids: list[str] = Field(default_factory=list)
+    # Agendas do usuário em que a Juniper também cria, altera e apaga eventos (ADR-010). Precisam
+    # estar compartilhadas com a conta de serviço com permissão de "fazer alterações em eventos".
+    manage_calendar_ids: list[str] = Field(default_factory=list)
+    # Onde novos eventos caem quando o usuário não diz. None = a primeira de manage_calendar_ids
+    # (a agenda pessoal); sem nenhuma, a agenda Juniper (calendar_id).
+    default_calendar_id: str | None = None
     default_duration_minutes: int = Field(default=60, ge=5, le=1440)
     reminder_minutes: int = Field(default=30, ge=0, le=40320)
 

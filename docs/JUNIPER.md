@@ -92,7 +92,7 @@ Cérebro único e sempre vivo (VPS); "corpos" (executores) múltiplos e efêmero
 | Tier | Comportamento | Exemplos |
 |---|---|---|
 | `READ` | Auto-executa, loga | `web_fetch` (GET), `ls`, `cat`, `git log` |
-| `WRITE` | Confirmação inline `[y/N]`, timeout 60s | `open_app`, `git commit`, `curl POST` |
+| `WRITE` | Confirmação na conversa ("Posso...?" / "sim"), ADR-010 | `open_app`, `git commit`, `curl POST` |
 | `DESTRUCTIVE` | Confirmação + aviso de irreversibilidade | `rm`, `git reset --hard`, `push --force`, e-mail |
 | `FORBIDDEN` | Bloqueio duro, nunca executa | `rm -rf /`, `mkfs`, `dd`, escrita em `/etc` |
 
@@ -153,6 +153,8 @@ google:                           # ADR-008
   credentials_file: ~/.juniper/certs/gcp-key.json
   calendar_id: <id da agenda Juniper>
   read_calendar_ids: []           # agendas só lidas (conflitos)
+  manage_calendar_ids: []         # agendas do usuário em que ela também cria/altera/apaga (ADR-010)
+  default_calendar_id:            # onde caem os novos eventos (vazio = agenda Juniper)
   default_duration_minutes: 60
   reminder_minutes: 30
 tools:
@@ -203,6 +205,7 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 | 003 | Config: YAML + `.env` + ENV com prefixo `JUNIPER_`. |
 | 006 | Segurança em 4 tiers; default WRITE; `run_shell` binário único + allowlist; web = dado. |
 | 008 | **(Proposto)** Primeira tool = Google Calendar via conta de serviço; calendário "Juniper" para escrita; relógio do sistema + fuso injetado no prompt. |
+| 010 | Gerenciamento completo da agenda do usuário: `manage_calendar_ids`, `update_event`, apagar em qualquer agenda gerenciada; confirmação na conversa, interpretada pelo sistema (`consent.py`, `Tool.describe/subjects`). Substitui a regra "só escreve na agenda Juniper" do ADR-008. |
 | 009 | DeepInfra como provider principal (API compatível com OpenAI, via `httpx`); failover `deepinfra → groq → ollama`. |
 | 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
 
@@ -319,7 +322,7 @@ Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.e
 JSONL em `settings.paths.logs/` (um arquivo por dia). Eventos: `llm_request/response` (provider, modelo, latência, usage), `tool_call` (nome, tier, args, decisão, resultado), `error`, `failover`. Redigir segredos. Sem `print` em `brain/` fora de `clients/`.
 
 ### T-040 — CLI completo
-`juniper chat "msg"` (one-shot) e `juniper chat` (REPL) com `rich`, streaming de tokens, prompt de confirmação `[y/N]` com timeout, `--provider` opcional, saída de erros amigável em PT-BR (ex.: chave Groq ausente → instrução do `.env`).
+`juniper chat "msg"` (one-shot) e `juniper chat` (REPL) com `rich`, streaming de tokens, confirmação na conversa (sem `[y/N]`), `--provider` opcional, saída de erros amigável em PT-BR (ex.: chave Groq ausente → instrução do `.env`).
 
 ### T-041 — Subcomandos legados
 `juniper gitgrep ...` e `juniper deployfeature ...` delegando ao `shell/` (comportamento idêntico ao v2).

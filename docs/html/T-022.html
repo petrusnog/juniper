@@ -12,39 +12,53 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Índice</a> / Tools / T-022</div>
 <h1>T-022 — Agenda Google</h1>
-<p class="lead">A primeira tool real da Juniper: ler os seus compromissos, marcar novos e desmarcar, no Google Calendar. Arquivo: <code>brain/tools/google_calendar.py</code>. Decisões de fundo no <code>ADR-008</code>.</p>
+<p class="lead">A primeira tool real da Juniper: ler, marcar, alterar e desmarcar os seus compromissos no Google Calendar, inclusive na sua agenda principal. Arquivo: <code>brain/tools/google_calendar.py</code>. Decisões de fundo no <code>ADR-008</code> e no <code>ADR-010</code> (gerenciamento completo).</p>
 
-<h2>1. As três tools</h2>
+<h2>1. As quatro tools</h2>
 <div class="card">
   <table class="tbl">
     <tr><th>Tool</th><th>Tier</th><th>O que faz</th></tr>
-    <tr><td><code>list_events</code></td><td><span class="tag g">READ</span></td><td>Lista compromissos de um intervalo de dias (<code>start_date</code>, <code>end_date</code>). Mostra título e horário; os da agenda Juniper trazem um <code>id</code>.</td></tr>
-    <tr><td><code>create_event</code></td><td><span class="tag a">WRITE</span></td><td>Marca um compromisso (<code>title</code>, <code>start</code>, e <code>end</code> ou <code>duration_minutes</code>). <b>Antes de criar, checa conflitos.</b></td></tr>
-    <tr><td><code>delete_event</code></td><td><span class="tag r">DESTRUCTIVE</span></td><td>Apaga um evento da agenda Juniper pelo <code>id</code>. Irreversível, por isso pede confirmação com aviso.</td></tr>
+    <tr><td><code>list_events</code></td><td><span class="tag g">READ</span></td><td>Lista compromissos de um intervalo de dias (<code>start_date</code>, <code>end_date</code>). Mostra título, horário e a agenda de cada um; os das agendas que ela gerencia trazem um <code>id</code>.</td></tr>
+    <tr><td><code>create_event</code></td><td><span class="tag a">WRITE</span></td><td>Marca um compromisso (<code>title</code>, <code>start</code>, e <code>end</code> ou <code>duration_minutes</code>; <code>calendar</code> opcional). <b>Antes de criar, checa conflitos em todas as agendas.</b></td></tr>
+    <tr><td><code>update_event</code></td><td><span class="tag a">WRITE</span></td><td>Muda título, horário ou observações pelo <code>id</code>. Mudando só o início, a duração é mantida. Checa conflitos (ignorando o próprio evento).</td></tr>
+    <tr><td><code>delete_event</code></td><td><span class="tag r">DESTRUCTIVE</span></td><td>Apaga um evento pelo <code>id</code>, em qualquer agenda que ela gerencia. Irreversível: a confirmação diz em palavras o que será apagado.</td></tr>
   </table>
 </div>
 
-<h2>2. Duas agendas, papéis diferentes</h2>
+<h2>2. Agendas: quais ela altera e quais só lê</h2>
 <div class="grid">
-  <div class="card type"><h3>Agenda "Juniper"</h3>
-    <ul><li>Único lugar onde a Juniper <b>cria e apaga</b></li><li>Compartilhada com a conta de serviço como "fazer alterações"</li><li><code>google.calendar_id</code> no <code>config.yaml</code></li></ul></div>
-  <div class="card type"><h3>Seu calendário principal</h3>
-    <ul><li><b>Só leitura</b>, para detectar conflitos</li><li>Compartilhado como "ver todos os detalhes"</li><li><code>google.read_calendar_ids</code> no <code>config.yaml</code></li></ul></div>
+  <div class="card type"><h3>Gerenciadas (leitura e escrita)</h3>
+    <ul><li>A agenda "Juniper" (<code>google.calendar_id</code>)</li><li>As suas, em <code>google.manage_calendar_ids</code> (ex.: seu e-mail principal)</li><li>Compartilhadas com a conta de serviço como <b>"Fazer alterações em eventos"</b></li></ul></div>
+  <div class="card type"><h3>Só leitura</h3>
+    <ul><li><code>google.read_calendar_ids</code></li><li>Entram na checagem de conflitos, mas nada é criado, alterado ou apagado nelas</li><li>Compartilhadas como "ver todos os detalhes"</li></ul></div>
 </div>
-<p>A trava é no código: <code>create_event</code> e <code>delete_event</code> só falam com a agenda Juniper. Mesmo que o LLM erre um id, ele não consegue tocar na sua agenda principal.</p>
+<p><code>google.default_calendar_id</code> diz onde caem os novos eventos quando você não especifica (vazio = agenda Juniper). Dá para pedir outra: <code>calendar="juniper"</code> ou <code>"principal"</code>.</p>
+<p>A trava continua no código: <code>create_event</code>, <code>update_event</code> e <code>delete_event</code> só alcançam agendas gerenciadas. Uma agenda só lida é recusada, e um id que não existe nelas dá erro claro.</p>
+
+<h3>Confirmação na conversa</h3>
+<div class="card">
+<pre>🌿 JUNIPER: Achei três compromissos no dia 17/01:
+   - TESTE Juniper 1 (03:00–03:30)
+   - TESTE Juniper 2 (04:00–04:30)
+   - TESTE Juniper 3 (05:00–05:30)
+   Posso apagar esses três? É irreversível.
+👤 VOCÊ: Sim.
+🌿 JUNIPER: Prontinho, apaguei os três.</pre>
+  <p style="color:var(--muted)">Não há prompt <code>[y/N]</code>: serve igual por voz. O seu "sim" é interpretado pelo sistema (não pelo LLM) e só vale para o que a pergunta <b>nomeou</b>. Um "sim, mas só o primeiro", uma pergunta ou uma resposta longa não executam nada. Veja o <code>ADR-010</code>.</p>
+</div>
 
 <h2>3. O fluxo de conflito</h2>
 <div class="card">
   <div class="flow">
     <div class="node b"><b>create_event</b><small>o LLM chama direto</small></div>
     <div class="arrow">→</div>
-    <div class="node a"><b>precheck</b><small>acha conflito <b>antes</b> do <code>[y/N]</code></small></div>
+    <div class="node a"><b>precheck</b><small>acha conflito <b>antes</b> de pedir o seu "sim"</small></div>
     <div class="arrow">→</div>
     <div class="node b"><b>Pergunta a você</b><small>pelo nome do compromisso</small></div>
     <div class="arrow">→</div>
     <div class="node r"><b>delete_event</b><small>só se você concordar</small></div>
     <div class="arrow">→</div>
-    <div class="node g"><b>create_event</b><small><code>[y/N]</code> e cria</small></div>
+    <div class="node g"><b>create_event</b><small>seu "sim" e cria</small></div>
   </div>
   <p style="margin-top:12px;color:var(--muted)">O <code>precheck</code> (gancho opcional de toda <code>Tool</code>) valida a entrada e procura conflitos <b>antes</b> de você ser perguntado. Em conflito, o evento não é criado e o erro traz nome, horário e, se for apagável, o id. O <code>run</code> checa de novo antes de gravar. Se o conflito estiver no calendário principal, a Juniper só informa; a decisão é sua.</p>
 </div>
@@ -97,8 +111,9 @@
 
 <h2>8. Limitações conhecidas</h2>
 <div class="card">
-  <p><b>Só cria eventos simples.</b> Sem convidados, sem repetição, sem local, sem dia inteiro, sem editar um evento existente (para mudar, apaga e cria de novo).</p>
-  <p><b>Só apaga na agenda Juniper.</b> Eventos do calendário principal nunca são alterados, por design.</p>
+  <p><b>Só eventos simples.</b> Sem convidados, sem repetição, sem local e sem criar evento de dia inteiro. Eventos recorrentes aparecem instância a instância, e apagar ou mudar afeta só a ocorrência escolhida.</p>
+  <p><b>Um "sim" cobre o lote nomeado.</b> Tudo o que a Juniper pede na mesma resposta é aprovado junto, mas só o que a pergunta citou pelo nome (ou a ação que ela deixou pendente). Nada fora disso é executado.</p>
+  <p><b>Mudou a permissão?</b> Se a agenda for compartilhada só para leitura, a escrita falha com a orientação de como corrigir. <code>python scripts/check_google.py</code> testa isso.</p>
   <p><b>Máximo de 100 eventos por agenda</b> em cada consulta.</p>
   <p><b>O criador do evento aparece como o e-mail da conta de serviço</b> até existir uma conta própria da Juniper (depois do deploy em nuvem, ADR-008).</p>
   <p><b>Privacidade:</b> títulos e horários que a Juniper lê vão como texto ao LLM (Groq, na nuvem).</p>

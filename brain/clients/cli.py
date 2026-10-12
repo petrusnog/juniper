@@ -1,21 +1,19 @@
 """Cliente CLI da Juniper.
 
 Entry point oficial (`juniper = brain.clients.cli:app` no pyproject). Cliente fino: captura
-o texto, mostra os tokens em streaming e pergunta `[y/N]` quando uma tool pede confirmação.
+o texto e mostra os tokens em streaming. Confirmações acontecem na própria conversa (sem `[y/N]`).
 Toda a lógica vive em `brain.core`.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
 import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
 import subprocess
 import threading
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -70,7 +68,6 @@ app = typer.Typer(
     cls=JuniperGroup,
 )
 
-_YES = {"y", "yes", "s", "sim"}
 # Gendered article + display name, so the messages read right ("a Groq", "o Ollama").
 _PROVIDER_PT = {"deepinfra": ("a", "DeepInfra"), "groq": ("a", "Groq"), "ollama": ("o", "Ollama")}
 _EXIT = {"/sair", "/exit"}
@@ -216,28 +213,6 @@ class Printer:
             self._mid_line = False
 
 
-def make_confirm(
-    printer: Printer, reader: LineReader
-) -> Callable[[str, dict[str, Any], Tier], Any]:
-    """Build the dispatcher's ``confirm`` callback (the timeout is enforced by the dispatcher)."""
-
-    async def confirm(name: str, args: dict[str, Any], tier: Tier) -> bool:
-        if tier is Tier.DESTRUCTIVE:
-            printer.say(f"Posso executar {name}? Isso é IRREVERSÍVEL. [y/N]", "bold red")
-        else:
-            printer.say(f"Posso executar {name}? Isso altera coisas. [y/N]", "yellow")
-        printer.out.print(
-            Text(f"   {json.dumps(args, ensure_ascii=False)}", style="dim"), highlight=False
-        )
-        try:
-            answer = await reader.read(voice.user_prompt())
-        except (EOFError, KeyboardInterrupt):
-            return False
-        return answer.strip().lower() in _YES
-
-    return confirm
-
-
 _KEY_VARS = {"deepinfra": "JUNIPER_DEEPINFRA_API_KEY", "groq": "JUNIPER_GROQ_API_KEY"}
 
 
@@ -310,7 +285,7 @@ async def _chat(message: str | None, provider: str | None) -> int:
     printer = Printer(console)
     router.on_failover = printer.notify_failover
     reader = LineReader()
-    agent = Agent(router, Dispatcher(make_confirm(printer, reader)))
+    agent = Agent(router, Dispatcher(conversational=True))
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()

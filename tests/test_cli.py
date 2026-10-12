@@ -11,8 +11,7 @@ from typer.testing import CliRunner
 from brain.clients import cli, voice
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError, LLMUnavailableError
 from brain.llm.router import LLMRouter
-from brain.tools.base import Tier
-from tests.test_agent import FakeProvider, call, say
+from tests.test_agent import FakeProvider, say
 
 runner = CliRunner()
 
@@ -97,40 +96,6 @@ def test_friendly_error_hints() -> None:
     assert "Limite da Groq" in text and "ollama serve" in text
 
 
-class StubReader:
-    def __init__(self, answer: str | BaseException) -> None:
-        self.answer = answer
-        self.prompts: list[str] = []
-
-    async def read(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        if isinstance(self.answer, BaseException):
-            raise self.answer
-        return self.answer
-
-
-def make_confirm(answer: str | BaseException) -> tuple[Any, StubReader, Console]:
-    out = Console(record=True, width=100)
-    reader = StubReader(answer)
-    return cli.make_confirm(cli.Printer(out), reader), reader, out  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    ("answer", "expected"),
-    [("y", True), ("S", True), ("sim", True), ("", False), ("n", False), ("talvez", False)],
-)
-async def test_confirm_answers(answer: str, expected: bool) -> None:
-    confirm, _, _ = make_confirm(answer)
-    assert await confirm("create_event", {"title": "x"}, Tier.WRITE) is expected
-
-
-async def test_confirm_eof_denies_and_destructive_warns() -> None:
-    confirm, _, out = make_confirm(EOFError())
-    assert await confirm("delete_event", {"id": "[abc]"}, Tier.DESTRUCTIVE) is False
-    shown = out.export_text(clear=False)
-    assert "IRREVERSÍVEL" in shown and "[abc]" in shown
-
-
 async def test_line_reader_reuses_pending_read_after_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -152,31 +117,6 @@ async def test_line_reader_reuses_pending_read_after_timeout(
     gate.set()
     assert await reader.read("b> ") == "resposta"
     assert calls == ["a> "]  # no second reader thread was started
-
-
-async def test_confirm_in_full_flow_denied(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tool call that needs confirmation: the user types 'n' and the tool does not run."""
-    from brain.core.agent import Agent
-    from brain.core.dispatcher import Dispatcher
-    from brain.core.session import Session
-    from tests.test_agent import make_registry
-
-    reg, ran = make_registry()
-    out = Console(record=True, width=100)
-    printer = cli.Printer(out)
-    reader = StubReader("n")
-    provider = FakeProvider([call("write_thing"), say("ok, deixei quieto")])
-    agent = Agent(
-        provider,
-        Dispatcher(cli.make_confirm(printer, reader), tool_registry=reg),  # type: ignore[arg-type]
-        Session("p"),
-        tool_registry=reg,
-    )
-    code = await cli.converse(agent, printer, reader, "faz")  # type: ignore[arg-type]
-    assert code == 0 and ran == []
-    assert "write_thing" in out.export_text(clear=False) and "deixei quieto" in out.export_text(
-        clear=False
-    )
 
 
 @pytest.fixture
@@ -277,14 +217,6 @@ def test_tools_command_introduces_itself(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_unknown_provider_is_said_by_juniper() -> None:
     result = runner.invoke(cli.app, ["chat", "oi", "-p", "gpt"])
     assert result.exit_code == 2 and result.output.startswith(voice.JUNIPER_TAG)
-
-
-async def test_confirmation_is_asked_by_juniper_and_answered_by_the_user() -> None:
-    confirm, reader, out = make_confirm("y")
-    assert await confirm("create_event", {"title": "x"}, Tier.WRITE) is True
-    shown = out.export_text(clear=False)
-    assert shown.startswith(voice.JUNIPER_TAG) and "[y/N]" in shown
-    assert reader.prompts == [f"{voice.USER_TAG} "]
 
 
 def test_say_formats_single_and_multiline_speech() -> None:
@@ -420,3 +352,58 @@ def test_last_provider_failing_is_said_without_a_next_step() -> None:
     out = Console(record=True, width=120)
     cli.Printer(out).notify_failover("ollama", LLMUnavailableError("x"), None)
     assert "Falhou: o Ollama não respondeu." in out.export_text(clear=False)
+
+
+def use_registry(monkeypatch: pytest.MonkeyPatch, reg: Any) -> None:
+    """Make the chat command (agent and dispatcher) use a test registry."""
+    from brain.core import agent as agent_module
+    from brain.core import dispatcher as dispatcher_module
+
+    monkeypatch.setattr(cli, "registry", reg)
+    monkeypatch.setattr(agent_module, "default_registry", reg)
+    monkeypatch.setattr(dispatcher_module, "default_registry", reg)
+
+
+# --- approval happens in the conversation, not in a [y/N] prompt ---------------------------
+
+
+def test_chat_confirms_by_conversation_not_by_a_yn_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_agent import batch_registry, several
+
+    reg, ran = batch_registry()
+    use_registry(monkeypatch, reg)
+    use_provider(
+        monkeypatch,
+        FakeProvider(
+            [
+                several(("wipe", {"id": "1"}), ("wipe", {"id": "2"})),
+                say("Posso apagar esses dois agendamentos? É irreversível."),
+                say("Apagado!"),
+            ]
+        ),
+    )
+    result = runner.invoke(cli.app, ["chat"], input="cancela os de amanhã\nSim.\n/sair\n")
+    assert result.exit_code == 0
+    assert "Posso apagar esses dois agendamentos? É irreversível." in result.output
+    assert "Apagado!" in result.output
+    assert "[y/N]" not in result.output and "IRREVERSÍVEL" not in result.output
+    assert ran == ["wipe:1", "wipe:2"]
+    # the dialogue the user wants: JUNIPER asks first, and only after the "sim" reports it done
+    flat = " ".join(result.output.split())
+    assert flat.index("Posso apagar") < flat.index("Apagado!")
+
+
+def test_chat_answering_no_leaves_everything_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_agent import batch_registry, several
+
+    reg, ran = batch_registry()
+    use_registry(monkeypatch, reg)
+    use_provider(
+        monkeypatch,
+        FakeProvider(
+            [several(("wipe", {"id": "1"})), say("Posso apagar?"), say("Tranquilo, deixei.")]
+        ),
+    )
+    result = runner.invoke(cli.app, ["chat"], input="apaga\nNão\n/sair\n")
+    assert result.exit_code == 0 and ran == []
+    assert "Tranquilo, deixei." in result.output

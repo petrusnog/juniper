@@ -37,7 +37,7 @@
     <tr><td><code>tools</code></td><td>Uma frase e a tabela do que ela sabe fazer.</td></tr>
     <tr><td><code>search</code>, <code>deploy</code></td><td>Mensagens de progresso fixas; os commits listados são dados.</td></tr>
     <tr><td><code>install</code>, <code>uninstall</code></td><td>Cada etapa é uma fala dela.</td></tr>
-    <tr><td>Confirmações <code>[y/N]</code></td><td>"Posso executar X? Isso altera coisas." (ou "IRREVERSÍVEL").</td></tr>
+    <tr><td>Confirmações</td><td>Na conversa: "Posso apagar esses cinco? É irreversível." e você responde "sim". Sem <code>[y/N]</code>.</td></tr>
     <tr><td>Perguntas dos scripts</td><td>Ela pergunta; a resposta é sua, com o seu prefixo.</td></tr>
     <tr><td>Erros</td><td>Em português, com o que fazer.</td></tr>
     <tr><td>Abertura e despedida do chat</td><td>"Pode falar, tô te ouvindo" e "Até logo!".</td></tr>
@@ -64,7 +64,7 @@ voice.user_prompt()   # "👤 VOCÊ: "</pre>
 <div class="card">
   <p><b>Prefixo só quando há texto.</b> Se o LLM falha antes de escrever, não sobra uma linha "🌿 JUNIPER:" vazia: o erro vem como fala dela.</p>
   <p><b>Eco do nome é removido.</b> Se o modelo começar a frase com "Juniper:" ou "🌿 JUNIPER:", o terminal descarta, para não aparecer duplicado.</p>
-  <p><b>Nova fala depois de uma confirmação.</b> Se ela pede um <code>[y/N]</code> no meio de uma resposta, o texto seguinte ganha o prefixo de novo.</p>
+  <p><b>Confirmação é diálogo.</b> Ela pergunta em palavras, você responde "sim" ou "não", e ela conta o resultado. Funciona igual por voz.</p>
   <p><b>Texto puro.</b> A fala nunca é interpretada como markup: colchetes e asteriscos aparecem como foram escritos.</p>
 </div>
 

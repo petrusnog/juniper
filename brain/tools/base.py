@@ -97,6 +97,23 @@ class Tool(ABC):
         """
         return None
 
+    async def describe(self, **kwargs: Any) -> str | None:
+        """Optional one-line summary of what the call will do, shown when asking to confirm.
+
+        Lets the user approve "apagar «Dentista», segunda 16:00" instead of an opaque id.
+        Return ``None`` to fall back to the raw arguments. Failures here are ignored.
+        """
+        return None
+
+    async def subjects(self, **kwargs: Any) -> list[str] | None:
+        """Short names of what the call acts on (e.g. event titles), or None if unknown.
+
+        Used to recognise approval *in the conversation*: if the user said "sim" to a question
+        that named every subject, the action may run without asking again. Return None when
+        the call cannot be tied to words the user could have heard (it is then asked for).
+        """
+        return None
+
     @abstractmethod
     async def run(self, **kwargs: Any) -> ToolResult:
         """Execute the tool. Expected failures return ``ToolResult(success=False)``."""

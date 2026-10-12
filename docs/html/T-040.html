@@ -36,7 +36,7 @@ python -m brain chat                    # equivalente, sem instalar</pre>
     <tr><td><code>chat</code></td><td>Comando do Typer. Monta o router, o <code>Dispatcher</code> e o <code>Agent</code> da T-030 e chama <code>converse</code>.</td></tr>
     <tr><td><code>converse</code></td><td>Um turno (mensagem única) ou um laço de turnos (REPL). Erros de LLM são mostrados sem derrubar o REPL.</td></tr>
     <tr><td><code>Printer</code></td><td>Imprime cada token assim que chega, sem interpretar colchetes como markup do <code>rich</code> (uma resposta com <code>[bold]</code> sai literal).</td></tr>
-    <tr><td><code>make_confirm</code></td><td>Cria o callback de confirmação do dispatcher: mostra a tool e os argumentos e pergunta <code>Confirma? [y/N]</code>. Tool DESTRUTIVA mostra <b>IRREVERSÍVEL</b> em vermelho.</td></tr>
+    <tr><td>Confirmações</td><td>Não há prompt: a Juniper pergunta em palavras e o seu "sim" é interpretado pelo sistema (ADR-010).</td></tr>
     <tr><td><code>LineReader</code></td><td>Lê o teclado numa thread, sem travar o event loop.</td></tr>
     <tr><td><code>friendly_error</code></td><td>Traduz falhas do LLM em instruções em PT-BR.</td></tr>
   </table>

@@ -195,6 +195,10 @@ class GitDeploy(Tool):
             argv.append(f"--{target}")
         return argv, [feature_id, *extra]
 
+    async def subjects(self, **kwargs: Any) -> list[str] | None:
+        plan = self._plan(kwargs)
+        return None if isinstance(plan, str) else plan[1]
+
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         plan = self._plan(kwargs)
         if isinstance(plan, str):

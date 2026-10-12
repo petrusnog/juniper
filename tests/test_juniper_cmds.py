@@ -182,3 +182,8 @@ async def test_deploy_never_blocks_waiting_for_input(
     monkeypatch.setattr(juniper_cmds, "DEPLOY_TIMEOUT", 60.0)
     result = await GitDeploy().run(feature_id="7", target="develop")
     assert "recusada" in (result.output or result.error or "")
+
+
+async def test_deploy_subjects_are_the_task_ids() -> None:
+    assert await GitDeploy().subjects(feature_id="6531", extra_tasks=["7432"]) == ["6531", "7432"]
+    assert await GitDeploy().subjects(feature_id="x;y") is None

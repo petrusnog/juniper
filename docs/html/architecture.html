@@ -33,7 +33,7 @@
   <div class="layer">
     <div class="lname"><b>5 · Interfaces</b><small>Onde você fala com ela. Finas: só capturam e exibem.</small></div>
     <div class="lblocks">
-      <div class="blk done"><b>CLI</b><small>T-040 · <code>juniper chat</code>, streaming, confirmação [y/N]</small></div>
+      <div class="blk done"><b>CLI</b><small>T-040 · <code>juniper chat</code>, streaming, confirmação na conversa</small></div>
       <div class="blk future"><b>App web / celular</b><small>Sprint 2</small></div>
       <div class="blk future"><b>Voz</b><small>Sprint 4 · STT, TTS, wake word</small></div>
     </div>
@@ -111,7 +111,7 @@
     <tr><td>4</td><td>O LLM pede <code>create_event</code> direto, com título e horário já resolvidos a partir da data de agora.</td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
     <tr><td>5</td><td>O dispatcher acha a tool no registry, e o <code>precheck</code> consulta o Google Calendar <b>antes</b> de te perguntar qualquer coisa.</td><td>Cérebro</td><td><span class="tag g">registry</span> <span class="tag g">precheck</span> <span class="tag b">T-030</span></td></tr>
     <tr><td>6</td><td>Se já houver algo às 16h, o LLM pergunta: <b>"Já existe «Fisioterapia» às 16h. Desmarco para marcar o dentista?"</b></td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
-    <tr><td>7</td><td>Sem conflito (ou depois do seu "sim" e do <code>delete_event</code>), a Juniper pergunta <b>"Marcar «Dentista», 12/10, 16h–17h? [y/N]"</b> com os dados exatos.</td><td>Cérebro</td><td><span class="tag b">T-030</span></td></tr>
+    <tr><td>7</td><td>Sem conflito (ou depois do seu "sim" e do <code>delete_event</code>), a Juniper pergunta, em palavras, <b>"Posso marcar «Dentista», segunda 16h–17h?"</b> e espera o seu "sim".</td><td>Cérebro</td><td><span class="tag b">T-030</span></td></tr>
     <tr><td>8</td><td>Você confirma, o evento é criado no calendário "Juniper" e aparece no seu celular. A resposta chega palavra por palavra.</td><td>Capacidades → Interface</td><td><span class="tag g">streaming pronto</span></td></tr>
     <tr><td>9</td><td>Tudo é registrado no log e, no futuro, guardado na memória.</td><td>Transversal</td><td><span class="tag b">T-031</span> <span class="tag v">Sprint 3</span></td></tr>
   </table>
@@ -159,7 +159,7 @@
   <div class="card type"><h3>O cérebro não conhece as interfaces</h3><p>O <code>core/</code> nunca importa de <code>clients/</code>. Por isso a mesma Juniper serve terminal, celular e voz.</p></div>
   <div class="card type"><h3>Providers são trocáveis</h3><p>O cérebro fala com "um LLM", nunca com DeepInfra, Groq ou Ollama especificamente. O router escolhe.</p></div>
   <div class="card type"><h3>Tool nova = arquivo novo</h3><p>Cada capacidade é um plugin que se registra sozinho. Nada no cérebro muda.</p></div>
-  <div class="card type"><h3>Perigo exige permissão</h3><p>Ler é livre; alterar pede <code>[y/N]</code>; destruir pede aviso de irreversibilidade; coisas como <code>rm -rf /</code> são bloqueadas.</p></div>
+  <div class="card type"><h3>Perigo exige permissão</h3><p>Ler é livre; alterar pede o seu "sim" na conversa; destruir também, com aviso de irreversibilidade; coisas como <code>rm -rf /</code> são bloqueadas.</p></div>
 </div>
 
 <h2>7. Onde cada camada mora no código</h2>

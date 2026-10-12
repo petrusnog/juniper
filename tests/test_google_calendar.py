@@ -22,6 +22,7 @@ from brain.tools.google_calendar import (
     CreateEvent,
     DeleteEvent,
     ListEvents,
+    UpdateEvent,
 )
 
 SP = ZoneInfo("America/Sao_Paulo")
@@ -45,23 +46,42 @@ def ev(
     return CalendarEvent(event_id, title, start, end, cal, all_day)
 
 
-class FakeClient:
-    """Stands in for CalendarClient: keeps events per calendar and records writes."""
+class FakeClient(CalendarClient):
+    """Real calendar-selection logic, fake Google: keeps events per calendar and records writes."""
 
-    def __init__(self, events: list[CalendarEvent] | None = None) -> None:
-        self.write_calendar_id = JUNIPER
-        self.all_calendar_ids = [JUNIPER, MAIN]
+    def __init__(
+        self,
+        events: list[CalendarEvent] | None = None,
+        manage: list[str] | None = None,
+        default: str | None = None,
+    ) -> None:
+        super().__init__(None, JUNIPER, [MAIN], manage or [], default)
         self.events = events or []
         self.inserted: list[dict[str, Any]] = []
+        self.updated: list[dict[str, Any]] = []
         self.deleted: list[str] = []
+        self.deleted_from: list[str | None] = []
         self.delete_error: CalendarError | None = None
 
     async def list_events(self, cal: str, start: datetime, end: datetime) -> list[CalendarEvent]:
         return [e for e in self.events if e.calendar_id == cal and e.start < end and start < e.end]
 
+    async def get_event(self, calendar_id: str, event_id: str) -> CalendarEvent:
+        for e in self.events:
+            if e.id == event_id and e.calendar_id == calendar_id:
+                return e
+        raise CalendarError("não encontrado (id incorreto ou sem acesso)")
+
     async def insert_event(
-        self, title: str, start: datetime, end: datetime, description: str, reminder_minutes: int
+        self,
+        title: str,
+        start: datetime,
+        end: datetime,
+        description: str,
+        reminder_minutes: int,
+        calendar_id: str | None = None,
     ) -> CalendarEvent:
+        target = calendar_id or self.default_calendar_id
         self.inserted.append(
             {
                 "title": title,
@@ -69,14 +89,35 @@ class FakeClient:
                 "end": end,
                 "description": description,
                 "reminder": reminder_minutes,
+                "calendar": target,
             }
         )
-        return ev("new1", title, start, end)
+        return ev("new1", title, start, end, cal=target)
 
-    async def delete_event(self, event_id: str) -> None:
+    async def update_event(
+        self,
+        event: CalendarEvent,
+        title: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        description: str | None = None,
+    ) -> CalendarEvent:
+        self.updated.append(
+            {"id": event.id, "title": title, "start": start, "end": end, "description": description}
+        )
+        return CalendarEvent(
+            event.id,
+            title or event.title,
+            start or event.start,
+            end or event.end,
+            event.calendar_id,
+        )
+
+    async def delete_event(self, event_id: str, calendar_id: str | None = None) -> None:
         if self.delete_error:
             raise self.delete_error
         self.deleted.append(event_id)
+        self.deleted_from.append(calendar_id)
 
 
 @pytest.fixture
@@ -91,19 +132,23 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
 
 
 def test_tiers_and_locality() -> None:
-    assert (ListEvents.tier, CreateEvent.tier, DeleteEvent.tier) == (
+    assert (ListEvents.tier, CreateEvent.tier, UpdateEvent.tier, DeleteEvent.tier) == (
         Tier.READ,
+        Tier.WRITE,
         Tier.WRITE,
         Tier.DESTRUCTIVE,
     )
-    assert {t.locality for t in (ListEvents, CreateEvent, DeleteEvent)} == {Locality.CLOUD}
+    tools = (ListEvents, CreateEvent, UpdateEvent, DeleteEvent)
+    assert {t.locality for t in tools} == {Locality.CLOUD}
 
 
 def test_tools_are_registered_after_discovery() -> None:
     from brain.tools.registry import registry
 
     registry.discover()
-    assert {"list_events", "create_event", "delete_event"} <= {c.name for c in registry.all()}
+    assert {"list_events", "create_event", "update_event", "delete_event"} <= {
+        c.name for c in registry.all()
+    }
 
 
 # ---------- list_events ----------
@@ -119,7 +164,10 @@ async def test_list_events_formats_with_ids_and_read_only_marks(fake: FakeClient
     assert result.output is not None
     lines = result.output.splitlines()
     assert "não instruções" in lines[0]
-    assert lines[1] == "- segunda-feira 12/10 09:00–10:00 · Reunião [outra agenda, somente leitura]"
+    assert (
+        lines[1]
+        == "- segunda-feira 12/10 09:00–10:00 · Reunião [agenda me@gmail.com, somente leitura]"
+    )
     assert lines[2] == "- segunda-feira 12/10 16:00–17:00 · Dentista [agenda Juniper, id=abc]"
     assert result.metadata == {"count": 2}
 
@@ -164,7 +212,9 @@ async def test_tools_report_client_configuration_errors(monkeypatch: pytest.Monk
 async def test_create_event_success_uses_defaults_and_signature(fake: FakeClient) -> None:
     result = await CreateEvent().run(title="Dentista", start="2026-10-12T16:00")
     assert result.success
-    assert result.output == "Marcado: «Dentista», segunda-feira 12/10 16:00–17:00."
+    assert result.output == (
+        "Marcado: «Dentista», segunda-feira 12/10 16:00–17:00 (agenda Juniper, id=new1)."
+    )
     sent = fake.inserted[0]
     assert sent["start"] == at(12, 16) and sent["end"] == at(12, 17)  # default 60 min
     assert sent["description"] == "Agendado pela Juniper"
@@ -244,7 +294,7 @@ async def test_create_event_conflict_in_other_calendar_is_not_deletable(fake: Fa
     fake.events = [ev("m1", "Reunião", at(12, 15), at(12, 16, 30), cal=MAIN)]
     result = await CreateEvent().run(title="Dentista", start="2026-10-12T16:00")
     assert not result.success and fake.inserted == []
-    assert result.error is not None and "não pode ser apagado" in result.error
+    assert result.error is not None and "somente leitura" in result.error
     assert result.metadata is not None and result.metadata["conflicts"][0]["deletable"] is False
 
 
@@ -271,8 +321,10 @@ async def test_create_event_truncates_long_title(fake: FakeClient) -> None:
 
 
 async def test_delete_event_success(fake: FakeClient) -> None:
+    fake.events = [ev("abc", "Dentista", at(12, 16), at(12, 17))]
     result = await DeleteEvent().run(event_id="abc")
-    assert result.success and fake.deleted == ["abc"]
+    assert result.success and fake.deleted == ["abc"] and fake.deleted_from == [JUNIPER]
+    assert result.output is not None and "«Dentista»" in result.output
 
 
 async def test_delete_event_requires_id(fake: FakeClient) -> None:
@@ -280,11 +332,195 @@ async def test_delete_event_requires_id(fake: FakeClient) -> None:
     assert not result.success and fake.deleted == []
 
 
-async def test_delete_event_failure_explains_scope(fake: FakeClient) -> None:
-    fake.delete_error = CalendarError("não encontrado (id incorreto ou sem acesso)")
+async def test_delete_event_unknown_id_is_reported(fake: FakeClient) -> None:
     result = await DeleteEvent().run(event_id="nope")
-    assert not result.success
-    assert result.error is not None and "Só apago eventos da agenda Juniper" in result.error
+    assert not result.success and fake.deleted == []
+    assert result.error is not None and "não encontrei esse evento" in result.error
+
+
+async def test_delete_event_api_failure_is_reported(fake: FakeClient) -> None:
+    fake.events = [ev("abc", "Dentista", at(12, 16), at(12, 17))]
+    fake.delete_error = CalendarError("Google recusou o acesso (HTTP 403)")
+    result = await DeleteEvent().run(event_id="abc")
+    assert not result.success and result.error is not None and "recusou" in result.error
+
+
+async def test_delete_never_touches_read_only_calendars(fake: FakeClient) -> None:
+    fake.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await DeleteEvent().run(event_id="m1")
+    assert not result.success and fake.deleted == []
+
+
+# ---------- calendars handed over (ADR-010) ----------
+
+
+@pytest.fixture
+def managed(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
+    """MAIN is handed over: writable, and the default for new events."""
+    client = FakeClient(manage=[MAIN], default=MAIN)
+    monkeypatch.setattr(gc, "get_client", lambda: client)
+    monkeypatch.setattr(clock, "now", lambda tz=None: NOW)
+    return client
+
+
+def test_client_calendar_selection() -> None:
+    client = FakeClient(manage=[MAIN], default=MAIN)
+    assert client.writable_ids == [JUNIPER, MAIN] and client.all_calendar_ids == [JUNIPER, MAIN]
+    assert client.resolve_calendar(None) == MAIN
+    assert client.resolve_calendar("padrão") == MAIN
+    assert client.resolve_calendar("Juniper") == JUNIPER
+    assert client.resolve_calendar("principal") == MAIN
+    assert client.resolve_calendar("ME@gmail.com") == MAIN
+    with pytest.raises(CalendarError, match="desconhecida ou somente leitura"):
+        client.resolve_calendar("outra@gmail.com")
+
+
+def test_without_manage_calendars_everything_stays_on_juniper() -> None:
+    client = FakeClient()
+    assert client.writable_ids == [JUNIPER] and client.default_calendar_id == JUNIPER
+    with pytest.raises(CalendarError, match="posso usar: Juniper"):
+        client.resolve_calendar("principal")  # nothing handed over: there is no such alias
+    with pytest.raises(CalendarError):
+        client.resolve_calendar(MAIN)  # read-only calendars are never writable
+
+
+def test_default_calendar_must_be_writable() -> None:
+    with pytest.raises(CalendarError, match="default_calendar_id"):
+        FakeClient(default=MAIN)  # MAIN is only readable here
+
+
+async def test_create_goes_to_the_default_or_the_requested_calendar(managed: FakeClient) -> None:
+    await CreateEvent().run(title="Dentista", start="2026-10-12T16:00")
+    await CreateEvent().run(title="Interno", start="2026-10-13T16:00", calendar="juniper")
+    assert [i["calendar"] for i in managed.inserted] == [MAIN, JUNIPER]
+
+
+async def test_create_rejects_a_read_only_calendar(fake: FakeClient) -> None:
+    result = await CreateEvent().run(title="X", start="2026-10-12T16:00", calendar=MAIN)
+    assert not result.success and fake.inserted == []
+    assert result.error is not None and "somente leitura" in result.error
+
+
+async def test_list_shows_ids_for_handed_over_calendars(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await ListEvents().run(start_date="2026-10-12")
+    assert result.output is not None and "[agenda me@gmail.com, id=m1]" in result.output
+
+
+async def test_conflicts_in_handed_over_calendars_are_deletable(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 15), at(12, 16, 30), cal=MAIN)]
+    result = await CreateEvent().run(title="Dentista", start="2026-10-12T16:00")
+    assert not result.success and result.metadata is not None
+    assert result.metadata["conflicts"] == [{"id": "m1", "title": "Reunião", "deletable": True}]
+    assert result.error is not None and "id=m1" in result.error
+
+
+async def test_delete_in_a_handed_over_calendar(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await DeleteEvent().run(event_id="m1")
+    assert result.success and managed.deleted == ["m1"] and managed.deleted_from == [MAIN]
+
+
+async def test_describe_explains_the_call_in_words(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    assert await DeleteEvent().describe(event_id="m1") == (
+        "apagar «Reunião», segunda-feira 12/10 09:00–10:00, da agenda me@gmail.com"
+    )
+    assert await DeleteEvent().describe(event_id="nope") is None
+    created = await CreateEvent().describe(title="Dentista", start="2026-10-12T16:00")
+    assert created == "marcar «Dentista», segunda-feira 12/10 16:00–17:00, na agenda me@gmail.com"
+    assert await CreateEvent().describe(title="", start="2026-10-12T16:00") is None
+
+
+# ---------- update_event ----------
+
+
+async def test_update_title_only_keeps_the_time(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await UpdateEvent().run(event_id="m1", title="Reunião de produto")
+    assert result.success
+    assert managed.updated == [
+        {"id": "m1", "title": "Reunião de produto", "start": None, "end": None, "description": None}
+    ]
+
+
+async def test_update_start_keeps_the_duration(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10, 30), cal=MAIN)]
+    result = await UpdateEvent().run(event_id="m1", start="2026-10-13T14:00")
+    assert result.success
+    assert managed.updated[0]["start"] == at(13, 14) and managed.updated[0]["end"] == at(13, 15, 30)
+
+
+async def test_update_explicit_end(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    await UpdateEvent().run(event_id="m1", start="2026-10-12T18:00", end="2026-10-12T19:00")
+    assert managed.updated[0]["end"] == at(12, 19)
+
+
+async def test_update_conflict_ignores_the_event_itself(managed: FakeClient) -> None:
+    managed.events = [
+        ev("m1", "Reunião", at(12, 18), at(12, 19), cal=MAIN),
+        ev("m2", "Dentista", at(12, 19), at(12, 20), cal=MAIN),
+    ]
+    # Moving m1 by 30 min overlaps only with itself and m2's start: m2 conflicts, m1 does not.
+    result = await UpdateEvent().run(event_id="m1", start="2026-10-12T18:30")
+    assert not result.success and managed.updated == []
+    assert (
+        result.error is not None
+        and "«Dentista»" in result.error
+        and "«Reunião»" not in result.error
+    )
+    # A pure shift that stays clear of everything else works.
+    managed.events[1] = ev("m2", "Dentista", at(12, 21), at(12, 22), cal=MAIN)
+    assert (await UpdateEvent().run(event_id="m1", start="2026-10-12T18:30")).success
+
+
+async def test_update_description_gets_the_signature(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    await UpdateEvent().run(event_id="m1", description="sala 3")
+    assert managed.updated[0]["description"] == f"sala 3\n\n{gc.SIGNATURE}"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "fragment"),
+    [
+        ({}, "event_id"),
+        ({"event_id": "m1"}, "diga o que mudar"),
+        ({"event_id": "nope", "title": "x"}, "não encontrei esse evento"),
+        ({"event_id": "m1", "start": "2026-10-01T10:00"}, "já passou"),
+        ({"event_id": "m1", "start": "2026-10-12T18:00", "end": "2026-10-12T17:00"}, "fim"),
+        ({"event_id": "m1", "title": "   "}, "vazio"),
+        ({"event_id": "m1", "start": "amanhã"}, "ISO 8601"),
+    ],
+)
+async def test_update_rejects_bad_input(
+    managed: FakeClient, kwargs: dict[str, Any], fragment: str
+) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await UpdateEvent().run(**kwargs)
+    assert not result.success and managed.updated == []
+    assert result.error is not None and fragment in result.error
+
+
+async def test_update_never_touches_read_only_calendars(fake: FakeClient) -> None:
+    fake.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    result = await UpdateEvent().run(event_id="m1", title="x")
+    assert not result.success and fake.updated == []
+
+
+async def test_update_precheck_and_describe(managed: FakeClient) -> None:
+    managed.events = [
+        ev("m1", "Reunião", at(12, 18), at(12, 19), cal=MAIN),
+        ev("m2", "Dentista", at(12, 19), at(12, 20), cal=MAIN),
+    ]
+    blocked = await UpdateEvent().precheck(event_id="m1", start="2026-10-12T18:30")
+    assert blocked is not None and not blocked.success and managed.updated == []
+    assert await UpdateEvent().precheck(event_id="m1", title="Novo") is None
+    text = await UpdateEvent().describe(event_id="m1", title="Novo", start="2026-10-13T10:00")
+    assert text == (
+        "alterar «Reunião» (segunda-feira 12/10 18:00–19:00) para «Novo», "
+        "passando a terça-feira 13/10 10:00–11:00, na agenda me@gmail.com"
+    )
 
 
 # ---------- CalendarClient against a fake Google service ----------
@@ -305,6 +541,7 @@ class FakeEvents:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.list_result: dict[str, Any] = {"items": []}
         self.insert_result: dict[str, Any] = {"id": "g1"}
+        self.get_result: dict[str, Any] = {}
         self.error: Exception | None = None
 
     def list(self, **kw: Any) -> FakeRequest:
@@ -318,6 +555,14 @@ class FakeEvents:
     def delete(self, **kw: Any) -> FakeRequest:
         self.calls.append(("delete", kw))
         return FakeRequest(None, self.error)
+
+    def get(self, **kw: Any) -> FakeRequest:
+        self.calls.append(("get", kw))
+        return FakeRequest(self.get_result, self.error)
+
+    def patch(self, **kw: Any) -> FakeRequest:
+        self.calls.append(("patch", kw))
+        return FakeRequest({"id": kw["eventId"]}, self.error)
 
 
 class FakeService:
@@ -395,11 +640,85 @@ async def test_client_insert_sends_timezone_reminder_and_writes_to_juniper(
     assert event.id == "g1" and event.calendar_id == JUNIPER
 
 
-async def test_client_delete_targets_only_the_write_calendar(
+async def test_client_delete_defaults_to_the_juniper_calendar(
     client: CalendarClient, service: FakeService
 ) -> None:
     await client.delete_event("abc")
     assert service.events().calls == [("delete", {"calendarId": JUNIPER, "eventId": "abc"})]
+
+
+async def test_client_delete_in_a_given_calendar(
+    client: CalendarClient, service: FakeService
+) -> None:
+    await client.delete_event("abc", MAIN)
+    assert service.events().calls == [("delete", {"calendarId": MAIN, "eventId": "abc"})]
+
+
+async def test_client_insert_into_a_given_calendar(
+    service: FakeService,
+) -> None:
+    client = CalendarClient(service, JUNIPER, [], [MAIN], MAIN)
+    event = await client.insert_event("X", at(12, 16), at(12, 17), "d", 10)
+    assert service.events().calls[0][1]["calendarId"] == MAIN and event.calendar_id == MAIN
+    await client.insert_event("Y", at(12, 16), at(12, 17), "d", 10, JUNIPER)
+    assert service.events().calls[1][1]["calendarId"] == JUNIPER
+
+
+async def test_client_get_and_find_event(service: FakeService) -> None:
+    client = CalendarClient(service, JUNIPER, [], [MAIN])
+    service.events().get_result = {
+        "id": "e1",
+        "summary": "Reunião",
+        "start": {"dateTime": "2026-10-12T09:00:00-03:00"},
+        "end": {"dateTime": "2026-10-12T10:00:00-03:00"},
+    }
+    found = await client.find_event("e1")
+    assert found is not None and found.title == "Reunião" and found.calendar_id == JUNIPER
+    kind, kw = service.events().calls[0]
+    assert kind == "get" and kw == {"calendarId": JUNIPER, "eventId": "e1"}
+
+    service.events().error = http_error(404)
+    assert await client.find_event("e1") is None  # not found anywhere: no exception
+
+
+async def test_client_get_treats_cancelled_events_as_missing(service: FakeService) -> None:
+    client = CalendarClient(service, JUNIPER, [], [])
+    service.events().get_result = {
+        "id": "e1",
+        "status": "cancelled",
+        "start": {"dateTime": "2026-10-12T09:00:00-03:00"},
+        "end": {"dateTime": "2026-10-12T10:00:00-03:00"},
+    }
+    with pytest.raises(CalendarError, match="já foi apagado"):
+        await client.get_event(JUNIPER, "e1")
+
+
+async def test_client_update_patches_only_the_changed_fields(
+    service: FakeService,
+) -> None:
+    client = CalendarClient(service, JUNIPER, [], [MAIN])
+    event = ev("e1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)
+    updated = await client.update_event(event, title="Novo")
+    kind, kw = service.events().calls[0]
+    assert kind == "patch" and kw["calendarId"] == MAIN and kw["eventId"] == "e1"
+    assert kw["body"] == {"summary": "Novo"}  # time untouched
+    assert updated.title == "Novo" and updated.start == event.start
+
+    await client.update_event(event, start=at(13, 14), end=at(13, 15))
+    body = service.events().calls[1][1]["body"]
+    assert body["start"] == {
+        "dateTime": "2026-10-13T14:00:00-03:00",
+        "timeZone": "America/Sao_Paulo",
+    }
+    assert body["end"]["dateTime"] == "2026-10-13T15:00:00-03:00"
+
+
+async def test_client_403_explains_the_permission(
+    client: CalendarClient, service: FakeService
+) -> None:
+    service.events().error = http_error(403)
+    with pytest.raises(CalendarError, match="fazer alterações"):
+        await client.delete_event("abc", MAIN)
 
 
 @pytest.mark.parametrize(
@@ -495,7 +814,7 @@ async def test_run_rechecks_conflicts_after_a_clean_precheck(fake: FakeClient) -
 
 async def test_other_tools_have_no_precheck() -> None:
     assert await ListEvents().precheck(start_date="2026-10-12") is None
-    assert await DeleteEvent().precheck(event_id="x") is None
+    assert await DeleteEvent().precheck(event_id="x") is None  # the confirmation shows describe()
 
 
 def test_tool_schemas_stay_small() -> None:
@@ -508,6 +827,21 @@ def test_tool_schemas_stay_small() -> None:
     calendar = [
         c.to_schema()
         for c in registry.all()
-        if c.name in {"list_events", "create_event", "delete_event"}
+        if c.name in {"list_events", "create_event", "update_event", "delete_event"}
     ]
-    assert len(json.dumps(calendar, ensure_ascii=False)) < 1600  # ≈ 400 tokens
+    assert len(json.dumps(calendar, ensure_ascii=False)) < 2700  # ≈ 700 tokens
+
+
+# ---------- subjects (approval recognised in the conversation) ----------
+
+
+async def test_subjects_name_what_each_tool_acts_on(managed: FakeClient) -> None:
+    managed.events = [ev("m1", "Reunião", at(12, 9), at(12, 10), cal=MAIN)]
+    assert await DeleteEvent().subjects(event_id="m1") == ["Reunião"]
+    assert await UpdateEvent().subjects(event_id="m1", title="Novo") == ["Reunião"]
+    assert await CreateEvent().subjects(title="  Dentista ", start="2026-10-12T16:00") == [
+        "Dentista"
+    ]
+    assert await DeleteEvent().subjects(event_id="nope") is None  # unknown id: cannot be vouched
+    assert await CreateEvent().subjects(title="", start="x") is None
+    assert await ListEvents().subjects(start_date="2026-10-12") is None

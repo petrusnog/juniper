@@ -204,3 +204,16 @@ def test_priority_accepts_deepinfra_in_any_order(
     monkeypatch.setenv("JUNIPER_LLM__PRIORITY", '["ollama", "deepinfra"]')
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.llm.priority == ["ollama", "deepinfra"]
+
+
+def test_calendar_management_settings(
+    isolated_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(tmp_path / "nao-existe.yaml"))  # not the real one
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.google.manage_calendar_ids == [] and s.google.default_calendar_id is None
+    monkeypatch.setenv("JUNIPER_GOOGLE__MANAGE_CALENDAR_IDS", '["eu@gmail.com"]')
+    monkeypatch.setenv("JUNIPER_GOOGLE__DEFAULT_CALENDAR_ID", "eu@gmail.com")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.google.manage_calendar_ids == ["eu@gmail.com"]
+    assert s.google.default_calendar_id == "eu@gmail.com"
