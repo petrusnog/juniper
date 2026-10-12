@@ -167,12 +167,18 @@ window.JUNIPER_STATUS = {
       "task": "T-026",
       "name": "Bridge de comandos legados",
       "file": "brain/tools/juniper_cmds.py",
-      "implemented": false
+      "implemented": true
     },
     {
       "task": "T-030",
       "name": "Agent loop",
       "file": "brain/core/agent.py",
+      "implemented": true
+    },
+    {
+      "task": "T-031",
+      "name": "Logging estruturado",
+      "file": "brain/eventlog.py",
       "implemented": true
     },
     {

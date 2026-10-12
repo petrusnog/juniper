@@ -16,7 +16,7 @@ JUNIPER_ALIASES=(
 
 # Carrega todos os comandos disponíveis
 _juniper_load_commands() {
-    for cmd_file in ~/.juniper/commands/*.sh; do
+    for cmd_file in "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}"/commands/*.sh; do
         [ -f "$cmd_file" ] && source "$cmd_file"
     done
 }

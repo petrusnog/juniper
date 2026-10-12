@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any, ClassVar
 
 from brain.config import settings
+from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.errors import (
     LLMAuthError,
@@ -112,6 +113,7 @@ class LLMRouter(LLMProvider):
         provider: LLMProvider, exc: LLMError, failures: list[tuple[str, LLMError]]
     ) -> None:
         failures.append((provider.name, exc))
+        event_log.log("failover", provider=provider.name, type=type(exc).__name__, message=str(exc))
         logger.warning("Failover: %s falhou (%s: %s)", provider.name, type(exc).__name__, exc)
 
     @staticmethod

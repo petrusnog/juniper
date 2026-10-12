@@ -163,3 +163,22 @@ def test_groq_reasoning_effort_default_and_validation(
     monkeypatch.setenv("JUNIPER_LLM__GROQ__REASONING_EFFORT", "extreme")
     with pytest.raises(ValueError, match="reasoning_effort"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_env_file_is_found_from_any_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The secret in ~/.juniper/.env must load even when running inside another project."""
+    env_files = Settings.model_config["env_file"]
+    assert isinstance(env_files, tuple)
+    assert env_files[0] == Path.home() / ".juniper" / ".env"  # absolute, not cwd-relative
+
+    home_env = tmp_path / ".env"
+    home_env.write_text("JUNIPER_GROQ_API_KEY=chave-do-home\n")
+    elsewhere = tmp_path / "projeto"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("JUNIPER_GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(tmp_path / "nao-existe.yaml"))
+    s = Settings(_env_file=(home_env, ".env"))  # type: ignore[call-arg]
+    assert s.groq_api_key is not None and s.groq_api_key.get_secret_value() == "chave-do-home"

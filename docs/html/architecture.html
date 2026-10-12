@@ -70,7 +70,7 @@
       <div class="blk done"><b>Agenda Google</b><small>T-022 · ler, marcar e desmarcar compromissos</small></div>
       <div class="blk todo"><b>Tools: shell, abrir app</b><small>T-023, T-027</small></div>
       <div class="blk todo"><b>Tools: web</b><small>T-024 buscar página · T-025 pesquisar</small></div>
-      <div class="blk todo"><b>Tools: comandos legados</b><small>T-026 · gitgrep, deploy</small></div>
+      <div class="blk done"><b>Tools: comandos git</b><small>T-026 · <code>git_search</code>, <code>git_deploy</code></small></div>
       <div class="blk future"><b>Memória</b><small>Sprint 3 · conversa + busca por contexto (RAG)</small></div>
     </div>
   </div>
@@ -95,7 +95,7 @@
   <div class="lblocks">
     <div class="blk done"><b>Configuração</b><small><code>config.yaml</code> + <code>.env</code> · um só ponto de acesso</small></div>
     <div class="blk done"><b>Segurança em 4 tiers</b><small>READ · WRITE · DESTRUCTIVE · FORBIDDEN (modelo pronto; a aplicação vem no Dispatcher)</small></div>
-    <div class="blk todo"><b>Logging estruturado</b><small>T-031 · tudo que ela faz fica registrado</small></div>
+    <div class="blk done"><b>Logging estruturado</b><small>T-031 · tudo que ela faz fica registrado</small></div>
   </div>
 </div>
 
@@ -117,15 +117,15 @@
 </div>
 
 <h2>4. Onde estamos</h2>
-<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>10 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
+<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>14 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
 <div class="card">
-  <div class="bar"><i style="width:56%"></i></div>
-  <p style="color:var(--muted);font-size:.9em">10 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030, T-040</p>
+  <div class="bar"><i style="width:78%"></i></div>
+  <p style="color:var(--muted);font-size:.9em">14 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030, T-026, T-031, T-040, T-041, T-042</p>
   <div class="sprints" style="margin-top:14px">
     <div class="sprint"><b>LLM</b><span class="tag g">5 de 5</span><small>providers, streaming, failover</small></div>
-    <div class="sprint"><b>Tools</b><span class="tag a">3 de 8</span><small>base, registry e agenda Google prontos</small></div>
-    <div class="sprint now"><b>Cérebro</b><span class="tag a">1 de 2</span><small>agent loop pronto; falta o log (T-031)</small></div>
-    <div class="sprint"><b>Interface</b><span class="tag a">1 de 3</span><small>CLI pronta; faltam legados, <code>juniper tools</code></small></div>
+    <div class="sprint"><b>Tools</b><span class="tag a">4 de 8</span><small>base, registry, agenda e git prontos</small></div>
+    <div class="sprint now"><b>Cérebro</b><span class="tag g">2 de 2</span><small>agent loop e logging prontos</small></div>
+    <div class="sprint"><b>Interface</b><span class="tag g">3 de 3</span><small>CLI, legados, <code>juniper tools</code></small></div>
   </div>
 </div>
 
@@ -165,11 +165,11 @@
 <div class="card">
   <table class="tbl">
     <tr><th>Camada</th><th>Pasta / arquivo</th><th>Referência</th></tr>
-    <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td><a href="T-040.html">T-040</a> · T-041 · T-042</td></tr>
+    <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td><a href="T-040.html">T-040</a> · <a href="T-026.html">T-041 · T-042</a></td></tr>
     <tr><td>Transporte</td><td><code>brain/clients/server.py</code></td><td>ADR-007</td></tr>
-    <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a></td></tr>
+    <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a> · <a href="T-031.html">T-031</a></td></tr>
     <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a></td></tr>
-    <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · T-023 a T-027</td></tr>
+    <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · <a href="T-026.html">T-026</a> · T-023, T-024, T-025, T-027</td></tr>
     <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 3</td></tr>
     <tr><td>Configuração</td><td><code>brain/config.py</code></td><td>ADR-003</td></tr>
   </table>

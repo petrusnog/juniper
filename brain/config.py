@@ -226,7 +226,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JUNIPER_",
         env_nested_delimiter="__",
-        env_file=".env",
+        # ~/.juniper/.env first so the key is found from any directory (the git tools need to
+        # run inside a project repo); ./.env, if present, overrides it.
+        env_file=(Path.home() / ".juniper" / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,

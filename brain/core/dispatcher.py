@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from brain.config import settings
+from brain.eventlog import event_log
 from brain.llm.types import Message, ToolCall
 from brain.tools.base import Tier, Tool, ToolResult
 from brain.tools.registry import ToolRegistry
@@ -78,29 +80,55 @@ class Dispatcher:
         return Message("tool", text, tool_call_id=call.id, name=call.name)
 
     async def execute(self, call: ToolCall) -> ToolResult:
+        started = time.monotonic()
         tool_cls = self._registry.get(call.name)
+        tier = tool_cls.tier if tool_cls is not None else None
+        result, decision = await self._decide_and_run(call, tool_cls)
+        event_log.log(
+            "tool_call",
+            name=call.name,
+            tier=tier,
+            args=call.arguments,
+            decision=decision,
+            success=result.success,
+            output=result.output if result.success else None,
+            error=result.error,
+            duration_ms=round((time.monotonic() - started) * 1000),
+        )
+        return result
+
+    async def _decide_and_run(
+        self, call: ToolCall, tool_cls: type[Tool] | None
+    ) -> tuple[ToolResult, str]:
+        """Run the call; returns the result and the decision taken (for the log)."""
         if tool_cls is None:
-            return ToolResult(success=False, error=f"ferramenta desconhecida: {call.name}")
+            return ToolResult(
+                success=False, error=f"ferramenta desconhecida: {call.name}"
+            ), "unknown"
         if tool_cls.tier is Tier.FORBIDDEN:
-            return ToolResult(success=False, error="ação proibida: esta ferramenta nunca executa")
+            error = "ação proibida: esta ferramenta nunca executa"
+            return ToolResult(success=False, error=error), "forbidden"
         problem = validate_arguments(tool_cls.parameters, call.arguments)
         if problem is not None:
-            return ToolResult(success=False, error=f"argumentos inválidos: {problem}")
+            return ToolResult(success=False, error=f"argumentos inválidos: {problem}"), "invalid"
 
         try:
             tool: Tool = tool_cls()
             # Fail early: never ask the user to approve something bound to fail (ADR-006).
             early = await tool.precheck(**call.arguments)
             if early is not None:
-                return early
+                return early, "precheck_failed"
             if tool_cls.tier is not Tier.READ and not await self._confirmed(call, tool_cls.tier):
-                return ToolResult(success=False, error="o usuário negou a confirmação")
-            return await tool.run(**call.arguments)
+                return ToolResult(success=False, error="o usuário negou a confirmação"), "denied"
+            decision = "auto" if tool_cls.tier is Tier.READ else "confirmed"
+            return await tool.run(**call.arguments), decision
         except Exception as exc:  # a tool bug must not kill the agent; type only, never the message
             logger.exception("Tool %s falhou", call.name)
-            return ToolResult(
-                success=False, error=f"falha interna da ferramenta ({type(exc).__name__})"
+            event_log.log(
+                "error", where=f"tool.{call.name}", type=type(exc).__name__, message=str(exc)
             )
+            error = f"falha interna da ferramenta ({type(exc).__name__})"
+            return ToolResult(success=False, error=error), "crashed"
 
     async def _confirmed(self, call: ToolCall, tier: Tier) -> bool:
         if self._confirm is None:  # no way to ask: deny rather than act unattended

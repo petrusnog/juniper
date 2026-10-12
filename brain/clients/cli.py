@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
+import subprocess
 import threading
 from collections.abc import Callable
 from typing import Annotated, Any, Optional
@@ -17,6 +18,7 @@ from typing import Annotated, Any, Optional
 import typer
 from rich.console import Console
 from rich.markup import escape
+from rich.table import Table
 
 from brain import __version__
 from brain.core.agent import Agent
@@ -24,6 +26,7 @@ from brain.core.dispatcher import Dispatcher
 from brain.llm.errors import LLMError
 from brain.llm.router import PROVIDERS, LLMRouter
 from brain.tools.base import Tier
+from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
 
 app = typer.Typer(
@@ -229,6 +232,58 @@ def chat(
         raise typer.Exit(130) from None
     if code:
         raise typer.Exit(code)
+
+
+def run_legacy_command(args: list[str]) -> int:
+    """Run a legacy shell command attached to the terminal (its prompts work as in v2)."""
+    try:
+        return subprocess.run(legacy_argv(args), check=False).returncode
+    except FileNotFoundError:
+        console.print("[red]zsh não encontrado: os comandos legados precisam dele.[/red]")
+        return 127
+
+
+_PASSTHROUGH: dict[str, Any] = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+}
+
+
+@app.command("search", context_settings=_PASSTHROUGH)
+@app.command("grep", hidden=True, context_settings=_PASSTHROUGH)
+@app.command("gitgrep", hidden=True, context_settings=_PASSTHROUGH)
+def search(ctx: typer.Context) -> None:
+    """Busca commits por termo(s): `juniper search 4911 6531`."""
+    raise typer.Exit(run_legacy_command(["search", *ctx.args]))
+
+
+@app.command("deploy", context_settings=_PASSTHROUGH)
+@app.command("deployfeature", hidden=True, context_settings=_PASSTHROUGH)
+def deploy(ctx: typer.Context) -> None:
+    """Deploy de feature por cherry-pick (develop/stage): `juniper deploy 4911`."""
+    raise typer.Exit(run_legacy_command(["deploy", *ctx.args]))
+
+
+@app.command()
+def tools() -> None:
+    """Lista as tools registradas: nome, tier, locality e descrição."""
+    registry.discover()
+    table = Table(header_style="bold")
+    for column in ("Nome", "Tier", "Locality", "Descrição"):
+        table.add_column(column, overflow="fold")
+    colors = {
+        Tier.READ: "green",
+        Tier.WRITE: "yellow",
+        Tier.DESTRUCTIVE: "red",
+        Tier.FORBIDDEN: "bold red",
+    }
+    for tool in sorted(registry.all(), key=lambda t: t.name):
+        color = colors[tool.tier]
+        table.add_row(
+            tool.name, f"[{color}]{tool.tier}[/{color}]", str(tool.locality), tool.description
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":

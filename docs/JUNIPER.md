@@ -35,23 +35,17 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | `brain/config.py` (pydantic-settings, inclui bloco `google` e validação de fuso) + `tests/test_config.py` | ✅ |
 | `brain/core/clock.py` (hora atual com fuso, para o prompt) + `scripts/check_google.py` (valida conta de serviço e agendas) | ✅ |
 | `brain/tools/google_calendar.py` (T-022: `list_events`, `create_event`, `delete_event`) + `tests/test_google_calendar.py` + POC `scripts/try_calendar.py` | ✅ |
-| `brain/clients/cli.py` (placeholder typer) | ✅ funcional |
 | Binário `juniper` em `~/.local/bin/` | ✅ |
 | ADRs 001, 002, 003, 006, 007 | ✅ |
+| `brain/core/{agent,dispatcher,session}.py` (T-030), `brain/clients/cli.py` (T-040: `chat`, `search`, `deploy`, `tools`), `brain/eventlog.py` (T-031), `brain/tools/juniper_cmds.py` (T-026: `git_search`, `git_deploy`) | ✅ |
 
 ### Stubs (pendentes)
 | Componente | Task |
 |---|---|
-| `brain/tools/system.py` (`run_shell`, `open_app`) | T-023 ← **próxima**, T-027 |
+| `brain/tools/system.py` (`run_shell`, `open_app`) | T-023, T-027 |
 | `brain/tools/web.py` (`web_fetch`, `web_search`) | T-024, T-025 |
-| `brain/tools/juniper_cmds.py` (bridge gitgrep/deploy) | T-026 |
-| `brain/core/agent.py`, `dispatcher.py`, `session.py` | T-030 |
-| Logging estruturado `.jsonl` | T-031 |
-| `brain/clients/cli.py` completo | T-040 |
-| Subcomandos legados | T-041 |
-| `juniper tools` | T-042 |
 
-> **Atenção (divergências repo × plano):** o repo hoje contém `brain/tools/shell.py` (stub) e **não** contém `juniper_cmds.py`, `BACKLOG.md`, `CHANGELOG.md` nem `.env.example`; os ADRs estão nomeados `ADR-00X.md` (sem slug). Ao tocar nesses pontos, reconcilie (criar o arquivo faltante ou ajustar a referência) e registre no commit.
+> **Atenção (divergências repo × plano):** o repo hoje contém `brain/tools/shell.py` (stub) e **não** contém `BACKLOG.md`, `CHANGELOG.md` nem `.env.example`; os ADRs estão nomeados `ADR-00X.md` (sem slug). Os comandos legados chamam-se `search` e `deploy` (aliases `grep`/`gitgrep`/`deployfeature` no CLI); seus scripts em `shell/` vêm da `origin/master`, mais nova que a v4. Ao tocar nesses pontos, reconcilie e registre no commit.
 
 ---
 

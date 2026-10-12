@@ -177,3 +177,59 @@ async def test_confirm_in_full_flow_denied(monkeypatch: pytest.MonkeyPatch) -> N
     assert "write_thing" in out.export_text(clear=False) and "deixei quieto" in out.export_text(
         clear=False
     )
+
+
+@pytest.fixture
+def legacy_calls(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def fake(args: list[str]) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(cli, "run_legacy_command", fake)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["search", "4911", "6531"], ["search", "4911", "6531"]),
+        (["grep", "4911"], ["search", "4911"]),
+        (["gitgrep", "4911"], ["search", "4911"]),
+        (
+            ["deploy", "6531", "--tasks", "7432", "--stage"],
+            ["deploy", "6531", "--tasks", "7432", "--stage"],
+        ),
+        (["deploy", "4911", "abc123", "--hash"], ["deploy", "4911", "abc123", "--hash"]),
+        (["deployfeature", "4911"], ["deploy", "4911"]),
+    ],
+)
+def test_legacy_commands_pass_arguments_through(
+    legacy_calls: list[list[str]], argv: list[str], expected: list[str]
+) -> None:
+    result = runner.invoke(cli.app, argv)
+    assert result.exit_code == 0
+    assert legacy_calls == [expected]
+
+
+def test_legacy_exit_code_is_propagated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "run_legacy_command", lambda args: 3)
+    assert runner.invoke(cli.app, ["search", "x"]).exit_code == 3
+
+
+def test_aliases_are_hidden_from_help() -> None:
+    output = runner.invoke(cli.app, ["--help"]).output
+    assert "search" in output and "deploy" in output and "tools" in output
+    assert "gitgrep" not in output and "deployfeature" not in output
+
+
+def test_tools_command_lists_registered_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_agent import make_registry
+
+    reg, _ = make_registry()
+    monkeypatch.setattr(cli, "registry", reg)
+    result = runner.invoke(cli.app, ["tools"])
+    assert result.exit_code == 0
+    for text in ("echo", "write_thing", "nuke", "read", "forbidden", "executor"):
+        assert text in result.output

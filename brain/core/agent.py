@@ -6,14 +6,17 @@ Transport-agnostic (never imports ``brain.clients``). The client supplies the op
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 from brain.config import settings
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session
+from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
-from brain.llm.types import Message, ToolCall
+from brain.llm.types import Message, TokenUsage, ToolCall
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 
@@ -52,8 +55,9 @@ class Agent:
         checkpoint = self.session.checkpoint()
         try:
             return await self._loop(user_input, on_token)
-        except BaseException:
+        except BaseException as exc:
             self.session.rollback(checkpoint)
+            event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
             raise
 
     async def _loop(self, user_input: str, on_token: TokenCallback | None) -> str:
@@ -80,12 +84,28 @@ class Agent:
     ) -> Message:
         text: list[str] = []
         calls: list[ToolCall] = []
-        async for chunk in self._provider.stream(self.session.messages(), tools=schemas):
+        usage: TokenUsage | None = None
+        finish_reason: str | None = None
+        messages = self.session.messages()
+        event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
+        started = time.monotonic()
+        async for chunk in self._provider.stream(messages, tools=schemas):
             if chunk.delta:
                 text.append(chunk.delta)
                 if on_token is not None:
                     await _emit(on_token, chunk.delta)
             calls.extend(chunk.tool_calls)
+            usage = chunk.usage or usage
+            finish_reason = chunk.finish_reason or finish_reason
+        event_log.log(
+            "llm_response",
+            provider=getattr(self._provider, "last_provider", None) or self._provider.name,
+            latency_ms=round((time.monotonic() - started) * 1000),
+            finish_reason=finish_reason,
+            usage=None if usage is None else dataclasses.asdict(usage),
+            tool_calls=[c.name for c in calls],
+            chars=sum(len(t) for t in text),
+        )
         return Message("assistant", "".join(text) or None, tool_calls=tuple(calls))
 
 
