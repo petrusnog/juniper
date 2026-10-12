@@ -179,7 +179,7 @@ window.JUNIPER_STATUS = {
       "task": "T-040",
       "name": "CLI de chat",
       "file": "brain/clients/cli.py",
-      "implemented": false
+      "implemented": true
     }
   ]
 };

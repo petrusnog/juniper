@@ -33,7 +33,7 @@
   <div class="layer">
     <div class="lname"><b>5 · Interfaces</b><small>Onde você fala com ela. Finas: só capturam e exibem.</small></div>
     <div class="lblocks">
-      <div class="blk todo"><b>CLI</b><small>T-040 · <code>juniper chat</code>, streaming, confirmação [y/N]</small></div>
+      <div class="blk done"><b>CLI</b><small>T-040 · <code>juniper chat</code>, streaming, confirmação [y/N]</small></div>
       <div class="blk future"><b>App web / celular</b><small>Sprint 2</small></div>
       <div class="blk future"><b>Voz</b><small>Sprint 4 · STT, TTS, wake word</small></div>
     </div>
@@ -117,15 +117,15 @@
 </div>
 
 <h2>4. Onde estamos</h2>
-<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>9 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
+<p class="lead">Sprint 1 ("Hello Agent") tem 18 tasks. <b>10 estão prontas.</b> As camadas de baixo (falar com o LLM) estão sólidas; falta construir o meio (tools + cérebro) e a ponta (CLI).</p>
 <div class="card">
-  <div class="bar"><i style="width:50%"></i></div>
-  <p style="color:var(--muted);font-size:.9em">9 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030</p>
+  <div class="bar"><i style="width:56%"></i></div>
+  <p style="color:var(--muted);font-size:.9em">10 de 18 tasks do Sprint 1 · prontas: T-011, T-012, T-013, T-014, T-015, T-020, T-021, T-022, T-030, T-040</p>
   <div class="sprints" style="margin-top:14px">
     <div class="sprint"><b>LLM</b><span class="tag g">5 de 5</span><small>providers, streaming, failover</small></div>
     <div class="sprint"><b>Tools</b><span class="tag a">3 de 8</span><small>base, registry e agenda Google prontos</small></div>
     <div class="sprint now"><b>Cérebro</b><span class="tag a">1 de 2</span><small>agent loop pronto; falta o log (T-031)</small></div>
-    <div class="sprint"><b>Interface</b><span class="tag b">0 de 3</span><small>CLI, legados, <code>juniper tools</code></small></div>
+    <div class="sprint"><b>Interface</b><span class="tag a">1 de 3</span><small>CLI pronta; faltam legados, <code>juniper tools</code></small></div>
   </div>
 </div>
 
@@ -138,9 +138,9 @@
     <div class="arrow">→</div>
     <div class="node g"><b>T-030</b><small>Agent loop (pronto)</small></div>
     <div class="arrow">→</div>
-    <div class="node b"><b>T-040</b><small>CLI: <code>juniper chat</code></small></div>
+    <div class="node g"><b>T-040</b><small>CLI (pronta)</small></div>
   </div>
-  <p style="margin-top:12px;color:var(--muted)">Depois da T-040, você conversa com a Juniper, ela decide usar uma ferramenta e executa de verdade. As outras tasks (shell, web, logging, legados) são acréscimos a partir daí. Até lá, o <code>scripts/try_groq.py</code> é o jeito de conversar com o LLM.</p>
+  <p style="margin-top:12px;color:var(--muted)">Com a T-040 pronta, você já conversa com a Juniper, ela decide usar uma ferramenta e executa de verdade. As outras tasks (shell, web, logging, legados) são acréscimos a partir daí. Teste com <code>juniper chat</code>.</p>
 </div>
 
 <h2>5. O que vem depois do Sprint 1</h2>
@@ -165,7 +165,7 @@
 <div class="card">
   <table class="tbl">
     <tr><th>Camada</th><th>Pasta / arquivo</th><th>Referência</th></tr>
-    <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td>T-040 a T-042</td></tr>
+    <tr><td>Interfaces</td><td><code>brain/clients/cli.py</code></td><td><a href="T-040.html">T-040</a> · T-041 · T-042</td></tr>
     <tr><td>Transporte</td><td><code>brain/clients/server.py</code></td><td>ADR-007</td></tr>
     <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a></td></tr>
     <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a></td></tr>

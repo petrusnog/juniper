@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-040 · CLI de chat — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Clientes / T-040</div>
+<h1>T-040 — CLI de chat</h1>
+<p class="lead">A primeira forma de conversar com a Juniper de verdade. Um cliente fino: lê o que você digita, mostra a resposta chegando token a token e pergunta <code>[y/N]</code> quando uma tool precisa da sua confirmação. Toda a lógica continua em <code>brain/core</code>. Arquivo: <code>brain/clients/cli.py</code>.</p>
+
+<h2>1. Uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Uma mensagem</h3>
+<pre>juniper chat "o que tenho amanhã?"</pre>
+<p style="color:var(--muted)">Responde e sai. Código de saída 1 se nenhum LLM respondeu.</p></div>
+  <div class="card type"><h3>Conversa (REPL)</h3>
+<pre>juniper chat
+você&gt; oi
+juniper&gt; ...
+você&gt; /sair</pre>
+<p style="color:var(--muted)"><code>/sair</code>, <code>/exit</code> ou Ctrl+D encerram. Ctrl+C também.</p></div>
+</div>
+<pre>juniper chat --provider ollama "oi"    # força um provider, sem failover
+python -m brain chat                    # equivalente, sem instalar</pre>
+
+<h2>2. Como funciona</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td><code>chat</code></td><td>Comando do Typer. Monta o router, o <code>Dispatcher</code> e o <code>Agent</code> da T-030 e chama <code>converse</code>.</td></tr>
+    <tr><td><code>converse</code></td><td>Um turno (mensagem única) ou um laço de turnos (REPL). Erros de LLM são mostrados sem derrubar o REPL.</td></tr>
+    <tr><td><code>Printer</code></td><td>Imprime cada token assim que chega, sem interpretar colchetes como markup do <code>rich</code> (uma resposta com <code>[bold]</code> sai literal).</td></tr>
+    <tr><td><code>make_confirm</code></td><td>Cria o callback de confirmação do dispatcher: mostra a tool e os argumentos e pergunta <code>Confirma? [y/N]</code>. Tool DESTRUTIVA mostra <b>IRREVERSÍVEL</b> em vermelho.</td></tr>
+    <tr><td><code>LineReader</code></td><td>Lê o teclado numa thread, sem travar o event loop.</td></tr>
+    <tr><td><code>friendly_error</code></td><td>Traduz falhas do LLM em instruções em PT-BR.</td></tr>
+  </table>
+</div>
+
+<h2>3. Confirmação com timeout</h2>
+<p class="lead">O tempo limite (<code>tools.security.confirmation_timeout</code>, 60s) é aplicado pelo dispatcher; o CLI só pergunta. Respostas aceitas como "sim": <code>y</code>, <code>yes</code>, <code>s</code>, <code>sim</code>. Qualquer outra coisa, Enter vazio, Ctrl+D ou o tempo esgotado = <b>não</b>.</p>
+<p><code>input()</code> não pode ser cancelado. Quando o tempo esgota, a thread de leitura continua esperando; o próximo pedido de leitura <b>reaproveita</b> essa mesma thread em vez de abrir outra (duas threads disputariam a mesma linha). A thread é daemon, então nunca impede o programa de fechar.</p>
+
+<h2>4. Erros em PT-BR</h2>
+<div class="tree">
+  <div class="err"><span class="mono">chave Groq ausente ou inválida</span><span>"Groq sem chave válida: defina JUNIPER_GROQ_API_KEY no arquivo .env."</span><span class="act tag a">dica</span></div>
+  <div class="err"><span class="mono">limite da Groq (429)</span><span>"Limite da Groq atingido: espere um minuto e tente de novo."</span><span class="act tag a">dica</span></div>
+  <div class="err"><span class="mono">Ollama fora do ar ou lento</span><span>"Ollama não respondeu: ele está rodando? (ollama serve)"</span><span class="act tag a">dica</span></div>
+  <div class="err"><span class="mono">--provider inválido</span><span>Recusado antes de qualquer trabalho, listando os válidos.</span><span class="act tag r">exit ≠ 0</span></div>
+</div>
+<p>Abaixo da dica vem o detalhe técnico em cinza, para depuração.</p>
+
+<h2>5. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b><code>--provider</code> monta um router com um único provider.</b></td><td>"Forçar" significa sem failover: útil para testar o Ollama sem a Groq responder no lugar.</td></tr>
+    <tr><td>2</td><td><b>No REPL, erro de LLM não encerra nem muda o código de saída.</b></td><td>A sessão é interativa; só a mensagem única devolve exit 1.</td></tr>
+    <tr><td>3</td><td><b>Dependências injetáveis</b> (<code>build_router</code>, leitor de linhas).</td><td>Os testes rodam o CLI inteiro com um provider falso, sem rede nem teclado.</td></tr>
+    <tr><td>4</td><td><b>Sem indicador das tools de leitura</b> (READ).</td><td>O <code>Agent</code> ainda não avisa o cliente sobre cada tool; só as que pedem confirmação aparecem. Fica para quando o log (T-031) existir.</td></tr>
+  </table>
+</div>
+
+<h2>6. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Resposta em texto puro.</b> Os tokens saem como chegam; não há renderização de Markdown (a persona já evita Markdown fora de código).</p>
+  <p><b>Ctrl+C encerra o programa</b> mesmo no meio de uma resposta; ainda não cancela só o turno.</p>
+  <p><b>Sem histórico entre execuções.</b> A conversa vive só enquanto o REPL está aberto.</p>
+  <p><b>Se a confirmação expirar</b>, a pergunta antiga continua na tela até você digitar algo; a próxima linha digitada responde a ela.</p>
+</div>
+
+<h2>7. Como testar</h2>
+<pre>pytest tests/test_cli.py -v</pre>
+<p>Cobre: versão, mensagem única com streaming, colchetes literais, REPL até <code>/sair</code> e até EOF, <code>--provider</code> inválido e válido, chave Groq ausente (instrução do <code>.env</code>, exit 1), REPL sobrevivendo a erro de LLM, dicas de <code>friendly_error</code>, respostas do <code>[y/N]</code>, aviso de IRREVERSÍVEL, o reaproveitamento da thread após timeout e um fluxo completo com confirmação negada.</p>
+<p>Para ver ao vivo, com a chave no <code>.env</code>: <code>juniper chat "marca um teste amanhã às 10h"</code>.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

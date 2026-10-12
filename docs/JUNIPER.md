@@ -344,7 +344,6 @@ Lista tools registradas: nome, tier, locality, descrição (tabela `rich`).
 
 1. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
 2. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados pelos ADRs).
-3. `brain/clients/cli.py`: `chat()` ainda é placeholder (T-040).
 4. Sem CI — rodar pytest/ruff/mypy manualmente (sugestão: GitHub Actions).
 5. `.env.example` ausente.
 6. `brain/tools/shell.py` stub coexiste com o plano `system.py` — decidir e remover um.
