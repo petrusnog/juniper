@@ -23,6 +23,7 @@ const FEATURES = [
   { group: "Tools", id: "T-026", title: "Comandos git", file: "T-026.html", desc: "search e deploy: terminal e agente (T-041, T-042).", status: "done" },
   { group: "Agente", id: "T-030", title: "Agent loop", file: "T-030.html", desc: "Decide → chama tool → reavalia.", status: "done" },
   { group: "Agente", id: "T-031", title: "Logging", file: "T-031.html", desc: "Eventos JSONL com segredos mascarados.", status: "done" },
+  { group: "Memória", id: "T-051", title: "Memória de sessão", file: "T-051.html", desc: "Orçamento de tokens, conversa salva e retomável.", status: "done" },
   { group: "Clientes", id: "T-040", title: "CLI", file: "T-040.html", desc: "juniper completo.", status: "done" },
   { group: "Ferramentas", id: "Status", title: "Painel de status", file: "status.html",
     desc: "Testa até onde a Juniper está funcional.", status: "tool" },
