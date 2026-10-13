@@ -20,8 +20,6 @@ dependencies = [
     "google-auth>=2.25",
 ]
 
-
-
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
