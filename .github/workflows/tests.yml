@@ -1,0 +1,32 @@
+name: Tests
+
+# Roda pytest em todo PR para master. Torne o check "pytest" obrigatório em
+# Settings -> Branches (proteção do master) para impedir merge sem testes passando.
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Instala dependências
+        run: pip install -e ".[dev]"
+      - name: Testes (sem integração)
+        run: pytest -m "not integration"
