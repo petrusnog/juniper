@@ -378,7 +378,7 @@ def install(ctx: typer.Context) -> None:
     os.execvp("bash", ["bash", str(INSTALL_SCRIPT), *ctx.args])
 
 
-DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+DOCS_DIR = Path(__file__).resolve().parents[2] / "docs" / "html"
 DOCS_BASE_PORT = 47831  # incomum de propósito; em conflito, tenta a próxima
 DOCS_PORT_ATTEMPTS = 50
 

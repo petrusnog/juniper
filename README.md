@@ -27,7 +27,7 @@ Depois da primeira instalação, `juniper install` faz o mesmo (`--dev` inclui p
 
 O instalador (`./scripts/install.sh`) cria `~/.juniper/certs/` e pergunta o caminho da sua chave de conta de serviço (qualquer nome de arquivo); ela é validada e copiada para `certs/gcp-key.json`. Para informar sem prompt: `./scripts/install.sh --gcp-key=/caminho/chave.json`.
 
-Tutorial de geração da conta de serviço: rode `juniper docs` (seção "Conta de serviço no GCP").
+Tutorial de geração da conta de serviço: `docs/html/install.html` (seção "Conta de serviço no GCP"), ou rode `juniper docs`.
 
 ### 5. Documentação
 

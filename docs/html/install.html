@@ -24,6 +24,8 @@ bash ~/.juniper/scripts/install.sh</pre>
   <p style="color:var(--muted)">Depois da primeira instalação o comando também existe dentro do shell: <code>juniper install</code> faz o mesmo (veja a seção 4).</p>
 </div>
 <p>Durante a instalação ela pede <b>só uma coisa</b> que não tem como descobrir sozinha: as chaves dos LLMs: DeepInfra, o cérebro principal (<a href="https://deepinfra.com/dash/api_keys">deepinfra.com/dash/api_keys</a>), e Groq, o plano B grátis (<a href="https://console.groq.com/keys">console.groq.com/keys</a>). Cole e pronto; Enter pula, e você pode colocar depois em <code>~/.juniper/.env</code>.</p>
+<p>Depois ela pede o <b>caminho da chave da conta de serviço do GCP</b> (arquivo <code>.json</code> com qualquer nome). Ela cria a pasta <code>~/.juniper/certs/</code>, valida a chave e a salva como <code>certs/gcp-key.json</code>. Ainda não tem a chave? Siga a seção <a href="#gcp">7. Conta de serviço no GCP</a> e rode o instalador depois (ou use <code>--gcp-key</code>).</p>
+<p>Para ler este guia a qualquer momento: <code>juniper docs</code> e acesse <code>http://localhost:47831</code> (veja a seção 10).</p>
 
 <h2>2. O que o instalador faz</h2>
 <div class="card">
@@ -83,6 +85,7 @@ ruff             mypy</pre>
     <tr><td><code>--clean</code></td><td>Apaga o ambiente e instala do zero.</td></tr>
     <tr><td><code>--yes</code></td><td>Sem perguntas (scripts e CI).</td></tr>
     <tr><td><code>--no-rc</code></td><td>Não altera <code>~/.zshrc</code> nem <code>~/.bashrc</code>.</td></tr>
+    <tr><td><code>--gcp-key=CAMINHO</code></td><td>Informa a chave de conta de serviço do GCP sem perguntar (qualquer nome de arquivo); é copiada para <code>certs/gcp-key.json</code>.</td></tr>
   </table>
 </div>
 <pre>juniper install --dev          # dentro do shell (zsh), ou:
@@ -113,6 +116,7 @@ cp ~/.juniper/.env.example ~/.juniper/.env      # preencha JUNIPER_GROQ_API_KEY<
     <tr><td><code>~/.juniper/.venv/</code></td><td>Ambiente virtual com as dependências.</td></tr>
     <tr><td><code>~/.juniper/.tools/</code></td><td>uv e Python isolado (só se não havia Python utilizável).</td></tr>
     <tr><td><code>~/.juniper/config.yaml</code>, <code>.env</code></td><td>Configuração (o <code>.env</code> fica com permissão 600).</td></tr>
+    <tr><td><code>~/.juniper/certs/gcp-key.json</code></td><td>Chave da conta de serviço do GCP (pasta com permissão 700, arquivo 600; fora do git).</td></tr>
     <tr><td><code>~/.local/bin/juniper</code></td><td>Atalho para o executável.</td></tr>
     <tr><td><code>~/.zshrc</code></td><td>Linha que carrega os comandos do shell (<code>search</code>, <code>deploy</code>...). Troca a linha antiga <code>~/.juniper/juniper.sh</code> pela nova.</td></tr>
     <tr><td><code>~/.zshrc</code>, <code>~/.bashrc</code></td><td>Inclui <code>~/.local/bin</code> no PATH, se ainda não estiver.</td></tr>
@@ -121,19 +125,42 @@ cp ~/.juniper/.env.example ~/.juniper/.env      # preencha JUNIPER_GROQ_API_KEY<
 </div>
 <p>Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado dele (<code>.zshrc.juniper.bak</code>). Para desfazer tudo: <code>bash ~/.juniper/scripts/uninstall.sh</code>.</p>
 
-<h2>7. Opcionais</h2>
+<h2 id="gcp">7. Conta de serviço no GCP</h2>
+<p>A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda. Passo a passo no console:</p>
+<div class="card">
+  <h3>7.1 Projeto</h3>
+  <p>Acesse <a href="https://console.cloud.google.com">console.cloud.google.com</a>, abra o seletor de projetos (topo da página) e escolha um projeto ou crie um novo. Confirme que ele está ativo antes de continuar.</p>
+  <h3>7.2 Ativar a API</h3>
+  <p>Menu ☰ → <b>APIs e serviços → Biblioteca</b>, procure <b>Google Calendar API</b> e clique em <b>Ativar</b>.</p>
+  <h3>7.3 Criar a conta de serviço</h3>
+  <p>Menu ☰ → <b>IAM e administrador → Contas de serviço → + Criar conta de serviço</b>. Dê um nome (ex.: <code>juniper</code>) e clique em <b>Criar e continuar</b>. Não é preciso conceder papel de projeto para usar a agenda: o acesso é dado compartilhando a agenda com o e-mail da conta (veja <a href="T-022.html">T-022</a>). Clique em <b>Concluir</b>.</p>
+  <h3>7.4 Gerar a chave JSON</h3>
+  <p>Na lista, abra a conta criada → aba <b>Chaves → Adicionar chave → Criar nova chave</b> → tipo <b>JSON</b> → <b>Criar</b>. O navegador baixa um arquivo como <code>meu-projeto-a1b2c3.json</code>; <b>essa é a única vez que a chave aparece</b>. Informe o caminho dele ao instalador: o nome pode ser qualquer um.</p>
+  <h3>7.5 Conferir</h3>
+<pre>ls -l ~/.juniper/certs/gcp-key.json    # -rw------- (600)
+python scripts/check_google.py</pre>
+</div>
+<div class="err"><span class="mono">Segurança</span><span>A chave dá acesso à conta de serviço. Nunca a versione no git (<code>certs/</code> já está no <code>.gitignore</code>), não a envie por chat ou e-mail e apague o arquivo baixado depois de instalar. Se vazar, exclua a chave na aba <i>Chaves</i> e gere outra.</span><span class="act tag r">cuidado</span></div>
+
+<h2>8. Opcionais</h2>
 <div class="card">
   <p><b>Ollama (reserva local, o último da fila).</b> Instale em <a href="https://ollama.com">ollama.com</a> e rode <code>ollama pull llama3.1</code>. A Juniper usa quando a DeepInfra e a Groq falham.</p>
-  <p><b>Agenda do Google.</b> Precisa de conta de serviço e agenda própria; o passo a passo está na página <a href="T-022.html">T-022</a>. Valide com <code>python scripts/check_google.py</code>.</p>
+  <p><b>Agenda do Google.</b> Precisa de conta de serviço e agenda própria; a chave se gera na seção <a href="#gcp">7</a> e o restante está na página <a href="T-022.html">T-022</a>. Valide com <code>python scripts/check_google.py</code>.</p>
 </div>
 
-<h2>8. Se algo der errado</h2>
+<h2>9. Se algo der errado</h2>
 <div class="tree">
   <div class="err"><span class="mono">"Faltam curl ou wget"</span><span>Só acontece sem Python na máquina: instale um deles (<code>sudo apt install curl</code>) e rode de novo.</span><span class="act tag a">1 comando</span></div>
   <div class="err"><span class="mono">"Sem conexão com a internet"</span><span>Conecte-se e rode de novo; o que já foi instalado é reaproveitado.</span><span class="act tag a">repetir</span></div>
   <div class="err"><span class="mono">juniper: command not found</span><span>Abra um terminal novo (o PATH foi ajustado agora). Se persistir: <code>~/.local/bin/juniper version</code>.</span><span class="act tag a">novo terminal</span></div>
   <div class="err"><span class="mono">Algo estranho no ambiente</span><span><code>juniper install --clean</code> recria tudo e é seguro.</span><span class="act tag g">--clean</span></div>
+  <div class="err"><span class="mono">"Chave inválida: o JSON não é de uma conta de serviço"</span><span>Você apontou para outro tipo de credencial. Gere uma chave JSON em <i>Contas de serviço</i> (seção 7.4) e rode <code>install.sh --gcp-key=CAMINHO</code>.</span><span class="act tag a">refazer</span></div>
   <div class="err"><span class="mono">Qualquer outra falha</span><span>O detalhe técnico está em <code>~/.juniper/logs/install.log</code>.</span><span class="act tag r">log</span></div>
+</div>
+<h2>10. Ler esta documentação</h2>
+<div class="card">
+<pre>juniper docs</pre>
+  <p>Serve o livro de bolso localmente e abre o navegador em <code>http://localhost:47831</code>. Ctrl+C encerra. Se a porta 47831 estiver ocupada, a Juniper usa a próxima livre (47832, 47833...) e mostra o endereço certo no terminal. Use <code>--no-open</code> para não abrir o navegador automaticamente.</p>
 </div>
 </main>
 <script src="assets/layout.js"></script>
