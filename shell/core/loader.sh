@@ -6,7 +6,7 @@
 
 # Carrega módulos core
 _juniper_init() {
-    local juniper_home="${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}"
+    local juniper_home="$HOME/.juniper"
     
     # Carrega sistema de logs
     [ -f "$juniper_home/core/logger.sh" ] && source "$juniper_home/core/logger.sh"

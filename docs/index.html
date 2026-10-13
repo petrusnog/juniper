@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juniper — Livro de Bolso</title>
+<style>
+  :root { --bg:#fafaf7; --fg:#1d2a22; --muted:#5f6f66; --accent:#2e7d4f; --card:#fff; --code:#eef2ee; --border:#dde4dd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121814; --fg:#e6eee8; --accent:#6fcf97; --card:#1a221d; --code:#0d120f; --border:#2a352d; --muted:#9bab9f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:2rem; margin-bottom:.2rem; }
+  h2 { margin-top:2.5rem; border-bottom:2px solid var(--accent); padding-bottom:.3rem; }
+  h3 { margin-top:1.6rem; }
+  p.sub { color:var(--muted); margin-top:0; }
+  nav { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 20px; }
+  nav a { color:var(--accent); text-decoration:none; }
+  pre { background:var(--code); border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; }
+  code { background:var(--code); padding:1px 5px; border-radius:4px; font-size:.92em; }
+  pre code { padding:0; background:none; }
+  .note { background:var(--card); border-left:4px solid var(--accent); padding:10px 14px; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:#d9822b; }
+  ol li, ul li { margin:.35rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🌿 Juniper — Livro de Bolso</h1>
+  <p class="sub">Guia rápido de instalação, configuração e uso. Abra a qualquer momento com <code>juniper docs</code>.</p>
+
+  <nav>
+    <strong>Sumário</strong>
+    <ol>
+      <li><a href="#instalacao">Instalação</a></li>
+      <li><a href="#gcp">Conta de serviço no GCP (gcp-key.json)</a></li>
+      <li><a href="#comandos">Comandos</a></li>
+      <li><a href="#problemas">Problemas comuns</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="instalacao">1. Instalação</h2>
+  <ol>
+    <li>Tenha <strong>Python 3.11+</strong> e <code>git</code> instalados.</li>
+    <li>Clone o repositório:
+<pre><code>git clone git@github.com:petrusnog/juniper.git ~/.juniper
+cd ~/.juniper</code></pre></li>
+    <li>Gere antes a chave da conta de serviço (veja a <a href="#gcp">seção 2</a>) e anote onde o arquivo <code>.json</code> foi salvo.</li>
+    <li>Rode o instalador:
+<pre><code>./scripts/install.sh</code></pre></li>
+  </ol>
+
+  <p>O instalador cria o venv, instala as dependências, gera <code>config.yaml</code> e <code>.env</code> e o link global <code>juniper</code>. Além disso, ele:</p>
+  <ul>
+    <li>cria a pasta <code>~/.juniper/certs/</code> (permissão 700);</li>
+    <li><strong>pergunta o caminho da sua chave de conta de serviço</strong> — o arquivo pode ter <em>qualquer nome</em> (ex.: <code>~/Downloads/meu-projeto-a1b2c3.json</code>);</li>
+    <li>valida o JSON e o copia para <code>~/.juniper/certs/gcp-key.json</code> (permissão 600).</li>
+  </ul>
+
+<pre><code>Caminho da chave de conta de serviço do GCP (enter para pular): ~/Downloads/meu-projeto-a1b2c3.json
+[ OK ] Chave copiada para /home/voce/.juniper/certs/gcp-key.json</code></pre>
+
+  <h3>Opções do instalador</h3>
+  <ul>
+    <li><code>--gcp-key=/caminho/chave.json</code> — informa a chave sem prompt (útil em automações).</li>
+    <li><code>--clean</code> — recria o venv do zero.</li>
+    <li><code>--no-ollama</code> — pula a validação do Ollama.</li>
+    <li><code>--ci</code> — modo não interativo (a chave do GCP é pulada se não for informada).</li>
+  </ul>
+  <div class="note">Pulou a chave sem querer? Rode <code>./scripts/install.sh --gcp-key=CAMINHO</code> a qualquer momento — o instalador é idempotente.</div>
+
+  <h2 id="gcp">2. Conta de serviço no GCP</h2>
+  <p>A Juniper usa uma <strong>conta de serviço</strong> do Google Cloud para se autenticar. Passo a passo no console:</p>
+
+  <h3>2.1 Projeto</h3>
+  <ol>
+    <li>Acesse <code>console.cloud.google.com</code> e entre com sua conta Google.</li>
+    <li>No seletor de projetos (topo da página), escolha um projeto existente ou clique em <strong>Novo projeto</strong>, dê um nome e crie.</li>
+    <li>Confirme que o projeto está <strong>ativo</strong> no seletor antes de continuar.</li>
+  </ol>
+
+  <h3>2.2 Ativar as APIs necessárias</h3>
+  <ol>
+    <li>Menu ☰ → <strong>APIs e serviços → Biblioteca</strong>.</li>
+    <li>Pesquise cada API que a Juniper vai usar e clique em <strong>Ativar</strong>.</li>
+  </ol>
+
+  <h3>2.3 Criar a conta de serviço</h3>
+  <ol>
+    <li>Menu ☰ → <strong>IAM e administrador → Contas de serviço</strong>.</li>
+    <li>Clique em <strong>+ Criar conta de serviço</strong>.</li>
+    <li>Informe um nome (ex.: <code>juniper</code>) e uma descrição; clique em <strong>Criar e continuar</strong>.</li>
+    <li>Em <strong>Conceder acesso a este projeto</strong>, escolha o papel mínimo necessário (princípio do menor privilégio). Evite <em>Proprietário</em>/<em>Editor</em>.</li>
+    <li>Clique em <strong>Concluir</strong> (o terceiro passo, de acesso de usuários, é opcional).</li>
+  </ol>
+
+  <h3>2.4 Gerar a chave JSON</h3>
+  <ol>
+    <li>Na lista de contas de serviço, clique no e-mail da conta criada.</li>
+    <li>Aba <strong>Chaves → Adicionar chave → Criar nova chave</strong>.</li>
+    <li>Selecione o tipo <strong>JSON</strong> e clique em <strong>Criar</strong>.</li>
+    <li>O navegador baixa um arquivo como <code>meu-projeto-a1b2c3d4e5f6.json</code>. <strong>Esse é o único momento em que a chave é exibida</strong> — guarde o arquivo.</li>
+    <li>Anote o caminho do arquivo e informe-o quando o instalador perguntar. O nome pode ser qualquer um: a Juniper o copia para <code>certs/gcp-key.json</code>.</li>
+  </ol>
+
+  <div class="note warn"><strong>Segurança:</strong> a chave dá acesso ao seu projeto. Nunca a versione no git (a pasta <code>certs/</code> já está no <code>.gitignore</code>), não a envie por chat/e-mail e apague o arquivo baixado depois da instalação. Se vazar, volte à aba <em>Chaves</em> e exclua-a imediatamente.</div>
+
+  <h3>2.5 Conferir</h3>
+<pre><code>ls -l ~/.juniper/certs/gcp-key.json    # deve mostrar -rw------- (600)</code></pre>
+
+  <h2 id="comandos">3. Comandos</h2>
+  <ul>
+    <li><code>juniper version</code> — exibe a versão.</li>
+    <li><code>juniper docs</code> — abre este livro de bolso em uma nova aba do navegador padrão.</li>
+    <li><code>juniper chat "mensagem"</code> — conversa com a Juniper (em desenvolvimento).</li>
+    <li><code>juniper --help</code> — lista todos os comandos.</li>
+  </ul>
+
+  <h2 id="problemas">4. Problemas comuns</h2>
+  <ul>
+    <li><strong>"o JSON não é de uma conta de serviço"</strong> — você apontou para outro tipo de credencial (ex.: OAuth client). Gere uma chave JSON em <em>Contas de serviço</em> (seção 2.4).</li>
+    <li><strong>"Arquivo não encontrado"</strong> — confira o caminho; <code>~</code> e arrastar o arquivo para o terminal funcionam.</li>
+    <li><strong><code>juniper docs</code> não abre o navegador</strong> — em servidores sem interface gráfica, o comando imprime o endereço <code>file://</code> para você abrir manualmente.</li>
+    <li><strong>Substituir a chave</strong> — rode o instalador de novo e responda <code>s</code> quando perguntar.</li>
+  </ul>
+</main>
+</body>
+</html>

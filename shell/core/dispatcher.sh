@@ -16,7 +16,7 @@ JUNIPER_ALIASES=(
 
 # Carrega todos os comandos disponíveis
 _juniper_load_commands() {
-    for cmd_file in "${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}"/commands/*.sh; do
+    for cmd_file in ~/.juniper/commands/*.sh; do
         [ -f "$cmd_file" ] && source "$cmd_file"
     done
 }
@@ -25,15 +25,9 @@ _juniper_load_commands() {
 _juniper_dispatch() {
     local command="$1"
     
-    local brain="${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}/../.venv/bin/juniper"
-
-    # Comando vazio: abre o chat do cérebro (sem o cérebro, só a saudação)
+    # Caso especial: comando vazio mostra saudação
     if [ -z "$command" ]; then
-        if [ -x "$brain" ]; then
-            "$brain"
-        else
-            _juniper_greeting
-        fi
+        _juniper_greeting
         return 0
     fi
     
@@ -49,10 +43,6 @@ _juniper_dispatch() {
     if declare -f "$run_func" > /dev/null; then
         _juniper_log_info "Comando executado: $command $*"
         $run_func "$@"
-    elif [ -x "$brain" ]; then
-        # Não é um comando do shell (tools, mensagem livre...): quem responde é o cérebro em Python.
-        _juniper_log_info "Delegando ao cérebro: $command $*"
-        "$brain" "$command" "$@"
     else
         _juniper_log_error "Comando desconhecido: $command $*"
         _juniper_say "❌ Comando desconhecido: $command"
@@ -81,10 +71,10 @@ _juniper_ask_user_name() {
 
     _juniper_say "Oi! Ainda não sei seu nome."
     if [ -n "$suggested_name" ]; then
-        _juniper_ask "Posso te chamar de ${suggested_name}? (enter para confirmar, ou digite outro nome)" resp
+        read "resp?🌿 JUNIPER: Posso te chamar de ${suggested_name}? (enter para confirmar, ou digite outro nome): "
         [ -z "$resp" ] && resp="$suggested_name"
     else
-        _juniper_ask "Como posso te chamar?" resp
+        read "resp?🌿 JUNIPER: Como posso te chamar? "
     fi
 
     if [ -n "$resp" ]; then

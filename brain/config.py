@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import (
@@ -30,24 +29,15 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+
 # --- Submodelos -------------------------------------------------------
-
-
-class LLMDeepInfraSettings(BaseModel):
-    """Configuração do provider DeepInfra (API compatível com a da OpenAI)."""
-
-    # Modelo usado nos exemplos de tool calling da própria documentação da DeepInfra.
-    model: str = "deepseek-ai/DeepSeek-V4-Flash-0731"
-    timeout: int = Field(default=30, ge=1, le=600)
 
 
 class LLMGroqSettings(BaseModel):
     """Configuração do provider Groq."""
 
-    model: str = "openai/gpt-oss-20b"
+    model: str = "llama-3.3-70b-versatile"
     timeout: int = Field(default=30, ge=1, le=600)
-    # gpt-oss only: "low" cuts the (billed) reasoning tokens. None = provider default.
-    reasoning_effort: Literal["low", "medium", "high"] | None = None
 
 
 class LLMOllamaSettings(BaseModel):
@@ -66,15 +56,14 @@ class LLMOllamaSettings(BaseModel):
 class LLMSettings(BaseModel):
     """Configuração agregada dos providers de LLM."""
 
-    priority: list[str] = Field(default_factory=lambda: ["deepinfra", "groq", "ollama"])
-    deepinfra: LLMDeepInfraSettings = Field(default_factory=LLMDeepInfraSettings)
+    priority: list[str] = Field(default_factory=lambda: ["groq", "ollama"])
     groq: LLMGroqSettings = Field(default_factory=LLMGroqSettings)
     ollama: LLMOllamaSettings = Field(default_factory=LLMOllamaSettings)
 
     @field_validator("priority")
     @classmethod
     def _validate_priority(cls, v: list[str]) -> list[str]:
-        allowed = {"deepinfra", "groq", "ollama"}
+        allowed = {"groq", "ollama"}
         if not v:
             raise ValueError("llm.priority não pode ser vazio")
         unknown = set(v) - allowed
@@ -92,15 +81,6 @@ class AgentSettings(BaseModel):
     max_iterations: int = Field(default=5, ge=1, le=50)
     language: str = "pt-BR"
     timezone: str = "America/Sao_Paulo"
-
-    @field_validator("timezone")
-    @classmethod
-    def _validate_timezone(cls, v: str) -> str:
-        try:
-            ZoneInfo(v)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError(f"agent.timezone inválido: {v!r}") from exc
-        return v
 
 
 class ServerSettings(BaseModel):
@@ -152,31 +132,6 @@ class ToolsSettings(BaseModel):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
 
 
-class GoogleSettings(BaseModel):
-    """Integração com o Google Calendar via conta de serviço (ver ADR-008)."""
-
-    credentials_file: Path = Field(
-        default_factory=lambda: Path.home() / ".juniper" / "certs" / "gcp-key.json"
-    )
-    # Agenda "Juniper": a única onde a Juniper cria e apaga eventos.
-    calendar_id: str | None = None
-    # Agendas só lidas, para detectar conflitos (ex.: o Gmail pessoal).
-    read_calendar_ids: list[str] = Field(default_factory=list)
-    # Agendas do usuário em que a Juniper também cria, altera e apaga eventos (ADR-010). Precisam
-    # estar compartilhadas com a conta de serviço com permissão de "fazer alterações em eventos".
-    manage_calendar_ids: list[str] = Field(default_factory=list)
-    # Onde novos eventos caem quando o usuário não diz. None = a primeira de manage_calendar_ids
-    # (a agenda pessoal); sem nenhuma, a agenda Juniper (calendar_id).
-    default_calendar_id: str | None = None
-    default_duration_minutes: int = Field(default=60, ge=5, le=1440)
-    reminder_minutes: int = Field(default=30, ge=0, le=40320)
-
-    @field_validator("credentials_file")
-    @classmethod
-    def _expand_user(cls, v: Path) -> Path:
-        return v.expanduser()
-
-
 class PathsSettings(BaseModel):
     """Paths canônicos do runtime da Juniper.
 
@@ -187,6 +142,8 @@ class PathsSettings(BaseModel):
     home: Path
     logs: Path
     config: Path
+    certs: Path
+    gcp_key: Path
 
 
 # --- Settings principal -----------------------------------------------
@@ -229,11 +186,9 @@ class Settings(BaseSettings):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     deployment: DeploymentSettings = Field(default_factory=DeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
-    google: GoogleSettings = Field(default_factory=GoogleSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
-    deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
 
     # Paths (calculados no model_post_init)
     paths: PathsSettings | None = None
@@ -241,9 +196,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JUNIPER_",
         env_nested_delimiter="__",
-        # ~/.juniper/.env first so the key is found from any directory (the git tools need to
-        # run inside a project repo); ./.env, if present, overrides it.
-        env_file=(Path.home() / ".juniper" / ".env", ".env"),
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -276,7 +229,9 @@ class Settings(BaseSettings):
         ]
 
         if config_path.exists():
-            sources.append(YamlConfigSettingsSource(settings_cls, yaml_file=config_path))
+            sources.append(
+                YamlConfigSettingsSource(settings_cls, yaml_file=config_path)
+            )
 
         sources.append(file_secret_settings)
         return tuple(sources)
@@ -289,6 +244,8 @@ class Settings(BaseSettings):
             home=home,
             logs=home / "logs",
             config=config_path,
+            certs=home / "certs",
+            gcp_key=home / "certs" / "gcp-key.json",
         )
 
 
