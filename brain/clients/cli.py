@@ -14,7 +14,6 @@ import re
 import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
 import subprocess
 import threading
-import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Optional
@@ -404,11 +403,7 @@ def _bind_docs_server(base_port: int = DOCS_BASE_PORT) -> ThreadingHTTPServer:
 
 
 @app.command()
-def docs(
-    open_browser: Annotated[
-        bool, typer.Option("--open/--no-open", help="Abre o navegador automaticamente.")
-    ] = True,
-) -> None:
+def docs() -> None:
     """Serve a documentação (livro de bolso) em http://localhost:<porta>. Ctrl+C encerra."""
     if not (DOCS_DIR / "index.html").is_file():
         voice.say(console, f"Não encontrei a documentação ({DOCS_DIR / 'index.html'}).", "red")
@@ -420,9 +415,7 @@ def docs(
         raise typer.Exit(1) from None
 
     url = f"http://localhost:{server.server_address[1]}/"
-    voice.say(console, f"Livro de bolso no ar: {url}  (Ctrl+C para encerrar)")
-    if open_browser:
-        webbrowser.open_new_tab(url)
+    voice.say(console, f"Livro de bolso no ar: {url}  (abra no navegador; Ctrl+C para encerrar)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
