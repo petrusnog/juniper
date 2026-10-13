@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-030 · Agent loop — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Agente / T-030</div>
+<h1>T-030 — Agent loop, Dispatcher e Session</h1>
+<p class="lead">O cérebro que junta tudo: recebe o que você disse, pergunta ao LLM, executa as tools que ele pedir (com a sua confirmação quando necessário) e repete até haver uma resposta final. Arquivos: <code>brain/core/agent.py</code>, <code>dispatcher.py</code> e <code>session.py</code>.</p>
+
+<h2>1. O que cada peça faz</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Cliente</b><small>CLI (T-040)</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>Agent</b><small><code>run(texto)</code></small></div>
+    <div class="arrow">⇄</div>
+    <div class="node b"><b>LLM</b><small>router (T-015)</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>Dispatcher</b><small>tier + confirmação</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Tool</b><small>registry (T-021)</small></div>
+  </div>
+  <table class="tbl" style="margin-top:14px">
+    <tr><th>Peça</th><th>Responsabilidade</th></tr>
+    <tr><td><b>Session</b></td><td>Guarda o histórico e o prompt de sistema (<code>prompts/juniper.md</code>). Marca a data e hora em cada mensagem sua. Enxuga o histórico para economizar tokens.</td></tr>
+    <tr><td><b>Dispatcher</b></td><td>Pega um <code>ToolCall</code> do LLM e devolve uma <code>Message(role="tool")</code>. Valida, checa o tier, pede confirmação e executa. <b>Nunca levanta exceção</b>: todo problema volta ao LLM como texto.</td></tr>
+    <tr><td><b>Agent</b></td><td>O loop em si: chama o LLM, repassa as tool calls ao dispatcher, devolve os resultados ao LLM e repete. Limitado por <code>agent.max_iterations</code> (padrão 5).</td></tr>
+  </table>
+</div>
+
+<h2>2. O loop de um pedido</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Passo</th></tr>
+    <tr><td>1</td><td>O Agent anota na Session sua mensagem, com <code>[domingo, 11/10/2026, 17:30 (America/Sao_Paulo)]</code> na frente, e compacta o histórico.</td></tr>
+    <tr><td>2</td><td>Chama o LLM com <code>stream</code>, mandando persona + histórico + schemas das tools. Cada pedaço de texto vai na hora para o cliente (<code>on_token</code>).</td></tr>
+    <tr><td>3</td><td>Se o LLM respondeu sem tool calls, acabou: devolve o texto.</td></tr>
+    <tr><td>4</td><td>Se pediu tools, o Dispatcher executa cada uma e os resultados entram no histórico. Volta ao passo 2.</td></tr>
+    <tr><td>5</td><td>Se chegar a <code>max_iterations</code> voltas ainda pedindo tools, a Juniper para e avisa que deu voltas demais.</td></tr>
+  </table>
+</div>
+
+<h2>3. Como o Dispatcher decide</h2>
+<div class="tree">
+  <div class="err"><span class="mono">tool desconhecida</span><span>O LLM pode inventar um nome. Volta como erro, para ele corrigir.</span><span class="act tag a">erro ao LLM</span></div>
+  <div class="err"><span class="mono">tier FORBIDDEN</span><span>Nunca executa e nem pergunta a você.</span><span class="act tag r">bloqueada</span></div>
+  <div class="err"><span class="mono">argumentos inválidos</span><span>Obrigatório ausente, argumento desconhecido ou tipo errado (<code>true</code> não vale como inteiro).</span><span class="act tag a">erro ao LLM</span></div>
+  <div class="err"><span class="mono">precheck falha</span><span>A tool recusa antes de te incomodar (ex.: conflito na agenda). Você não é perguntado.</span><span class="act tag a">erro ao LLM</span></div>
+  <div class="err"><span class="mono">tier WRITE / DESTRUCTIVE</span><span>Chama o callback de confirmação. Negado, expirado ou ausente = não executa.</span><span class="act tag a">confirma</span></div>
+  <div class="err"><span class="mono">tier READ</span><span>Executa direto.</span><span class="act tag g">executa</span></div>
+  <div class="err"><span class="mono">tool levanta exceção</span><span>Só o nome do tipo vai ao LLM (<code>falha interna da ferramenta (KeyError)</code>); a mensagem pode ter segredos. O detalhe vai ao log.</span><span class="act tag a">erro ao LLM</span></div>
+</div>
+
+<h2>4. Uso</h2>
+<pre>from brain.core.agent import Agent
+from brain.core.dispatcher import Dispatcher
+from brain.llm.router import LLMRouter
+from brain.tools.registry import registry
+
+registry.discover()
+
+async def confirm(tool, args, tier) -> bool:   # o cliente decide como perguntar
+    ...
+
+agent = Agent(LLMRouter(), Dispatcher(confirm))
+resposta = await agent.run("marca dentista amanhã às 16h", on_token=print)</pre>
+<p><code>on_token</code> pode ser função comum ou <code>async</code>. O core nunca chama <code>input()</code> nem importa de <code>clients/</code>: quem sabe perguntar é o cliente.</p>
+
+<h2>5. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Confirmação é um callback async</b> <code>confirm(nome, args, tier) -> bool</code>, com timeout de <code>confirmation_timeout</code>.</td><td>Mantém o core agnóstico de transporte; CLI, celular ou voz implementam do jeito deles.</td></tr>
+    <tr><td>2</td><td><b>Sem callback = nega.</b> Timeout = nega.</td><td>Na dúvida, nunca agir sem você.</td></tr>
+    <tr><td>3</td><td><b>Prompt de sistema fixo; data e hora vão na mensagem do usuário.</b></td><td>Prefixo idêntico entre chamadas permite ao provider reaproveitar cache e poupa tokens do limite gratuito da Groq.</td></tr>
+    <tr><td>4</td><td><b>Sempre <code>stream</code></b>, mesmo sem <code>on_token</code>.</td><td>Um só caminho de código; sem callback, os pedaços só são juntados.</td></tr>
+    <tr><td>5</td><td><b>Se o LLM falha, o turno é desfeito</b> (rollback da Session) e o erro sobe.</td><td>Tentar de novo não vê meia conversa. O cliente decide como mostrar o erro.</td></tr>
+    <tr><td>6</td><td><b>Compactação:</b> guarda os últimos 8 turnos; só o turno atual e o anterior mantêm as mensagens de tool.</td><td>O anterior preserva ids ("apaga esse evento"); o resto vira só conversa. Veio do script <code>try_calendar.py</code>.</td></tr>
+    <tr><td>7</td><td><b>Regras de agenda foram para <code>prompts/juniper.md</code>.</b></td><td>Antes viviam no script de teste; agora fazem parte da persona.</td></tr>
+  </table>
+</div>
+
+<h2>6. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Ninguém chama o Agent ainda.</b> O <code>juniper</code> é um placeholder até a T-040, e o <code>try_calendar.py</code> ainda usa seu próprio loop.</p>
+  <p><b>Tools em sequência.</b> Várias tool calls da mesma resposta rodam uma após a outra, não em paralelo, para as confirmações não se misturarem.</p>
+  <p><b>Sem log estruturado.</b> Só <code>logging</code> comum por enquanto; os eventos em JSONL são a T-031.</p>
+  <p><b>Memória só da sessão.</b> O histórico vive no processo e some ao encerrar (memória persistente é Sprint 3).</p>
+  <p><b>Validação de argumentos é rasa.</b> Checa presença, nome e tipo do nível de cima, não schemas aninhados; a tool continua responsável por validar o conteúdo.</p>
+</div>
+
+<h2>7. Como testar</h2>
+<pre>pytest tests/test_agent.py -v</pre>
+<p>Usa um <code>FakeProvider</code> roteirizado e tools falsas, sem rede. Cobre: resposta direta com streaming (síncrono e async), uma tool call, tool calls encadeadas, limite de iterações, confirmação concedida, negada, expirada e sem callback, READ sem confirmação, FORBIDDEN, tool desconhecida, argumentos inválidos, exceção sem vazar mensagem, rollback quando o LLM falha e compactação da Session.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

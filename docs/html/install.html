@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia de instalação — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Guias / Instalação</div>
+<h1>Guia de instalação</h1>
+<p class="lead">Como instalar a Juniper e todas as dependências de desenvolvimento, a partir de uma máquina limpa. <b>Não precisa ter Python instalado</b> e nada é instalado no sistema: tudo fica dentro de <code>~/.juniper</code>, num ambiente virtual.</p>
+
+<h2>1. Instalação rápida</h2>
+<div class="card">
+  <p>Você precisa só de <code>git</code>, <code>bash</code> e <code>curl</code> (ou <code>wget</code>).</p>
+<pre>git clone git@github.com:petrusnog/juniper.git ~/.juniper
+bash ~/.juniper/scripts/install.sh</pre>
+  <p>No final aparece <b>"Juniper instalada e pronta para uso"</b>. Abra um terminal novo e rode:</p>
+<pre>juniper</pre>
+  <p style="color:var(--muted)">Depois da primeira instalação o comando também existe dentro do shell: <code>juniper install</code> faz o mesmo (veja a seção 4).</p>
+</div>
+<p>Durante a instalação ela pede <b>só uma coisa</b> que não tem como descobrir sozinha: as chaves dos LLMs: DeepInfra, o cérebro principal (<a href="https://deepinfra.com/dash/api_keys">deepinfra.com/dash/api_keys</a>), e Groq, o plano B grátis (<a href="https://console.groq.com/keys">console.groq.com/keys</a>). Cole e pronto; Enter pula, e você pode colocar depois em <code>~/.juniper/.env</code>.</p>
+<p>Depois ela pede o <b>caminho da chave da conta de serviço do GCP</b> (arquivo <code>.json</code> com qualquer nome). Ela cria a pasta <code>~/.juniper/certs/</code>, valida a chave e a salva como <code>certs/gcp-key.json</code>. Ainda não tem a chave? Siga a seção <a href="#gcp">7. Conta de serviço no GCP</a> e rode o instalador depois (ou use <code>--gcp-key</code>).</p>
+<p>Para ler este guia a qualquer momento: <code>juniper docs</code> e acesse <code>http://localhost:47831</code> (veja a seção 10).</p>
+
+<h2>2. O que o instalador faz</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Python</b><small>do sistema ou isolado</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>.venv</b><small>ambiente virtual</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Dependências</b><small>só o que falta</small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Configuração</b><small>config, .env, atalho</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>Teste final</b><small>ela executa de verdade</small></div>
+  </div>
+</div>
+
+<h3>Python: sem Python na máquina</h3>
+<p>O instalador procura um Python 3.11+ que consiga criar ambientes virtuais. Se achar, usa. Se não achar (ou se for um Python incompleto, como o do Ubuntu sem <code>python3-venv</code>), baixa o <a href="https://docs.astral.sh/uv/">uv</a> com <b>verificação de checksum</b> e usa-o para baixar um Python 3.12 isolado. Os dois ficam em <code>~/.juniper/.tools/</code>, sem root e sem tocar no que já existe.</p>
+
+<h3>Reaproveita o que existe, repara o que está com defeito</h3>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Componente</th><th>Como é verificado</th><th>Se está saudável</th><th>Se está com defeito</th></tr>
+    <tr><td>Ambiente virtual <code>.venv</code></td><td>O Python dele executa e é 3.11+.</td><td>Reutiliza.</td><td>Apaga e recria (ex.: o Python base foi removido).</td></tr>
+    <tr><td>Cada dependência</td><td>Está instalada, na versão mínima do <code>pyproject.toml</code>, e <b>importa</b>.</td><td>Pula.</td><td>Desinstala só ela e reinstala. Se continuar ruim, recria o ambiente.</td></tr>
+    <tr><td>O pacote <code>juniper</code></td><td>Importa a partir de <code>~/.juniper</code>.</td><td>Pula.</td><td>Reinstala em modo editável.</td></tr>
+    <tr><td><code>config.yaml</code>, <code>.env</code></td><td>Existem?</td><td>Nunca sobrescreve.</td><td>Cria a partir dos exemplos.</td></tr>
+  </table>
+</div>
+<p>Rodar o instalador de novo é seguro: numa instalação saudável ele só confirma ("nada a fazer") em poucos segundos.</p>
+
+<h3>Falhas de rede</h3>
+<p>Cada download e instalação é tentado até 3 vezes. Se mesmo assim falhar, a mensagem diz a causa em português (por exemplo, "sem conexão com a internet") e o detalhe técnico fica em <code>~/.juniper/logs/install.log</code>. O instalador só termina com sucesso se o teste final passar.</p>
+
+<h2>3. Dependências</h2>
+<div class="grid">
+  <div class="card type"><h3>Execução (sempre)</h3>
+<pre>httpx          pydantic
+pydantic-settings   pyyaml
+python-dotenv  rich
+typer          groq
+google-api-python-client
+google-auth</pre></div>
+  <div class="card type"><h3>Desenvolvimento (<code>--dev</code>)</h3>
+<pre>pytest           pytest-asyncio
+ruff             mypy</pre>
+  <p style="color:var(--muted)">A fonte de verdade é o <code>pyproject.toml</code>.</p></div>
+</div>
+<p><b>Ferramentas do sistema</b> (o instalador só avisa, não consegue instalar sem root): <code>git</code> e <code>zsh</code> para os comandos <code>search</code>/<code>deploy</code>. O Ollama é opcional (plano B se a Groq falhar).</p>
+
+<h2>4. Opções</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Opção</th><th>Efeito</th></tr>
+    <tr><td><code>--dev</code></td><td>Instala também pytest, pytest-asyncio, ruff e mypy.</td></tr>
+    <tr><td><code>--check</code></td><td>Só verifica e diz se está saudável; não altera nada.</td></tr>
+    <tr><td><code>--clean</code></td><td>Apaga o ambiente e instala do zero.</td></tr>
+    <tr><td><code>--yes</code></td><td>Sem perguntas (scripts e CI).</td></tr>
+    <tr><td><code>--no-rc</code></td><td>Não altera <code>~/.zshrc</code> nem <code>~/.bashrc</code>.</td></tr>
+    <tr><td><code>--gcp-key=CAMINHO</code></td><td>Informa a chave de conta de serviço do GCP sem perguntar (qualquer nome de arquivo); é copiada para <code>certs/gcp-key.json</code>.</td></tr>
+  </table>
+</div>
+<pre>juniper install --dev          # dentro do shell (zsh), ou:
+juniper install --check        # pelo binário Python
+bash ~/.juniper/scripts/install.sh --dev</pre>
+
+<h2>5. Ambiente de desenvolvimento</h2>
+<div class="card">
+<pre>bash ~/.juniper/scripts/install.sh --dev
+source ~/.juniper/.venv/bin/activate
+
+pytest tests/ -v          # testes (não usam rede nem chave real)
+ruff check brain/ tests/  # lint
+mypy brain/               # tipos (strict)</pre>
+  <p>Uma task só está pronta quando os três passam (Definition of Done em <code>docs/JUNIPER.md</code>).</p>
+</div>
+
+<h3>Sem o instalador (manual)</h3>
+<pre>python3 -m venv ~/.juniper/.venv
+~/.juniper/.venv/bin/pip install -e "~/.juniper[dev]"
+cp ~/.juniper/config.yaml.example ~/.juniper/config.yaml
+cp ~/.juniper/.env.example ~/.juniper/.env      # preencha JUNIPER_GROQ_API_KEY</pre>
+
+<h2>6. O que é alterado na sua máquina</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Onde</th><th>O quê</th></tr>
+    <tr><td><code>~/.juniper/.venv/</code></td><td>Ambiente virtual com as dependências.</td></tr>
+    <tr><td><code>~/.juniper/.tools/</code></td><td>uv e Python isolado (só se não havia Python utilizável).</td></tr>
+    <tr><td><code>~/.juniper/config.yaml</code>, <code>.env</code></td><td>Configuração (o <code>.env</code> fica com permissão 600).</td></tr>
+    <tr><td><code>~/.juniper/certs/gcp-key.json</code></td><td>Chave da conta de serviço do GCP (pasta com permissão 700, arquivo 600; fora do git).</td></tr>
+    <tr><td><code>~/.local/bin/juniper</code></td><td>Atalho para o executável.</td></tr>
+    <tr><td><code>~/.zshrc</code></td><td>Linha que carrega os comandos do shell (<code>search</code>, <code>deploy</code>...). Troca a linha antiga <code>~/.juniper/juniper.sh</code> pela nova.</td></tr>
+    <tr><td><code>~/.zshrc</code>, <code>~/.bashrc</code></td><td>Inclui <code>~/.local/bin</code> no PATH, se ainda não estiver.</td></tr>
+    <tr><td><code>~/.juniper/logs/</code></td><td>Log da instalação e os logs de uso.</td></tr>
+  </table>
+</div>
+<p>Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado dele (<code>.zshrc.juniper.bak</code>). Para desfazer tudo: <code>bash ~/.juniper/scripts/uninstall.sh</code>.</p>
+
+<h2 id="gcp">7. Conta de serviço no GCP</h2>
+<p>A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda. Passo a passo no console:</p>
+<div class="card">
+  <h3>7.1 Projeto</h3>
+  <p>Acesse <a href="https://console.cloud.google.com">console.cloud.google.com</a>, abra o seletor de projetos (topo da página) e escolha um projeto ou crie um novo. Confirme que ele está ativo antes de continuar.</p>
+  <h3>7.2 Ativar a API</h3>
+  <p>Menu ☰ → <b>APIs e serviços → Biblioteca</b>, procure <b>Google Calendar API</b> e clique em <b>Ativar</b>.</p>
+  <h3>7.3 Criar a conta de serviço</h3>
+  <p>Menu ☰ → <b>IAM e administrador → Contas de serviço → + Criar conta de serviço</b>. Dê um nome (ex.: <code>juniper</code>) e clique em <b>Criar e continuar</b>. Não é preciso conceder papel de projeto para usar a agenda: o acesso é dado compartilhando a agenda com o e-mail da conta (veja <a href="T-022.html">T-022</a>). Clique em <b>Concluir</b>.</p>
+  <h3>7.4 Gerar a chave JSON</h3>
+  <p>Na lista, abra a conta criada → aba <b>Chaves → Adicionar chave → Criar nova chave</b> → tipo <b>JSON</b> → <b>Criar</b>. O navegador baixa um arquivo como <code>meu-projeto-a1b2c3.json</code>; <b>essa é a única vez que a chave aparece</b>. Informe o caminho dele ao instalador: o nome pode ser qualquer um.</p>
+  <h3>7.5 Conferir</h3>
+<pre>ls -l ~/.juniper/certs/gcp-key.json    # -rw------- (600)
+python scripts/check_google.py</pre>
+</div>
+<div class="err"><span class="mono">Segurança</span><span>A chave dá acesso à conta de serviço. Nunca a versione no git (<code>certs/</code> já está no <code>.gitignore</code>), não a envie por chat ou e-mail e apague o arquivo baixado depois de instalar. Se vazar, exclua a chave na aba <i>Chaves</i> e gere outra.</span><span class="act tag r">cuidado</span></div>
+
+<h2>8. Opcionais</h2>
+<div class="card">
+  <p><b>Ollama (reserva local, o último da fila).</b> Instale em <a href="https://ollama.com">ollama.com</a> e rode <code>ollama pull llama3.1</code>. A Juniper usa quando a DeepInfra e a Groq falham.</p>
+  <p><b>Agenda do Google.</b> Precisa de conta de serviço e agenda própria; a chave se gera na seção <a href="#gcp">7</a> e o restante está na página <a href="T-022.html">T-022</a>. Valide com <code>python scripts/check_google.py</code>.</p>
+</div>
+
+<h2>9. Se algo der errado</h2>
+<div class="tree">
+  <div class="err"><span class="mono">"Faltam curl ou wget"</span><span>Só acontece sem Python na máquina: instale um deles (<code>sudo apt install curl</code>) e rode de novo.</span><span class="act tag a">1 comando</span></div>
+  <div class="err"><span class="mono">"Sem conexão com a internet"</span><span>Conecte-se e rode de novo; o que já foi instalado é reaproveitado.</span><span class="act tag a">repetir</span></div>
+  <div class="err"><span class="mono">juniper: command not found</span><span>Abra um terminal novo (o PATH foi ajustado agora). Se persistir: <code>~/.local/bin/juniper version</code>.</span><span class="act tag a">novo terminal</span></div>
+  <div class="err"><span class="mono">Algo estranho no ambiente</span><span><code>juniper install --clean</code> recria tudo e é seguro.</span><span class="act tag g">--clean</span></div>
+  <div class="err"><span class="mono">"Chave inválida: o JSON não é de uma conta de serviço"</span><span>Você apontou para outro tipo de credencial. Gere uma chave JSON em <i>Contas de serviço</i> (seção 7.4) e rode <code>install.sh --gcp-key=CAMINHO</code>.</span><span class="act tag a">refazer</span></div>
+  <div class="err"><span class="mono">Qualquer outra falha</span><span>O detalhe técnico está em <code>~/.juniper/logs/install.log</code>.</span><span class="act tag r">log</span></div>
+</div>
+<h2>10. Ler esta documentação</h2>
+<div class="card">
+<pre>juniper docs</pre>
+  <p>Serve este livro de bolso localmente; abra <code>http://localhost:47831</code> no navegador (a Juniper não abre o navegador sozinha). Ctrl+C encerra. Se a porta 47831 estiver ocupada, a Juniper usa a próxima livre (47832, 47833...) e mostra o endereço certo no terminal.</p>
+</div>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

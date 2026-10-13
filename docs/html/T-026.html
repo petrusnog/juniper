@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-026 · Comandos git — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Tools / T-026 · T-041 · T-042</div>
+<h1>T-026 · T-041 · T-042 — Comandos git (search e deploy)</h1>
+<p class="lead">Os comandos da v2 (<code>search</code> e <code>deploy</code>) continuam funcionando no terminal e agora a Juniper também os usa quando você pede em linguagem natural: <i>"Juniper, busque os commits da feature 1339"</i>. Arquivos: <code>shell/</code>, <code>brain/tools/juniper_cmds.py</code>, <code>brain/clients/cli.py</code>.</p>
+
+<h2>1. Três jeitos de chamar o mesmo comando</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Você</b><small><code>juniper search 1339</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>CLI</b><small>T-041</small></div>
+    <div class="arrow">→</div>
+    <div class="node a"><b>shell/ (zsh)</b><small><code>search_run</code>, <code>deploy_run</code></small></div>
+    <div class="arrow">←</div>
+    <div class="node g"><b>Tool</b><small>T-026</small></div>
+    <div class="arrow">←</div>
+    <div class="node b"><b>Agente</b><small>"busque a feature 1339"</small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">A lógica continua nos scripts do <code>shell/</code> (regra "shell é HMI, Python é cérebro" só no sentido de orquestrar). CLI e tools só chamam: <code>zsh -c 'source shell/juniper.sh; _juniper_dispatch "$@"'</code>, com cada argumento separado. Nada passa por uma string de shell.</p>
+</div>
+
+<h2>2. No terminal (T-041)</h2>
+<pre>juniper search 4911 6531                         # commits com qualquer um dos termos
+juniper deploy 4911                              # cherry-pick em develop e stage
+juniper deploy 6531 --tasks 7432 --stage         # multi-task, só stage
+juniper deploy 4911 11b81fb --hash               # um commit já existente</pre>
+<p>Os argumentos passam direto ao script, com terminal interativo (as perguntas de conflito e de criar branch funcionam como na v2). Também existem os nomes antigos <code>grep</code>, <code>gitgrep</code> e <code>deployfeature</code>, escondidos do <code>--help</code>. O código de saída do script é preservado.</p>
+
+<h2>3. Pelo agente (T-026)</h2>
+<div class="grid">
+  <div class="card type"><h3><code>git_search</code> · READ</h3>
+    <p>Parâmetro <code>terms</code> (lista). "Commits da feature 1339" vira <code>terms=["1339"]</code>. Roda direto, sem pedir confirmação. Devolve data, hash, mensagem e autor, sem cores. "Nenhum commit encontrado" é resposta, não erro.</p></div>
+  <div class="card type"><h3><code>git_deploy</code> · DESTRUCTIVE</h3>
+    <p>Parâmetros: <code>feature_id</code>, <code>extra_tasks</code> (opcional), <code>target</code> (<code>both</code>, <code>develop</code> ou <code>stage</code>). Faz push, então sempre pede <code>[y/N]</code> com aviso de irreversível.</p></div>
+</div>
+<p>As duas agem no <b>repositório do diretório atual</b>: rode <code>juniper</code> dentro do projeto. Fora de um repo git, a tool avisa em vez de falhar misteriosamente.</p>
+
+<h3>O que o <code>git_deploy</code> verifica antes de te perguntar</h3>
+<div class="tree">
+  <div class="err"><span class="mono">feature_id / extra_tasks</span><span>Só dígitos. <code>13;rm</code> ou <code>$(x)</code> são recusados.</span><span class="act tag r">recusa</span></div>
+  <div class="err"><span class="mono">não é repositório git</span><span>Avisa e para.</span><span class="act tag r">recusa</span></div>
+  <div class="err"><span class="mono">alterações não commitadas</span><span>O deploy troca de branch; com arquivos modificados poderia dar conflito ou bagunça.</span><span class="act tag r">recusa</span></div>
+  <div class="err"><span class="mono">nenhum commit feature(id)/hotfix(id)</span><span>Não adianta pedir sua confirmação para um deploy vazio.</span><span class="act tag r">recusa</span></div>
+</div>
+<p>Só o modo em lote é exposto ao agente. O modo "mensagem" (<code>git add .</code> + commit) e o <code>--hash</code> ficam apenas no terminal, onde você vê o que está acontecendo.</p>
+
+<h2>4. Sem terminal, sem travar</h2>
+<p class="lead">O script <code>deploy</code> pergunta coisas (criar branch? como resolver conflito?). Quando o agente o roda, não há ninguém para responder.</p>
+<div class="card">
+  <p>O comando roda com a entrada fechada e um tempo máximo (30 s no search, 5 min no deploy).</p>
+  <p><b>Branch inexistente:</b> a pergunta recebe "fim da entrada", conta como "não" e a Juniper conta que a criação foi recusada. Crie a branch você mesmo ou rode <code>juniper deploy</code> no terminal.</p>
+  <p><b>Conflito no cherry-pick:</b> aqui havia um bug no script (a pergunta repetia para sempre quando a entrada acabava). Corrigi: sem terminal, ele <b>aborta</b> o cherry-pick e volta à branch original.</p>
+</div>
+
+<h2>5. Versões dos scripts</h2>
+<div class="card">
+  <p><code>search.sh</code> e <code>deploy.sh</code> (e o <code>install.sh</code>) vieram da <code>origin/master</code>, mais nova que a v4: <code>search</code> com vários termos, <code>deploy</code> com detecção de commits já presentes, <code>--tasks</code> e <code>--develop/--stage</code>.</p>
+  <p><b>Caminhos corrigidos.</b> Os scripts procuravam <code>~/.juniper/commands</code> e <code>~/.juniper/core</code>, que na v4 ficam em <code>shell/</code>. Agora usam <code>JUNIPER_SHELL_DIR</code> (definido por <code>shell/juniper.sh</code>). Se o seu <code>.zshrc</code> faz <code>source ~/.juniper/juniper.sh</code>, troque para <code>source ~/.juniper/shell/juniper.sh</code>.</p>
+</div>
+
+<h2>6. <code>juniper tools</code> (T-042)</h2>
+<p>Tabela com todas as tools registradas: nome, tier (colorido), locality e descrição. Útil para ver o que o agente tem à disposição.</p>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Repositório = diretório atual.</b> Não há parâmetro para apontar outro repo, de propósito (menos superfície de ataque).</p>
+  <p><b>Muito texto no deploy.</b> A saída (cortada em 20 KB) volta inteira ao LLM, que gasta tokens para resumi-la.</p>
+  <p><b>Depende do zsh</b> instalado, como a v2.</p>
+</div>
+
+<h2>8. Como testar</h2>
+<pre>pytest tests/test_juniper_cmds.py tests/test_cli.py -v</pre>
+<p>Os testes usam repositórios git temporários de verdade, sem rede: busca (sem cores, OU entre termos, sem resultado, metacaracteres literais, termos inválidos, fora de repo), validações do deploy, e um deploy completo contra um remoto local, inclusive rodá-lo duas vezes sem duplicar commits e a recusa de criar branch sem terminal. No CLI: repasse de argumentos, aliases escondidos, código de saída e a tabela de <code>tools</code>.</p>
+<p>Ao vivo: <code>cd seu-projeto &amp;&amp; juniper "busque os commits da feature 1339"</code>.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

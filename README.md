@@ -13,29 +13,29 @@ O Juniper deve residir na pasta home do usuário para funcionar corretamente.
 git clone git@github.com:petrusnog/juniper.git ~/.juniper
 ```
 
-### 2. Configuração do Shell
-
-Adicione a linha de inicialização ao arquivo de configuração do seu shell:
-
-**Para Zsh (`~/.zshrc`):**
+### 2. Instalação automática
 
 ```bash
-echo '[ -f ~/.juniper/juniper.sh ] && source ~/.juniper/juniper.sh' >> ~/.zshrc && source ~/.zshrc
+bash ~/.juniper/scripts/install.sh
 ```
 
-**Para Bash (`~/.bashrc`):**
+Não precisa ter Python: o instalador cria um ambiente virtual em `~/.juniper/.venv` (baixando um Python isolado se for preciso), reaproveita o que já estiver instalado, reinstala só o que estiver com defeito, cria `config.yaml` e `.env`, configura o `~/.zshrc` e termina com um teste real. Abra um terminal novo e use `juniper`.
+
+Depois da primeira instalação, `juniper install` faz o mesmo (`--dev` inclui pytest/ruff/mypy, `--check` só verifica, `--clean` recomeça do zero). Guia completo: `docs/html/install.html`.
+
+### 4. Chave de conta de serviço do GCP
+
+O instalador (`./scripts/install.sh`) cria `~/.juniper/certs/` e pergunta o caminho da sua chave de conta de serviço (qualquer nome de arquivo); ela é validada e copiada para `certs/gcp-key.json`. Para informar sem prompt: `./scripts/install.sh --gcp-key=/caminho/chave.json`.
+
+Tutorial de geração da conta de serviço: `docs/html/install.html` (seção "Conta de serviço no GCP"), ou rode `juniper docs`.
+
+### 5. Documentação
 
 ```bash
-echo '[ -f ~/.juniper/juniper.sh ] && source ~/.juniper/juniper.sh' >> ~/.bashrc && source ~/.bashrc
+juniper docs   # serve o livro de bolso em http://localhost:47831 (Ctrl+C encerra)
 ```
 
-### 3. Primeiro Passo: Setup
-
-Após a instalação, execute o comando de instalação para validar as dependências do sistema:
-
-```bash
-juniper install
-```
+Se a porta 47831 estiver ocupada, a Juniper usa a próxima livre e mostra o endereço no terminal.
 
 ## 🚀 Guia de Uso
 

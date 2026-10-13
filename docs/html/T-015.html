@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-015 · LLMRouter — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / LLM / T-015</div>
+<h1>T-015 — LLMRouter</h1>
+<p class="lead">Um provider "de mentira" que esconde vários de verdade: tenta o Groq e, se ele não puder responder, passa para o Ollama sem o resto do código perceber. Arquivo: <code>brain/llm/router.py</code>.</p>
+
+<h2>1. O que ele faz</h2>
+<p class="lead">O <code>LLMRouter</code> implementa a mesma interface <code>LLMProvider</code> (<code>chat</code>, <code>stream</code>, <code>health_check</code>). O agente (T-030) fala só com ele e não precisa saber quantos providers existem. A ordem vem de <code>llm.priority</code> no <code>config.yaml</code>.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node b"><b>Agente</b><small><code>router.chat()</code></small></div>
+    <div class="arrow">→</div>
+    <div class="node b"><b>Groq</b><small>1º da prioridade</small></div>
+    <div class="arrow">→</div>
+    <div class="node g"><b>Ollama</b><small>só se o Groq falhar</small></div>
+  </div>
+  <p style="margin-top:12px;color:var(--muted)">Cada chamada começa pelo primeiro provider. Se ele responde, os outros nem são tocados.</p>
+</div>
+
+<h2>2. Quando troca de provider</h2>
+<div class="tree">
+  <div class="err"><span class="mono">LLMUnavailableError</span><span>Conexão recusada, erro 5xx.</span><span class="act tag g">failover</span></div>
+  <div class="err"><span class="mono">LLMTimeoutError</span><span>O provider não respondeu a tempo.</span><span class="act tag g">failover</span></div>
+  <div class="err"><span class="mono">LLMRateLimitError</span><span>Limite de requisições (429), comum no plano gratuito do Groq.</span><span class="act tag g">failover</span></div>
+  <div class="err"><span class="mono">LLMAuthError</span><span>Chave ausente ou recusada: o provider está inutilizável.</span><span class="act tag g">failover</span></div>
+  <div class="err"><span class="mono">qualquer outro LLMError</span><span>Requisição inválida, modelo inexistente (404), resposta malformada. Falharia igual no outro provider.</span><span class="act tag r">propaga</span></div>
+</div>
+<p>Toda troca gera um <code>logging.warning</code> ("Failover: groq falhou (…)"). Se <b>todos</b> falham, sai um <code>LLMError</code> cuja mensagem lista a causa de cada provider.</p>
+
+<h2>3. Streaming: só troca antes do primeiro chunk</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Quando o provider falha</th><th>O que o router faz</th></tr>
+    <tr><td>Antes de qualquer chunk</td><td>Tenta o próximo; o usuário não vê nada de diferente.</td></tr>
+    <tr><td>Depois de já ter entregue texto</td><td>Relança o erro. Reenviar a pergunta a outro provider repetiria o começo da resposta.</td></tr>
+  </table>
+</div>
+
+<h2>4. Uso</h2>
+<div class="grid">
+  <div class="card type"><h3>Exemplo</h3>
+<pre>router = LLMRouter()          # lê llm.priority
+async for c in router.stream(msgs):
+    print(c.delta, end="")
+print(router.last_provider)   # "groq" ou "ollama"
+await router.aclose()</pre></div>
+  <div class="card type"><h3>Extras</h3>
+    <ul><li><code>last_provider</code>: quem atendeu a última chamada</li><li><code>providers</code>: lista (somente leitura)</li><li><code>health_check()</code>: <code>True</code> se <b>algum</b> estiver saudável</li><li><code>aclose()</code>: fecha todos</li><li>Construtor aceita uma lista de providers (usado nos testes)</li></ul></div>
+</div>
+
+<h2>5. Ver na prática</h2>
+<div class="grid">
+  <div class="card type"><h3>Normal</h3>
+<pre>python scripts/try_groq.py</pre>
+    Mostra a saúde de cada provider e, em cada resposta, quem atendeu: <code>juniper [groq]&gt;</code>.</div>
+  <div class="card type"><h3>Simulando o Groq fora do ar</h3>
+<pre>python scripts/try_groq.py --simulate-down</pre>
+    Dá ao Groq uma chave inválida. Precisa do <code>ollama serve</code> rodando. Saída esperada:
+<pre>[WARNING] Failover: groq falhou (LLMAuthError: …HTTP 401)
+juniper [ollama]&gt; …</pre></div>
+</div>
+
+<h2>6. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Erros fora da lista de failover são relançados.</b></td><td>Um 404 de modelo ou uma resposta malformada é problema de configuração ou de código, e esconder isso atrás do Ollama dificultaria o diagnóstico.</td></tr>
+    <tr><td>2</td><td><b>Erro agregado é um <code>LLMError</code> simples</b>, com as causas na mensagem e a última encadeada em <code>__cause__</code>.</td><td>É o que a spec pedia; um tipo novo não era necessário.</td></tr>
+    <tr><td>3</td><td><b>Adicionei <code>last_provider</code> e <code>providers</code></b> (fora da spec).</td><td>Para o script de teste mostrar quem respondeu. Não afetam a interface.</td></tr>
+    <tr><td>4</td><td><b><code>health_check</code> consulta todos em paralelo</b> e aceita qualquer um saudável.</td><td>O router continua utilizável enquanto houver um provider de pé.</td></tr>
+  </table>
+</div>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Sem memória de falhas.</b> Toda chamada tenta o Groq primeiro. Com o Groq fora do ar, cada pergunta espera o timeout dele (30 s) antes de ir ao Ollama. Um circuit breaker resolveria, mas não estava na spec.</p>
+  <p><b>Degradação silenciosa.</b> Com chave inválida o sistema segue funcionando pelo Ollama e o aviso só aparece no log. Fica mais visível quando o logging estruturado (T-031) existir.</p>
+  <p><b>O modelo muda no meio da conversa.</b> O histórico é reenviado ao Ollama, que tem estilo e qualidade diferentes, principalmente em tool calling.</p>
+  <p><b>Ainda não está ligado ao agente.</b> Só o <code>scripts/try_groq.py</code> usa o router; o agente e a CLI entram nas tasks T-030 e T-040.</p>
+  <p><b>Falha no meio do stream não é recuperada</b>: o usuário vê o texto parcial seguido do erro.</p>
+</div>
+
+<h2>8. Como testar</h2>
+<pre>pytest tests/test_llm_router.py -v</pre>
+<p>Usa providers falsos e roteirizados, sem rede. Cobre: primeiro ok sem tocar no segundo, troca para cada um dos 4 erros, todos falhando (causas agregadas), erro sem failover, troca antes do primeiro chunk, falha no meio do stream sem duplicar saída e <code>health_check</code>. Verificado também manualmente com <code>--simulate-down</code> e Ollama real.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

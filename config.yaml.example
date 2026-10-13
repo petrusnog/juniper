@@ -1,0 +1,66 @@
+# Juniper v4 — Configuração
+#
+# Copie para `config.yaml` e ajuste. Segredos vão em `.env`.
+# Precedência: env > config.yaml > defaults. Ver ADR-003.
+
+llm:
+  # Ordem do failover: se o primeiro cair, tenta o próximo.
+  priority: [deepinfra, groq, ollama]
+
+  deepinfra:
+    model: deepseek-ai/DeepSeek-V4-Flash-0731   # precisa suportar tool calling
+    timeout: 30
+
+  groq:
+    model: openai/gpt-oss-120b
+    timeout: 30
+    reasoning_effort: low   # só gpt-oss: menos tokens de raciocínio (economiza o limite do Groq)
+
+  ollama:
+    url: http://localhost:11434
+    model: llama3.1
+    timeout: 300            # CPU: o primeiro pedido carrega o modelo
+
+agent:
+  max_iterations: 5
+  language: pt-BR
+  timezone: America/Sao_Paulo
+
+deployment:
+  # local  = brain roda embutido no processo do cliente (Sprint 1)
+  # server = brain expõe API para clientes remotos (Sprint 2+)
+  mode: local
+
+  server:
+    host: 127.0.0.1
+    port: 8765
+
+tools:
+  security:
+    shell_allowlist:
+      - git
+      - ls
+      - cat
+      - grep
+      - rg
+      - fd
+      - jq
+      - find
+      - wc
+      - head
+      - tail
+    shell_require_confirmation: true
+    confirmation_timeout: 60
+
+google:
+  # Conta de serviço (ADR-008). A chave fica em certs/ (ignorada pelo git).
+  credentials_file: ~/.juniper/certs/gcp-key.json
+  calendar_id: SEU_ID_DA_AGENDA@group.calendar.google.com   # agenda "Juniper" (escrita)
+  read_calendar_ids: []                                      # agendas só lidas, ex.: [seu@gmail.com]
+  # Agendas suas em que ela também cria, altera e apaga (ADR-010). Compartilhe com a conta de
+  # serviço com permissão "Fazer alterações em eventos" e liste aqui, ex.: [seu@gmail.com]
+  # A primeira é a agenda padrão: é nela que a Juniper agenda, a menos que você peça a "Juniper".
+  manage_calendar_ids: []
+  default_calendar_id:        # vazio = a primeira de manage_calendar_ids (ou a Juniper, se não houver)
+  default_duration_minutes: 60
+  reminder_minutes: 30

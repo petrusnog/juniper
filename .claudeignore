@@ -1,0 +1,38 @@
+# Dependências / ambiente
+.venv/
+venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Segredos e config local
+.env
+.env.*
+!.env.example
+config.yaml
+.juniper.conf
+google-service-account*.json
+*service-account*.json
+client_secret*.json
+token.json
+
+# Certificados e chaves (tudo dentro de certs/)
+certs/
+
+# Runtime
+logs/
+*.log
+*.jsonl
+
+# VCS / editores
+.git/
+.idea/
+.vscode/
+.DS_Store

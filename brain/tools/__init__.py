@@ -1,0 +1,1 @@
+"""Tools plugáveis do agente (open_app, web_fetch, etc.)."""

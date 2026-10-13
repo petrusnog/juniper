@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-031 · Logging estruturado — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Agente / T-031</div>
+<h1>T-031 — Logging estruturado</h1>
+<p class="lead">Tudo que a Juniper faz fica registrado: cada chamada ao LLM, cada tool, cada failover e cada erro. Uma linha JSON por evento, um arquivo por dia, com segredos mascarados. Arquivo: <code>brain/eventlog.py</code>.</p>
+
+<h2>1. Onde fica</h2>
+<pre>~/.juniper/logs/2026-10-11.jsonl      # um arquivo por dia, permissão 600
+
+tail -f ~/.juniper/logs/$(date +%F).jsonl | jq .     # acompanhar ao vivo</pre>
+<p>Cada linha tem <code>ts</code> (com fuso), <code>run</code> (id curto: agrupa os eventos de uma execução do CLI) e <code>event</code>, mais os campos do evento.</p>
+
+<h2>2. Eventos</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Evento</th><th>Quando</th><th>Campos principais</th></tr>
+    <tr><td><code>llm_request</code></td><td>Antes de cada chamada ao LLM</td><td><code>messages</code>, <code>tools</code> (quantidades)</td></tr>
+    <tr><td><code>llm_response</code></td><td>Quando a resposta termina</td><td><code>provider</code> (quem respondeu), <code>latency_ms</code>, <code>usage</code>, <code>finish_reason</code>, <code>tool_calls</code> (nomes)</td></tr>
+    <tr><td><code>tool_call</code></td><td>Depois de cada tool pedida</td><td><code>name</code>, <code>tier</code>, <code>args</code>, <code>decision</code>, <code>success</code>, <code>output</code>/<code>error</code>, <code>duration_ms</code></td></tr>
+    <tr><td><code>failover</code></td><td>Um provider falhou e o próximo assumiu</td><td><code>provider</code>, <code>type</code>, <code>message</code></td></tr>
+    <tr><td><code>error</code></td><td>Falha do LLM no turno ou tool que quebrou</td><td><code>where</code>, <code>type</code>, <code>message</code></td></tr>
+  </table>
+</div>
+<p>Valores de <code>decision</code> em <code>tool_call</code>:</p>
+<div class="card">
+  <table class="tbl">
+    <tr><td><code>auto</code></td><td>Tool de leitura, executou direto.</td></tr>
+    <tr><td><code>confirmed</code></td><td>Pediu confirmação e você disse sim.</td></tr>
+    <tr><td><code>denied</code></td><td>Você negou, o tempo esgotou ou não havia como perguntar.</td></tr>
+    <tr><td><code>forbidden</code> · <code>unknown</code> · <code>invalid</code></td><td>Tool proibida, nome inventado pelo LLM, ou argumentos errados.</td></tr>
+    <tr><td><code>precheck_failed</code></td><td>A tool recusou antes de te perguntar (ex.: conflito na agenda).</td></tr>
+    <tr><td><code>crashed</code></td><td>A tool levantou exceção (também gera um <code>error</code>).</td></tr>
+  </table>
+</div>
+
+<h2>3. Segredos</h2>
+<p class="lead">Nada vai para o disco sem passar por <code>redact()</code>.</p>
+<div class="card">
+  <table class="tbl">
+    <tr><th>O que</th><th>Resultado</th></tr>
+    <tr><td>Campos com nome <code>api_key</code>, <code>token</code>, <code>secret</code>, <code>password</code>, <code>authorization</code>, <code>private_key</code></td><td><code>"***"</code>. Contadores como <code>prompt_tokens</code> são preservados.</td></tr>
+    <tr><td>Textos com <code>gsk_…</code>, <code>Bearer …</code> ou blocos de chave privada</td><td>Trecho trocado por <code>***</code>.</td></tr>
+    <tr><td>A chave da Groq configurada, onde quer que apareça</td><td><code>***</code>.</td></tr>
+    <tr><td>Textos com mais de 2000 caracteres</td><td>Cortados, com a contagem do que sobrou.</td></tr>
+  </table>
+</div>
+<p>O que você digita <b>não</b> é gravado (só quantidades), mas a saída das tools é: um <code>git_search</code> grava os commits que achou. Por isso o arquivo é criado com permissão 600.</p>
+
+<h2>4. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>O log fica em <code>brain/eventlog.py</code></b>, fora de <code>core/</code>.</td><td>Router (camada LLM), dispatcher e agente o usam; assim nenhuma camada depende de outra só por causa do log.</td></tr>
+    <tr><td>2</td><td><b>Logar nunca derruba a Juniper.</b></td><td>Disco cheio ou pasta sem permissão simplesmente pulam o evento.</td></tr>
+    <tr><td>3</td><td><b>Não grava a sua mensagem nem a resposta do LLM</b>, só tamanhos e contagens.</td><td>Privacidade por padrão. Para depurar a conversa, o campo pode ser adicionado depois, com opt-in.</td></tr>
+    <tr><td>4</td><td><b>Os testes nunca escrevem no log real</b> (<code>tests/conftest.py</code>).</td><td>Evita poluir <code>~/.juniper/logs</code> a cada <code>pytest</code>.</td></tr>
+  </table>
+</div>
+
+<h2>5. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Sem rotação nem limpeza.</b> Um arquivo por dia; apagar os antigos é manual.</p>
+  <p><b>O <code>juniper.log</code> do shell é outro.</b> Os comandos legados continuam gravando o texto simples de sempre em <code>~/.juniper/juniper.log</code>.</p>
+  <p><b>Sem modelo no <code>llm_response</code>.</b> O streaming dos providers não informa o modelo; só o provider.</p>
+</div>
+
+<h2>6. Como testar</h2>
+<pre>pytest tests/test_eventlog.py -v</pre>
+<p>Cobre mascaramento (chaves, valores, chave configurada, contadores de token), arquivo por dia com permissão 600, log que nunca levanta erro, e os ganchos: eventos do agente, cada <code>decision</code> do dispatcher, erro de tool, erro de LLM e failover do router.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

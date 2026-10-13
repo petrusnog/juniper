@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de status — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<h1>Painel de status</h1>
+<p class="lead">Até onde a Juniper está funcional hoje. Esta página mostra o resultado da <b>última execução</b> de <code>scripts/healthcheck.py</code>; ela não roda nada sozinha (um HTML não pode chamar Python).</p>
+
+<h2>1. Rodar a verificação</h2>
+<div class="card">
+  <div class="cmd"><pre id="c1">python scripts/healthcheck.py</pre><button data-copy="c1">Copiar</button></div>
+  <p style="color:var(--muted);margin-top:10px">Roda os testes automatizados, chama o Ollama (e a Groq, se houver chave) de verdade e atualiza esta página. Depois, recarregue-a (F5).</p>
+  <div class="cmd"><pre id="c2">python scripts/healthcheck.py --no-live</pre><button data-copy="c2">Copiar</button></div>
+  <p style="color:var(--muted)">Versão offline: só testes, sem chamar modelos (rápida).</p>
+  <div class="cmd"><pre id="c3">python scripts/healthcheck.py --full</pre><button data-copy="c3">Copiar</button></div>
+  <p style="color:var(--muted)">Inclui também o mypy --strict.</p>
+</div>
+
+<div id="report"></div>
+
+<h2>Experimente na mão</h2>
+<div class="try">
+  <div class="card"><b>Conversar com o Ollama</b>
+    <div class="cmd"><pre id="c4">python scripts/try_ollama.py</pre><button data-copy="c4">Copiar</button></div>
+    <p style="color:var(--muted)">REPL com a persona. Sem ferramentas e sem memória entre execuções.</p></div>
+  <div class="card"><b>Suíte de testes completa</b>
+    <div class="cmd"><pre id="c5">pytest tests -v</pre><button data-copy="c5">Copiar</button></div>
+    <p style="color:var(--muted)">Tudo com servidores e SDKs falsos: não precisa de rede.</p></div>
+  <div class="card"><b>CLI atual</b>
+    <div class="cmd"><pre id="c6">juniper version</pre><button data-copy="c6">Copiar</button></div>
+    <p style="color:var(--muted)"><code>juniper</code> ainda é um placeholder (T-040).</p></div>
+</div>
+</main>
+<script src="assets/status.js" onerror="void 0"></script>
+<script src="assets/layout.js"></script>
+<script>
+(function () {
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const el = document.getElementById("report");
+  const R = window.JUNIPER_STATUS;
+
+  document.querySelectorAll("button[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent); b.textContent = "Copiado"; }
+    catch { b.textContent = "Selecione e copie"; }
+    setTimeout(() => (b.textContent = "Copiar"), 1500);
+  }));
+
+  if (!R) {
+    el.innerHTML = `<div class="card" style="margin-top:20px"><b>Nenhum relatório ainda.</b>
+      <p>Rode <code>python scripts/healthcheck.py</code> e recarregue esta página.</p></div>`;
+    return;
+  }
+
+  const icon = { ok: "✔", fail: "✘", skip: "–" };
+  const when = new Date(R.generated).toLocaleString("pt-BR");
+  const done = R.roadmap.filter((r) => r.implemented).length;
+  let html = `<h2>2. Resultado</h2>
+    <p class="lead">Última execução: ${esc(when)} · ${R.live ? "com chamadas reais aos modelos" : "modo offline (sem chamadas aos modelos)"}</p>
+    <div class="sum">
+      <div class="pill g"><b>${R.counts.ok}</b>passaram</div>
+      <div class="pill ${R.counts.fail ? "r" : ""}"><b>${R.counts.fail}</b>falharam</div>
+      <div class="pill a"><b>${R.counts.skip}</b>puladas</div>
+      <div class="pill"><b>${done}/${R.roadmap.length}</b>módulos prontos</div>
+    </div>`;
+
+  // pipeline: o caminho de uma pergunta até a resposta
+  const firstPending = R.roadmap.findIndex((r) => !r.implemented);
+  html += `<h2>3. Até onde chega</h2>
+    <p class="lead">Cada caixa é um módulo do caminho completo (T-011 → T-040). Verde está implementado no código; âmbar é o próximo; tracejado ainda é só o plano.</p>
+    <div class="pipe">` + R.roadmap.map((r, i) => {
+      const cls = r.implemented ? "on" : i === firstPending ? "next" : "";
+      const tag = r.implemented ? "pronto" : i === firstPending ? "próximo" : "planejado";
+      return `<div class="stage ${cls}"><b>${esc(r.task)} · ${esc(r.name)}</b><small>${tag}</small></div>`;
+    }).join("") + `</div>`;
+
+  const noChat = R.roadmap.find((r) => r.task === "T-040");
+  const verdict = noChat && noChat.implemented
+    ? "O <code>juniper</code> está implementado. Teste-o direto."
+    : "O <code>juniper</code> ainda <b>não conversa</b> (T-040). Hoje dá para falar com os modelos por <code>scripts/try_ollama.py</code>, sem ferramentas e sem memória.";
+  html += `<div class="card" style="margin-top:12px">${verdict}</div>`;
+
+  // checks agrupados
+  const groups = [...new Set(R.checks.map((c) => c.group))];
+  html += `<h2>4. Verificações</h2>`;
+  for (const g of groups) {
+    html += `<div class="card" style="margin-top:12px"><b>${esc(g)}</b>` +
+      R.checks.filter((c) => c.group === g).map((c) =>
+        `<div class="chk ${c.status}"><span class="ic">${icon[c.status]}</span>
+          <div>${esc(c.name)}<div class="d">${esc(c.detail)}</div></div>
+          <span class="t">${c.ms >= 1000 ? (c.ms / 1000).toFixed(1) + " s" : c.ms + " ms"}</span></div>`).join("") + `</div>`;
+  }
+  html += `<p style="color:var(--muted);margin-top:12px">"–" = pulada (ex.: sem chave da Groq). Só ✘ conta como falha.</p>`;
+  el.innerHTML = html;
+})();
+</script>
+</body>
+</html>
