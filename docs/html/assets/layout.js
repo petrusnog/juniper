@@ -64,6 +64,12 @@ const FEATURES = [
   btn.addEventListener("click", () => { if (window.JuniperTheme) { window.JuniperTheme.cycle(); refresh(); } });
   refresh();
   side.append(btn);
+
+  // Créditos
+  const credit = document.createElement("div");
+  credit.className = "credit";
+  credit.textContent = "Criada por Petrus Rennan ☕";
+  side.append(credit);
   main.parentNode.insertBefore(shell, main);
   shell.append(side, main);
 
