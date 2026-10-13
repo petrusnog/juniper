@@ -1,38 +1,49 @@
 #!/bin/zsh
-# ~/.juniper/commands/install.sh
+################################################################################
+# INSTALL Command
+# Instala o cérebro da Juniper (ambiente virtual + dependências) sem configuração
+# manual, mesmo em máquina sem Python. A lógica está em scripts/install.sh.
+################################################################################
 
 install_run() {
     local user_name=$(_juniper_get_user_name)
+    local shell_dir="${JUNIPER_SHELL_DIR:-$HOME/.juniper/shell}"
+    local script="${shell_dir:h}/scripts/install.sh"
 
-    _juniper_say "Oi, $user_name! Estou verificando o ambiente..."
-    echo "-------------------------------------------------------"
+    _juniper_say "Oi, $user_name! Vou deixar tudo pronto por aqui..."
 
-    # Validação simples de dependências básicas do sistema
-    local deps=("git" "grep" "zsh")
-    local missing=0
-
-    for dep in "${deps[@]}"; do
-        if ! command -v $dep &> /dev/null; then
-            _juniper_say "❌ $dep não encontrado. Por favor, instale-o manualmente."
-            missing=1
-        else
-            _juniper_say "$dep está instalado."
-        fi
-    done
-
-    echo "\n-------------------------------------------------------"
-    if [ $missing -eq 0 ]; then
-        _juniper_say "Tudo pronto, $user_name! Estou operacional."
-        _juniper_say "Tente: juniper search 'termo de busca'"
-    else
-        _juniper_say "⚠️ Algumas dependências básicas estão faltando, $user_name."
+    # Preferências do shell (nome do usuário etc.)
+    local conf_example="${shell_dir:h}/.juniper.conf.example"
+    if [ ! -f "$JUNIPER_CONFIG_FILE" ] && [ -f "$conf_example" ]; then
+        cp "$conf_example" "$JUNIPER_CONFIG_FILE"
     fi
+
+    if [ ! -f "$script" ]; then
+        _juniper_say "❌ Não encontrei $script. A Juniper está em ~/.juniper?"
+        return 1
+    fi
+    if ! command -v bash >/dev/null 2>&1; then
+        _juniper_say "❌ O bash é necessário para instalar."
+        return 1
+    fi
+
+    bash "$script" "$@" || return $?
+
+    # Vale já nesta sessão, sem abrir terminal novo.
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
 }
 
 install_help() {
     cat << 'EOF'
-install / setup
-    Verifica se as dependências básicas do sistema (git, zsh) estão instaladas.
-    Exemplo: juniper install
+  install [--dev] [--clean] [--check] [--yes]
+      Instala a Juniper (ambiente virtual + dependências), mesmo sem Python na máquina.
+      Reaproveita o que já está saudável e reinstala só o que estiver com defeito.
+      --dev    inclui pytest, ruff e mypy
+      --clean  recria o ambiente do zero
+      --check  só verifica, sem alterar nada
+      Exemplo: juniper install
 EOF
 }
