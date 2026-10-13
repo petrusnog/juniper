@@ -29,7 +29,7 @@
 <body>
 <main>
   <h1>🌿 Juniper — Livro de Bolso</h1>
-  <p class="sub">Guia rápido de instalação, configuração e uso. Abra a qualquer momento com <code>juniper docs</code>.</p>
+  <p class="sub">Guia rápido de instalação, configuração e uso. Rode <code>juniper docs</code> e acesse <code>http://localhost:47831</code>.</p>
 
   <nav>
     <strong>Sumário</strong>
@@ -113,7 +113,7 @@ cd ~/.juniper</code></pre></li>
   <h2 id="comandos">3. Comandos</h2>
   <ul>
     <li><code>juniper version</code> — exibe a versão.</li>
-    <li><code>juniper docs</code> — abre este livro de bolso em uma nova aba do navegador padrão.</li>
+    <li><code>juniper docs</code> — serve este livro de bolso em <code>http://localhost:47831</code> (e tenta abrir o navegador). Ctrl+C encerra. Use <code>--no-open</code> para não abrir o navegador.</li>
     <li><code>juniper chat "mensagem"</code> — conversa com a Juniper (em desenvolvimento).</li>
     <li><code>juniper --help</code> — lista todos os comandos.</li>
   </ul>
@@ -122,7 +122,8 @@ cd ~/.juniper</code></pre></li>
   <ul>
     <li><strong>"o JSON não é de uma conta de serviço"</strong> — você apontou para outro tipo de credencial (ex.: OAuth client). Gere uma chave JSON em <em>Contas de serviço</em> (seção 2.4).</li>
     <li><strong>"Arquivo não encontrado"</strong> — confira o caminho; <code>~</code> e arrastar o arquivo para o terminal funcionam.</li>
-    <li><strong><code>juniper docs</code> não abre o navegador</strong> — em servidores sem interface gráfica, o comando imprime o endereço <code>file://</code> para você abrir manualmente.</li>
+    <li><strong>Porta 47831 ocupada</strong> — o <code>juniper docs</code> usa automaticamente a próxima porta livre (47832, 47833…) e mostra o endereço certo no terminal.</li>
+    <li><strong>Navegador não abriu</strong> — copie o endereço <code>http://localhost:…</code> exibido pelo comando e cole no navegador.</li>
     <li><strong>Substituir a chave</strong> — rode o instalador de novo e responda <code>s</code> quando perguntar.</li>
   </ul>
 </main>

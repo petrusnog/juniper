@@ -32,8 +32,10 @@ Tutorial de geração da conta de serviço: rode `juniper docs` (seção "Conta 
 ### 5. Documentação
 
 ```bash
-juniper docs   # abre o livro de bolso no navegador padrão
+juniper docs   # serve o livro de bolso em http://localhost:47831 (Ctrl+C encerra)
 ```
+
+Se a porta 47831 estiver ocupada, a Juniper usa a próxima livre e mostra o endereço no terminal.
 
 ## 🚀 Guia de Uso
 

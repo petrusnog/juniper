@@ -15,6 +15,7 @@ import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
 import subprocess
 import threading
 import webbrowser
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -377,20 +378,58 @@ def install(ctx: typer.Context) -> None:
     os.execvp("bash", ["bash", str(INSTALL_SCRIPT), *ctx.args])
 
 
-DOCS_INDEX = Path(__file__).resolve().parents[2] / "docs" / "index.html"
+DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+DOCS_BASE_PORT = 47831  # incomum de propósito; em conflito, tenta a próxima
+DOCS_PORT_ATTEMPTS = 50
+
+
+class _DocsHandler(SimpleHTTPRequestHandler):
+    """Serve apenas a pasta docs/, sem poluir o terminal com logs de acesso."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, directory=str(DOCS_DIR), **kwargs)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        return
+
+
+def _bind_docs_server(base_port: int = DOCS_BASE_PORT) -> ThreadingHTTPServer:
+    """Sobe o servidor na primeira porta livre a partir de `base_port` (só em 127.0.0.1)."""
+    for port in range(base_port, base_port + DOCS_PORT_ATTEMPTS):
+        try:
+            return ThreadingHTTPServer(("127.0.0.1", port), _DocsHandler)
+        except OSError:
+            continue
+    raise OSError(f"nenhuma porta livre entre {base_port} e {base_port + DOCS_PORT_ATTEMPTS - 1}")
 
 
 @app.command()
-def docs() -> None:
-    """Abre a documentação (livro de bolso) numa nova aba do navegador padrão."""
-    if not DOCS_INDEX.is_file():
-        voice.say(console, f"Não encontrei a documentação ({DOCS_INDEX}).", "red")
+def docs(
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Abre o navegador automaticamente.")
+    ] = True,
+) -> None:
+    """Serve a documentação (livro de bolso) em http://localhost:<porta>. Ctrl+C encerra."""
+    if not (DOCS_DIR / "index.html").is_file():
+        voice.say(console, f"Não encontrei a documentação ({DOCS_DIR / 'index.html'}).", "red")
         raise typer.Exit(1)
-    url = DOCS_INDEX.as_uri()
-    if webbrowser.open_new_tab(url):
-        voice.say(console, "Abri o livro de bolso no seu navegador.")
-    else:
-        voice.say(console, f"Não consegui abrir o navegador. Abra isto: {url}", "yellow")
+    try:
+        server = _bind_docs_server()
+    except OSError as exc:
+        voice.say(console, f"Não consegui subir o servidor de docs: {exc}", "red")
+        raise typer.Exit(1) from None
+
+    url = f"http://localhost:{server.server_address[1]}/"
+    voice.say(console, f"Livro de bolso no ar: {url}  (Ctrl+C para encerrar)")
+    if open_browser:
+        webbrowser.open_new_tab(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+        voice.say(console, "Docs encerradas.")
 
 
 @app.command()
