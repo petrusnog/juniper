@@ -207,6 +207,7 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 | 008 | **(Proposto)** Primeira tool = Google Calendar via conta de serviço; calendário "Juniper" para escrita; relógio do sistema + fuso injetado no prompt. |
 | 010 | Gerenciamento completo da agenda do usuário: `manage_calendar_ids`, `update_event`, apagar em qualquer agenda gerenciada; confirmação na conversa, interpretada pelo sistema (`consent.py`, `Tool.describe/subjects`). Substitui a regra "só escreve na agenda Juniper" do ADR-008. |
 | 009 | DeepInfra como provider principal (API compatível com OpenAI, via `httpx`); failover `deepinfra → groq → ollama`. |
+| 011 | **(Proposto)** Memória em duas camadas: sessão (id, orçamento de tokens, retomável via `SessionStore`) e longo prazo (MongoDB + RAG; embeddings locais em CPU e cosseno em Python, ambos atrás de interfaces); memória nunca editada, só substituída; segredos nunca gravados. |
 | 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
 
 ---
@@ -337,8 +338,8 @@ Lista tools registradas: nome, tier, locality, descrição (tabela `rich`).
 | Sprint | Foco | Camada J.A.R.V.I.S. |
 |---|---|---|
 | 1 | Hello agent (local, CLI) | Cognição básica + primeiro reflexo |
-| 2 | VPS + multi-dispositivo (`clients/server.py`, WS, auth) | Sempre disponível + olhos (web) |
-| 3 | Memória (MongoDB + RAG; `memory/`) | Memória de longo prazo |
+| 2 | Memória, local (MongoDB + RAG; `memory/`) | Memória de longo prazo |
+| 3 | VPS + multi-dispositivo (`clients/server.py`, WS, auth) | Sempre disponível + olhos (web) |
 | 4 | Voz (STT + TTS + wake word) | HMI natural |
 | 5 | Executores (PC, celular, IoT) | Corpos múltiplos |
 | 6 | Iniciativa + scheduler | Proatividade supervisionada |
