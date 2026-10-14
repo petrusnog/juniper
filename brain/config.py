@@ -208,11 +208,31 @@ class MongoSettings(BaseModel):
     timeout_ms: int = Field(default=3000, ge=100, le=60_000)
 
 
+class EmbeddingSettings(BaseModel):
+    """Modelo local de embeddings da memória de longo prazo (ver ADR-011, T-054)."""
+
+    # Multilíngue, roda em CPU via ONNX. Trocar de modelo exige `juniper memory reindex`.
+    model: str = Field(default="intfloat/multilingual-e5-small", min_length=3)
+    # Onde o modelo baixado fica (uma pasta por modelo).
+    dir: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "models")
+    # Teto de tokens por texto; o que passar disso é cortado.
+    max_length: int = Field(default=512, ge=8, le=8192)
+    batch_size: int = Field(default=16, ge=1, le=256)
+    # Tempo máximo (s) para baixar cada arquivo do modelo.
+    download_timeout: int = Field(default=300, ge=5, le=3600)
+
+    @field_validator("dir")
+    @classmethod
+    def _expand_user(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
     session: SessionMemorySettings = Field(default_factory=SessionMemorySettings)
     mongo: MongoSettings = Field(default_factory=MongoSettings)
+    embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
 
 
 class PathsSettings(BaseModel):

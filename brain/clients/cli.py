@@ -468,6 +468,43 @@ def docs() -> None:
         voice.say(console, "Docs encerradas.")
 
 
+memory_app = typer.Typer(help="Memória de longo prazo.", no_args_is_help=True)
+app.add_typer(memory_app, name="memory")
+
+
+@memory_app.command("reindex")
+def memory_reindex(
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Refaz todos os vetores, mesmo os do modelo atual."),
+    ] = False,
+) -> None:
+    """Refaz os vetores das memórias que não foram gerados pelo modelo de embeddings atual."""
+    from brain.memory.embeddings import open_embedding_provider
+    from brain.memory.mongo import MongoConnection
+    from brain.memory.reindex import MEMORIES_COLLECTION, reindex_memories
+
+    connection = MongoConnection()
+    try:
+        connection.check()
+        provider = open_embedding_provider()
+        voice.say(console, f"Reindexando com {provider.model_id} (o 1º uso baixa o modelo)...")
+        with connection.guard():
+            result = reindex_memories(
+                connection.collection(MEMORIES_COLLECTION), provider, force=force
+            )
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        connection.close()
+    voice.say(
+        console,
+        f"Pronto: {result.reindexed} memória(s) reindexada(s), {result.skipped} já estavam "
+        f"em dia (de {result.total}).",
+    )
+
+
 @app.command()
 def tools() -> None:
     """Lista as tools registradas: nome, tier, locality e descrição."""

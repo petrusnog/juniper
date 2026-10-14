@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-054 · Embeddings locais — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-054</div>
+<h1>T-054 — Embeddings locais</h1>
+<p class="lead">Para achar uma memória por <b>significado</b> ("framework PHP" acha "Laravel"), cada texto vira uma lista de números (um vetor). Isso roda na sua máquina, em CPU: o texto das memórias não sai daqui. Arquivos: <code>brain/memory/embeddings.py</code> e <code>brain/memory/reindex.py</code>. Decisões de fundo no <code>ADR-011</code>.</p>
+
+<h2>1. Como funciona</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td><code>EmbeddingProvider</code></td><td>A interface: <code>embed</code>, <code>embed_batch</code>, <code>dimension</code> e <code>model_id</code>. O resto da memória só conhece ela, então dá para trocar por uma API externa depois.</td></tr>
+    <tr><td><code>LocalEmbeddingProvider</code></td><td>Roda o <code>multilingual-e5-small</code> (ONNX) em CPU. O modelo (~120 MB) é baixado <b>na primeira vez que for preciso</b> para <code>~/.juniper/models</code> e carregado sob demanda: quem não usa a memória nunca paga o custo.</td></tr>
+    <tr><td>Vetores</td><td>384 números, de tamanho 1 (normalizados), então a similaridade por cosseno da T-055 é só um produto escalar.</td></tr>
+    <tr><td><code>kind</code></td><td><code>passage</code> para o que é guardado, <code>query</code> para o que é buscado. O modelo foi treinado com esses prefixos; sem eles a busca piora.</td></tr>
+    <tr><td><code>juniper memory reindex</code></td><td>Refaz os vetores das memórias cujo <code>embedding_model</code> não é o configurado (<code>--force</code> refaz todas).</td></tr>
+  </table>
+</div>
+
+<h2>2. Configuração</h2>
+<pre>memory:
+  embeddings:
+    model: intfloat/multilingual-e5-small
+    dir: ~/.juniper/models
+    max_length: 512     # tokens por texto; o resto é cortado
+    batch_size: 16</pre>
+<div class="card">
+  <p><b>Trocar de modelo exige reindexar.</b> Vetores de modelos diferentes não são comparáveis. Depois de mudar <code>model</code>, rode <code>juniper memory reindex</code> (precisa do MongoDB no ar). Dá para rodar de novo sem medo: cada memória só é marcada com o modelo novo depois de o vetor novo ser salvo, então uma execução interrompida continua de onde parou.</p>
+</div>
+
+<h2>3. Erros</h2>
+<p>Sem rede na primeira vez, arquivo do modelo corrompido ou dependência faltando: a Juniper mostra uma mensagem em português dizendo o que fazer (<code>EmbeddingUnavailableError</code>), sem stacktrace. Um download cortado nunca fica com cara de completo (grava em <code>.part</code> e só então renomeia).</p>
+
+<h2>4. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Ainda não há memórias.</b> Esta task entrega só o gerador de vetores; o armazenamento e a busca vêm na T-055, a extração na T-056.</p>
+  <p><b>Latência e qualidade em PT-BR não foram medidas na VPS.</b> O teste com o modelo real (<code>pytest -m integration</code>) baixa os ~120 MB e confere a busca por significado; os números de latência ficam para o PR/T-055.</p>
+  <p><b>Reindexar carrega as memórias na RAM</b> de uma vez, o que é de sobra para o volume pessoal previsto (centenas a poucos milhares).</p>
+</div>
+
+<h2>5. Como testar</h2>
+<pre>pytest -m "not integration"   # CI: usa um modelo falso, sem rede
+pytest -m integration         # baixa o modelo real</pre>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

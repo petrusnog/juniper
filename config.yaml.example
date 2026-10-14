@@ -78,3 +78,11 @@ memory:
     uri: mongodb://localhost:27017
     database: juniper
     timeout_ms: 3000      # quanto esperar pelo servidor antes de avisar que está fora do ar
+
+  # Embeddings locais (T-054): o texto das memórias vira vetor na sua máquina, em CPU. O modelo
+  # (~120 MB) é baixado na primeira vez que for preciso. Trocar `model` exige `juniper memory reindex`.
+  embeddings:
+    model: intfloat/multilingual-e5-small
+    dir: ~/.juniper/models
+    max_length: 512
+    batch_size: 16

@@ -19,6 +19,9 @@ dependencies = [
     "google-api-python-client>=2.100",
     "google-auth>=2.25",
     "pymongo>=4.7",
+    "numpy>=1.26",
+    "onnxruntime>=1.18",
+    "tokenizers>=0.19",
 ]
 
 [project.optional-dependencies]
