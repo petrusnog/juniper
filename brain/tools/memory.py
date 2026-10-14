@@ -1,9 +1,10 @@
 """Tools for the long-term memory: ``remember``, ``recall`` and ``forget`` (ADR-011, T-058).
 
 The chat binds the open ``LongTermMemory`` with ``bind``; while none is bound (memory off, or
-no MongoDB) the tools are not offered to the LLM at all. Saving needs the user's approval
-(WRITE): a page or file the LLM read cannot plant a memory behind their back. ``forget`` is
-DESTRUCTIVE and shows what it is about to delete before asking.
+no MongoDB) the tools are not offered to the LLM at all. Saving (``remember``,
+``update_profile``) is a WRITE that runs without asking (``confirm = False``): the Juniper
+should just remember, and the user audits with ``juniper memory list``. ``forget`` is
+DESTRUCTIVE: it shows what it is about to delete and asks.
 """
 
 from __future__ import annotations
@@ -65,7 +66,8 @@ class Remember(_MemoryTool):
     description = (
         "Guarda na memória de longo prazo um fato durável que a pessoa pediu para você lembrar "
         "(ex.: 'lembra que eu uso ZSH' -> text='Usa ZSH.', type='preference'). Uma afirmação "
-        "curta, em terceira pessoa. Nunca guarde senhas, chaves ou tokens."
+        "curta, em terceira pessoa. Guarda direto, sem pedir permissão. Nunca guarde senhas, "
+        "chaves ou tokens."
     )
     parameters = {
         "type": "object",
@@ -83,6 +85,7 @@ class Remember(_MemoryTool):
         "required": ["text"],
     }
     tier = Tier.WRITE
+    confirm = False  # saving is silent: the user audits with `juniper memory list`
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         if _memory is None:
@@ -128,7 +131,8 @@ class UpdateProfile(_MemoryTool):
         "(nome, data de nascimento, nacionalidade). Use quando ela disser ou corrigir um desses "
         "dados e pedir para você guardar. Mande o parágrafo COMPLETO e atualizado (copie o do "
         "bloco <perfil> e altere o que mudou), com 'O usuário se chama ...', e escreva {idade} "
-        "onde iria a idade (ela é calculada). Nunca documentos, senhas ou chaves."
+        "onde iria a idade (ela é calculada). Grava direto, sem pedir permissão. Nunca "
+        "documentos, senhas ou chaves."
     )
     parameters = {
         "type": "object",
@@ -142,6 +146,7 @@ class UpdateProfile(_MemoryTool):
         "required": ["text"],
     }
     tier = Tier.WRITE
+    confirm = False  # silent, like `remember`: `juniper memory profile` shows and edits it
 
     @classmethod
     def available(cls) -> bool:

@@ -218,22 +218,57 @@ def calls(name: str, **args: Any) -> tuple[tuple[str, ...], tuple[ToolCall, ...]
     return (), (ToolCall("c1", name, args),)
 
 
-async def test_lembra_que_eu_uso_zsh_asks_then_saves(
+async def test_lembra_que_eu_uso_zsh_saves_silently(
+    memory: LongTermMemory, store: MongoVectorStore
+) -> None:
+    """Saving never asks: the memory is written in the same turn, with no question."""
+    provider = FakeProvider(
+        [calls("remember", text="Usa ZSH.", type="preference"), say("Anotado!")]
+    )
+    agent = Agent(provider, Dispatcher(conversational=True))
+    reply = await agent.run("Lembra que eu uso ZSH")
+    [saved] = store.list_memories()
+    assert (saved.text, saved.type, saved.source_kind) == ("Usa ZSH.", "preference", "explicit")
+    assert reply == "Anotado!" and agent._dispatcher.pending is None  # nothing parked
+    tool_msgs = [m for m in agent.session.history if m.role == "tool"]
+    assert tool_msgs and "PENDENTE" not in (tool_msgs[0].content or "")
+    assert "Guardado" in (tool_msgs[0].content or "")
+
+
+async def test_saving_a_secret_is_still_refused_without_asking(
     memory: LongTermMemory, store: MongoVectorStore
 ) -> None:
     provider = FakeProvider(
-        [
-            calls("remember", text="Usa ZSH.", type="preference"),
-            say("Posso guardar «Usa ZSH.» na memória?"),
-            say("Guardado!"),
-        ]
+        [calls("remember", text="A senha do banco é hunter2.", type="fact"), say("Essa não.")]
     )
     agent = Agent(provider, Dispatcher(conversational=True))
-    await agent.run("Lembra que eu uso ZSH")
-    assert store.list_memories() == []  # nothing before the "yes": WRITE needs approval
-    await agent.run("sim")
-    [saved] = store.list_memories()
-    assert (saved.text, saved.type) == ("Usa ZSH.", "preference")
+    await agent.run("Lembra a senha do banco: hunter2")
+    assert store.list_memories(None, True) == []
+    assert "Não posso guardar" in next(
+        m.content or "" for m in agent.session.history if m.role == "tool"
+    )
+
+
+def test_only_saving_is_silent() -> None:
+    assert Remember.tier is Tier.WRITE and Remember.confirm is False
+    assert Forget.tier is Tier.DESTRUCTIVE and Forget.confirm is True
+    assert Recall.tier is Tier.READ
+
+
+def test_a_destructive_tool_cannot_opt_out_of_confirmation() -> None:
+    from brain.tools.base import Tool, ToolResult
+
+    with pytest.raises(ValueError, match="WRITE"):
+
+        class Bad(Tool):
+            name = "bad"
+            description = "x"
+            parameters = {"type": "object", "properties": {}}
+            tier = Tier.DESTRUCTIVE
+            confirm = False
+
+            async def run(self, **kwargs: Any) -> ToolResult:
+                return ToolResult(success=True)
 
 
 async def test_esquece_o_projeto_x_deletes_only_after_confirmation(

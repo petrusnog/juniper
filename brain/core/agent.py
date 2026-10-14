@@ -22,6 +22,7 @@ from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
 from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore
+from brain.timing import Stages
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 
@@ -70,6 +71,11 @@ class Agent:
         self._profile_message: Message | None = None
         self._executed_until: int | None = None
         self._turns: list[Turn] = []
+        # Where the time of the last turn went (T-062): total ms and ms per stage.
+        self.last_timing: tuple[int, dict[str, int]] | None = None
+        self._stages = Stages()
+        self._recall_timings: dict[str, int] = {}
+        self._llm_calls = 0
 
     def drain_turns(self) -> list[Turn]:
         """The exchanges finished since the last call (for long-term memory extraction)."""
@@ -84,6 +90,9 @@ class Agent:
         """
         checkpoint = self.session.checkpoint()
         self._executed_until = None
+        self._stages = Stages()
+        self._recall_timings = {}
+        self._llm_calls = 0
         try:
             reply = await self._loop(user_input, on_token)
         except BaseException as exc:
@@ -91,11 +100,29 @@ class Agent:
             keep = self._executed_until if self._executed_until is not None else checkpoint
             self.session.rollback(keep)
             event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
-            self._persist()
+            with self._stages.stage("persist"):
+                self._persist()
+            self._log_timing()
             raise
         self._turns.append(Turn(user_input, reply))
-        self._persist()
+        with self._stages.stage("persist"):
+            self._persist()
+        self._log_timing()
         return reply
+
+    def _log_timing(self) -> None:
+        """Record where this turn's time went (the ``timing`` event; the CLI may show it too)."""
+        stages = self._stages.rounded()
+        total = self._stages.total_ms()
+        self.last_timing = (total, stages)
+        event_log.log(
+            "timing",
+            scope="turn",
+            total_ms=total,
+            stages_ms=stages,
+            llm_calls=self._llm_calls,
+            recall_ms=self._recall_timings,
+        )
 
     def _persist(self) -> None:
         """Save the conversation; a disk problem is logged, never allowed to end the chat."""
@@ -110,7 +137,8 @@ class Agent:
         session = self.session
         previous = _last_user_text(session)
         session.add_user(user_input)
-        self._profile_message, self._memory_message = await self._recall(user_input, previous)
+        with self._stages.stage("recall"):
+            self._profile_message, self._memory_message = await self._recall(user_input, previous)
         pending, self._dispatcher.pending = self._dispatcher.pending, None
         said_yes = interpret_reply(user_input) == "yes"
         consent: str | None = None
@@ -137,7 +165,8 @@ class Agent:
             # One assistant message = one batch, approved (or not) as a whole.
             # The "sim" only vouches for the FIRST reaction to it, never for what the LLM decides
             # after reading new tool output (which could contain text planted by a third party).
-            results = await self._dispatcher.dispatch_many(message.tool_calls, consent)
+            with self._stages.stage("tools"):
+                results = await self._dispatcher.dispatch_many(message.tool_calls, consent)
             consent = None
             for result in results:
                 session.add(result)
@@ -160,6 +189,7 @@ class Agent:
             event_log.log("error", where="memory.recall", type=type(exc).__name__, message=str(exc))
             self._memory = None
             return None, None
+        self._recall_timings = context.timings
         event_log.log("memory_recall", **context.audit())
         profile = Message("system", context.profile) if context.profile else None
         memories = Message("system", context.block) if context.block else None
@@ -179,7 +209,8 @@ class Agent:
 
     async def _execute_approved(self, pending: PendingBatch) -> None:
         """The user said yes to what was proposed: run it and report it as a tool turn."""
-        outcomes = await self._dispatcher.execute_pending(pending)
+        with self._stages.stage("tools"):
+            outcomes = await self._dispatcher.execute_pending(pending)
         calls = tuple(ToolCall(f"{call.id}_ok", call.name, call.arguments) for call, _ in outcomes)
         self.session.add(Message("assistant", None, tool_calls=calls))
         for new_call, (_, result) in zip(calls, outcomes, strict=True):
@@ -198,7 +229,12 @@ class Agent:
         )
         event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
         started = time.monotonic()
+        first_token = True
+        self._llm_calls += 1
         async for chunk in self._provider.stream(messages, tools=schemas):
+            if first_token and (chunk.delta or chunk.tool_calls):
+                first_token = False
+                self._stages.add("llm_first_token", (time.monotonic() - started) * 1000)
             if chunk.delta:
                 text.append(chunk.delta)
                 if on_token is not None:
@@ -206,6 +242,7 @@ class Agent:
             calls.extend(chunk.tool_calls)
             usage = chunk.usage or usage
             finish_reason = chunk.finish_reason or finish_reason
+        self._stages.add("llm", (time.monotonic() - started) * 1000)
         event_log.log(
             "llm_response",
             provider=getattr(self._provider, "last_provider", None) or self._provider.name,

@@ -25,6 +25,7 @@ agent:
   max_iterations: 5
   language: pt-BR
   timezone: America/Sao_Paulo
+  show_timing: false      # mostra no terminal o tempo de cada etapa da resposta (também vai para o log)
 
 deployment:
   # local  = brain roda embutido no processo do cliente (Sprint 1)
@@ -86,6 +87,7 @@ memory:
     dir: ~/.juniper/models
     max_length: 512
     batch_size: 16
+    threads: 0            # CPU do onnxruntime; 0 = automático (todos os núcleos)
 
   # Busca na memória de longo prazo (T-055/T-057). Calibre o threshold com exemplos reais.
   retrieval:

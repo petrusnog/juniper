@@ -1,6 +1,8 @@
 """Structured event log: one JSON object per line, one file per day (T-031).
 
-Events: ``llm_request``, ``llm_response``, ``tool_call``, ``failover`` and ``error``.
+Events: ``llm_request``, ``llm_response``, ``tool_call``, ``failover``, ``error``,
+``memory_recall``, ``timing`` (where a turn or the memory work spent its time),
+``embedding`` and ``embedding_model_load``.
 Secrets are redacted before anything touches the disk. Logging never breaks the app:
 an unwritable log directory is silently skipped.
 """

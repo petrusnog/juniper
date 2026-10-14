@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,6 +18,7 @@ from brain.eventlog import event_log
 from brain.memory.embeddings import EmbeddingProvider
 from brain.memory.profile import Profile, ProfileStore, render
 from brain.memory.vector import SearchHit, VectorStore
+from brain.timing import Stages
 
 CHARS_PER_TOKEN = 4  # same estimate the session budget uses (brain.core.session)
 LINE_OVERHEAD_TOKENS = 2
@@ -91,6 +93,7 @@ class RecalledContext:
     found: int = 0  # how many passed the threshold, before the token budget
     tokens: int = 0
     profile: str | None = None  # the user's profile block: every message, no search
+    timings: dict[str, int] = field(default_factory=dict)  # ms per stage (T-062)
 
     def audit(self) -> dict[str, Any]:
         """Fields for the structured log (ids and scores; the text stays in the database)."""
@@ -102,6 +105,7 @@ class RecalledContext:
             ],
             "tokens": self.tokens,
             "profile_tokens": estimate_tokens(self.profile) if self.profile else 0,
+            "timings_ms": self.timings,
         }
 
 
@@ -113,14 +117,26 @@ async def recall_context(
     profiles: ProfileStore | None = None,
 ) -> RecalledContext:
     """The profile and the memories relevant to ``message``, rendered for the prompt."""
-    profile_block = await _profile_block(profiles)
+    stages = Stages()
+    with stages.stage("profile"):
+        profile_block = await _profile_block(profiles)
     query = build_query(message, previous)
-    if not query or await asyncio.to_thread(store.count) == 0:
+    if not query:
+        return RecalledContext(profile=profile_block, timings=stages.rounded())
+    with stages.stage("count"):
+        stored = await asyncio.to_thread(store.count)
+    if stored == 0:
         # nothing stored: do not even load the embedding model
-        return RecalledContext(profile=profile_block)
+        return RecalledContext(profile=profile_block, timings=stages.rounded())
+    started = time.perf_counter()
     vector = await asyncio.to_thread(embedder.embed, query, "query")
+    embed_ms = (time.perf_counter() - started) * 1000
+    load_ms = min(float(getattr(embedder, "last_load_ms", 0.0) or 0.0), embed_ms)
+    stages.add("embed_model_load", load_ms)  # the one-off model load, when this call paid for it
+    stages.add("embed", embed_ms - load_ms)
     config = settings.memory.retrieval
-    hits = await asyncio.to_thread(store.search, vector, config.top_k, config.threshold)
+    with stages.stage("search"):
+        hits = await asyncio.to_thread(store.search, vector, config.top_k, config.threshold)
     block, kept = format_memory_block(hits, config.max_tokens)
     return RecalledContext(
         block=block,
@@ -128,6 +144,7 @@ async def recall_context(
         found=len(hits),
         tokens=estimate_tokens(block) if block else 0,
         profile=profile_block,
+        timings=stages.rounded(),
     )
 
 

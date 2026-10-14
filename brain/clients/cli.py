@@ -45,6 +45,7 @@ from brain.memory.longterm import (
 from brain.memory.profile import ProfileError, render
 from brain.memory.session import SessionStore
 from brain.memory.stores import close_session_store, open_session_store
+from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
@@ -215,6 +216,18 @@ class Printer:
         self._need_tag = True  # whatever the model streams next is a new Juniper line
         self._head = ""
 
+    def busy(self, text: str) -> None:
+        """Show a spinner while something runs without output (only on a real terminal)."""
+        self._spin(text)
+
+    def idle(self) -> None:
+        self._unspin()
+
+    def timing(self, text: str) -> None:
+        """A dim line saying where the time went (``agent.show_timing``)."""
+        self.end_line()
+        self.out.print(f"[dim]⏱ {text}[/dim]", highlight=False, soft_wrap=True)
+
     def end_line(self) -> None:
         self._unspin()
         if self._head:
@@ -285,6 +298,9 @@ async def converse(agent: Agent, printer: Printer, reader: LineReader, message: 
             printer.say(friendly_error(exc), "red")
             code = 1
         printer.end_line()
+        if settings.agent.show_timing and agent.last_timing is not None:
+            total, stages = agent.last_timing
+            printer.timing(summarize_turn(total, stages, agent._recall_timings))
         if message is not None:
             return code
         printer.out.print()
@@ -329,11 +345,20 @@ async def remember_conversation(
     turns = agent.drain_turns()
     if memory is None or not turns:
         return
+    printer.busy("guardando o que aprendi...")  # a visible wait, not a silent hang
     try:
         result = await memory.extract(turns, agent.session.id)
     except Exception as exc:  # the chat is over: a memory problem must not turn into a crash
         printer.say(f"Não consegui guardar memórias desta conversa: {exc}", "yellow")
         return
+    finally:
+        printer.idle()
+    if settings.agent.show_timing and result.timings:
+        printer.timing(
+            "memória (extração) "
+            + summarize(result.total_ms, result.timings, EXTRACTION_LABELS)
+            + f" · {result.llm_calls} chamada(s) ao LLM"
+        )
     if result.error:
         printer.say(f"Não guardei memórias desta conversa: {result.error}", "yellow")
         return
