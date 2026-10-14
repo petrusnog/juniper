@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from brain.config import settings
 from brain.core.consent import interpret_reply
@@ -18,6 +20,7 @@ from brain.core.session import Session, Turn
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
+from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
@@ -25,6 +28,13 @@ from brain.tools.registry import registry as default_registry
 logger = logging.getLogger(__name__)
 
 TokenCallback = Callable[[str], Awaitable[None] | None]
+
+
+class ContextProvider(Protocol):
+    """Long-term memory as the agent sees it (``brain.memory.longterm.LongTermMemory``)."""
+
+    async def context_for(self, message: str, previous: str | None = None) -> RecalledContext: ...
+
 
 NOTHING_PENDING_HINT = (
     '[Sistema: se esse "sim" confirma uma ação que você acabou de propor em texto, '
@@ -47,6 +57,7 @@ class Agent:
         tool_registry: ToolRegistry | None = None,
         max_iterations: int | None = None,
         store: SessionStore | None = None,
+        memory: ContextProvider | None = None,
     ) -> None:
         self._provider = provider
         self._dispatcher = dispatcher
@@ -54,6 +65,8 @@ class Agent:
         self._registry = tool_registry or default_registry
         self._max_iterations = max_iterations or settings.agent.max_iterations
         self._store = store
+        self._memory = memory
+        self._memory_message: Message | None = None
         self._executed_until: int | None = None
         self._turns: list[Turn] = []
 
@@ -94,7 +107,9 @@ class Agent:
 
     async def _loop(self, user_input: str, on_token: TokenCallback | None) -> str:
         session = self.session
+        previous = _last_user_text(session)
         session.add_user(user_input)
+        self._memory_message = await self._recall(user_input, previous)
         pending, self._dispatcher.pending = self._dispatcher.pending, None
         said_yes = interpret_reply(user_input) == "yes"
         consent: str | None = None
@@ -131,6 +146,20 @@ class Agent:
             await _emit(on_token, LIMIT_MESSAGE)
         return LIMIT_MESSAGE
 
+    async def _recall(self, user_input: str, previous: str | None) -> Message | None:
+        """The memories for this turn as a system message, or None. Never breaks the turn."""
+        if self._memory is None:
+            return None
+        try:
+            context = await self._memory.context_for(user_input, previous)
+        except Exception as exc:
+            # The chat goes on without memory; and without retrying it on every message.
+            event_log.log("error", where="memory.recall", type=type(exc).__name__, message=str(exc))
+            self._memory = None
+            return None
+        event_log.log("memory_recall", **context.audit())
+        return Message("system", context.block) if context.block else None
+
     async def _ensure_question(self, message: Message, on_token: TokenCallback | None) -> str:
         """If actions are parked but the assistant did not ask, the system asks for it."""
         text = message.content or ""
@@ -159,7 +188,7 @@ class Agent:
         calls: list[ToolCall] = []
         usage: TokenUsage | None = None
         finish_reason: str | None = None
-        messages = self.session.messages()
+        messages = _with_memory(self.session.messages(), self._memory_message)
         event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
         started = time.monotonic()
         async for chunk in self._provider.stream(messages, tools=schemas):
@@ -186,6 +215,28 @@ async def _emit(callback: TokenCallback, token: str) -> None:
     result = callback(token)
     if result is not None:
         await result
+
+
+def _last_user_text(session: Session) -> str | None:
+    """The user's previous message without the date prefix, for short follow-up questions."""
+    for message in reversed(session.history):
+        if message.role == "user" and message.content:
+            return re.sub(r"^\[[^\]]*\]\s*", "", message.content)
+    return None
+
+
+def _with_memory(messages: list[Message], memory: Message | None) -> list[Message]:
+    """``messages`` with the recalled memories just before the current user message.
+
+    The block is per turn: it is never saved in the history, and it sits after the stable part
+    of the prompt (persona, older turns) so providers can keep reusing their prompt cache.
+    """
+    if memory is None:
+        return messages
+    for index in range(len(messages) - 1, 0, -1):
+        if messages[index].role == "user":
+            return [*messages[:index], memory, *messages[index:]]
+    return messages
 
 
 def _last_assistant_words(session: Session) -> str | None:

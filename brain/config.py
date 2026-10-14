@@ -232,9 +232,13 @@ class RetrievalSettings(BaseModel):
 
     # Quantas memórias, no máximo, uma busca devolve.
     top_k: int = Field(default=5, ge=1, le=100)
-    # Similaridade de cosseno mínima (-1 a 1) para uma memória contar como relevante.
-    # 0.0 = sem corte; o valor real é calibrado com exemplos reais (T-057).
-    threshold: float = Field(default=0.0, ge=-1.0, le=1.0)
+    # Similaridade de cosseno mínima (-1 a 1) para uma memória contar como relevante. O modelo
+    # e5 dá notas altas até para textos sem relação (em geral 0.7 a 0.8), então 0.0 não filtraria
+    # nada. 0.80 é um ponto de partida; ajuste com `juniper memory search` (T-058), que mostra
+    # a nota de cada resultado.
+    threshold: float = Field(default=0.80, ge=-1.0, le=1.0)
+    # Orçamento (estimado) de tokens das memórias injetadas no prompt de cada mensagem.
+    max_tokens: int = Field(default=500, ge=50, le=8000)
 
 
 class ExtractionSettings(BaseModel):

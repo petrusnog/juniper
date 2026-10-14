@@ -92,6 +92,10 @@ class VectorStore(Protocol):
 
     def get(self, memory_id: str) -> Memory | None: ...
 
+    def count(self) -> int:
+        """How many ``active`` memories there are (cheap: lets callers skip a pointless search)."""
+        ...
+
     def search(
         self,
         vector: Sequence[float],

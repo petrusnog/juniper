@@ -223,7 +223,7 @@ async def test_contradiction_supersedes_and_keeps_the_old_one(store: MongoVector
     assert store.get(old.id).superseded_by == new_id  # type: ignore[union-attr]
     assert store.get(new_id).status == "active"  # type: ignore[union-attr]
     # the search only sees the new one
-    hits = store.search(FakeEmbedder().embed("projeto X Laravel"), top_k=5)
+    hits = store.search(FakeEmbedder().embed("projeto X Laravel"), top_k=5, threshold=0.0)
     assert [h.memory.id for h in hits] == [new_id]
 
 

@@ -303,6 +303,18 @@ def previous_session(store: SessionStore) -> tuple[Session | None, str]:
     return session, f"Retomando a conversa de {_when(session.updated_at)} ({turns} {plural} suas)."
 
 
+async def prepare_memory(memory: LongTermMemory | None, printer: Printer) -> None:
+    """Fetch the embedding model up front, saying so, instead of freezing the first reply."""
+    if memory is None:
+        return
+    try:
+        if memory.needs_model_download():
+            printer.say("Baixando o modelo da minha memória (~120 MB, só desta vez)...")
+            await asyncio.to_thread(lambda: memory.embedder.dimension)
+    except Exception as exc:  # recall will notice and skip memory; the chat itself goes on
+        printer.say(f"Vou conversar sem consultar a memória agora: {exc}", "yellow")
+
+
 async def remember_conversation(
     agent: Agent, memory: LongTermMemory | None, printer: Printer
 ) -> None:
@@ -346,9 +358,12 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         await router.aclose()
         printer.say(str(exc), "red")
         return 1
-    agent = Agent(router, Dispatcher(conversational=True), session=session, store=store)
+    agent = Agent(
+        router, Dispatcher(conversational=True), session=session, store=store, memory=memory
+    )
     if note is not None:
         printer.say(note)
+    await prepare_memory(memory, printer)
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
