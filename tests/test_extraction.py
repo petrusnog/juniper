@@ -19,11 +19,11 @@ from brain.llm.errors import LLMUnavailableError
 from brain.llm.types import LLMResponse, Message, StreamChunk
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.extraction import (
-    EXTRACT_SYSTEM,
     JUDGE_SYSTEM,
     MemoryExtractor,
     build_transcript,
     check_candidate,
+    is_extract_prompt,
     parse_json_object,
 )
 from brain.memory.longterm import LongTermMemory, long_term_enabled, open_long_term_memory
@@ -64,7 +64,7 @@ class ScriptedLLM(LLMProvider):
     async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
         system, user = messages[0].content or "", messages[1].content or ""
         self.calls.append((system, user))
-        reply = self.extract if system == EXTRACT_SYSTEM else self.judge
+        reply = self.extract if is_extract_prompt(system) else self.judge
         if isinstance(reply, Exception):
             raise reply
         text = reply if isinstance(reply, str) else json.dumps(reply)

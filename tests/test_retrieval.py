@@ -7,7 +7,7 @@ import json
 import pytest
 
 from brain.config import RetrievalSettings, settings
-from brain.core.agent import Agent, _last_user_text, _with_memory
+from brain.core.agent import Agent, _last_user_text, _with_context
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session
 from brain.eventlog import event_log
@@ -277,10 +277,10 @@ def test_helpers() -> None:
         Message("assistant", "b"),
         Message("user", "c"),
     ]
-    out = _with_memory(msgs, Message("system", "M"))
+    out = _with_context(msgs, None, Message("system", "M"))
     assert [m.content for m in out] == ["s", "a", "b", "M", "c"]
-    assert _with_memory(msgs, None) is msgs
-    assert _with_memory([Message("system", "s")], Message("system", "M"))[-1].content == "s"
+    assert _with_context(msgs, None, None) == msgs
+    assert _with_context([Message("system", "s")], None, Message("system", "M"))[-1].content == "s"
 
 
 # --- CLI ----------------------------------------------------------------------------------

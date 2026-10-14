@@ -101,3 +101,10 @@ memory:
     max_turns: 20         # turnos recentes enviados ao LLM de extração
     neighbors: 3          # memórias parecidas comparadas antes de gravar
     neighbor_threshold: 0.75
+    save_feelings: true   # guarda sentimentos e acontecimentos pessoais (sensível); false = não guarda
+
+  # Perfil (T-061): um parágrafo de identidade (nome, nascimento, nacionalidade) que vai em TODA
+  # mensagem, sem busca. Os tokens dele são pagos a cada pergunta: por isso o teto.
+  profile:
+    enabled: true
+    max_chars: 500

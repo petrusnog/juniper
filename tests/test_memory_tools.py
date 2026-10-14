@@ -363,12 +363,14 @@ def test_cli_forget(cli_memory: LongTermMemory, store: MongoVectorStore) -> None
 def test_cli_export(cli_memory: LongTermMemory, store: MongoVectorStore, tmp_path: Path) -> None:
     seed(store, "Prefere ZSH como shell.", "preference")
     out = runner.invoke(cli.app, ["memory", "export"])
-    rows = json.loads(out.output)
+    data = json.loads(out.output)
+    rows = data["memories"]
     assert out.exit_code == 0 and len(rows) == 1 and "embedding" not in rows[0]
+    assert data["profile"] is None
     target = tmp_path / "memorias.json"
     done = runner.invoke(cli.app, ["memory", "export", "--vectors", "-o", str(target)])
     assert done.exit_code == 0 and "1 memória" in done.output
-    assert len(json.loads(target.read_text())[0]["embedding"]) == 64
+    assert len(json.loads(target.read_text())["memories"][0]["embedding"]) == 64
 
 
 def test_cli_commands_report_an_unavailable_database(monkeypatch: pytest.MonkeyPatch) -> None:

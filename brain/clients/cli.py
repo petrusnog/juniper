@@ -42,6 +42,7 @@ from brain.memory.longterm import (
     open_long_term_memory,
     open_memory_for_commands,
 )
+from brain.memory.profile import ProfileError, render
 from brain.memory.session import SessionStore
 from brain.memory.stores import close_session_store, open_session_store
 from brain.tools import memory as memory_tools
@@ -339,6 +340,8 @@ async def remember_conversation(
     if result.added or result.superseded:
         n = len(result.added)
         printer.say(f"Guardei {n} {'coisa' if n == 1 else 'coisas'} sobre você para a próxima.")
+    if result.profile is not None:
+        printer.say("Atualizei o seu perfil.")
 
 
 async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
@@ -685,17 +688,109 @@ def memory_export(
     memory = _command_memory()
     try:
         rows = memory.export(vectors)
+        profile_export = memory.export_profile()
     except MemoryUnavailableError as exc:
         voice.say(console, str(exc), "red")
         raise typer.Exit(1) from None
     finally:
         memory.close()
-    text = json.dumps(rows, ensure_ascii=False, indent=2)
+    text = json.dumps({"profile": profile_export, "memories": rows}, ensure_ascii=False, indent=2)
     if output is None:
         typer.echo(text)
         return
     output.write_text(text + "\n", encoding="utf-8")
-    voice.say(console, f"{len(rows)} memória(s) exportadas para {output}.")
+    voice.say(console, f"Perfil e {len(rows)} memória(s) exportados para {output}.")
+
+
+profile_app = typer.Typer(
+    help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
+    invoke_without_command=True,
+)
+memory_app.add_typer(profile_app, name="profile")
+
+
+@profile_app.callback()
+def memory_profile(ctx: typer.Context) -> None:
+    """Mostra o perfil (nome, nascimento, nacionalidade). Subcomandos: set, forget."""
+    if ctx.invoked_subcommand is not None:
+        return
+    memory = _command_memory()
+    try:
+        profile = asyncio.run(memory.get_profile())
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    if profile is None:
+        voice.say(
+            console,
+            "Ainda não tenho o seu perfil. Conte seu nome numa conversa, ou use "
+            '`juniper memory profile set "O usuário se chama ..."`.',
+        )
+        return
+    voice.say(console, f"Como eu leio o seu perfil hoje: {render(profile)}")
+    console.print(f"[dim]Guardado como:[/dim] {profile.text}")
+    for key, value in profile.fields.items():
+        console.print(f"[dim]{key}:[/dim] {value}")
+    console.print(f"[dim]Atualizado em {_local(profile.updated_at)}[/dim]")
+
+
+@profile_app.command("set")
+def memory_profile_set(
+    text: Annotated[
+        str, typer.Argument(help="O parágrafo completo. Use {idade} onde iria a idade.")
+    ],
+    name: Annotated[Optional[str], typer.Option("--name", help="Nome.")] = None,  # noqa: UP045
+    birth_date: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option("--birth-date", help="Data de nascimento, AAAA-MM-DD."),
+    ] = None,
+    nationality: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option("--nationality", help="Nacionalidade."),
+    ] = None,
+    gender: Annotated[Optional[str], typer.Option("--gender", help="Gênero.")] = None,  # noqa: UP045
+) -> None:
+    """Define o parágrafo do perfil (os campos informados se somam aos que já existem)."""
+    fields = {
+        k: v
+        for k, v in (
+            ("name", name),
+            ("birth_date", birth_date),
+            ("nationality", nationality),
+            ("gender", gender),
+        )
+        if v is not None
+    }
+    memory = _command_memory()
+    try:
+        profile = asyncio.run(memory.set_profile(text, fields))
+    except (MemoryUnavailableError, ProfileError) as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    voice.say(console, f"Perfil guardado: {render(profile)}")
+
+
+@profile_app.command("forget")
+def memory_profile_forget(
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")] = False,
+) -> None:
+    """Apaga o perfil para sempre (as memórias gerais não são tocadas)."""
+    if not yes and not typer.confirm("Apagar o seu perfil para sempre?", default=False):
+        voice.say(console, "Ok, não apaguei nada.")
+        return
+    memory = _command_memory()
+    try:
+        removed = asyncio.run(memory.forget_profile())
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    voice.say(console, "Esqueci o seu perfil." if removed else "Você não tinha perfil guardado.")
 
 
 @app.command()

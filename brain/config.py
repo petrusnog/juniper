@@ -257,6 +257,18 @@ class ExtractionSettings(BaseModel):
     neighbors: int = Field(default=3, ge=1, le=10)
     # Similaridade (cosseno) mínima para uma memória existente contar como "parecida".
     neighbor_threshold: float = Field(default=0.75, ge=-1.0, le=1.0)
+    # Guarda sentimentos e acontecimentos pessoais ("Petrus se sentiu frustrado em 14/10/2026").
+    # É conteúdo sensível: o trecho analisado vai ao provider do chat. Desligue para não guardar.
+    save_feelings: bool = True
+
+
+class ProfileSettings(BaseModel):
+    """Perfil do usuário: um parágrafo de identidade presente em todo prompt (ADR-011, T-061)."""
+
+    # Só vale com a memória de longo prazo ligada (`memory.session.store: mongo`).
+    enabled: bool = True
+    # Teto do parágrafo, imposto ao gravar e ao injetar: é o que custa tokens em TODA mensagem.
+    max_chars: int = Field(default=500, ge=100, le=2000)
 
 
 class MemorySettings(BaseModel):
@@ -267,6 +279,7 @@ class MemorySettings(BaseModel):
     embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)
+    profile: ProfileSettings = Field(default_factory=ProfileSettings)
 
 
 class PathsSettings(BaseModel):

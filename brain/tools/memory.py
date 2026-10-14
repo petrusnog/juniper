@@ -14,6 +14,7 @@ from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.extraction import ExtractionResult, check_candidate, normalize
 from brain.memory.longterm import LongTermMemory
+from brain.memory.profile import ProfileError, build_profile, render
 from brain.memory.retrieval import clean_text
 from brain.memory.vector import MEMORY_TYPES, Memory
 from brain.tools.base import Locality, Tier, Tool, ToolResult
@@ -117,6 +118,76 @@ def _remember_outcome(result: ExtractionResult) -> ToolResult:
         replaced = " (substitui uma lembrança anterior)" if result.superseded else ""
         return ToolResult(success=True, output=f"Guardado: «{result.added[0].text}»{replaced}.")
     return ToolResult(success=True, output="Eu já sabia disso; só atualizei o registro.")
+
+
+@register_tool
+class UpdateProfile(_MemoryTool):
+    name = "update_profile"
+    description = (
+        "Atualiza o PERFIL da pessoa: o parágrafo de identidade que aparece no bloco <perfil> "
+        "(nome, data de nascimento, nacionalidade). Use quando ela disser ou corrigir um desses "
+        "dados e pedir para você guardar. Mande o parágrafo COMPLETO e atualizado (copie o do "
+        "bloco <perfil> e altere o que mudou), com 'O usuário se chama ...', e escreva {idade} "
+        "onde iria a idade (ela é calculada). Nunca documentos, senhas ou chaves."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "O parágrafo completo do perfil."},
+            "name": {"type": "string", "description": "Nome da pessoa."},
+            "birth_date": {"type": "string", "description": "Data de nascimento, AAAA-MM-DD."},
+            "nationality": {"type": "string", "description": "Nacionalidade."},
+            "gender": {"type": "string", "description": "Só se a própria pessoa disser."},
+        },
+        "required": ["text"],
+    }
+    tier = Tier.WRITE
+
+    @classmethod
+    def available(cls) -> bool:
+        return _memory is not None and _memory.profile_enabled()
+
+    @staticmethod
+    def _fields(kwargs: dict[str, Any]) -> dict[str, Any]:
+        return {
+            k: kwargs[k] for k in ("name", "birth_date", "nationality", "gender") if k in kwargs
+        }
+
+    async def _build(self, kwargs: dict[str, Any]) -> Any:
+        memory = self.memory()
+        existing = await memory.get_profile()
+        return build_profile(
+            kwargs.get("text"),
+            self._fields(kwargs),
+            existing,
+            settings.memory.profile.max_chars,
+        )
+
+    async def precheck(self, **kwargs: Any) -> ToolResult | None:
+        if not self.available():
+            return ToolResult(success=False, error=OFF)
+        try:
+            await self._build(kwargs)
+        except ProfileError as exc:
+            return ToolResult(success=False, error=f"Não posso guardar esse perfil: {exc}")
+        except MemoryUnavailableError as exc:
+            return ToolResult(success=False, error=str(exc))
+        return None
+
+    async def describe(self, **kwargs: Any) -> str | None:
+        try:
+            return f"atualizar o seu perfil para: «{render(await self._build(kwargs))}»"
+        except (ProfileError, MemoryUnavailableError):
+            return None
+
+    async def run(self, **kwargs: Any) -> ToolResult:
+        try:
+            profile = await self.memory().set_profile(
+                str(kwargs.get("text", "")), self._fields(kwargs)
+            )
+        except (ProfileError, MemoryUnavailableError) as exc:
+            return ToolResult(success=False, error=str(exc))
+        return ToolResult(success=True, output=f"Perfil atualizado: «{render(profile)}»")
 
 
 @register_tool
