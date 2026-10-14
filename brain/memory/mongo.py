@@ -35,6 +35,7 @@ from brain.memory.session import (
 )
 from brain.memory.vector import (
     MEMORIES_COLLECTION,
+    MEMORY_TYPES,
     Memory,
     SearchHit,
     VectorStoreError,
@@ -254,6 +255,26 @@ class MongoVectorStore:
     def count(self) -> int:
         with self.connection.guard():
             return int(self._memories().count_documents({"status": "active"}))
+
+    def list_memories(
+        self, memory_type: str | None = None, include_superseded: bool = False
+    ) -> list[Memory]:
+        query: dict[str, Any] = {}
+        if not include_superseded:
+            query["status"] = "active"
+        if memory_type is not None:
+            if memory_type not in MEMORY_TYPES:
+                raise VectorStoreError(f"Tipo de memória inválido: {memory_type!r}.")
+            query["type"] = memory_type
+        with self.connection.guard():
+            docs = list(self._memories().find(query))
+        found: list[Memory] = []
+        for doc in docs:
+            try:
+                found.append(memory_from_doc(doc))
+            except VectorStoreError:
+                continue  # a damaged document must not hide the good ones
+        return sorted(found, key=lambda m: (m.created_at, m.id), reverse=True)
 
     def search(
         self,

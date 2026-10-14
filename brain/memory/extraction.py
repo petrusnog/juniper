@@ -190,6 +190,29 @@ class MemoryExtractor:
             result.error = str(exc)
         return result
 
+    async def remember(
+        self,
+        text: str,
+        kind: str,
+        session_id: str | None = None,
+        source_kind: str = "explicit",
+    ) -> ExtractionResult:
+        """Store one fact the user asked to remember, with the same checks and the same
+        deduplication/update as an extracted one."""
+        result = ExtractionResult()
+        text = normalize(text)
+        reason = check_candidate(text, kind, self.config.max_chars)
+        if reason is not None:
+            result.rejected.append((text, reason))
+            return result
+        try:
+            await self._reconcile(text, kind, session_id, result, source_kind)
+        except LLMError as exc:
+            result.error = f"não consegui falar com o LLM: {exc}"
+        except MemoryUnavailableError as exc:
+            result.error = str(exc)
+        return result
+
     async def _candidates(self, transcript: str) -> list[tuple[Any, Any]]:
         user = f"<conversa>\n{transcript}\n</conversa>"
         data = parse_json_object(await self._ask(EXTRACT_SYSTEM, user))
@@ -205,7 +228,12 @@ class MemoryExtractor:
         return response.message.content
 
     async def _reconcile(
-        self, text: str, kind: str, session_id: str | None, result: ExtractionResult
+        self,
+        text: str,
+        kind: str,
+        session_id: str | None,
+        result: ExtractionResult,
+        source_kind: str = "extracted",
     ) -> None:
         vector = await asyncio.to_thread(self.embedder.embed, text, "passage")
         hits = await asyncio.to_thread(
@@ -225,6 +253,7 @@ class MemoryExtractor:
             embedding=vector,
             embedding_model=self.embedder.model_id,
             session_id=session_id,
+            source_kind=source_kind,
         )
         await asyncio.to_thread(self.store.add, memory)
         result.added.append(memory)

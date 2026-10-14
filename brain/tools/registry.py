@@ -47,8 +47,8 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def schemas(self) -> list[dict[str, Any]]:
-        """Schemas of all tools in the ADR-002 format, ready for the LLM ``tools`` field."""
-        return [cls.to_schema() for cls in self._tools.values()]
+        """Schemas of the available tools (ADR-002 format), ready for the LLM ``tools`` field."""
+        return [cls.to_schema() for cls in self._tools.values() if cls.available()]
 
     def discover(self, package: str = "brain.tools") -> None:
         """Import every module of ``package`` so their ``@register_tool`` calls run.
