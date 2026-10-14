@@ -22,5 +22,9 @@ def _isolated_event_log(tmp_path: Path):  # type: ignore[no-untyped-def]
 
 @pytest.fixture(autouse=True)
 def _isolated_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep tests from saving conversations into the real ``~/.juniper/sessions``."""
+    """Keep tests from saving conversations into the real ``~/.juniper/sessions`` or MongoDB.
+
+    The developer's own config.yaml may select MongoDB; tests always start from files.
+    """
     monkeypatch.setattr(settings.memory.session, "dir", tmp_path / "sessions")
+    monkeypatch.setattr(settings.memory.session, "store", "file")

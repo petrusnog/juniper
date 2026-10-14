@@ -1,0 +1,31 @@
+# MongoDB local da memória da Juniper (ADR-011, T-053).
+#
+#   docker compose up -d      sobe o banco
+#   docker compose down       desliga (os dados ficam no volume)
+#   docker compose down -v    desliga e APAGA os dados
+#
+# Usuário e senha vêm do .env (o mesmo que a Juniper lê), então ficam fora do git.
+# O nome fixo do projeto mantém o volume em juniper_juniper-mongo-data, o que o instalador procura.
+name: juniper
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: juniper-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${JUNIPER_MEMORY__MONGO__USERNAME:?defina JUNIPER_MEMORY__MONGO__USERNAME no .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${JUNIPER_MEMORY__MONGO__PASSWORD:?defina JUNIPER_MEMORY__MONGO__PASSWORD no .env}
+    ports:
+      # Só a própria máquina acessa; nunca exponha o banco na rede.
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - juniper-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  juniper-mongo-data:

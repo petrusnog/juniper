@@ -1,8 +1,8 @@
 """Saving and resuming conversations (short-term memory, ADR-011).
 
 ``SessionStore`` is the interface the agent depends on. ``FileSessionStore`` keeps one JSON
-file per session under ``memory.session.dir``; a MongoDB implementation joins it with T-053
-and the rest of the code does not change.
+file per session under ``memory.session.dir``; ``MongoSessionStore`` (``brain.memory.mongo``,
+T-053) is the MongoDB implementation, chosen by ``memory.session.store``.
 
 Only the history is stored. The system prompt is not: a resumed conversation gets the
 current persona. Pending confirmations are not stored either, so after resuming nothing runs
@@ -32,6 +32,13 @@ PREVIEW_CHARS = 60
 
 class SessionStoreError(Exception):
     """A session could not be read (corrupt file, unsupported format, invalid id)."""
+
+
+def check_session_id(session_id: str) -> str:
+    """``session_id`` itself, or ``SessionStoreError`` if it is not safe to use as a key."""
+    if not _ID_PATTERN.match(session_id):
+        raise SessionStoreError(f"id de sessão inválido: {session_id!r}")
+    return session_id
 
 
 @dataclass(frozen=True)
@@ -111,7 +118,7 @@ def session_from_dict(data: dict[str, Any]) -> Session:
     return session
 
 
-def _info(session: Session) -> SessionInfo:
+def session_info(session: Session) -> SessionInfo:
     users = [m for m in session.history if m.role == "user"]
     first = (users[0].content or "") if users else ""
     return SessionInfo(
@@ -130,9 +137,7 @@ class FileSessionStore:
         self.directory = directory if directory is not None else settings.memory.session.dir
 
     def _path(self, session_id: str) -> Path:
-        if not _ID_PATTERN.match(session_id):
-            raise SessionStoreError(f"id de sessão inválido: {session_id!r}")
-        return self.directory / f"{session_id}.json"
+        return self.directory / f"{check_session_id(session_id)}.json"
 
     def save(self, session: Session) -> None:
         if not session.history:
@@ -191,5 +196,5 @@ class FileSessionStore:
             except SessionStoreError:
                 continue
             if session is not None:
-                infos.append(_info(session))
+                infos.append(session_info(session))
         return sorted(infos, key=lambda i: i.updated_at, reverse=True)

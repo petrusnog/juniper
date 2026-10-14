@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-053 · MongoDB e Docker Compose — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-053</div>
+<h1>T-053 — MongoDB e Docker Compose</h1>
+<p class="lead">Um banco local para as conversas: <code>docker compose up -d</code> sobe o MongoDB e a Juniper passa a guardar nele o que antes ia para arquivos. Se o banco estiver fora do ar, ela avisa o que fazer em vez de mostrar um erro técnico. Arquivos: <code>brain/memory/mongo.py</code>, <code>brain/memory/stores.py</code>, <code>brain/memory/errors.py</code> e <code>docker-compose.yml</code>. Decisões de fundo no <code>ADR-011</code>.</p>
+
+<h2>1. Como ligar</h2>
+<div class="card">
+  <p><b>Requisito: Docker.</b> O MongoDB roda num container, então é preciso ter o Docker (com o plugin <code>docker compose</code>) instalado e rodando nesta máquina. <b>Sem Docker, use <code>store: file</code></b> (o padrão): as conversas ficam em JSON na pasta <code>sessions/</code> e nada mais é necessário.</p>
+  <p><b>Jeito fácil:</b> o instalador pergunta onde guardar a memória e, se você escolher o MongoDB, confere o Docker, sobe o banco, cria o usuário e a senha no <code>.env</code> e liga o <code>store: mongo</code> sozinho. Para fazer isso depois: <code>juniper install --memory=mongo</code> (veja o <a href="install.html#mongo">guia de instalação</a>).</p>
+</div>
+<p>Se preferir fazer à mão:</p>
+<pre># 1. .env  (nunca é versionado): escolha usuário e senha do banco
+JUNIPER_MEMORY__MONGO__USERNAME=juniper
+JUNIPER_MEMORY__MONGO__PASSWORD=uma-senha-forte
+
+# 2. sobe o banco
+docker compose up -d
+
+# 3. config.yaml
+memory:
+  session:
+    store: mongo</pre>
+<p style="color:var(--muted)">Depois disso <code>juniper</code> e <code>juniper -r</code> funcionam como antes; só o lugar onde a conversa fica muda. Para voltar aos arquivos, basta <code>store: file</code> (o padrão).</p>
+<div class="card">
+  <p><b>Não troque usuário e senha depois de subir.</b> O Mongo só lê essas variáveis quando cria o volume. Para recomeçar com outras credenciais: <code>docker compose down -v</code> (<b>apaga os dados</b>) e <code>docker compose up -d</code>.</p>
+  <p><b>As conversas antigas não migram.</b> Os JSONs de <code>~/.juniper/sessions/</code> continuam lá, mas com <code>store: mongo</code> o <code>--resume</code> só enxerga o banco.</p>
+</div>
+
+<h2>2. Como funciona</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td><code>scripts/install.sh</code></td><td>Pergunta <code>arquivos</code> ou <code>MongoDB</code>. Com MongoDB: confere o Docker, gera as credenciais, sobe o banco, testa a conexão e só então grava <code>store: mongo</code> (via <code>scripts/set_memory_store.py</code>, que preserva os comentários do <code>config.yaml</code>). Sem Docker, fica em arquivos e diz o motivo.</td></tr>
+    <tr><td><code>docker-compose.yml</code></td><td>Sobe o <code>mongo:7</code> só em <code>127.0.0.1:27017</code> (a rede nunca vê o banco), com volume <code>juniper-mongo-data</code> e healthcheck. Usuário e senha vêm do <code>.env</code>; sem eles o compose recusa subir.</td></tr>
+    <tr><td><code>MongoConnection</code></td><td>Cria o cliente só quando preciso, faz o teste de saúde (<code>check()</code>) e traduz qualquer falha do driver em <code>MemoryUnavailableError</code>.</td></tr>
+    <tr><td><code>MongoSessionStore</code></td><td>Implementa o <code>SessionStore</code> da T-051 (<code>save</code>, <code>load</code>, <code>latest</code>, <code>list_sessions</code>). O <code>Agent</code> não sabe que mudou.</td></tr>
+    <tr><td><code>open_session_store()</code></td><td>Escolhe o store pelo <code>memory.session.store</code>. Com <code>mongo</code>, já faz o teste de saúde: é o healthcheck de inicialização.</td></tr>
+    <tr><td><code>MemoryUnavailableError</code></td><td>Erro com mensagem escrita para você, em português, dizendo o que fazer. O CLI a imprime e sai com código 1, sem stacktrace.</td></tr>
+  </table>
+</div>
+<p><code>brain/memory/mongo.py</code> é o único arquivo que importa o driver (<code>pymongo</code>), e ele só é carregado quando <code>store: mongo</code>. Quem usa arquivos nunca depende dele.</p>
+
+<h2>3. O que fica no banco</h2>
+<p>Banco <code>juniper</code>, collection <code>sessions</code>, <b>um documento por conversa</b>. É o mesmo conteúdo do JSON, mais alguns campos auxiliares:</p>
+<pre>{
+  "_id": "20261014-034312-b94e9d",      // o id da sessão: um documento por conversa
+  "version": 1,
+  "created_at": "2026-10-14T03:43:12+00:00",
+  "updated_at": "2026-10-14T03:44:02+00:00",
+  "history": [ {"role": "user", "content": "..."}, {"role": "assistant", "content": "..."} ],
+  "turns": 1,                           // para listar sem ler o histórico
+  "preview": "[...] meu projeto X usa Laravel 11",
+  "saved_at": "2026-10-14T03:44:02.123456+00:00"
+}</pre>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Quando</th><th>O que acontece</th></tr>
+    <tr><td>Fim de cada turno</td><td><code>replace_one</code> com <code>upsert</code>: o documento inteiro é substituído. Se o turno falhou, ele já foi desfeito e o salvo continua igual ao da memória.</td></tr>
+    <tr><td>Sessão vazia</td><td>Não grava nada.</td></tr>
+    <tr><td>Gravação falha</td><td>Vai para o log (evento <code>error</code>) e a conversa continua.</td></tr>
+    <tr><td><code>--resume</code></td><td>Pega a conversa de maior <code>saved_at</code>. Retomar e salvar uma conversa antiga a torna a mais recente de novo, igual ao que o mtime fazia nos arquivos.</td></tr>
+  </table>
+</div>
+<p>Como em arquivos, só o <b>histórico</b> é guardado: a persona não entra (vale a atual) e confirmação pendente não volta (ADR-006). Há dois índices, em <code>saved_at</code> e em <code>updated_at</code> + <code>saved_at</code>, criados na primeira gravação.</p>
+
+<h2>4. Configuração</h2>
+<pre>memory:
+  session:
+    store: file          # file (padrão) ou mongo
+  mongo:
+    uri: mongodb://localhost:27017
+    database: juniper
+    timeout_ms: 3000     # quanto esperar pelo servidor antes de avisar que caiu</pre>
+<p>Usuário e senha ficam só no <code>.env</code> (ADR-003), como <code>JUNIPER_MEMORY__MONGO__USERNAME</code> e <code>JUNIPER_MEMORY__MONGO__PASSWORD</code>. O mesmo par é lido pelo compose, então há uma única fonte. A senha é entregue ao driver à parte, sem ir na URI: caracteres como <code>@</code>, <code>:</code> e <code>/</code> não precisam de escape.</p>
+
+<h2>5. Quando o banco não está lá</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Situação</th><th>O que você vê</th></tr>
+    <tr><td>Banco fora do ar</td><td>"Não consegui conectar ao MongoDB em mongodb://localhost:27017. Suba o banco com <code>docker compose up -d</code>, ou guarde as conversas em arquivos com <code>memory.session.store: file</code> no config.yaml."</td></tr>
+    <tr><td>Usuário ou senha errados</td><td>"O MongoDB recusou o usuário ou a senha." com os nomes das variáveis a conferir.</td></tr>
+    <tr><td>Driver não instalado</td><td>Pede <code>pip install -e .</code>.</td></tr>
+  </table>
+</div>
+<p>Em todos os casos a Juniper sai com código 1 <b>antes</b> de falar com o LLM. Se o banco cair no meio da conversa, só a gravação falha (vai para o log) e a conversa segue.</p>
+
+<h2>6. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Banco fora do ar = avisa e sai</b>, sem cair para arquivos em silêncio.</td><td>Um fallback silencioso gravaria conversas num lugar que você não espera. Quem quiser arquivos escolhe <code>store: file</code>.</td></tr>
+    <tr><td>2</td><td><b>Credenciais fora da URI</b>, na <code>SecretStr</code>.</td><td>Não aparecem em repr nem em mensagem de erro, e senhas com símbolos não precisam de escape.</td></tr>
+    <tr><td>3</td><td><b><code>saved_at</code> com microssegundos</b> para achar a mais recente.</td><td>O <code>updated_at</code> tem precisão de segundos e empata; o <code>saved_at</code> reproduz a ordem por mtime dos arquivos.</td></tr>
+    <tr><td>4</td><td><b>Driver só importado com <code>store: mongo</code>.</b></td><td>Os arquivos continuam sem dependência do Mongo, e o resto do código nunca vê o <code>pymongo</code>.</td></tr>
+    <tr><td>5</td><td><b>Porta presa em 127.0.0.1.</b></td><td>O banco não fica exposto na rede.</td></tr>
+    <tr><td>6</td><td><b>Documento corrompido é ignorado</b> em <code>latest</code> e <code>list_sessions</code>.</td><td>Igual ao arquivo estragado: um registro ruim não esconde as conversas boas.</td></tr>
+  </table>
+</div>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Ainda é só o histórico.</b> Não há embeddings nem fatos extraídos: a collection <code>memories</code> do ADR-011 vem nas T-054 a T-058. Sem <code>--resume</code>, uma conversa nova começa sem saber nada de você.</p>
+  <p><b>O histórico é limitado</b> por <code>max_turns</code> e <code>max_tokens</code>, e o documento é substituído a cada turno: o que saiu do histórico sai também do banco.</p>
+  <p><b>Chamadas síncronas.</b> Com o banco fora do ar, cada gravação pode esperar até <code>timeout_ms</code> (3 s) antes de falhar.</p>
+  <p><b>Sem migração</b> dos JSONs antigos, e sem expiração: as conversas ficam até você apagar.</p>
+</div>
+
+<h2>8. Como testar</h2>
+<pre>pytest -m "not integration"     # sem banco: o que o CI roda
+pytest -m integration           # contra o MongoDB local (docker compose up -d)</pre>
+<p>Os testes sem banco cobrem a configuração, as mensagens de erro (banco fora do ar, senha recusada), a escolha do store e o CLI sem stacktrace. Os de integração rodam o <b>mesmo contrato</b> do <code>FileSessionStore</code> contra o <code>MongoSessionStore</code> (<code>tests/test_session_store_contract.py</code>), mais os casos próprios do Mongo (<code>tests/test_mongo_store.py</code>). Cada teste usa um banco descartável e o apaga no fim, então suas conversas reais não são tocadas.</p>
+<p>Para olhar os dados: <code>docker exec -it juniper-mongo mongosh -u &lt;usuario&gt; -p --authenticationDatabase admin juniper</code>, depois <code>db.sessions.find({}, {history: 0})</code>. Atenção ao banco: sem o <code>juniper</code> no fim, o <code>mongosh</code> abre o banco <code>test</code>, que está vazio.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>
