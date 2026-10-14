@@ -332,6 +332,33 @@ async def test_the_name_is_remembered_even_in_a_greeting(
     assert "Você usa ZSH." in out
 
 
+async def test_background_extraction_saves_along_the_way_and_says_it_once(
+    world: tuple[SimulatedLLM, MongoVectorStore],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """T-063: in the default mode each reply is extracted in the background, in silence."""
+    llm, store = world
+    monkeypatch.setattr(cli, "long_term_enabled", lambda: True)
+    assert settings.memory.extraction.mode == "turn"
+
+    out = await session(
+        monkeypatch,
+        capsys,
+        "Oi! Prefiro ZSH.",
+        "Valeu!",  # a pleasantry: no extraction call for it
+        "Odeio tabulação com espaço.",
+        "O projeto X usa Laravel 11.",
+    )
+    assert out.count("Guardei") == 1 and "Guardei 3 coisas sobre você" in out
+    assert out.index("Até logo!") < out.index("Guardei")  # nothing printed during the chat
+    assert active(store) == [
+        "O projeto X usa Laravel 11.",
+        "Odeia tabulação com espaço.",
+        "Prefere ZSH.",
+    ]
+
+
 @pytest.mark.integration
 def test_real_embedding_model_associates_and_separates(tmp_path: Any) -> None:
     """Com o modelo REAL (baixa ~120 MB): a associação semântica do marco e a calibração.

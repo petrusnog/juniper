@@ -35,10 +35,12 @@ class LongTermMemory:
         self.extractor = extractor
         self.profiles = profiles
 
-    async def extract(self, turns: list[Turn], session_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, turns: list[Turn], session_id: str | None = None, context: int = 0
+    ) -> ExtractionResult:
         if self.extractor is None:
             raise MemoryUnavailableError("A extração de memórias não está ligada neste contexto.")
-        return await self.extractor.extract(turns, session_id)
+        return await self.extractor.extract(turns, session_id, context)
 
     async def remember(
         self, text: str, kind: str, session_id: str | None = None

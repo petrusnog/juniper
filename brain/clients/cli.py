@@ -36,9 +36,12 @@ from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
+from brain.memory.background import BackgroundExtractor
 from brain.memory.errors import MemoryUnavailableError
+from brain.memory.extraction import ExtractionResult
 from brain.memory.longterm import (
     LongTermMemory,
+    long_term_enabled,
     open_long_term_memory,
     open_memory_for_commands,
 )
@@ -272,7 +275,13 @@ def build_router(provider: str | None) -> LLMRouter:
     return LLMRouter([PROVIDERS[provider]()])
 
 
-async def converse(agent: Agent, printer: Printer, reader: LineReader, message: str | None) -> int:
+async def converse(
+    agent: Agent,
+    printer: Printer,
+    reader: LineReader,
+    message: str | None,
+    background: BackgroundExtractor | None = None,
+) -> int:
     """One-shot when ``message`` is given, REPL otherwise. Returns the exit code."""
     pending = message
     while True:
@@ -298,6 +307,9 @@ async def converse(agent: Agent, printer: Printer, reader: LineReader, message: 
             printer.say(friendly_error(exc), "red")
             code = 1
         printer.end_line()
+        if background is not None:  # hand the finished turn over; this returns at once
+            for turn in agent.drain_turns():
+                background.submit(turn)
         if settings.agent.show_timing and agent.last_timing is not None:
             total, stages = agent.last_timing
             printer.timing(summarize_turn(total, stages, agent._recall_timings))
@@ -338,10 +350,54 @@ async def prepare_memory(memory: LongTermMemory | None, printer: Printer) -> Non
         printer.say(f"Vou conversar sem consultar a memória agora: {exc}", "yellow")
 
 
+def _report(printer: Printer, added: int, superseded: int, profile: bool) -> None:
+    if added or superseded:
+        printer.say(
+            f"Guardei {added} {'coisa' if added == 1 else 'coisas'} sobre você para a próxima."
+        )
+    if profile:
+        printer.say("Atualizei o seu perfil.")
+
+
+def _timing_line(result: ExtractionResult) -> str:
+    return (
+        "memória (extração) "
+        + summarize(result.total_ms, result.timings, EXTRACTION_LABELS)
+        + f" · {result.llm_calls} chamada(s) ao LLM"
+        + f" · {result.candidates} candidata(s), {len(result.rejected)} recusada(s)"
+    )
+
+
 async def remember_conversation(
-    agent: Agent, memory: LongTermMemory | None, printer: Printer
+    agent: Agent,
+    memory: LongTermMemory | None,
+    printer: Printer,
+    background: BackgroundExtractor | None = None,
 ) -> None:
-    """At the end of the chat, keep what is worth remembering. Never breaks the exit."""
+    """At the end of the chat, keep what is worth remembering. Never breaks the exit.
+
+    With a ``background`` extractor (``memory.extraction.mode: turn``) the memories were saved
+    along the way; this only waits for the last one and says what was kept.
+    """
+    if background is not None:
+        if background.busy:
+            printer.busy("guardando o que aprendi...")
+        try:
+            summary = await background.finish()
+        except Exception as exc:
+            printer.say(f"Não consegui guardar memórias desta conversa: {exc}", "yellow")
+            return
+        finally:
+            printer.idle()
+        if settings.agent.show_timing:
+            for result in summary.results:
+                if result.timings:
+                    printer.timing(_timing_line(result))
+        if summary.error and not summary.saved_something:
+            printer.say(f"Não guardei memórias desta conversa: {summary.error}", "yellow")
+            return
+        _report(printer, summary.added, summary.superseded, summary.profile_updated)
+        return
     turns = agent.drain_turns()
     if memory is None or not turns:
         return
@@ -354,19 +410,11 @@ async def remember_conversation(
     finally:
         printer.idle()
     if settings.agent.show_timing and result.timings:
-        printer.timing(
-            "memória (extração) "
-            + summarize(result.total_ms, result.timings, EXTRACTION_LABELS)
-            + f" · {result.llm_calls} chamada(s) ao LLM"
-        )
+        printer.timing(_timing_line(result))
     if result.error:
         printer.say(f"Não guardei memórias desta conversa: {result.error}", "yellow")
         return
-    if result.added or result.superseded:
-        n = len(result.added)
-        printer.say(f"Guardei {n} {'coisa' if n == 1 else 'coisas'} sobre você para a próxima.")
-    if result.profile is not None:
-        printer.say("Atualizei o seu perfil.")
+    _report(printer, len(result.added), len(result.superseded), result.profile is not None)
 
 
 async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
@@ -385,13 +433,22 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     note: str | None = None
     if resume:
         session, note = previous_session(store)
+    # Background extraction gets its own router: it must not print failover notices into the
+    # middle of what the user is typing.
+    background_mode = long_term_enabled() and settings.memory.extraction.mode == "turn"
+    memory_llm = build_router(provider) if background_mode else router
     try:
-        memory = open_long_term_memory(router)
+        memory = open_long_term_memory(memory_llm)
     except MemoryUnavailableError as exc:
         close_session_store(store)
         await router.aclose()
+        if memory_llm is not router:
+            await memory_llm.aclose()
         printer.say(str(exc), "red")
         return 1
+    background: BackgroundExtractor | None = None
+    if background_mode and memory is not None:
+        background = BackgroundExtractor(memory, lambda: agent.session.id)
     agent = Agent(
         router, Dispatcher(conversational=True), session=session, store=store, memory=memory
     )
@@ -403,13 +460,15 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
     try:
-        code = await converse(agent, printer, reader, message)
-        await remember_conversation(agent, memory, printer)
+        code = await converse(agent, printer, reader, message, background)
+        await remember_conversation(agent, memory, printer, background)
         return code
     finally:
         memory_tools.bind(None)
         if memory is not None:
             memory.close()
+        if memory_llm is not router:
+            await memory_llm.aclose()
         await router.aclose()
         close_session_store(store)
 

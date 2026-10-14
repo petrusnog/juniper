@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-063 · Guardar de forma proativa — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-063</div>
+<h1>T-063 — Guardar de forma proativa</h1>
+<p class="lead">Você pediu para a Juniper marcar a castração do gato e esperava que ela guardasse, por conta própria, que você tem um gato chamado Ollie. O compromisso foi para a agenda, mas o gato não foi para a memória. Esta task corrige as duas causas: <b>o que</b> ela entende que vale guardar e <b>quando</b> ela guarda. Arquivos: <code>brain/memory/extraction.py</code>, <code>brain/memory/background.py</code> e <code>brain/clients/cli.py</code>.</p>
+
+<h2>1. Por que ela não guardou o Ollie</h2>
+<div class="card">
+  <p>O prompt de extração mandava <b>não guardar pedidos pontuais</b> ("marcar compromisso, buscar commits"). Um pedido como "agenda a castração do meu gatinho Ollie" é exatamente um pedido pontual, então o LLM descartou a conversa inteira, inclusive o fato durável escondido nele: <b>você tem um gato chamado Ollie</b>.</p>
+  <p>Era uma hipótese minha pelo texto do prompt; não vi a resposta do LLM naquele dia. Com este ajuste, a extração também registra quantas candidatas o LLM propôs e quantas foram recusadas (e por quê, sem o texto), para o caso de acontecer de novo.</p>
+</div>
+
+<h2>2. O que muda no que ela entende</h2>
+<p>O prompt agora separa as duas coisas: o <b>pedido</b> não vira memória (o compromisso fica na agenda), mas os <b>fatos duráveis ditos dentro dele</b> viram. Pessoas, bichos de estimação, lugares, rotinas e coisas que você tem ou usa contam, mesmo ditos de passagem. Com exemplos:</p>
+<pre>"marca a castração do meu gatinho Bidu sábado de manhã"
+   -> memória: "Petrus tem um gato chamado Bidu."   (a castração fica na agenda)
+"preciso levar a Nina, minha golden, no vet na terça"
+   -> memória: "Petrus tem uma cachorra golden chamada Nina."
+"marca dentista amanhã"          -> nada (não revela nada durável)
+"marca um café com a Júlia"      -> nada (um encontro avulso não diz quem ela é)</pre>
+<p>Os nomes dos exemplos são fictícios de propósito, e o prompt diz para nunca repeti-los se a conversa não os disser.</p>
+
+<h2>3. Quando ela guarda: em segundo plano, a cada resposta</h2>
+<div class="card">
+  <p>Antes, a extração só rodava <b>ao encerrar o chat</b>: você esperava na saída, e tudo se perdia se fechasse com Ctrl+C. Agora (<code>memory.extraction.mode: turn</code>, o padrão) cada resposta é entregue a um trabalhador em segundo plano, que extrai <b>enquanto você lê e digita</b>. Nada aparece na tela durante a conversa, e o que ela aprende já vale na mensagem seguinte.</p>
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td>Uma por vez</td><td>Só uma extração roda de cada vez. Se você mandar mais mensagens enquanto ela trabalha, elas entram juntas na próxima rodada.</td></tr>
+    <tr><td>Contexto</td><td>O último turno já analisado vai junto, marcado como <code>(contexto)</code>, para "ele tem 3 anos" saber quem é "ele". O LLM extrai só do que é novo.</td></tr>
+    <tr><td>Sem desperdício</td><td>Saudações e agradecimentos sozinhos ("ok", "valeu", "bom dia", "sim, pode") não geram chamada ao LLM. Qualquer outra coisa gera, mesmo curta ("Moro em Floripa").</td></tr>
+    <tr><td>Silêncio</td><td>Usa um roteador próprio, sem os avisos de failover que apareceriam no meio do que você digita. Um erro não chega à conversa.</td></tr>
+    <tr><td>Ao sair</td><td>Espera o que sobrou (com "guardando o que aprendi..." só se ainda houver trabalho) e diz <b>uma vez</b>: "Guardei N coisas sobre você para a próxima." / "Atualizei o seu perfil."</td></tr>
+  </table>
+</div>
+<p><b>O custo:</b> uma chamada a mais ao LLM por mensagem que não seja só uma saudação (antes era uma por conversa). Para voltar ao comportamento antigo: <code>memory.extraction.mode: exit</code>.</p>
+
+<h2>4. Configuração</h2>
+<pre>memory:
+  extraction:
+    mode: turn        # turn = em segundo plano a cada resposta (padrão); exit = só ao encerrar</pre>
+
+<h2>5. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Depende do LLM.</b> O ajuste muda o prompt, mas quem decide é o LLM: pode continuar deixando passar um detalhe, ou guardar demais. Confira com <code>juniper memory list</code> nas primeiras conversas.</p>
+  <p><b>O que foi dito na última mensagem antes de Ctrl+C pode se perder</b> (a extração dela pode não ter terminado), mas o resto da conversa já está salvo.</p>
+  <p><b>Mais chamadas ao LLM e mais CPU local</b> (o embedding de cada memória candidata roda enquanto você conversa). Se pesar, veja <code>memory.embeddings.threads</code> e os tempos (<code>agent.show_timing</code>, T-062). Também consome mais do limite do provider (importante no Groq).</p>
+  <p><b>O "juiz" de duplicatas continua sendo uma chamada por memória nova parecida com alguma guardada</b>; no modo por turno isso acontece em segundo plano.</p>
+  <p><b>Não testado com o LLM real.</b> Os testes usam um LLM roteirizado.</p>
+</div>
+
+<h2>6. Como testar</h2>
+<pre>pytest -m "not integration"   # CI: LLM, banco e embedding simulados</pre>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

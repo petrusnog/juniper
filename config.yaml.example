@@ -98,6 +98,7 @@ memory:
   # Extração de memórias da conversa (T-056). Roda ao encerrar o chat, só com `store: mongo`.
   extraction:
     enabled: true
+    mode: turn            # turn = em segundo plano a cada resposta; exit = só ao encerrar o chat
     max_per_run: 5        # memórias novas, no máximo, por conversa
     max_chars: 300        # tamanho máximo de cada memória
     max_turns: 20         # turnos recentes enviados ao LLM de extração

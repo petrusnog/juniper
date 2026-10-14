@@ -16,6 +16,7 @@
 
 <h2>1. Quando ela roda</h2>
 <div class="card">
+  <p><b>Atualização (T-063):</b> por padrão a extração agora roda <b>em segundo plano, a cada resposta</b> (<code>memory.extraction.mode: turn</code>); o texto abaixo descreve o modo <code>exit</code>, que roda só ao encerrar.</p>
   <p>Ao <b>encerrar o chat</b> (<code>/sair</code>, Ctrl+D, ou depois de uma mensagem isolada), ela olha os turnos da conversa e guarda o que valer. Se guardar algo, avisa: <i>"Guardei 2 coisas sobre você para a próxima."</i> Se não houver nada, fica quieta.</p>
   <p><b>Só funciona com <code>memory.session.store: mongo</code></b> (é lá que as memórias ficam) e com <code>memory.extraction.enabled: true</code> (o padrão). Com arquivos, nada muda. O modelo de embeddings (~120 MB) só é baixado quando houver mesmo algo a guardar.</p>
 </div>
