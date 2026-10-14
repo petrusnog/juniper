@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,6 +28,18 @@ _FALLBACK_PERSONA = "Você é a Juniper."
 CHARS_PER_TOKEN = 4
 # Per-message framing (role, separators) on top of its text.
 MESSAGE_OVERHEAD_TOKENS = 4
+
+
+@dataclass(frozen=True)
+class Turn:
+    """One finished exchange: what the user typed and the final text Juniper answered.
+
+    Unlike ``Session.history`` this is never compacted, so long-term memory extraction sees
+    the whole conversation, without tool output or the date prefix of the user turns.
+    """
+
+    user: str
+    assistant: str = ""
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:

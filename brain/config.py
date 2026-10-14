@@ -237,6 +237,24 @@ class RetrievalSettings(BaseModel):
     threshold: float = Field(default=0.0, ge=-1.0, le=1.0)
 
 
+class ExtractionSettings(BaseModel):
+    """Como a Juniper tira fatos duráveis da conversa (ver ADR-011, T-056)."""
+
+    # Liga a memória de longo prazo. Só vale com `memory.session.store: mongo`: é lá que as
+    # memórias ficam. Desligue para não gastar chamadas de LLM nem baixar o modelo de embeddings.
+    enabled: bool = True
+    # Teto de memórias novas guardadas por conversa.
+    max_per_run: int = Field(default=5, ge=1, le=50)
+    # Tamanho máximo do texto de uma memória (uma afirmação curta).
+    max_chars: int = Field(default=300, ge=40, le=2000)
+    # Quantos turnos recentes vão ao LLM de extração.
+    max_turns: int = Field(default=20, ge=1, le=200)
+    # Memórias parecidas com a candidata que o LLM compara (para decidir duplicata/contradição).
+    neighbors: int = Field(default=3, ge=1, le=10)
+    # Similaridade (cosseno) mínima para uma memória existente contar como "parecida".
+    neighbor_threshold: float = Field(default=0.75, ge=-1.0, le=1.0)
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
@@ -244,6 +262,7 @@ class MemorySettings(BaseModel):
     mongo: MongoSettings = Field(default_factory=MongoSettings)
     embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)
 
 
 class PathsSettings(BaseModel):

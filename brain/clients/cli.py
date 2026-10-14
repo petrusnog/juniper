@@ -36,6 +36,7 @@ from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
 from brain.memory.errors import MemoryUnavailableError
+from brain.memory.longterm import LongTermMemory, open_long_term_memory
 from brain.memory.session import SessionStore
 from brain.memory.stores import close_session_store, open_session_store
 from brain.tools.base import Tier
@@ -302,6 +303,26 @@ def previous_session(store: SessionStore) -> tuple[Session | None, str]:
     return session, f"Retomando a conversa de {_when(session.updated_at)} ({turns} {plural} suas)."
 
 
+async def remember_conversation(
+    agent: Agent, memory: LongTermMemory | None, printer: Printer
+) -> None:
+    """At the end of the chat, keep what is worth remembering. Never breaks the exit."""
+    turns = agent.drain_turns()
+    if memory is None or not turns:
+        return
+    try:
+        result = await memory.extract(turns, agent.session.id)
+    except Exception as exc:  # the chat is over: a memory problem must not turn into a crash
+        printer.say(f"Não consegui guardar memórias desta conversa: {exc}", "yellow")
+        return
+    if result.error:
+        printer.say(f"Não guardei memórias desta conversa: {result.error}", "yellow")
+        return
+    if result.added or result.superseded:
+        n = len(result.added)
+        printer.say(f"Guardei {n} {'coisa' if n == 1 else 'coisas'} sobre você para a próxima.")
+
+
 async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
     registry.discover()
     router = build_router(provider)
@@ -318,6 +339,13 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     note: str | None = None
     if resume:
         session, note = previous_session(store)
+    try:
+        memory = open_long_term_memory(router)
+    except MemoryUnavailableError as exc:
+        close_session_store(store)
+        await router.aclose()
+        printer.say(str(exc), "red")
+        return 1
     agent = Agent(router, Dispatcher(conversational=True), session=session, store=store)
     if note is not None:
         printer.say(note)
@@ -325,8 +353,12 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
     try:
-        return await converse(agent, printer, reader, message)
+        code = await converse(agent, printer, reader, message)
+        await remember_conversation(agent, memory, printer)
+        return code
     finally:
+        if memory is not None:
+            memory.close()
         await router.aclose()
         close_session_store(store)
 
