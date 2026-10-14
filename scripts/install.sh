@@ -92,6 +92,13 @@ fi
 JUNIPER_TAG="🌿 JUNIPER:"
 USER_TAG="👤 VOCÊ:"
 
+# Um terminal que ficou com o "icrnl" desligado (um programa anterior foi interrompido sem
+# restaurá-lo) manda o Enter como CR e o `read` nunca recebe o fim da linha: aparece "^M" e a
+# pergunta não avança. Antes de mostrar a pergunta, volta o modo de linha normal e, depois, tira o CR
+# que sobrar da resposta.
+tty_sane() { [ -t 0 ] && stty icrnl icanon echo 2>/dev/null || true; }
+strip_cr() { printf '%s' "${1%$'\r'}"; }
+
 say()   { printf '%s %s\n' "$JUNIPER_TAG" "$1"; }
 ok()    { printf '%s %s✔%s %s\n' "$JUNIPER_TAG" "$C_GREEN" "$C_RESET" "$1"; }
 warn()  { printf '%s %s⚠%s %s\n' "$JUNIPER_TAG" "$C_YELLOW" "$C_RESET" "$1"; }
@@ -415,8 +422,10 @@ ensure_api_key() {
     local key=""
     say "Preciso de uma chave $name ($role)."
     say "Crie em $url e cole aqui (Enter para pular; a digitação fica oculta)."
+    tty_sane
     printf '%s ' "$USER_TAG"
     read -rs key || true
+    key="$(strip_cr "$key")"
     printf '\n'
     key="$(printf '%s' "$key" | tr -d '[:space:]')"
     if [ -z "$key" ]; then
@@ -504,8 +513,10 @@ ensure_gcp_key() {
     say "Não tem? Rode 'juniper docs' e veja \"Conta de serviço no GCP\". (Enter para pular)"
     local path attempt
     for attempt in 1 2 3; do
+        tty_sane
         printf '%s ' "$USER_TAG"
         read -r path || true
+        path="$(strip_cr "$path")"
         path="$(printf '%s' "$path" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
         if [ -z "$path" ]; then
             warn "Sem a chave por enquanto. Depois: ./scripts/install.sh --gcp-key=CAMINHO"
@@ -580,8 +591,10 @@ ask_memory_choice() { # define MEMORY_ARG
     printf '       2) MongoDB   - banco local num container: %sprecisa do Docker instalado e rodando%s.\n' \
         "$C_BOLD" "$C_RESET"
     say "Se escolher o MongoDB, eu confiro o Docker, subo o banco e crio o usuário e a senha sozinha."
+    tty_sane
     printf '%s ' "$USER_TAG"
     read -r answer || true
+    answer="$(strip_cr "$answer")"
     case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
         2|mongo|mongodb|m) MEMORY_ARG=mongo ;;
         *) MEMORY_ARG=file ;;

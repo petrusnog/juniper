@@ -484,3 +484,48 @@ def test_the_question_defaults_to_files(tmp_path: Path, answer: str, expected: s
     assert result.stdout.strip().endswith(f"={expected}")
     assert "precisa do Docker" in result.stdout  # the requirement is stated up front
     assert box.root.exists()
+
+
+def _ask_in_a_pty(typed: bytes, *, icrnl: bool) -> str:
+    """Run ``ask_memory_choice`` on a real terminal and type ``typed`` (Enter is a CR)."""
+    import pty
+    import select
+    import termios
+    import time
+
+    master, slave = pty.openpty()
+    attrs = termios.tcgetattr(slave)
+    if not icrnl:  # what a terminal left in this state by an interrupted program looks like
+        attrs[0] &= ~termios.ICRNL
+    termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    proc = subprocess.Popen(
+        [BASH, "-c", f'source "{INSTALL_SH}"; ask_memory_choice; echo "=$MEMORY_ARG="'],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env={**os.environ, "JUNIPER_INSTALL_LIB": "1"},
+        close_fds=True,
+    )
+    os.close(slave)
+    output, deadline, sent = b"", time.monotonic() + 10, False
+    while time.monotonic() < deadline and proc.poll() is None:
+        if select.select([master], [], [], 0.2)[0]:
+            try:
+                output += os.read(master, 4096)
+            except OSError:
+                break
+        if not sent and output.rstrip().endswith(b"VOC\xc3\x8a:"):
+            os.write(master, typed)  # typed after the prompt, as a person does
+            sent = True
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+    os.close(master)
+    return output.decode(errors="replace")
+
+
+@pytest.mark.parametrize("icrnl", [True, False])
+def test_enter_sent_as_cr_still_answers_the_question(icrnl: bool) -> None:
+    """Regression: with ICRNL off, Enter showed "^M" and the installer never moved on."""
+    out = _ask_in_a_pty(b"2\r", icrnl=icrnl)
+    assert "=mongo=" in out, out
