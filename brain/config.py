@@ -264,6 +264,11 @@ class ExtractionSettings(BaseModel):
     neighbors: int = Field(default=3, ge=1, le=10)
     # Similaridade (cosseno) mínima para uma memória existente contar como "parecida".
     neighbor_threshold: float = Field(default=0.75, ge=-1.0, le=1.0)
+    # Quando extrair: "turn" = em segundo plano, logo depois de cada resposta (sem atrasar a
+    # conversa, e a Juniper já sabe do que você disse na mensagem seguinte); "exit" = só ao
+    # encerrar o chat (uma chamada de LLM por conversa, mas perde o que ficou se você fechar
+    # com Ctrl+C e demora ao sair).
+    mode: Literal["turn", "exit"] = "turn"
     # Guarda sentimentos e acontecimentos pessoais ("Petrus se sentiu frustrado em 14/10/2026").
     # É conteúdo sensível: o trecho analisado vai ao provider do chat. Desligue para não guardar.
     save_feelings: bool = True
