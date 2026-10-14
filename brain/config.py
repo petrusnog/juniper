@@ -227,12 +227,23 @@ class EmbeddingSettings(BaseModel):
         return v.expanduser()
 
 
+class RetrievalSettings(BaseModel):
+    """Busca por similaridade na memória de longo prazo (ver ADR-011, T-055)."""
+
+    # Quantas memórias, no máximo, uma busca devolve.
+    top_k: int = Field(default=5, ge=1, le=100)
+    # Similaridade de cosseno mínima (-1 a 1) para uma memória contar como relevante.
+    # 0.0 = sem corte; o valor real é calibrado com exemplos reais (T-057).
+    threshold: float = Field(default=0.0, ge=-1.0, le=1.0)
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
     session: SessionMemorySettings = Field(default_factory=SessionMemorySettings)
     mongo: MongoSettings = Field(default_factory=MongoSettings)
     embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
 
 
 class PathsSettings(BaseModel):

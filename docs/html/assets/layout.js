@@ -26,6 +26,7 @@ const FEATURES = [
   { group: "Memória", id: "T-051", title: "Memória de sessão", file: "T-051.html", desc: "Orçamento de tokens, conversa salva e retomável.", status: "done" },
   { group: "Memória", id: "T-053", title: "MongoDB e Docker Compose", file: "T-053.html", desc: "Conversas no MongoDB local, com erro amigável.", status: "done" },
   { group: "Memória", id: "T-054", title: "Embeddings locais", file: "T-054.html", desc: "Texto vira vetor na sua máquina, em CPU.", status: "done" },
+  { group: "Memória", id: "T-055", title: "VectorStore", file: "T-055.html", desc: "Memórias no MongoDB, achadas por significado.", status: "done" },
   { group: "Clientes", id: "T-040", title: "CLI", file: "T-040.html", desc: "juniper completo.", status: "done" },
   { group: "Ferramentas", id: "Status", title: "Painel de status", file: "status.html",
     desc: "Testa até onde a Juniper está funcional.", status: "tool" },

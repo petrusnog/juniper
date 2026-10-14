@@ -9,7 +9,7 @@ the ``sessions`` collection. The rest of the code only sees the interface.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -32,6 +32,17 @@ from brain.memory.session import (
     session_from_dict,
     session_info,
     session_to_dict,
+)
+from brain.memory.vector import (
+    MEMORIES_COLLECTION,
+    Memory,
+    SearchHit,
+    VectorStoreError,
+    check_update_fields,
+    check_vector,
+    memory_from_doc,
+    memory_to_doc,
+    rank,
 )
 
 SESSIONS_COLLECTION = "sessions"
@@ -188,3 +199,102 @@ class MongoSessionStore:
             return session_from_dict({**document, "id": document["_id"]})
         except (ValueError, KeyError, TypeError, AttributeError) as exc:
             raise SessionStoreError(f"sessão corrompida ({document.get('_id')}): {exc}") from exc
+
+
+# Stored fields a search may filter on. Anything else (and any operator) is refused, so a
+# filter can neither reach another memory's vector nor smuggle in a MongoDB operator.
+_FILTERABLE = frozenset({"type", "source.kind", "source.session_id"})
+
+
+class MongoVectorStore:
+    """Long-term memories in the ``memories`` collection (ADR-011, T-055).
+
+    Search loads the ``active`` vectors made by ``embedding_model`` and ranks them by cosine
+    similarity in Python (numpy). At personal volume (hundreds to a few thousand memories)
+    that answers in milliseconds and needs no Atlas. Vectors from another model are ignored,
+    since they are not comparable; ``juniper memory reindex`` brings them up to date.
+    """
+
+    def __init__(
+        self,
+        connection: MongoConnection | None = None,
+        embedding_model: str | None = None,
+    ) -> None:
+        self.connection = connection if connection is not None else MongoConnection()
+        self.embedding_model = (
+            embedding_model if embedding_model is not None else settings.memory.embeddings.model
+        )
+        self._indexed = False
+
+    def check(self) -> None:
+        self.connection.check()
+
+    def close(self) -> None:
+        self.connection.close()
+
+    def _memories(self) -> Collection[dict[str, Any]]:
+        memories = self.connection.collection(MEMORIES_COLLECTION)
+        if not self._indexed:
+            memories.create_index([("status", 1), ("type", 1)])
+            memories.create_index([("created_at", -1)])
+            self._indexed = True
+        return memories
+
+    def add(self, memory: Memory) -> str:
+        memory.validate()
+        with self.connection.guard():
+            self._memories().insert_one(memory_to_doc(memory))
+        return memory.id
+
+    def get(self, memory_id: str) -> Memory | None:
+        with self.connection.guard():
+            doc = self._memories().find_one({"_id": memory_id})
+        return None if doc is None else memory_from_doc(doc)
+
+    def search(
+        self,
+        vector: Sequence[float],
+        top_k: int | None = None,
+        threshold: float | None = None,
+        filters: Mapping[str, Any] | None = None,
+    ) -> list[SearchHit]:
+        check_vector(vector)
+        retrieval = settings.memory.retrieval
+        top_k = retrieval.top_k if top_k is None else top_k
+        threshold = retrieval.threshold if threshold is None else threshold
+        if top_k < 1:
+            raise VectorStoreError("top_k precisa ser pelo menos 1.")
+        query: dict[str, Any] = {}
+        for key, value in (filters or {}).items():
+            if key not in _FILTERABLE or isinstance(value, (dict, list)):
+                raise VectorStoreError(
+                    f"Filtro não permitido: {key!r} "
+                    f"(use {sorted(_FILTERABLE)}, com um valor simples)."
+                )
+            query[key] = value
+        query.update(status="active", embedding_model=self.embedding_model)
+        with self.connection.guard():
+            docs = list(self._memories().find(query))
+        candidates: list[tuple[Memory, list[float]]] = []
+        for doc in docs:
+            try:
+                memory = memory_from_doc(doc)
+            except VectorStoreError:
+                continue  # a damaged document must not hide the good ones
+            candidates.append((memory, memory.embedding))
+        return rank(vector, candidates, top_k, threshold)
+
+    def update(self, memory_id: str, **fields: Any) -> bool:
+        check_update_fields(fields)
+        changes = dict(fields)
+        if "embedding" in changes:
+            changes["embedding"] = [float(x) for x in changes["embedding"]]
+        changes["updated_at"] = datetime.now(UTC)
+        with self.connection.guard():
+            result = self._memories().update_one({"_id": memory_id}, {"$set": changes})
+        return bool(result.matched_count)
+
+    def delete(self, memory_id: str) -> bool:
+        with self.connection.guard():
+            result = self._memories().delete_one({"_id": memory_id})
+        return bool(result.deleted_count)
