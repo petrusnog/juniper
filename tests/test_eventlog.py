@@ -81,7 +81,14 @@ async def test_agent_logs_llm_and_tool_events() -> None:
     await agent.run("faz")
     events = read_events(event_log.directory)
     kinds = [e["event"] for e in events]
-    assert kinds == ["llm_request", "llm_response", "tool_call", "llm_request", "llm_response"]
+    assert kinds == [
+        "llm_request",
+        "llm_response",
+        "tool_call",
+        "llm_request",
+        "llm_response",
+        "timing",
+    ]
     response = events[1]
     assert response["tool_calls"] == ["echo"] and response["latency_ms"] >= 0
     tool = events[2]

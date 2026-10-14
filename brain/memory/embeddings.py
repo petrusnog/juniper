@@ -12,6 +12,7 @@ Vectors are L2-normalized, so cosine similarity is a plain dot product (T-055).
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
@@ -19,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 import httpx
 
 from brain.config import EmbeddingSettings, settings
+from brain.eventlog import event_log
 from brain.memory.errors import MemoryUnavailableError
 
 if TYPE_CHECKING:
@@ -61,6 +63,10 @@ class LocalEmbeddingProvider:
         self._input_names: set[str] = set()
         self._dimension: int | None = None
         self._lock = threading.Lock()
+        # Timing of the last call, for whoever wants to say where the time went (T-062):
+        # ``last_load_ms`` is the one-off model load (0 once loaded), ``last_infer_ms`` the work.
+        self.last_load_ms = 0.0
+        self.last_infer_ms = 0.0
 
     # --- interface -----------------------------------------------------
 
@@ -84,13 +90,25 @@ class LocalEmbeddingProvider:
             raise ValueError(f"kind inválido: {kind!r} (use 'passage' ou 'query')")
         if not texts:
             return []
+        self.last_load_ms = 0.0
         self._load()
         prefix = _PREFIXES[kind]
         vectors: list[list[float]] = []
         size = self.config.batch_size
+        started = time.perf_counter()
         for start in range(0, len(texts), size):
             chunk = [prefix + t for t in texts[start : start + size]]
             vectors.extend(v.tolist() for v in self._run(chunk))
+        self.last_infer_ms = (time.perf_counter() - started) * 1000
+        event_log.log(
+            "embedding",
+            kind=kind,
+            texts=len(texts),
+            chars=sum(len(t) for t in texts),
+            infer_ms=round(self.last_infer_ms),
+            load_ms=round(self.last_load_ms),
+            threads=self.config.threads or "auto",
+        )
         return vectors
 
     # --- model ---------------------------------------------------------
@@ -106,6 +124,7 @@ class LocalEmbeddingProvider:
         with self._lock:
             if self._session is not None:
                 return
+            load_started = time.perf_counter()
             try:
                 import onnxruntime as ort
                 from tokenizers import Tokenizer
@@ -114,13 +133,19 @@ class LocalEmbeddingProvider:
                     "Faltam dependências dos embeddings (onnxruntime, tokenizers, numpy). "
                     "Rode `pip install -e .` na pasta da Juniper."
                 ) from exc
+            download_started = time.perf_counter()
             self._download()
+            download_ms = (time.perf_counter() - download_started) * 1000
             try:
                 tokenizer = Tokenizer.from_file(str(self.model_dir / "tokenizer.json"))
                 tokenizer.enable_truncation(max_length=self.config.max_length)
                 tokenizer.enable_padding()
+                options = ort.SessionOptions()
+                if self.config.threads:
+                    options.intra_op_num_threads = self.config.threads
                 session = ort.InferenceSession(
                     str(self.model_dir / "onnx" / "model.onnx"),
+                    sess_options=options,
                     providers=["CPUExecutionProvider"],
                 )
             except Exception as exc:
@@ -132,6 +157,14 @@ class LocalEmbeddingProvider:
             self._input_names = {i.name for i in session.get_inputs()}
             self._session = session
             self._dimension = int(self._probe_dimension())
+            self.last_load_ms = (time.perf_counter() - load_started) * 1000
+            event_log.log(
+                "embedding_model_load",
+                model=self.model_id,
+                total_ms=round(self.last_load_ms),
+                download_ms=round(download_ms),
+                threads=self.config.threads or "auto",
+            )
 
     def _probe_dimension(self) -> int:
         return len(self._run(["passage: dimensão"])[0])

@@ -478,29 +478,23 @@ def lt(store: MongoVectorStore, profiles: MongoProfileStore) -> Any:
     memory_tools.bind(None)
 
 
-async def test_update_profile_asks_then_saves(
+async def test_update_profile_saves_silently(
     lt: LongTermMemory, profiles: MongoProfileStore
 ) -> None:
     from brain.llm.types import ToolCall
 
     args = {"text": PARAGRAPH, "name": "Petrus Rennan", "birth_date": "1999-06-16"}
     provider = FakeProvider(
-        [
-            ((), (ToolCall("c1", "update_profile", args),)),
-            say("Posso atualizar o seu perfil?"),
-            say("Pronto!"),
-        ]
+        [((), (ToolCall("c1", "update_profile", args),)), say("Prazer, Petrus!")]
     )
     agent = Agent(provider, Dispatcher(conversational=True))
     await agent.run("Meu nome é Petrus Rennan, nasci em 16/06/1999")
-    assert profiles.get() is None  # a WRITE: nothing before the "yes"
-    await agent.run("sim")
-    saved = profiles.get()
+    saved = profiles.get()  # written in the same turn, nobody asked anything
     assert saved is not None and saved.fields["birth_date"] == "1999-06-16"
-    assert AGE_MARKER in saved.text
+    assert AGE_MARKER in saved.text and agent._dispatcher.pending is None
 
 
-async def test_update_profile_refuses_bad_input_before_asking(lt: LongTermMemory) -> None:
+async def test_update_profile_refuses_bad_input(lt: LongTermMemory) -> None:
     for args in (
         {"text": "O usuário se chama Petrus, CPF 123.456.789-09."},
         {"text": PARAGRAPH, "birth_date": "amanhã"},

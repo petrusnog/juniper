@@ -352,6 +352,15 @@ class _Printer:
     def say(self, text: str, style: str | None = None) -> None:
         self.said.append(text)
 
+    def busy(self, text: str) -> None:
+        self.busy_text = text
+
+    def idle(self) -> None:
+        self.busy_text = None
+
+    def timing(self, text: str) -> None:
+        self.said.append(f"⏱ {text}")
+
 
 class _Memory:
     def __init__(self, result: Any) -> None:

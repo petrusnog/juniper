@@ -55,6 +55,10 @@ class Tool(ABC):
     # Default WRITE (ADR-006): a tool nobody classified asks for confirmation.
     tier: ClassVar[Tier] = Tier.WRITE
     locality: ClassVar[Locality] = Locality.EXECUTOR
+    # Whether a non-READ tool asks the user before running. Only WRITE tools may opt out, for
+    # things that are the user's own, reversible and auditable (the long-term memory: `juniper
+    # memory list/forget`). DESTRUCTIVE tools always ask (ADR-006).
+    confirm: ClassVar[bool] = True
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -87,6 +91,10 @@ class Tool(ABC):
             raise ValueError(f"{label}: 'tier' deve ser um Tier")
         if not isinstance(cls.locality, Locality):
             raise ValueError(f"{label}: 'locality' deve ser uma Locality")
+        if not isinstance(cls.confirm, bool):
+            raise ValueError(f"{label}: 'confirm' deve ser True ou False")
+        if not cls.confirm and cls.tier is not Tier.WRITE:
+            raise ValueError(f"{label}: só ferramentas WRITE podem dispensar a confirmação")
 
     @classmethod
     def available(cls) -> bool:

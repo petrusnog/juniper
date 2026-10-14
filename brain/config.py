@@ -92,6 +92,9 @@ class AgentSettings(BaseModel):
     max_iterations: int = Field(default=5, ge=1, le=50)
     language: str = "pt-BR"
     timezone: str = "America/Sao_Paulo"
+    # Mostra no terminal quanto cada etapa de cada resposta levou (memória, LLM, ferramentas).
+    # Os tempos vão para o log estruturado de qualquer jeito (evento `timing`).
+    show_timing: bool = False
 
     @field_validator("timezone")
     @classmethod
@@ -218,6 +221,10 @@ class EmbeddingSettings(BaseModel):
     # Teto de tokens por texto; o que passar disso é cortado.
     max_length: int = Field(default=512, ge=8, le=8192)
     batch_size: int = Field(default=16, ge=1, le=256)
+    # Threads de CPU do onnxruntime. 0 = automático (usa todos os núcleos, o que pode pesar na
+    # máquina enquanto você trabalha); menos threads deixam a máquina mais livre e o embedding
+    # mais lento.
+    threads: int = Field(default=0, ge=0, le=64)
     # Tempo máximo (s) para baixar cada arquivo do modelo.
     download_timeout: int = Field(default=300, ge=5, le=3600)
 

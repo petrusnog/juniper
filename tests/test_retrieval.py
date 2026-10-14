@@ -293,6 +293,15 @@ class _Printer:
     def say(self, text: str, style: str | None = None) -> None:
         self.said.append(text)
 
+    def busy(self, text: str) -> None:
+        self.busy_text = text
+
+    def idle(self) -> None:
+        self.busy_text = None
+
+    def timing(self, text: str) -> None:
+        self.said.append(f"⏱ {text}")
+
 
 async def test_cli_announces_the_model_download(store: MongoVectorStore) -> None:
     from brain.clients.cli import prepare_memory

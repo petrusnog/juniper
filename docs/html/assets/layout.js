@@ -32,6 +32,7 @@ const FEATURES = [
   { group: "Memória", id: "T-058", title: "Tools de memória e CLI", file: "T-058.html", desc: "remember, recall, forget e juniper memory.", status: "done" },
   { group: "Memória", id: "T-060", title: "Aceite da Sprint 2", file: "T-060.html", desc: "O marco de ponta a ponta e o roteiro manual.", status: "done" },
   { group: "Memória", id: "T-061", title: "Perfil do usuário", file: "T-061.html", desc: "Quem você é, em toda mensagem, a poucos tokens.", status: "done" },
+  { group: "Memória", id: "T-062", title: "Memória silenciosa e tempos", file: "T-062.html", desc: "Guardar sem perguntar e medir onde o tempo vai.", status: "done" },
   { group: "Clientes", id: "T-040", title: "CLI", file: "T-040.html", desc: "juniper completo.", status: "done" },
   { group: "Ferramentas", id: "Status", title: "Painel de status", file: "status.html",
     desc: "Testa até onde a Juniper está funcional.", status: "tool" },

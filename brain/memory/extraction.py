@@ -16,12 +16,14 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from brain.config import ExtractionSettings, settings
 from brain.core import clock
 from brain.core.session import Turn
+from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.errors import LLMError
 from brain.llm.types import Message
@@ -30,6 +32,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.profile import Profile, ProfileError, ProfileStore, build_profile, render
 from brain.memory.secretfilter import find_order, find_secret, mask_secrets
 from brain.memory.vector import MEMORY_TYPES, Memory, SearchHit, VectorStore
+from brain.timing import Stages
 
 # Longest piece of a single message sent to the extraction LLM.
 _MAX_MESSAGE_CHARS = 2000
@@ -134,6 +137,9 @@ class ExtractionResult:
     rejected: list[tuple[str, str]] = field(default_factory=list)  # (text, reason)
     profile: Profile | None = None  # the new profile, when this conversation changed it
     profile_rejected: str | None = None  # why a proposed profile was not accepted
+    timings: dict[str, int] = field(default_factory=dict)  # ms per stage (T-062)
+    total_ms: int = 0
+    llm_calls: int = 0
     error: str | None = None  # why nothing could be done (LLM or memory unavailable)
 
     @property
@@ -214,6 +220,7 @@ class MemoryExtractor:
         self.store = store
         self.config = config if config is not None else settings.memory.extraction
         self.profiles = profiles
+        self._stages = Stages()
 
     async def extract(self, turns: list[Turn], session_id: str | None = None) -> ExtractionResult:
         """Remember what is worth remembering in ``turns``. Never raises for expected failures."""
@@ -221,6 +228,7 @@ class MemoryExtractor:
         transcript = build_transcript(turns, self.config.max_turns)
         if not transcript:
             return result
+        self._stages = Stages()
         try:
             candidates, proposal = await self._analyze(transcript, result)
             await self._apply_profile(proposal, result)
@@ -241,7 +249,29 @@ class MemoryExtractor:
             result.error = f"não consegui falar com o LLM para guardar memórias: {exc}"
         except MemoryUnavailableError as exc:
             result.error = str(exc)
+        self._finish("extraction", result, len(turns))
         return result
+
+    def _finish(self, scope: str, result: ExtractionResult, turns: int) -> None:
+        """Close the stopwatch: keep the timings on the result and in the log (T-062)."""
+        result.timings = self._stages.rounded()
+        result.total_ms = self._stages.total_ms()
+        result.llm_calls = sum(
+            n for name, n in self._stages.counts.items() if name.startswith("llm_")
+        )
+        event_log.log(
+            "timing",
+            scope=scope,
+            total_ms=result.total_ms,
+            stages_ms=result.timings,
+            counts=dict(self._stages.counts),
+            turns=turns,
+            memories_added=len(result.added),
+            duplicates=len(result.duplicates),
+            superseded=len(result.superseded),
+            profile_changed=result.profile is not None,
+            error=bool(result.error),
+        )
 
     async def remember(
         self,
@@ -258,12 +288,14 @@ class MemoryExtractor:
         if reason is not None:
             result.rejected.append((text, reason))
             return result
+        self._stages = Stages()
         try:
             await self._reconcile(text, kind, session_id, result, source_kind)
         except LLMError as exc:
             result.error = f"não consegui falar com o LLM: {exc}"
         except MemoryUnavailableError as exc:
             result.error = str(exc)
+        self._finish("remember", result, 0)
         return result
 
     def _profile_on(self) -> bool:
@@ -278,12 +310,13 @@ class MemoryExtractor:
         parts = [f"<data_da_conversa>{clock.now():%d/%m/%Y}</data_da_conversa>"]
         if self._profile_on():
             assert self.profiles is not None
-            current = await asyncio.to_thread(self.profiles.get)
+            with self._stages.stage("profile_read"):
+                current = await asyncio.to_thread(self.profiles.get)
             shown = render(current) if current is not None else "(vazio)"
             parts.append(f"<perfil_atual>{shown}</perfil_atual>")
         parts.append(f"<conversa>\n{transcript}\n</conversa>")
         system = extract_system(self._profile_on(), cfg.save_feelings, max_chars)
-        data = parse_json_object(await self._ask(system, "\n".join(parts)))
+        data = parse_json_object(await self._ask(system, "\n".join(parts), "llm_extract"))
         if not data:
             return [], None
         items = data.get("memories")
@@ -298,7 +331,8 @@ class MemoryExtractor:
             return
         fields = proposal.get("fields")
         try:
-            existing = await asyncio.to_thread(self.profiles.get)
+            with self._stages.stage("profile_read"):
+                existing = await asyncio.to_thread(self.profiles.get)
             profile = build_profile(
                 proposal.get("text"),
                 fields if isinstance(fields, dict) else None,
@@ -313,13 +347,17 @@ class MemoryExtractor:
             profile.fields,
         ):
             return  # nothing actually changed
-        await asyncio.to_thread(self.profiles.set, profile)
+        with self._stages.stage("profile_write"):
+            await asyncio.to_thread(self.profiles.set, profile)
         result.profile = profile
 
-    async def _ask(self, system: str, user: str) -> str | None:
-        response = await self.llm.chat(
-            [Message("system", system), Message("user", user)], temperature=0.0, max_tokens=1200
-        )
+    async def _ask(self, system: str, user: str, stage: str = "llm") -> str | None:
+        with self._stages.stage(stage):
+            response = await self.llm.chat(
+                [Message("system", system), Message("user", user)],
+                temperature=0.0,
+                max_tokens=1200,
+            )
         return response.message.content
 
     async def _reconcile(
@@ -330,16 +368,23 @@ class MemoryExtractor:
         result: ExtractionResult,
         source_kind: str = "extracted",
     ) -> None:
+        started = time.perf_counter()
         vector = await asyncio.to_thread(self.embedder.embed, text, "passage")
-        hits = await asyncio.to_thread(
-            self.store.search,
-            vector,
-            self.config.neighbors,
-            self.config.neighbor_threshold,
-        )
+        embed_ms = (time.perf_counter() - started) * 1000
+        load_ms = min(float(getattr(self.embedder, "last_load_ms", 0.0) or 0.0), embed_ms)
+        self._stages.add("embed_model_load", load_ms)  # one-off, when this call paid for it
+        self._stages.add("embed", embed_ms - load_ms)
+        with self._stages.stage("search"):
+            hits = await asyncio.to_thread(
+                self.store.search,
+                vector,
+                self.config.neighbors,
+                self.config.neighbor_threshold,
+            )
         action, target = await self._decide(text, hits)
         if action == "duplicate" and target is not None:
-            await asyncio.to_thread(self.store.update, target)  # refreshes updated_at only
+            with self._stages.stage("write"):
+                await asyncio.to_thread(self.store.update, target)  # refreshes updated_at only
             result.duplicates.append(target)
             return
         memory = Memory(
@@ -350,13 +395,14 @@ class MemoryExtractor:
             session_id=session_id,
             source_kind=source_kind,
         )
-        await asyncio.to_thread(self.store.add, memory)
-        result.added.append(memory)
-        if action == "supersede" and target is not None:
-            await asyncio.to_thread(
-                self.store.update, target, status="superseded", superseded_by=memory.id
-            )
-            result.superseded.append((target, memory.id))
+        with self._stages.stage("write"):
+            await asyncio.to_thread(self.store.add, memory)
+            result.added.append(memory)
+            if action == "supersede" and target is not None:
+                await asyncio.to_thread(
+                    self.store.update, target, status="superseded", superseded_by=memory.id
+                )
+                result.superseded.append((target, memory.id))
 
     async def _decide(self, text: str, hits: list[SearchHit]) -> tuple[str, str | None]:
         """``(action, target id)``: duplicate / supersede / new against the closest memories."""
@@ -371,7 +417,7 @@ class MemoryExtractor:
         )
         prompt = f'Memória nova: "{text}"\n\nMemórias guardadas:\n{listing}'
         try:
-            data = parse_json_object(await self._ask(JUDGE_SYSTEM, prompt))
+            data = parse_json_object(await self._ask(JUDGE_SYSTEM, prompt, "llm_judge"))
         except LLMError:
             return "new", None  # keep the fact; a duplicate is better than a lost memory
         action = data.get("action") if data else None

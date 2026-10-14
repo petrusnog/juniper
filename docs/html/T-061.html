@@ -38,7 +38,7 @@ nascido em 16/06/1999, brasileiro.</pre>
 <div class="card">
   <p>Ao fechar o chat, a <b>mesma chamada</b> que extrai as memórias (T-056) recebe o perfil atual e a data. Ela só devolve um perfil novo se a conversa trouxe um dado de identidade <b>novo ou corrigido</b>; senão o perfil não muda e <b>não há chamada extra</b> ao LLM. Quando atualiza, avisa: <i>"Atualizei o seu perfil."</i></p>
   <p>O que a protege: só vale o que <b>você</b> escreveu (nunca saída de ferramenta ou página da web); passa pelo filtro de segredos e de "ordem para uma IA"; <b>documentos (CPF, RG, CNH, passaporte) são recusados</b>; texto maior que o limite ou data de nascimento inválida mantêm o perfil antigo.</p>
-  <p>Para valer na hora, sem esperar o fim do chat: peça "meu nome é Petrus Rennan" e a tool <code>update_profile</code> pede a sua confirmação (é uma escrita) e grava.</p>
+  <p>Para valer na hora, sem esperar o fim do chat: diga "meu nome é Petrus Rennan" e a tool <code>update_profile</code> grava na hora, sem perguntar (T-062). Para conferir ou desfazer: <code>juniper memory profile</code>.</p>
 </div>
 
 <h2>4. Memórias ligadas a você</h2>

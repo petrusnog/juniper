@@ -234,7 +234,7 @@ class Dispatcher:
             if early is not None:
                 plan.early, plan.decision = early, "precheck_failed"
                 return plan
-            if tool_cls.tier is not Tier.READ:
+            if tool_cls.tier is not Tier.READ and tool_cls.confirm:
                 plan.needs_confirm = True
                 plan.summary = await _summary(plan.tool, call)
         except Exception as exc:  # a tool bug must not kill the agent

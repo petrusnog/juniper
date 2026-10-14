@@ -18,12 +18,12 @@
 <div class="card">
   <table class="tbl">
     <tr><th>Tool</th><th>Tier</th><th>O que faz</th></tr>
-    <tr><td><code>remember</code></td><td>WRITE</td><td>Guarda um fato que você pediu. Passa pelas mesmas checagens e pela mesma deduplicação/atualização da extração automática (T-056): segredos, ordens e texto grande são recusados; repetir não duplica; uma versão nova substitui a antiga.</td></tr>
+    <tr><td><code>remember</code></td><td>WRITE, <b>sem confirmação</b></td><td>Guarda um fato que você pediu, na hora e sem perguntar (T-062). Passa pelas mesmas checagens e pela mesma deduplicação/atualização da extração automática (T-056): segredos, ordens e texto grande são recusados; repetir não duplica; uma versão nova substitui a antiga.</td></tr>
     <tr><td><code>recall</code></td><td>READ</td><td>Busca por significado e devolve o que achou, com a nota de cada resultado.</td></tr>
     <tr><td><code>forget</code></td><td>DESTRUCTIVE</td><td>Apaga de vez, por assunto (<code>query</code>) ou <code>id</code>. <b>Mostra o que vai apagar e pede confirmação</b> (ADR-006), e leva junto as versões antigas que a memória substituiu.</td></tr>
   </table>
 </div>
-<p>Os dois que alteram algo pedem um "sim" seu: a Juniper diz o que vai fazer ("esquecer para sempre: «O projeto X usa Laravel 12.»; ...") e só executa depois da sua confirmação. O motivo no <code>remember</code>: uma página ou arquivo lido pelo LLM não consegue plantar uma memória sem você saber.</p>
+<p><b>Guardar é silencioso; apagar pergunta.</b> <code>remember</code> (e o <code>update_profile</code> da T-061) gravam sem pedir permissão, para a conversa fluir; quem quer ver ou mexer no que ela sabe usa <code>juniper memory list</code>, <code>forget</code> e <code>profile</code>. Já o <code>forget</code> é irreversível: a Juniper lista o que vai apagar ("esquecer para sempre: «O projeto X usa Laravel 12.»; ...") e só executa depois do seu "sim". Segredos, ordens e texto grande continuam recusados mesmo sem perguntar. O custo de não perguntar: algo plantado por uma página da web que o LLM leu pode virar memória; as memórias entram no prompt sempre como dado, nunca como ordem, e você as audita e apaga quando quiser.</p>
 <p>As tools só aparecem para o LLM quando a memória de longo prazo está ligada (<code>store: mongo</code> e <code>memory.extraction.enabled</code>). Desligada, elas somem da lista.</p>
 
 <h2>2. No terminal</h2>
