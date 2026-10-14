@@ -67,6 +67,15 @@ class FakeCollection:
         flt = flt or {}
         return [dict(d) for d in self.docs.values() if all(_get(d, k) == v for k, v in flt.items())]
 
+    def count_documents(self, flt: dict[str, Any]) -> int:
+        return len(self.find(flt))
+
+    def replace_one(self, flt: dict[str, Any], doc: dict[str, Any], upsert: bool = False) -> Any:
+        found = flt["_id"] in self.docs
+        if found or upsert:
+            self.docs[flt["_id"]] = dict(doc)
+        return SimpleNamespace(matched_count=int(found))
+
     def update_one(self, flt: dict[str, Any], update: dict[str, Any]) -> Any:
         doc = self.docs.get(flt["_id"])
         if doc is not None:
@@ -80,11 +89,20 @@ class FakeCollection:
 class FakeConnection(MongoConnection):
     def __init__(self) -> None:
         super().__init__()
-        self.fake = FakeCollection()
+        self.collections: dict[str, FakeCollection] = {}
+
+    @property
+    def fake(self) -> FakeCollection:
+        return self.collection("memories")  # type: ignore[no-any-return]
 
     def collection(self, name: str) -> Any:
-        assert name == "memories"
-        return self.fake
+        return self.collections.setdefault(name, FakeCollection())
+
+
+@pytest.fixture(autouse=True)
+def _no_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests use tiny hand-made vectors: start from "no cut" (the real default is 0.80)."""
+    monkeypatch.setattr(settings.memory, "retrieval", RetrievalSettings(threshold=0.0))
 
 
 @pytest.fixture
@@ -304,7 +322,7 @@ def test_model_defaults_to_the_configured_one() -> None:
 
 
 def test_retrieval_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert RetrievalSettings().top_k == 5 and RetrievalSettings().threshold == 0.0
+    assert RetrievalSettings().top_k == 5 and RetrievalSettings().threshold == 0.80
     monkeypatch.setenv("JUNIPER_MEMORY__RETRIEVAL__TOP_K", "3")
     monkeypatch.setenv("JUNIPER_MEMORY__RETRIEVAL__THRESHOLD", "0.8")
     cfg = Settings(_env_file=None).memory.retrieval  # type: ignore[call-arg]

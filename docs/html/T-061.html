@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-061 · Perfil do usuário — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-061</div>
+<h1>T-061 — Perfil do usuário</h1>
+<p class="lead">A Juniper passa a saber <b>quem você é</b> desde a primeira palavra: um parágrafo de identidade (nome, nascimento, nacionalidade) vai em toda mensagem, sem depender de a busca achar algo parecido. É o que faz "bom dia" ser respondido com o seu nome. Arquivos: <code>brain/memory/profile.py</code>, <code>brain/memory/retrieval.py</code>, <code>brain/memory/extraction.py</code> e <code>brain/tools/memory.py</code>. Decisões de fundo no <code>ADR-011</code> (seção 8).</p>
+
+<h2>1. O que ela guarda</h2>
+<pre>O usuário se chama Petrus Rennan, é um homem adulto de {idade} anos,
+nascido em 16/06/1999, brasileiro.</pre>
+<div class="card">
+  <p><b>Um parágrafo de até 500 caracteres</b> (<code>memory.profile.max_chars</code>) mais campos estruturados: nome, data de nascimento, nacionalidade e gênero (este só se <b>você</b> disser; ela nunca deduz).</p>
+  <p><b>A idade não fica escrita.</b> O texto guarda <code>{idade}</code> e a idade é calculada da data de nascimento a cada mensagem: o mesmo perfil diz 27 anos hoje e 28 depois do seu aniversário, sem ninguém reescrever nada. Se a data de nascimento não é conhecida, a Juniper simplesmente omite a idade.</p>
+  <p><b>Fica fora das memórias gerais:</b> collection <code>profile</code>, um documento só. O perfil é a identidade; sentimentos e personalidade continuam como memórias.</p>
+</div>
+
+<h2>2. Como entra no prompt (e quanto custa)</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td>Em toda mensagem</td><td>O bloco <code>&lt;perfil&gt;</code> entra sempre, sem busca. Por isso a Juniper sabe seu nome mesmo num "bom dia".</td></tr>
+    <tr><td>Custo</td><td>Só o parágrafo: no teto de 500 caracteres são ~150 tokens por mensagem. O limite vale ao gravar <b>e</b> ao injetar (um perfil maior que o limite é cortado). Sem perfil, nada entra.</td></tr>
+    <tr><td>Posição</td><td>Logo <b>depois da persona</b>, que é a parte estável do prompt: os providers reaproveitam o cache dela, já que o perfil muda raramente. As memórias relevantes continuam antes da sua mensagem.</td></tr>
+    <tr><td>Segurança</td><td>Rotulado como dado, não instrução; o texto é limpo (uma linha, sem <code>&lt;</code> e <code>&gt;</code>), então não forja o bloco.</td></tr>
+  </table>
+</div>
+
+<h2>3. Como ela atualiza</h2>
+<div class="card">
+  <p>Ao fechar o chat, a <b>mesma chamada</b> que extrai as memórias (T-056) recebe o perfil atual e a data. Ela só devolve um perfil novo se a conversa trouxe um dado de identidade <b>novo ou corrigido</b>; senão o perfil não muda e <b>não há chamada extra</b> ao LLM. Quando atualiza, avisa: <i>"Atualizei o seu perfil."</i></p>
+  <p>O que a protege: só vale o que <b>você</b> escreveu (nunca saída de ferramenta ou página da web); passa pelo filtro de segredos e de "ordem para uma IA"; <b>documentos (CPF, RG, CNH, passaporte) são recusados</b>; texto maior que o limite ou data de nascimento inválida mantêm o perfil antigo.</p>
+  <p>Para valer na hora, sem esperar o fim do chat: peça "meu nome é Petrus Rennan" e a tool <code>update_profile</code> pede a sua confirmação (é uma escrita) e grava.</p>
+</div>
+
+<h2>4. Memórias ligadas a você</h2>
+<p>A extração agora escreve o <b>seu nome como sujeito</b> e uma <b>data absoluta</b> no que for datado, para a memória ficar ligada a você e ser achada por significado:</p>
+<pre>Antes:  "Ficou frustrado com a pressão no trabalho hoje."
+Agora:  "Petrus se sentiu frustrado em 14/10/2026 por uma pressão no trabalho."</pre>
+<p>Sem nome no perfil, o sujeito é "O usuário". Sentimentos e acontecimentos pessoais são <b>sensíveis</b> (o trecho vai ao provider do chat na extração): <code>memory.extraction.save_feelings: false</code> desliga.</p>
+
+<h2>5. Comandos</h2>
+<pre>juniper memory profile                      # mostra o perfil (como a Juniper o lê hoje)
+juniper memory profile set "O usuário se chama ..." \
+    --name "Petrus Rennan" --birth-date 1999-06-16 --nationality brasileira
+juniper memory profile forget [--yes]       # apaga só o perfil
+juniper memory export                       # agora traz {"profile": ..., "memories": [...]}</pre>
+<p>No <code>set</code>, escreva <code>{idade}</code> onde iria a idade; os campos informados se somam aos que já existem.</p>
+
+<h2>6. Configuração</h2>
+<pre>memory:
+  profile:
+    enabled: true
+    max_chars: 500
+  extraction:
+    save_feelings: true</pre>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Depende do LLM de extração.</b> Ele decide quando há dado de identidade novo e escreve o parágrafo; pode errar ou não perceber. Confira com <code>juniper memory profile</code> e corrija com <code>set</code>.</p>
+  <p><b>Fica em texto no seu MongoDB</b> e vai ao provider do chat durante a extração, como o resto da conversa.</p>
+  <p><b>A regra "nome como sujeito e data absoluta"</b> é uma instrução ao LLM: o código não a verifica memória por memória.</p>
+  <p><b>Só um usuário.</b> Há um perfil por banco.</p>
+  <p><b>Não testado com LLM, banco e modelo reais</b>; os testes usam simulados (inclusive o caso "bom dia" do teste de aceite).</p>
+</div>
+
+<h2>8. Como testar</h2>
+<pre>pytest -m "not integration"   # CI: sem LLM, sem banco, sem modelo</pre>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

@@ -88,6 +88,14 @@ class Tool(ABC):
         if not isinstance(cls.locality, Locality):
             raise ValueError(f"{label}: 'locality' deve ser uma Locality")
 
+    @classmethod
+    def available(cls) -> bool:
+        """Whether the tool is offered to the LLM right now (e.g. false while its backend is off).
+
+        It only hides the tool from the schemas; a call that arrives anyway still reaches ``run``.
+        """
+        return True
+
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         """Optional validation, run BEFORE the user is asked to confirm (ADR-006).
 

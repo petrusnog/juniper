@@ -70,6 +70,34 @@ def _card_numbers(text: str) -> list[re.Match[str]]:
     return found
 
 
+# Text that tries to give orders to an AI instead of stating a fact about the user.
+_ORDER = re.compile(
+    r"\b(ignor[ea]r?|desconsider[ea]r?|esque[çc]a)\b.{0,40}\b(instru[çc]|regras?|prompt|anterior)"
+    r"|\b(sempre|nunca)\b.{0,20}\b(execut|rode|rodar|apag|delet|envi|revel|obede)"
+    r"|\b(execute|rode|apague|delete|envie|revele)\b.{0,30}\b(comando|arquivo|senha|chave|tudo)"
+    r"|\bignore (all|previous|the above)|\bsystem prompt\b",
+    re.I,
+)
+
+# Civil identity documents are not part of the profile (nor of any memory).
+_DOCUMENT = re.compile(
+    r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"  # CPF
+    r"|\b(?:cpf|rg|cnh|passaporte|t[ií]tulo de eleitor|carteira de identidade)\b"
+    r"\s*(?:n[ºo.]?\s*)?[:=é]?\s*\d",
+    re.I,
+)
+
+
+def find_order(text: str) -> bool:
+    """True if ``text`` reads like an order to an AI rather than a fact about the user."""
+    return bool(_ORDER.search(text))
+
+
+def find_document(text: str) -> bool:
+    """True if ``text`` holds what looks like an identity document number (CPF, RG...)."""
+    return bool(_DOCUMENT.search(text))
+
+
 def find_secret(text: str) -> str | None:
     """Why ``text`` looks like it holds a secret (in Portuguese), or ``None`` if it does not."""
     for reason, pattern in _TOKEN_PATTERNS:

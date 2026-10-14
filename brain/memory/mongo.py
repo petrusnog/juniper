@@ -25,6 +25,14 @@ from pymongo.errors import (
 from brain.config import MongoSettings, settings
 from brain.core.session import Session
 from brain.memory.errors import MemoryUnavailableError
+from brain.memory.profile import (
+    PROFILE_COLLECTION,
+    PROFILE_ID,
+    Profile,
+    ProfileError,
+    profile_from_doc,
+    profile_to_doc,
+)
 from brain.memory.session import (
     SessionInfo,
     SessionStoreError,
@@ -35,6 +43,7 @@ from brain.memory.session import (
 )
 from brain.memory.vector import (
     MEMORIES_COLLECTION,
+    MEMORY_TYPES,
     Memory,
     SearchHit,
     VectorStoreError,
@@ -251,6 +260,30 @@ class MongoVectorStore:
             doc = self._memories().find_one({"_id": memory_id})
         return None if doc is None else memory_from_doc(doc)
 
+    def count(self) -> int:
+        with self.connection.guard():
+            return int(self._memories().count_documents({"status": "active"}))
+
+    def list_memories(
+        self, memory_type: str | None = None, include_superseded: bool = False
+    ) -> list[Memory]:
+        query: dict[str, Any] = {}
+        if not include_superseded:
+            query["status"] = "active"
+        if memory_type is not None:
+            if memory_type not in MEMORY_TYPES:
+                raise VectorStoreError(f"Tipo de memória inválido: {memory_type!r}.")
+            query["type"] = memory_type
+        with self.connection.guard():
+            docs = list(self._memories().find(query))
+        found: list[Memory] = []
+        for doc in docs:
+            try:
+                found.append(memory_from_doc(doc))
+            except VectorStoreError:
+                continue  # a damaged document must not hide the good ones
+        return sorted(found, key=lambda m: (m.created_at, m.id), reverse=True)
+
     def search(
         self,
         vector: Sequence[float],
@@ -297,4 +330,32 @@ class MongoVectorStore:
     def delete(self, memory_id: str) -> bool:
         with self.connection.guard():
             result = self._memories().delete_one({"_id": memory_id})
+        return bool(result.deleted_count)
+
+
+class MongoProfileStore:
+    """The user's profile: one document (``_id: "user"``) in the ``profile`` collection."""
+
+    def __init__(self, connection: MongoConnection | None = None) -> None:
+        self.connection = connection if connection is not None else MongoConnection()
+
+    def get(self) -> Profile | None:
+        with self.connection.guard():
+            doc = self.connection.collection(PROFILE_COLLECTION).find_one({"_id": PROFILE_ID})
+        if doc is None:
+            return None
+        try:
+            return profile_from_doc(doc)
+        except ProfileError:
+            return None  # a damaged document is treated as no profile, not as a crash
+
+    def set(self, profile: Profile) -> None:
+        with self.connection.guard():
+            self.connection.collection(PROFILE_COLLECTION).replace_one(
+                {"_id": PROFILE_ID}, profile_to_doc(profile), upsert=True
+            )
+
+    def clear(self) -> bool:
+        with self.connection.guard():
+            result = self.connection.collection(PROFILE_COLLECTION).delete_one({"_id": PROFILE_ID})
         return bool(result.deleted_count)

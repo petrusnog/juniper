@@ -8,6 +8,7 @@ Toda a lógica vive em `brain.core`.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -36,9 +37,15 @@ from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
 from brain.memory.errors import MemoryUnavailableError
-from brain.memory.longterm import LongTermMemory, open_long_term_memory
+from brain.memory.longterm import (
+    LongTermMemory,
+    open_long_term_memory,
+    open_memory_for_commands,
+)
+from brain.memory.profile import ProfileError, render
 from brain.memory.session import SessionStore
 from brain.memory.stores import close_session_store, open_session_store
+from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
@@ -303,6 +310,18 @@ def previous_session(store: SessionStore) -> tuple[Session | None, str]:
     return session, f"Retomando a conversa de {_when(session.updated_at)} ({turns} {plural} suas)."
 
 
+async def prepare_memory(memory: LongTermMemory | None, printer: Printer) -> None:
+    """Fetch the embedding model up front, saying so, instead of freezing the first reply."""
+    if memory is None:
+        return
+    try:
+        if memory.needs_model_download():
+            printer.say("Baixando o modelo da minha memória (~120 MB, só desta vez)...")
+            await asyncio.to_thread(lambda: memory.embedder.dimension)
+    except Exception as exc:  # recall will notice and skip memory; the chat itself goes on
+        printer.say(f"Vou conversar sem consultar a memória agora: {exc}", "yellow")
+
+
 async def remember_conversation(
     agent: Agent, memory: LongTermMemory | None, printer: Printer
 ) -> None:
@@ -321,6 +340,8 @@ async def remember_conversation(
     if result.added or result.superseded:
         n = len(result.added)
         printer.say(f"Guardei {n} {'coisa' if n == 1 else 'coisas'} sobre você para a próxima.")
+    if result.profile is not None:
+        printer.say("Atualizei o seu perfil.")
 
 
 async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
@@ -346,9 +367,13 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         await router.aclose()
         printer.say(str(exc), "red")
         return 1
-    agent = Agent(router, Dispatcher(conversational=True), session=session, store=store)
+    agent = Agent(
+        router, Dispatcher(conversational=True), session=session, store=store, memory=memory
+    )
     if note is not None:
         printer.say(note)
+    await prepare_memory(memory, printer)
+    memory_tools.bind(memory)
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
@@ -357,6 +382,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         await remember_conversation(agent, memory, printer)
         return code
     finally:
+        memory_tools.bind(None)
         if memory is not None:
             memory.close()
         await router.aclose()
@@ -535,6 +561,236 @@ def memory_reindex(
         f"Pronto: {result.reindexed} memória(s) reindexada(s), {result.skipped} já estavam "
         f"em dia (de {result.total}).",
     )
+
+
+def _command_memory() -> LongTermMemory:
+    """Memory for a ``juniper memory`` command, or exit 1 saying why it cannot be used."""
+    try:
+        return open_memory_for_commands()
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+
+
+def _local(moment: datetime) -> str:
+    return f"{moment.astimezone(ZoneInfo(settings.agent.timezone)):%d/%m/%Y %H:%M}"
+
+
+@memory_app.command("list")
+def memory_list(
+    memory_type: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option("--type", "-t", help="Só deste tipo: preference, project ou fact."),
+    ] = None,
+    include_all: Annotated[
+        bool,
+        typer.Option("--all", "-a", help="Inclui as memórias substituídas (só para auditoria)."),
+    ] = False,
+) -> None:
+    """Lista as memórias guardadas, das mais novas para as mais antigas."""
+    memory = _command_memory()
+    try:
+        memories = memory.store.list_memories(memory_type, include_all)
+    except (MemoryUnavailableError, ValueError) as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    if not memories:
+        voice.say(console, "Ainda não guardei nenhuma memória.")
+        return
+    table = Table(header_style="bold")
+    for column in ("Id", "Tipo", "Status", "Criada em", "Texto"):
+        table.add_column(column, overflow="fold")
+    for m in memories:
+        table.add_row(m.id, m.type, m.status, _local(m.created_at), m.text)
+    console.print(table)
+    voice.say(console, f"{len(memories)} memória(s). Para apagar uma: juniper memory forget <id>")
+
+
+@memory_app.command("search")
+def memory_search(
+    words: Annotated[list[str], typer.Argument(help="O que procurar, por significado.")],
+    limit: Annotated[
+        Optional[int],  # noqa: UP045
+        typer.Option("--limit", "-n", min=1, help="Quantos resultados (padrão: retrieval.top_k)."),
+    ] = None,
+    threshold: Annotated[
+        Optional[float],  # noqa: UP045
+        typer.Option(
+            "--threshold", min=-1.0, max=1.0, help="Nota mínima (padrão: retrieval.threshold)."
+        ),
+    ] = None,
+) -> None:
+    """Busca por significado nas memórias e mostra a nota de cada resultado."""
+    query = " ".join(words).strip()
+    memory = _command_memory()
+    try:
+        hits = asyncio.run(memory.recall(query, limit, threshold))
+    except (MemoryUnavailableError, ValueError) as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    if not hits:
+        cut = settings.memory.retrieval.threshold if threshold is None else threshold
+        voice.say(
+            console,
+            f"Nada passou da nota mínima ({cut:.2f}). Tente `--threshold 0` para ver as notas "
+            "de tudo e ajustar o retrieval.threshold no config.yaml.",
+        )
+        return
+    table = Table(header_style="bold")
+    for column in ("Nota", "Id", "Tipo", "Texto"):
+        table.add_column(column, overflow="fold")
+    for h in hits:
+        table.add_row(f"{h.score:.3f}", h.memory.id, h.memory.type, h.memory.text)
+    console.print(table)
+
+
+@memory_app.command("forget")
+def memory_forget(
+    memory_id: Annotated[str, typer.Argument(help="Id da memória (veja `juniper memory list`).")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")] = False,
+) -> None:
+    """Apaga uma memória para sempre, junto com as versões antigas que ela substituiu."""
+    memory = _command_memory()
+    try:
+        found = memory.store.get(memory_id.strip())
+        if found is None:
+            voice.say(console, f"Não achei a memória {memory_id}.", "red")
+            raise typer.Exit(1)
+        voice.say(console, f"Vou apagar para sempre: «{found.text}» ({found.type})")
+        if not yes and not typer.confirm("Pode apagar?", default=False):
+            voice.say(console, "Ok, não apaguei nada.")
+            return
+        removed = asyncio.run(memory.forget([found]))
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    extra = f" (e {len(removed) - 1} versão(ões) antiga(s))" if len(removed) > 1 else ""
+    voice.say(console, f"Esqueci.{extra}")
+
+
+@memory_app.command("export")
+def memory_export(
+    vectors: Annotated[
+        bool, typer.Option("--vectors", help="Inclui os vetores de embedding (ficam enormes).")
+    ] = False,
+    output: Annotated[
+        Optional[Path],  # noqa: UP045
+        typer.Option("--output", "-o", help="Grava neste arquivo em vez de imprimir."),
+    ] = None,
+) -> None:
+    """Exporta todas as memórias em JSON (sem os vetores, a menos que você peça)."""
+    memory = _command_memory()
+    try:
+        rows = memory.export(vectors)
+        profile_export = memory.export_profile()
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    text = json.dumps({"profile": profile_export, "memories": rows}, ensure_ascii=False, indent=2)
+    if output is None:
+        typer.echo(text)
+        return
+    output.write_text(text + "\n", encoding="utf-8")
+    voice.say(console, f"Perfil e {len(rows)} memória(s) exportados para {output}.")
+
+
+profile_app = typer.Typer(
+    help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
+    invoke_without_command=True,
+)
+memory_app.add_typer(profile_app, name="profile")
+
+
+@profile_app.callback()
+def memory_profile(ctx: typer.Context) -> None:
+    """Mostra o perfil (nome, nascimento, nacionalidade). Subcomandos: set, forget."""
+    if ctx.invoked_subcommand is not None:
+        return
+    memory = _command_memory()
+    try:
+        profile = asyncio.run(memory.get_profile())
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    if profile is None:
+        voice.say(
+            console,
+            "Ainda não tenho o seu perfil. Conte seu nome numa conversa, ou use "
+            '`juniper memory profile set "O usuário se chama ..."`.',
+        )
+        return
+    voice.say(console, f"Como eu leio o seu perfil hoje: {render(profile)}")
+    console.print(f"[dim]Guardado como:[/dim] {profile.text}")
+    for key, value in profile.fields.items():
+        console.print(f"[dim]{key}:[/dim] {value}")
+    console.print(f"[dim]Atualizado em {_local(profile.updated_at)}[/dim]")
+
+
+@profile_app.command("set")
+def memory_profile_set(
+    text: Annotated[
+        str, typer.Argument(help="O parágrafo completo. Use {idade} onde iria a idade.")
+    ],
+    name: Annotated[Optional[str], typer.Option("--name", help="Nome.")] = None,  # noqa: UP045
+    birth_date: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option("--birth-date", help="Data de nascimento, AAAA-MM-DD."),
+    ] = None,
+    nationality: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option("--nationality", help="Nacionalidade."),
+    ] = None,
+    gender: Annotated[Optional[str], typer.Option("--gender", help="Gênero.")] = None,  # noqa: UP045
+) -> None:
+    """Define o parágrafo do perfil (os campos informados se somam aos que já existem)."""
+    fields = {
+        k: v
+        for k, v in (
+            ("name", name),
+            ("birth_date", birth_date),
+            ("nationality", nationality),
+            ("gender", gender),
+        )
+        if v is not None
+    }
+    memory = _command_memory()
+    try:
+        profile = asyncio.run(memory.set_profile(text, fields))
+    except (MemoryUnavailableError, ProfileError) as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    voice.say(console, f"Perfil guardado: {render(profile)}")
+
+
+@profile_app.command("forget")
+def memory_profile_forget(
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")] = False,
+) -> None:
+    """Apaga o perfil para sempre (as memórias gerais não são tocadas)."""
+    if not yes and not typer.confirm("Apagar o seu perfil para sempre?", default=False):
+        voice.say(console, "Ok, não apaguei nada.")
+        return
+    memory = _command_memory()
+    try:
+        removed = asyncio.run(memory.forget_profile())
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    finally:
+        memory.close()
+    voice.say(console, "Esqueci o seu perfil." if removed else "Você não tinha perfil guardado.")
 
 
 @app.command()
