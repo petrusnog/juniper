@@ -29,5 +29,11 @@ _juniper_user_tag() {
 _juniper_ask() {
     local _question="$1" _var_name="$2"
     _juniper_say "$_question"
-    read "${_var_name}?$(_juniper_user_tag) "
+    # Após git/editor/merge o terminal pode ficar sem icrnl: o Enter chega como ^M (\r)
+    # e o read não recebe o fim da linha. Restaura o modo normal antes de ler.
+    [ -t 0 ] && stty icrnl icanon echo 2>/dev/null
+    local _answer
+    read "_answer?$(_juniper_user_tag) " || return 1
+    # Garante que um \r residual não contamine a resposta
+    typeset -g "${_var_name}=${_answer//$'\r'/}"
 }
