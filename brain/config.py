@@ -177,6 +177,26 @@ class GoogleSettings(BaseModel):
         return v.expanduser()
 
 
+class SessionMemorySettings(BaseModel):
+    """Memória de sessão: quanto da conversa vai ao LLM e onde ela é guardada (ver ADR-011)."""
+
+    max_turns: int = Field(default=8, ge=1, le=100)
+    # Orçamento (estimado) de tokens do histórico enviado ao LLM; turnos antigos saem primeiro.
+    max_tokens: int = Field(default=6000, ge=500, le=200_000)
+    dir: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "sessions")
+
+    @field_validator("dir")
+    @classmethod
+    def _expand_user(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
+class MemorySettings(BaseModel):
+    """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
+
+    session: SessionMemorySettings = Field(default_factory=SessionMemorySettings)
+
+
 class PathsSettings(BaseModel):
     """Paths canônicos do runtime da Juniper.
 
@@ -230,6 +250,7 @@ class Settings(BaseSettings):
     deployment: DeploymentSettings = Field(default_factory=DeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     google: GoogleSettings = Field(default_factory=GoogleSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")

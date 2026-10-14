@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from brain.config import settings
 from brain.eventlog import event_log
 
 
@@ -17,3 +18,9 @@ def _isolated_event_log(tmp_path: Path):  # type: ignore[no-untyped-def]
     event_log.enabled = True
     yield
     event_log.directory = previous
+
+
+@pytest.fixture(autouse=True)
+def _isolated_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests from saving conversations into the real ``~/.juniper/sessions``."""
+    monkeypatch.setattr(settings.memory.session, "dir", tmp_path / "sessions")

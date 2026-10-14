@@ -14,9 +14,11 @@ import re
 import readline  # noqa: F401  (enables UTF-8-aware line editing in input())
 import subprocess
 import threading
+from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Optional
+from zoneinfo import ZoneInfo
 
 import typer
 from rich.console import Console
@@ -27,10 +29,13 @@ from typer.core import TyperGroup
 
 from brain import __version__
 from brain.clients import voice
+from brain.config import settings
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
+from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
+from brain.memory.session import FileSessionStore
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
@@ -276,13 +281,39 @@ async def converse(agent: Agent, printer: Printer, reader: LineReader, message: 
         pending = None
 
 
-async def _chat(message: str | None, provider: str | None) -> int:
+def _when(timestamp: str) -> str:
+    """``2026-10-13T22:15:00+00:00`` as local time: ``13/10 às 19:15``."""
+    moment = datetime.fromisoformat(timestamp).astimezone(ZoneInfo(settings.agent.timezone))
+    return f"{moment:%d/%m} às {moment:%H:%M}"
+
+
+def previous_session(store: FileSessionStore) -> tuple[Session | None, str]:
+    """The conversation ``--resume`` picks up, and what Juniper says about it."""
+    try:
+        session = store.latest()
+    except OSError:
+        session = None
+    if session is None:
+        return None, "Não achei nenhuma conversa anterior, então vamos começar uma nova."
+    turns = sum(1 for m in session.history if m.role == "user")
+    plural = "mensagem" if turns == 1 else "mensagens"
+    return session, f"Retomando a conversa de {_when(session.updated_at)} ({turns} {plural} suas)."
+
+
+async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
     registry.discover()
     router = build_router(provider)
     printer = Printer(console)
     router.on_failover = printer.notify_failover
     reader = LineReader()
-    agent = Agent(router, Dispatcher(conversational=True))
+    store = FileSessionStore()
+    session: Session | None = None
+    note: str | None = None
+    if resume:
+        session, note = previous_session(store)
+    agent = Agent(router, Dispatcher(conversational=True), session=session, store=store)
+    if note is not None:
+        printer.say(note)
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
@@ -317,11 +348,15 @@ def chat(
             "--provider", "-p", help="Força um provider (deepinfra, groq ou ollama), sem failover."
         ),
     ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", "-r", help="Retoma a conversa mais recente."),
+    ] = False,
 ) -> None:
     """Conversa com a Juniper: `juniper oi` (uma mensagem) ou `juniper` (chat interativo)."""
     message = " ".join(words).strip() if words else None
     try:
-        code = asyncio.run(_chat(message or None, provider))
+        code = asyncio.run(_chat(message or None, provider, resume))
     except ValueError as exc:  # unknown --provider
         voice.say(console, f"{exc}", "red")
         raise typer.Exit(2) from None

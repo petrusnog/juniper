@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-051 · Memória de sessão — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-051</div>
+<h1>T-051 — Memória de sessão</h1>
+<p class="lead">A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: <code>brain/core/session.py</code> e <code>brain/memory/session.py</code>. Decisões de fundo no <code>ADR-011</code>.</p>
+
+<h2>1. Uso</h2>
+<pre>juniper                  # conversa nova (a anterior fica guardada)
+juniper --resume         # retoma a conversa mais recente  (atalho: -r)
+juniper -r "e o prazo?"  # retoma e já manda uma mensagem</pre>
+<p style="color:var(--muted)">Toda conversa é salva sozinha ao fim de cada turno. Sem conversa anterior, <code>--resume</code> avisa e abre uma nova.</p>
+
+<h2>2. Como funciona</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td><code>Session</code></td><td>Guarda o histórico, mais um <code>id</code> (ordenável por data) e os horários de criação e atualização.</td></tr>
+    <tr><td>Orçamento de tokens</td><td>Antes de cada pedido ao LLM, <code>compact()</code> mantém o histórico dentro de <code>memory.session.max_tokens</code>. Os tokens são <b>estimados</b> (≈ 4 caracteres cada), sem tokenizer.</td></tr>
+    <tr><td><code>SessionStore</code></td><td>A interface que o <code>Agent</code> usa para salvar: <code>save</code>, <code>load</code>, <code>latest</code>, <code>list_sessions</code>.</td></tr>
+    <tr><td><code>FileSessionStore</code></td><td>Um arquivo JSON por conversa em <code>~/.juniper/sessions/</code>. O MongoDB entra na T-053 trocando só esta peça.</td></tr>
+    <tr><td><code>Agent</code></td><td>Salva depois de cada turno, inclusive quando o turno falha (já desfeito pelo rollback).</td></tr>
+  </table>
+</div>
+
+<h2>3. O que sai quando passa do limite</h2>
+<p>Primeiro vale o teto de turnos (<code>max_turns</code>). Depois, se o histórico ainda passa de <code>max_tokens</code>, saem os <b>turnos mais antigos, inteiros</b>: a sua mensagem e tudo que veio depois dela, chamadas de tool incluídas. Assim nunca sobra uma resposta de tool sem a chamada que a originou, que o LLM recusaria. O turno em andamento nunca é descartado.</p>
+<p>Não há resumo por LLM nesta etapa: seria uma chamada a mais a cada estouro. O que importa de uma conversa antiga vira memória de longo prazo, nas próximas tasks da Sprint 2.</p>
+
+<h2>4. Configuração</h2>
+<pre>memory:
+  session:
+    max_turns: 8            # turnos seus mantidos
+    max_tokens: 6000        # orçamento estimado do histórico
+    dir: ~/.juniper/sessions</pre>
+
+<h2>5. Privacidade</h2>
+<div class="card">
+  <p>A conversa inteira fica em disco, então a pasta é só sua (permissão <code>700</code>, arquivos <code>600</code>). A escrita é atômica: uma queda no meio deixa a versão anterior, nunca um arquivo pela metade.</p>
+  <p>Dois cuidados ao retomar: a <b>persona não é salva</b> (vale a atual) e uma <b>confirmação pendente não volta</b>. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" (ADR-006).</p>
+</div>
+
+<h2>6. Decisões proativas</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>#</th><th>Decisão</th><th>Por quê</th></tr>
+    <tr><td>1</td><td><b>Arquivos agora, MongoDB depois.</b></td><td>O Mongo só chega na T-053. A interface <code>SessionStore</code> deixa a troca sem mexer no resto.</td></tr>
+    <tr><td>2</td><td><b>Falha ao salvar não derruba a conversa.</b></td><td>Disco cheio ou sem permissão vira um evento <code>error</code> no log; você continua conversando.</td></tr>
+    <tr><td>3</td><td><b>Ids validados</b> (<code>[A-Za-z0-9_-]</code>).</td><td>O id vira nome de arquivo; sem isso, <code>../algo</code> escaparia da pasta.</td></tr>
+    <tr><td>4</td><td><b>Arquivo estragado é ignorado</b> ao buscar a conversa mais recente.</td><td>Um JSON corrompido não pode esconder as conversas boas.</td></tr>
+    <tr><td>5</td><td><code>list_sessions</code>, e não <code>list</code>.</td><td>Um método chamado <code>list</code> conflita com o tipo <code>list[...]</code> no mypy estrito.</td></tr>
+  </table>
+</div>
+
+<h2>7. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>Retoma só a mais recente.</b> Escolher outra conversa pela lista (<code>list_sessions</code> já existe) fica para quando houver o <code>juniper memory</code>.</p>
+  <p><b>Sem expiração.</b> As conversas ficam até você apagar os arquivos.</p>
+  <p><b>Estimativa de tokens é aproximada.</b> Texto com muito código ou emoji pode pesar mais que o previsto; o orçamento padrão tem folga para isso.</p>
+</div>
+
+<h2>8. Como testar</h2>
+<pre>pytest tests/test_session_memory.py -v</pre>
+<p>Cobre: orçamento (descarta turnos inteiros, preserva o atual, não deixa tool órfã), serialização, arquivo (ida e volta, permissões, escrita atômica, id malicioso, arquivo corrompido, mais recente), o agente lembrando, salvando e retomando, turno com falha, disco quebrado e o <code>--resume</code> no CLI.</p>
+<p>Para ver ao vivo: <code>juniper "meu projeto X usa Laravel 11"</code>, feche, depois <code>juniper -r "que framework o X usa?"</code>.</p>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

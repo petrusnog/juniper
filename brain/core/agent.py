@@ -18,6 +18,7 @@ from brain.core.session import Session
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
+from brain.memory.session import SessionStore
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 
@@ -45,12 +46,14 @@ class Agent:
         session: Session | None = None,
         tool_registry: ToolRegistry | None = None,
         max_iterations: int | None = None,
+        store: SessionStore | None = None,
     ) -> None:
         self._provider = provider
         self._dispatcher = dispatcher
         self.session = session or Session()
         self._registry = tool_registry or default_registry
         self._max_iterations = max_iterations or settings.agent.max_iterations
+        self._store = store
         self._executed_until: int | None = None
 
     async def run(self, user_input: str, on_token: TokenCallback | None = None) -> str:
@@ -62,13 +65,25 @@ class Agent:
         checkpoint = self.session.checkpoint()
         self._executed_until = None
         try:
-            return await self._loop(user_input, on_token)
+            reply = await self._loop(user_input, on_token)
         except BaseException as exc:
             # Actions the user approved already ran: keep that record even if the LLM then fails.
             keep = self._executed_until if self._executed_until is not None else checkpoint
             self.session.rollback(keep)
             event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
+            self._persist()
             raise
+        self._persist()
+        return reply
+
+    def _persist(self) -> None:
+        """Save the conversation; a disk problem is logged, never allowed to end the chat."""
+        if self._store is None:
+            return
+        try:
+            self._store.save(self.session)
+        except Exception as exc:
+            event_log.log("error", where="session.save", type=type(exc).__name__, message=str(exc))
 
     async def _loop(self, user_input: str, on_token: TokenCallback | None) -> str:
         session = self.session

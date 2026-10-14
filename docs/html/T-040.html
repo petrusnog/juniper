@@ -70,7 +70,7 @@ python -m brain chat                    # equivalente, sem instalar</pre>
 <div class="card">
   <p><b>Resposta em texto puro.</b> Os tokens saem como chegam; não há renderização de Markdown (a persona já evita Markdown fora de código).</p>
   <p><b>Ctrl+C encerra o programa</b> mesmo no meio de uma resposta; ainda não cancela só o turno.</p>
-  <p><b>Sem histórico entre execuções.</b> A conversa vive só enquanto o REPL está aberto.</p>
+  <p><b>Retomar a conversa é opcional.</b> Cada execução abre uma conversa nova; <code>juniper --resume</code> (ou <code>-r</code>) retoma a mais recente. Veja a <a href="T-051.html">T-051</a>.</p>
   <p><b>Se a confirmação expirar</b>, a pergunta antiga continua na tela até você digitar algo; a próxima linha digitada responde a ela.</p>
 </div>
 
