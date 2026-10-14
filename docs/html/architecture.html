@@ -34,7 +34,7 @@
     <div class="lname"><b>5 · Interfaces</b><small>Onde você fala com ela. Finas: só capturam e exibem.</small></div>
     <div class="lblocks">
       <div class="blk done"><b>CLI</b><small>T-040 · <code>juniper</code>, streaming, confirmação na conversa</small></div>
-      <div class="blk future"><b>App web / celular</b><small>Sprint 2</small></div>
+      <div class="blk future"><b>App web / celular</b><small>Sprint 3</small></div>
       <div class="blk future"><b>Voz</b><small>Sprint 4 · STT, TTS, wake word</small></div>
     </div>
   </div>
@@ -43,8 +43,8 @@
   <div class="layer">
     <div class="lname"><b>4 · Transporte</b><small>Só existe quando o cérebro roda na nuvem. No Sprint 1 ele vive dentro da CLI e esta camada é pulada.</small></div>
     <div class="lblocks">
-      <div class="blk future"><b>API HTTPS + WebSocket</b><small>Sprint 2 · <code>clients/server.py</code></small></div>
-      <div class="blk future"><b>Token + Tailscale</b><small>Sprint 2 · sem portas públicas</small></div>
+      <div class="blk future"><b>API HTTPS + WebSocket</b><small>Sprint 3 · <code>clients/server.py</code></small></div>
+      <div class="blk future"><b>Token + Tailscale</b><small>Sprint 3 · sem portas públicas</small></div>
     </div>
   </div>
   <div class="lgap">↓ ↑</div>
@@ -71,7 +71,7 @@
       <div class="blk todo"><b>Tools: shell, abrir app</b><small>T-023, T-027</small></div>
       <div class="blk todo"><b>Tools: web</b><small>T-024 buscar página · T-025 pesquisar</small></div>
       <div class="blk done"><b>Tools: comandos git</b><small>T-026 · <code>git_search</code>, <code>git_deploy</code></small></div>
-      <div class="blk future"><b>Memória</b><small>Sprint 3 · conversa + busca por contexto (RAG)</small></div>
+      <div class="blk future"><b>Memória</b><small>Sprint 2 · conversa + busca por contexto (RAG)</small></div>
     </div>
   </div>
   <div class="lgap">↓ ↑</div>
@@ -86,7 +86,7 @@
       <div class="blk todo"><b>Internet</b><small>páginas e buscas</small></div>
       <div class="blk todo"><b>Seu PC</b><small>apps e shell, via tools</small></div>
       <div class="blk future"><b>Celular e casa</b><small>Sprint 5 · executores</small></div>
-      <div class="blk future"><b>Banco de dados</b><small>Sprint 3 · MongoDB</small></div>
+      <div class="blk future"><b>Banco de dados</b><small>Sprint 2 · MongoDB</small></div>
     </div>
   </div>
 </div>
@@ -113,7 +113,7 @@
     <tr><td>6</td><td>Se já houver algo às 16h, o LLM pergunta: <b>"Já existe «Fisioterapia» às 16h. Desmarco para marcar o dentista?"</b></td><td>Capacidades</td><td><span class="tag g">pronto</span></td></tr>
     <tr><td>7</td><td>Sem conflito (ou depois do seu "sim" e do <code>delete_event</code>), a Juniper pergunta, em palavras, <b>"Posso marcar «Dentista», segunda 16h–17h?"</b> e espera o seu "sim".</td><td>Cérebro</td><td><span class="tag b">T-030</span></td></tr>
     <tr><td>8</td><td>Você confirma, o evento é criado no calendário "Juniper" e aparece no seu celular. A resposta chega palavra por palavra.</td><td>Capacidades → Interface</td><td><span class="tag g">streaming pronto</span></td></tr>
-    <tr><td>9</td><td>Tudo é registrado no log e, no futuro, guardado na memória.</td><td>Transversal</td><td><span class="tag b">T-031</span> <span class="tag v">Sprint 3</span></td></tr>
+    <tr><td>9</td><td>Tudo é registrado no log e, no futuro, guardado na memória.</td><td>Transversal</td><td><span class="tag b">T-031</span> <span class="tag v">Sprint 2</span></td></tr>
   </table>
 </div>
 
@@ -147,8 +147,8 @@
 <h2>5. O que vem depois do Sprint 1</h2>
 <div class="sprints">
   <div class="sprint now"><b>Sprint 1 · agora</b><small>Hello Agent: local, via terminal.</small></div>
-  <div class="sprint"><b>Sprint 2</b><small>Cérebro na VPS, acesso de vários dispositivos.</small></div>
-  <div class="sprint"><b>Sprint 3</b><small>Memória de longo prazo (MongoDB + RAG).</small></div>
+  <div class="sprint"><b>Sprint 2</b><small>Memória de longo prazo (MongoDB + RAG), rodando local.</small></div>
+  <div class="sprint"><b>Sprint 3</b><small>Cérebro na VPS, acesso de vários dispositivos.</small></div>
   <div class="sprint"><b>Sprint 4</b><small>Voz: ouvir, falar, wake word.</small></div>
   <div class="sprint"><b>Sprint 5</b><small>Executores: PC, celular, casa.</small></div>
   <div class="sprint"><b>Sprint 6</b><small>Iniciativa: tarefas agendadas, proatividade.</small></div>
@@ -171,7 +171,7 @@
     <tr><td>Cérebro</td><td><code>brain/core/{agent,dispatcher,session}.py</code></td><td><a href="T-030.html">T-030</a> · <a href="T-031.html">T-031</a></td></tr>
     <tr><td>LLM</td><td><code>brain/llm/</code></td><td><a href="T-011.html">T-011</a> · <a href="T-012.html">T-012</a> · <a href="T-013.html">T-013</a> · <a href="T-014.html">T-014</a> · <a href="T-015.html">T-015</a> · <a href="T-016.html">T-016</a></td></tr>
     <tr><td>Tools</td><td><code>brain/tools/</code></td><td><a href="T-020.html">T-020</a> · <a href="T-021.html">T-021</a> · <a href="T-022.html">T-022</a> · <a href="T-026.html">T-026</a> · T-023, T-024, T-025, T-027</td></tr>
-    <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 3</td></tr>
+    <tr><td>Memória</td><td><code>brain/memory/</code></td><td>Sprint 2</td></tr>
     <tr><td>Configuração</td><td><code>brain/config.py</code></td><td>ADR-003</td></tr>
   </table>
   <p style="color:var(--muted);margin-top:10px">Este mapa descreve o plano atual (ADR-001, 002, 003, 006 e 007). Quando uma decisão mudar, esta página muda junto. O <a href="status.html">painel de status</a> mostra, ao vivo, até onde a Juniper está funcional.</p>
