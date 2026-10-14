@@ -35,7 +35,9 @@ from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.router import PROVIDERS, LLMRouter
-from brain.memory.session import FileSessionStore
+from brain.memory.errors import MemoryUnavailableError
+from brain.memory.session import SessionStore
+from brain.memory.stores import close_session_store, open_session_store
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
@@ -287,11 +289,11 @@ def _when(timestamp: str) -> str:
     return f"{moment:%d/%m} às {moment:%H:%M}"
 
 
-def previous_session(store: FileSessionStore) -> tuple[Session | None, str]:
+def previous_session(store: SessionStore) -> tuple[Session | None, str]:
     """The conversation ``--resume`` picks up, and what Juniper says about it."""
     try:
         session = store.latest()
-    except OSError:
+    except (OSError, MemoryUnavailableError):
         session = None
     if session is None:
         return None, "Não achei nenhuma conversa anterior, então vamos começar uma nova."
@@ -306,7 +308,12 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     printer = Printer(console)
     router.on_failover = printer.notify_failover
     reader = LineReader()
-    store = FileSessionStore()
+    try:
+        store = open_session_store()
+    except MemoryUnavailableError as exc:
+        await router.aclose()
+        printer.say(str(exc), "red")
+        return 1
     session: Session | None = None
     note: str | None = None
     if resume:
@@ -321,6 +328,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         return await converse(agent, printer, reader, message)
     finally:
         await router.aclose()
+        close_session_store(store)
 
 
 @app.callback()

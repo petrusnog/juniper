@@ -71,3 +71,10 @@ memory:
     max_turns: 8          # turnos do usuário mantidos no histórico
     max_tokens: 6000      # orçamento (estimado) do histórico; os turnos mais antigos saem primeiro
     dir: ~/.juniper/sessions
+    store: file           # file (arquivos JSON) ou mongo (precisa do banco abaixo no ar)
+
+  # MongoDB (T-053). Suba com `docker compose up -d`. Usuário e senha ficam no .env.
+  mongo:
+    uri: mongodb://localhost:27017
+    database: juniper
+    timeout_ms: 3000      # quanto esperar pelo servidor antes de avisar que está fora do ar

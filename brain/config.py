@@ -184,6 +184,8 @@ class SessionMemorySettings(BaseModel):
     # Orçamento (estimado) de tokens do histórico enviado ao LLM; turnos antigos saem primeiro.
     max_tokens: int = Field(default=6000, ge=500, le=200_000)
     dir: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "sessions")
+    # Onde as conversas ficam: arquivos JSON (padrão) ou MongoDB (memory.mongo).
+    store: Literal["file", "mongo"] = "file"
 
     @field_validator("dir")
     @classmethod
@@ -191,10 +193,26 @@ class SessionMemorySettings(BaseModel):
         return v.expanduser()
 
 
+class MongoSettings(BaseModel):
+    """Conexão com o MongoDB da memória (ver ADR-011, T-053).
+
+    A URI não leva credenciais: usuário e senha vêm do .env (ADR-003) e são entregues ao
+    driver à parte, então senhas com caracteres especiais não precisam ser escapadas.
+    """
+
+    uri: str = "mongodb://localhost:27017"
+    database: str = Field(default="juniper", min_length=1)
+    username: str | None = None
+    password: SecretStr | None = None
+    # Quanto esperar por um servidor antes de desistir; curto, para o erro aparecer logo.
+    timeout_ms: int = Field(default=3000, ge=100, le=60_000)
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
     session: SessionMemorySettings = Field(default_factory=SessionMemorySettings)
+    mongo: MongoSettings = Field(default_factory=MongoSettings)
 
 
 class PathsSettings(BaseModel):

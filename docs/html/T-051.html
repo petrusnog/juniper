@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>T-051 · Memória de sessão — Juniper</title>
 <link rel="stylesheet" href="assets/style.css">
-<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+<link rel="icon" type="image/png" href="assets/juniper.png">
 <script src="assets/theme.js"></script>
 </head>
 <body>
@@ -27,7 +27,7 @@ juniper -r "e o prazo?"  # retoma e já manda uma mensagem</pre>
     <tr><td><code>Session</code></td><td>Guarda o histórico, mais um <code>id</code> (ordenável por data) e os horários de criação e atualização.</td></tr>
     <tr><td>Orçamento de tokens</td><td>Antes de cada pedido ao LLM, <code>compact()</code> mantém o histórico dentro de <code>memory.session.max_tokens</code>. Os tokens são <b>estimados</b> (≈ 4 caracteres cada), sem tokenizer.</td></tr>
     <tr><td><code>SessionStore</code></td><td>A interface que o <code>Agent</code> usa para salvar: <code>save</code>, <code>load</code>, <code>latest</code>, <code>list_sessions</code>.</td></tr>
-    <tr><td><code>FileSessionStore</code></td><td>Um arquivo JSON por conversa em <code>~/.juniper/sessions/</code>. O MongoDB entra na T-053 trocando só esta peça.</td></tr>
+    <tr><td><code>FileSessionStore</code></td><td>Um arquivo JSON por conversa em <code>~/.juniper/sessions/</code>. O MongoDB entrou na T-053 trocando só esta peça (<a href="T-053.html">MongoSessionStore</a>).</td></tr>
     <tr><td><code>Agent</code></td><td>Salva depois de cada turno, inclusive quando o turno falha (já desfeito pelo rollback).</td></tr>
   </table>
 </div>

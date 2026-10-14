@@ -38,12 +38,13 @@ install_run() {
 
 install_help() {
     cat << 'EOF'
-  install [--dev] [--clean] [--check] [--yes]
+  install [--dev] [--clean] [--check] [--yes] [--memory=file|mongo]
       Instala a Juniper (ambiente virtual + dependências), mesmo sem Python na máquina.
       Reaproveita o que já está saudável e reinstala só o que estiver com defeito.
       --dev    inclui pytest, ruff e mypy
       --clean  recria o ambiente do zero
       --check  só verifica, sem alterar nada
+      --memory=file|mongo  onde guardar a memória; mongo exige o Docker instalado e rodando
       Exemplo: juniper install
 EOF
 }

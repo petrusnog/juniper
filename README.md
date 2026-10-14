@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/html/assets/logo-16bit.png" alt="Juniper" width="200">
+  <img src="docs/html/assets/juniper.png" alt="Juniper" width="200">
 </p>
 
 <h1 align="center">🌿 Juniper</h1>
@@ -22,6 +22,7 @@ Juniper é uma assistente autônoma de automação e conversação para o termin
 - **Agenda do Google:** lista, cria e apaga eventos via conta de serviço do GCP.
 - **Tools plugáveis:** `juniper tools` lista tudo o que ela sabe fazer.
 - **Instalação automática:** `juniper install` prepara o ambiente, dispensa Python prévio e pede a chave da conta de serviço do GCP.
+- **Memória com MongoDB:** as conversas são salvas e `juniper -r` retoma a última. Por padrão ficam em arquivos (`~/.juniper/sessions`, sem instalar nada). O MongoDB é opcional e **exige o Docker instalado e rodando**: o instalador pergunta qual você prefere e, se for o MongoDB, confere o Docker, sobe o banco e cria usuário e senha locais no `.env` sozinho (depois: `juniper install --memory=mongo`). Sem Docker, fique com arquivos. Se o banco estiver fora do ar, ela avisa o que fazer. Detalhes na documentação (T-053).
 - **Livro de bolso local:** `juniper docs` serve a documentação em `http://localhost:47831`.
 
 ## Documentação completa

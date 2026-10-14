@@ -213,3 +213,274 @@ def test_cli_install_hands_over_to_the_script(monkeypatch: pytest.MonkeyPatch) -
     result = CliRunner().invoke(cli.app, ["install", "--dev", "--clean"])
     assert result.exit_code == 0
     assert calls == [("bash", ["bash", str(cli.INSTALL_SCRIPT), "--dev", "--clean"])]
+
+
+# --- memory: file or MongoDB (T-053) ----------------------------------------------------
+
+import re  # noqa: E402
+import stat  # noqa: E402
+
+import yaml  # noqa: E402
+
+
+def load_script(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+set_memory_store = load_script("set_memory_store")
+EXAMPLE = (ROOT / "config.yaml.example").read_text(encoding="utf-8")
+
+
+def store_of(text: str) -> str:
+    return str(yaml.safe_load(text)["memory"]["session"]["store"])
+
+
+@pytest.mark.parametrize("value", ["file", "mongo"])
+def test_set_store_edits_the_example_and_keeps_everything_else(value: str) -> None:
+    result = set_memory_store.set_store(EXAMPLE, value)
+    assert store_of(result) == value
+    before, after = yaml.safe_load(EXAMPLE), yaml.safe_load(result)
+    before["memory"]["session"]["store"] = after["memory"]["session"]["store"] = None
+    assert before == after  # nothing else changed
+    assert "# Memória da conversa (ADR-011)" in result  # comments survive
+    assert set_memory_store.set_store(result, value) == result  # idempotent
+
+
+def test_set_store_keeps_the_inline_comment() -> None:
+    result = set_memory_store.set_store("memory:\n  session:\n    store: file   # onde\n", "mongo")
+    assert result == "memory:\n  session:\n    store: mongo   # onde\n"
+
+
+def test_set_store_appends_a_memory_block_when_there_is_none() -> None:
+    result = set_memory_store.set_store("agent:\n  language: pt-BR\n", "mongo")
+    assert store_of(result) == "mongo" and yaml.safe_load(result)["agent"]["language"] == "pt-BR"
+
+
+def test_set_store_adds_session_and_store_when_missing() -> None:
+    only_memory = set_memory_store.set_store("memory:\n  mongo:\n    database: x\n", "mongo")
+    parsed = yaml.safe_load(only_memory)
+    assert parsed["memory"]["session"]["store"] == "mongo"
+    assert parsed["memory"]["mongo"]["database"] == "x"
+
+    no_store = set_memory_store.set_store(
+        "memory:\n  session:\n    max_turns: 8\nllm:\n  x: 1\n", "mongo"
+    )
+    parsed = yaml.safe_load(no_store)
+    assert parsed["memory"]["session"] == {"max_turns": 8, "store": "mongo"} and parsed["llm"] == {
+        "x": 1
+    }
+
+
+def test_set_store_does_not_touch_a_store_key_of_another_section() -> None:
+    text = "other:\n  store: file\nmemory:\n  session:\n    max_turns: 8\n"
+    parsed = yaml.safe_load(set_memory_store.set_store(text, "mongo"))
+    assert parsed["other"]["store"] == "file" and parsed["memory"]["session"]["store"] == "mongo"
+
+
+def test_set_store_refuses_unknown_values(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        set_memory_store.set_store(EXAMPLE, "postgres")
+    config = tmp_path / "config.yaml"
+    config.write_text(EXAMPLE)
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "set_memory_store.py"), str(config), "postgres"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2 and config.read_text() == EXAMPLE
+
+
+def test_memory_option_is_validated_and_documented() -> None:
+    bad = subprocess.run(
+        ["bash", str(INSTALL_SH), "--memory=postgres"], capture_output=True, text=True, check=False
+    )
+    assert bad.returncode == 2 and "file" in bad.stderr and "mongo" in bad.stderr
+    assert sh("parse_flags --memory=mongo; echo $MEMORY_ARG").stdout.strip() == "mongo"
+    helped = subprocess.run(
+        ["bash", str(INSTALL_SH), "--help"], capture_output=True, text=True, check=False
+    )
+    assert "--memory" in helped.stdout
+
+
+def test_passwords_are_random_and_easy_to_paste() -> None:
+    first, second = (sh("generate_password").stdout for _ in range(2))
+    assert re.fullmatch(r"[0-9a-f]{24}", first) and first != second
+
+
+def test_env_variables_are_replaced_or_added(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("A=1\nB=\n")
+    sh(f'JUNIPER_ROOT="{tmp_path}"; set_env_var B novo; set_env_var C "x y"; set_env_var B outro')
+    assert (tmp_path / ".env").read_text() == "A=1\nB=outro\nC=x y\n"
+    assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
+    read = sh(f'JUNIPER_ROOT="{tmp_path}"; env_value A; env_value NADA; env_value C')
+    assert read.stdout.split("\n")[:2] == ["1", "x y"]
+
+
+class Sandbox:
+    """A throwaway Juniper folder plus a fake ``docker`` that records what it was asked."""
+
+    def __init__(self, tmp_path: Path, *, docker: bool = True) -> None:
+        self.root = tmp_path / "juniper"
+        (self.root / "scripts").mkdir(parents=True)
+        shutil.copy(ROOT / "scripts" / "set_memory_store.py", self.root / "scripts")
+        shutil.copy(ROOT / "config.yaml.example", self.root / "config.yaml")
+        shutil.copy(ROOT / ".env.example", self.root / ".env")
+        self.venv = tmp_path / "venv"
+        (self.venv / "bin").mkdir(parents=True)
+        (self.venv / "bin" / "python").symlink_to(sys.executable)
+        self.docker_log = tmp_path / "docker.log"
+        self.docker_log.write_text("")
+        self.bin = tmp_path / "fakebin"
+        self.bin.mkdir()
+        if docker:
+            fake = self.bin / "docker"
+            fake.write_text(
+                "#!/bin/sh\n"
+                'echo "$@" >> "$FAKE_DOCKER_LOG"\n'
+                'case "$1" in\n'
+                '  info) [ "${FAKE_INFO:-1}" = 1 ]; exit $? ;;\n'
+                '  volume) [ "${FAKE_VOLUME:-0}" = 1 ]; exit $? ;;\n'
+                "  compose)\n"
+                '    if [ "$2" = version ]; then [ "${FAKE_COMPOSE:-1}" = 1 ]; exit $?; fi\n'
+                '    [ "${FAKE_UP:-1}" = 1 ]; exit $? ;;\n'
+                "esac\nexit 0\n"
+            )
+            fake.chmod(0o755)
+
+    def run(self, script: str, **fake: str) -> subprocess.CompletedProcess[str]:
+        """Run ``script`` with the installer's functions, pointed at this sandbox."""
+        env = {
+            "PATH": f"{self.bin}:{os.environ['PATH']}",
+            "FAKE_DOCKER_LOG": str(self.docker_log),
+            **{f"FAKE_{k.upper()}": v for k, v in fake.items()},
+        }
+        setup = (
+            f'JUNIPER_ROOT="{self.root}"; VENV_DIR="{self.venv}"; LOG_DIR="{self.root}"; '
+            f'LOG_FILE="{self.root}/install.log"; sleep() {{ :; }}; '
+            "verify_mongo() { return 0; }; "
+        )
+        return sh(setup + script, env=env)
+
+    def env(self) -> str:
+        return (self.root / ".env").read_text()
+
+    def config(self) -> str:
+        return (self.root / "config.yaml").read_text()
+
+    def docker_calls(self) -> list[str]:
+        return self.docker_log.read_text().splitlines()
+
+
+def test_docker_problems_are_explained(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    assert box.run("docker_problem", info="1").stdout.strip() == ""
+    assert "não está rodando" in box.run("docker_problem", info="0").stdout
+    assert "docker compose" in box.run("docker_problem", compose="0").stdout
+    bare = Sandbox(tmp_path / "bare", docker=False)
+    minimal = tmp_path / "minimal"
+    minimal.mkdir()
+    for tool in ("bash", "mktemp", "rm", "dirname", "uname"):
+        found = shutil.which(tool)
+        assert found
+        (minimal / tool).symlink_to(found)
+    result = sh("docker_problem", env={"PATH": str(minimal)})
+    assert "não está instalado" in result.stdout
+    assert bare.run("true").returncode == 0
+
+
+def test_choosing_mongo_sets_everything_up(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    result = box.run("MEMORY_ARG=mongo; ensure_memory_store")
+    assert result.returncode == 0, result.stderr
+    assert store_of(box.config()) == "mongo"
+    assert "JUNIPER_MEMORY__MONGO__USERNAME=juniper" in box.env()
+    assert re.search(r"^JUNIPER_MEMORY__MONGO__PASSWORD=[0-9a-f]{24}$", box.env(), re.MULTILINE)
+    assert any(" up -d --wait" in call for call in box.docker_calls())
+    assert "Docker" in result.stdout  # it said Docker was needed, and that it found it
+
+
+def test_the_database_credentials_are_kept_on_a_second_run(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    box.run("MEMORY_ARG=mongo; ensure_memory_store")
+    first = box.env()
+    box.run("ensure_memory_store")  # no option: the config already says mongo
+    assert box.env() == first and store_of(box.config()) == "mongo"
+    assert sum(" up -d --wait" in c for c in box.docker_calls()) == 2  # makes sure it is running
+
+
+def test_without_docker_it_falls_back_to_files_and_says_why(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    before = box.env()
+    result = box.run("MEMORY_ARG=mongo; ensure_memory_store", info="0")
+    assert result.returncode == 0
+    assert store_of(box.config()) == "file" and box.env() == before  # no credentials invented
+    assert "não está rodando" in result.stdout and "juniper install --memory=mongo" in result.stdout
+    assert not any(" up " in call for call in box.docker_calls())
+
+
+def test_a_failed_start_falls_back_to_files(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    result = box.run("MEMORY_ARG=mongo; ensure_memory_store", up="0")
+    assert result.returncode == 0 and store_of(box.config()) == "file"
+    assert "Não consegui subir o MongoDB" in result.stdout
+
+
+def test_an_old_database_without_credentials_is_never_overwritten(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    result = box.run("MEMORY_ARG=mongo; ensure_memory_store", volume="1")
+    assert result.returncode == 0 and store_of(box.config()) == "file"
+    assert not re.search(r"MONGO__PASSWORD=\S", box.env())  # still empty
+    assert "docker compose down -v" in result.stdout
+    assert not any(" up " in call for call in box.docker_calls())
+
+
+def test_a_mongo_setup_is_not_downgraded_when_docker_is_off(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    box.run("MEMORY_ARG=mongo; ensure_memory_store")
+    result = box.run("ensure_memory_store", info="0")
+    assert result.returncode == 0 and store_of(box.config()) == "mongo"
+    assert "Mantive o MongoDB" in result.stdout
+
+
+def test_without_a_terminal_it_asks_nothing_and_never_touches_docker(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    result = box.run("CONFIG_FRESH=true; ensure_memory_store")
+    assert result.returncode == 0 and store_of(box.config()) == "file"
+    assert box.docker_calls() == []
+
+
+def test_an_earlier_choice_of_files_is_respected_without_asking(tmp_path: Path) -> None:
+    box = Sandbox(tmp_path)
+    result = box.run("CONFIG_FRESH=false; ensure_memory_store")
+    assert "arquivos" in result.stdout and box.docker_calls() == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("2\n", "mongo"),
+        ("mongo\n", "mongo"),
+        ("MongoDB\n", "mongo"),
+        ("1\n", "file"),
+        ("\n", "file"),
+    ],
+)
+def test_the_question_defaults_to_files(tmp_path: Path, answer: str, expected: str) -> None:
+    box = Sandbox(tmp_path)
+    full_env = {**os.environ, "JUNIPER_INSTALL_LIB": "1"}
+    result = subprocess.run(
+        [BASH, "-c", f'source "{INSTALL_SH}"; ask_memory_choice; echo "=$MEMORY_ARG"'],
+        input=answer,
+        capture_output=True,
+        text=True,
+        env=full_env,
+        check=False,
+    )
+    assert result.stdout.strip().endswith(f"={expected}")
+    assert "precisa do Docker" in result.stdout  # the requirement is stated up front
+    assert box.root.exists()

@@ -10,13 +10,16 @@
 #   ./scripts/install.sh --yes         # não faz perguntas (CI, scripts)
 #   ./scripts/install.sh --no-rc       # não mexe em ~/.zshrc / ~/.bashrc
 #   ./scripts/install.sh --gcp-key=CAMINHO  # chave de conta de serviço do GCP, sem perguntar
+#   ./scripts/install.sh --memory=mongo     # memória no MongoDB (precisa do Docker); ou --memory=file
 #
 # Funciona em máquina SEM Python. Tudo vive dentro de ~/.juniper (ambiente virtual .venv/):
 #   1. Python >= 3.11 do sistema (se existir e funcionar) ou um Python isolado baixado
 #      pelo uv (sem root, sem tocar no Python da máquina).
 #   2. Reaproveita o que já existe e está saudável; apaga e reinstala só o que está com defeito.
 #   3. Cria config.yaml, .env, certs/ (pede a chave do GCP e a salva como gcp-key.json), o atalho ~/.local/bin/juniper e o gancho do shell.
-#   4. Termina com um teste real. Se terminar com sucesso, a Juniper está pronta.
+#   4. Pergunta onde guardar a memória (arquivos ou MongoDB). Com MongoDB, confere o Docker, sobe o banco
+#      e cria usuário e senha locais no .env, sem trabalho para o usuário.
+#   5. Termina com um teste real. Se terminar com sucesso, a Juniper está pronta.
 
 set -euo pipefail
 
@@ -41,6 +44,8 @@ CLEAN=false
 CHECK_ONLY=false
 ASSUME_YES=false
 GCP_KEY_ARG=""
+MEMORY_ARG=""      # file | mongo (vazio = perguntar)
+CONFIG_FRESH=false # true quando esta execução criou o config.yaml
 CERTS_DIR="$HOME/.juniper/certs"
 GCP_KEY_DEST="$CERTS_DIR/gcp-key.json"
 TOUCH_RC=true
@@ -55,9 +60,14 @@ parse_flags() {
             --yes|--ci)  ASSUME_YES=true ;;
             --no-rc)     TOUCH_RC=false ;;
             --gcp-key=*) GCP_KEY_ARG="${arg#--gcp-key=}" ;;
+            --memory=file|--memory=mongo) MEMORY_ARG="${arg#--memory=}" ;;
+            --memory=*)
+                printf '🌿 JUNIPER: --memory aceita "file" ou "mongo" (recebi: %s)\n' "${arg#--memory=}" >&2
+                exit 2
+                ;;
             --no-ollama) ;; # aceito por compatibilidade; o Ollama é opcional
             -h|--help)
-                sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+                sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
                 exit 0
                 ;;
             *)
@@ -354,6 +364,7 @@ ensure_packages() {
 ensure_config_files() {
     if [ ! -f "$JUNIPER_ROOT/config.yaml" ] && [ -f "$JUNIPER_ROOT/config.yaml.example" ]; then
         cp "$JUNIPER_ROOT/config.yaml.example" "$JUNIPER_ROOT/config.yaml"
+        CONFIG_FRESH=true
         ok "config.yaml criado com os valores padrão"
     fi
     if [ ! -f "$JUNIPER_ROOT/.env" ] && [ -f "$JUNIPER_ROOT/.env.example" ]; then
@@ -363,6 +374,28 @@ ensure_config_files() {
     [ -f "$JUNIPER_ROOT/.env" ] && chmod 600 "$JUNIPER_ROOT/.env"
     mkdir -p "$LOG_DIR"
     return 0
+}
+
+# Grava VARIÁVEL=valor no .env (troca a linha se já existe, senão acrescenta). Permissão 600.
+set_env_var() { # set_env_var <VARIÁVEL> <valor>
+    local var="$1" value="$2" tmp
+    [ -f "$JUNIPER_ROOT/.env" ] || : > "$JUNIPER_ROOT/.env"
+    tmp="$(mktemp)"
+    if grep -q "^$var=" "$JUNIPER_ROOT/.env"; then
+        awk -v var="$var" -v k="$value" 'index($0, var "=") == 1 {print var "=" k; next} {print}' \
+            "$JUNIPER_ROOT/.env" > "$tmp"
+    else
+        cat "$JUNIPER_ROOT/.env" > "$tmp"
+        printf '%s=%s\n' "$var" "$value" >> "$tmp"
+    fi
+    cat "$tmp" > "$JUNIPER_ROOT/.env"
+    rm -f "$tmp"
+    chmod 600 "$JUNIPER_ROOT/.env"
+}
+
+env_value() { # env_value <VARIÁVEL>: o valor no .env (vazio se não houver)
+    [ -f "$JUNIPER_ROOT/.env" ] || return 0
+    sed -n "s/^$1=//p" "$JUNIPER_ROOT/.env" | head -n 1 || true
 }
 
 api_key_present() { # api_key_present <VARIÁVEL>
@@ -394,18 +427,7 @@ ensure_api_key() {
         warn "Isso não parece uma chave $name; não salvei. Edite $JUNIPER_ROOT/.env depois."
         return 0
     fi
-    local tmp
-    tmp="$(mktemp)"
-    if grep -q "^$var=" "$JUNIPER_ROOT/.env"; then
-        awk -v var="$var" -v k="$key" 'index($0, var "=") == 1 {print var "=" k; next} {print}' \
-            "$JUNIPER_ROOT/.env" > "$tmp"
-    else
-        cat "$JUNIPER_ROOT/.env" > "$tmp"
-        printf '%s=%s\n' "$var" "$key" >> "$tmp"
-    fi
-    cat "$tmp" > "$JUNIPER_ROOT/.env"
-    rm -f "$tmp"
-    chmod 600 "$JUNIPER_ROOT/.env"
+    set_env_var "$var" "$key"
     ok "Chave $name salva em .env"
 }
 
@@ -492,6 +514,160 @@ ensure_gcp_key() {
         install_gcp_key "$path" && return 0
     done
     warn "Não consegui validar a chave. Depois: ./scripts/install.sh --gcp-key=CAMINHO"
+}
+
+# --- Memória: onde as conversas ficam ---------------------------------------------
+
+MONGO_VOLUME="juniper_juniper-mongo-data"   # projeto "juniper" (docker-compose.yml) + volume
+
+# Diz por que o Docker não serve (vazio = serve).
+docker_problem() {
+    command -v docker >/dev/null 2>&1 || { echo "o Docker não está instalado"; return 0; }
+    docker compose version >/dev/null 2>&1 ||
+        { echo "falta o plugin 'docker compose' (Docker Compose v2)"; return 0; }
+    docker info >/dev/null 2>&1 ||
+        { echo "o Docker está instalado, mas não está rodando (ou seu usuário não tem permissão para usá-lo)"; return 0; }
+    return 0
+}
+
+mongo_volume_exists() {
+    docker volume inspect "$MONGO_VOLUME" >/dev/null 2>&1
+}
+
+# Senha aleatória de uso local (hexadecimal: sem caracteres que dêem trabalho no .env).
+generate_password() {
+    local password=""
+    if command -v openssl >/dev/null 2>&1; then
+        password="$(openssl rand -hex 12 2>/dev/null || true)"
+    fi
+    if [ -z "$password" ]; then
+        password="$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    fi
+    printf '%s' "$password"
+}
+
+# "file", "mongo" ou vazio (nunca escolhido) em memory.session.store do config.yaml.
+current_store() {
+    [ -f "$JUNIPER_ROOT/config.yaml" ] || return 0
+    sed -n -E 's/^[[:space:]]+store:[[:space:]]*(file|mongo).*/\1/p' "$JUNIPER_ROOT/config.yaml" |
+        head -n 1 || true
+}
+
+set_store() { # set_store <file|mongo>
+    run_logged "$VENV_DIR/bin/python" "$JUNIPER_ROOT/scripts/set_memory_store.py" \
+        "$JUNIPER_ROOT/config.yaml" "$1" ||
+        die "Não consegui registrar a memória no config.yaml."
+}
+
+# O banco responde com o usuário e a senha do .env? (usa o mesmo código da Juniper)
+verify_mongo() {
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        if run_logged "$VENV_DIR/bin/python" -c \
+            "from brain.memory.mongo import MongoConnection
+c = MongoConnection(); c.check(); c.close()"; then
+            return 0
+        fi
+        sleep 2
+    done
+    return 1
+}
+
+ask_memory_choice() { # define MEMORY_ARG
+    local answer=""
+    say "Onde eu guardo a minha memória (as nossas conversas)?"
+    printf '       1) Arquivos  - simples, não instala nada (pasta ~/.juniper/sessions). [padrão]\n'
+    printf '       2) MongoDB   - banco local num container: %sprecisa do Docker instalado e rodando%s.\n' \
+        "$C_BOLD" "$C_RESET"
+    say "Se escolher o MongoDB, eu confiro o Docker, subo o banco e crio o usuário e a senha sozinha."
+    printf '%s ' "$USER_TAG"
+    read -r answer || true
+    case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+        2|mongo|mongodb|m) MEMORY_ARG=mongo ;;
+        *) MEMORY_ARG=file ;;
+    esac
+}
+
+# Deixa o MongoDB no ar com credenciais no .env. Retorna 1 (sem alterar nada além do .env)
+# quando não dá, e o motivo vai para o usuário em português.
+setup_mongo() {
+    local problem user password
+    say "O MongoDB roda dentro de um container, então precisa do Docker instalado e rodando."
+    problem="$(docker_problem)"
+    if [ -n "$problem" ]; then
+        warn "Não consigo usar o MongoDB agora: $problem."
+        info "Instale o Docker (https://docs.docker.com/engine/install/) e rode depois: juniper install --memory=mongo"
+        return 1
+    fi
+    ok "Docker encontrado"
+
+    user="$(env_value JUNIPER_MEMORY__MONGO__USERNAME)"
+    password="$(env_value JUNIPER_MEMORY__MONGO__PASSWORD)"
+    if [ -z "$user" ] || [ -z "$password" ]; then
+        if mongo_volume_exists; then
+            warn "Já existe um banco da Juniper no Docker, mas o .env não tem o usuário e a senha dele."
+            info "Ponha JUNIPER_MEMORY__MONGO__USERNAME e ...__PASSWORD no .env, ou apague o banco antigo"
+            info "(cd $JUNIPER_ROOT && docker compose down -v: apaga as conversas dele) e rode de novo."
+            return 1
+        fi
+        user="juniper"
+        password="$(generate_password)"
+        [ -n "$password" ] || { warn "Não consegui gerar uma senha."; return 1; }
+        set_env_var JUNIPER_MEMORY__MONGO__USERNAME "$user"
+        set_env_var JUNIPER_MEMORY__MONGO__PASSWORD "$password"
+        ok "Usuário e senha do banco criados no .env (valem só nesta máquina)"
+    else
+        ok "Usuário e senha do banco já estão no .env"
+    fi
+
+    info "Subindo o MongoDB (na primeira vez baixa a imagem, ~700 MB; pode levar alguns minutos)..."
+    if ! retry docker compose --project-directory "$JUNIPER_ROOT" \
+        -f "$JUNIPER_ROOT/docker-compose.yml" up -d --wait; then
+        warn "Não consegui subir o MongoDB. Se a porta 27017 está ocupada ou o Docker falhou, o detalhe está no log."
+        return 1
+    fi
+    if ! verify_mongo; then
+        warn "O banco subiu, mas não respondeu com o usuário e a senha do .env."
+        return 1
+    fi
+    ok "MongoDB no ar e respondendo (só aceita conexões desta máquina)"
+}
+
+ensure_memory_store() {
+    if [ ! -f "$JUNIPER_ROOT/config.yaml" ]; then
+        warn "Sem config.yaml: não tenho onde registrar a memória."
+        return 0
+    fi
+    local current
+    current="$(current_store)"
+
+    if [ -z "$MEMORY_ARG" ]; then
+        if [ "$current" = mongo ]; then
+            MEMORY_ARG=mongo            # já escolhido antes: só garante que o banco está de pé
+        elif [ -n "$current" ] && [ "$CONFIG_FRESH" != true ]; then
+            ok "Memória em arquivos (para usar o MongoDB: juniper install --memory=mongo)"
+            return 0
+        elif [ "$ASSUME_YES" = true ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+            MEMORY_ARG=file             # sem terminal não há como perguntar, e Docker exige consentimento
+        else
+            ask_memory_choice
+        fi
+    fi
+
+    if [ "$MEMORY_ARG" = mongo ]; then
+        if setup_mongo; then
+            set_store mongo
+            ok "Memória guardada no MongoDB"
+            return 0
+        fi
+        if [ "$current" = mongo ]; then
+            warn "Mantive o MongoDB no config.yaml. Resolva o que está acima e rode 'juniper install' de novo."
+            return 0
+        fi
+        warn "Por enquanto vou guardar a memória em arquivos."
+    fi
+    set_store file
+    ok "Memória guardada em arquivos (~/.juniper/sessions)"
 }
 
 # --- Atalho e shell -----------------------------------------------------------------
@@ -633,6 +809,9 @@ main() {
     link_binary
     setup_shell
     optional_tools_report
+
+    title "Memória"
+    ensure_memory_store
 
     title "Verificação"
     smoke_test
