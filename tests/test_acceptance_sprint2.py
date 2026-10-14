@@ -26,10 +26,10 @@ from brain.clients import cli
 from brain.config import ExtractionSettings, RetrievalSettings, settings
 from brain.llm.base import LLMProvider
 from brain.llm.types import LLMResponse, Message, StreamChunk, ToolCall
-from brain.memory.extraction import EXTRACT_SYSTEM, JUDGE_SYSTEM, MemoryExtractor
+from brain.memory.extraction import JUDGE_SYSTEM, MemoryExtractor, is_extract_prompt
 from brain.memory.longterm import LongTermMemory
-from brain.memory.mongo import MongoVectorStore
-from brain.memory.retrieval import CLOSE_TAG, HEADER, OPEN_TAG
+from brain.memory.mongo import MongoProfileStore, MongoVectorStore
+from brain.memory.retrieval import CLOSE_TAG, HEADER, OPEN_TAG, PROFILE_HEADER
 from tests.test_vector_store import FakeConnection
 
 MODEL = "conceitos-simulados"
@@ -80,6 +80,14 @@ def _memory_lines(messages: list[Message]) -> list[str]:
     return []
 
 
+def _profile_lines(messages: list[Message]) -> list[str]:
+    for m in messages:
+        content = m.content or ""
+        if m.role == "system" and content.startswith(PROFILE_HEADER):
+            return [ln.strip() for ln in content.splitlines()[2:-1]]
+    return []
+
+
 class SimulatedLLM(LLMProvider):
     """Extrai, julga e conversa por regras. Só sabe o que está no bloco <memorias> do prompt."""
 
@@ -95,8 +103,8 @@ class SimulatedLLM(LLMProvider):
     # extraction / judge
     async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
         system, user = messages[0].content or "", messages[1].content or ""
-        if system == EXTRACT_SYSTEM:
-            data: dict[str, Any] = {"memories": self._extract(user)}
+        if is_extract_prompt(system):
+            data: dict[str, Any] = {"memories": self._extract(user), "profile": self._profile(user)}
         else:
             assert system == JUDGE_SYSTEM
             data = self._judge(user)
@@ -120,6 +128,21 @@ class SimulatedLLM(LLMProvider):
         if match := re.search(r"migrei o x para o laravel (\d+)", said):
             found.append({"text": f"O projeto X usa Laravel {match[1]}.", "type": "project"})
         return found
+
+    @staticmethod
+    def _profile(transcript: str) -> dict[str, Any] | None:
+        said = " ".join(_words(transcript))
+        if "me chamo petrus rennan" not in said:
+            return None
+        return {
+            "text": "O usuário se chama Petrus Rennan, é um homem adulto de {idade} anos, "
+            "nascido em 16/06/1999, brasileiro.",
+            "fields": {
+                "name": "Petrus Rennan",
+                "birth_date": "1999-06-16",
+                "nationality": "brasileira",
+            },
+        }
 
     @staticmethod
     def _judge(prompt: str) -> dict[str, Any]:
@@ -149,6 +172,12 @@ class SimulatedLLM(LLMProvider):
         elif "esquece" in said:
             yield StreamChunk(tool_calls=(ToolCall("f1", "forget", {"query": "projeto X"}),))
             return
+        elif said.startswith("bom dia"):
+            name = next(
+                (m[1] for ln in _profile_lines(messages) if (m := re.search(r"chama (\w+)", ln))),
+                None,
+            )
+            text = f"Bom dia, {name}!" if name else "Bom dia!"
         elif "shell" in said:
             text = "Você usa ZSH." if any("ZSH" in ln for ln in lines) else "Não lembro disso."
         elif "indentar" in said:
@@ -188,12 +217,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> tuple[SimulatedLLM, MongoVectorSto
     llm = SimulatedLLM()
     store = MongoVectorStore(FakeConnection(), embedding_model=MODEL)
     embedder = ConceptEmbedder()
+    profiles = MongoProfileStore(store.connection)
 
     def open_memory(router: Any) -> LongTermMemory:
         extractor = MemoryExtractor(
-            llm, embedder, store, ExtractionSettings(neighbor_threshold=0.3)
+            llm, embedder, store, ExtractionSettings(neighbor_threshold=0.3), profiles
         )
-        return LongTermMemory(store, embedder, extractor)
+        return LongTermMemory(store, embedder, extractor, profiles)
 
     monkeypatch.setattr(cli, "build_router", lambda provider: llm)
     monkeypatch.setattr(cli, "open_long_term_memory", open_memory)
@@ -276,6 +306,30 @@ async def test_the_milestone(
     assert active(store) == ["Odeia tabulação com espaço.", "Prefere ZSH."]  # the rest stays
     out = await session(monkeypatch, capsys, "Que framework PHP o projeto X usa?")
     assert "Não lembro disso." in out
+
+
+async def test_the_name_is_remembered_even_in_a_greeting(
+    world: tuple[SimulatedLLM, MongoVectorStore],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """T-061: the profile is in every prompt, so "bom dia" is answered by name."""
+    llm, store = world
+
+    out = await session(monkeypatch, capsys, "Oi! Me chamo Petrus Rennan, nasci em 16/06/1999.")
+    assert "Atualizei o seu perfil" in out
+
+    # A new session. Nothing in "bom dia" resembles the name, so only the profile can bring it.
+    out = await session(monkeypatch, capsys, "Bom dia!")
+    assert "Bom dia, Petrus!" in out
+    greeting = next(p for p in llm.prompts if "Bom dia!" in (p[-1].content or ""))
+    assert any("Petrus Rennan" in (m.content or "") for m in greeting if m.role == "system")
+    assert not any(m.content and m.content.startswith(HEADER) for m in greeting)  # no memories
+
+    # The profile survives alongside the rest of the milestone.
+    out = await session(monkeypatch, capsys, "Prefiro ZSH.")
+    out = await session(monkeypatch, capsys, "Qual shell eu uso?")
+    assert "Você usa ZSH." in out
 
 
 @pytest.mark.integration

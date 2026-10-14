@@ -16,6 +16,8 @@ from brain.llm.base import LLMProvider
 from brain.memory.embeddings import EmbeddingProvider, open_embedding_provider
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.extraction import ExtractionResult, MemoryExtractor
+from brain.memory.profile import Profile, ProfileStore, build_profile
+from brain.memory.profile import export as export_profile
 from brain.memory.retrieval import RecalledContext, recall_context
 from brain.memory.vector import Memory, SearchHit, VectorStore
 
@@ -26,10 +28,12 @@ class LongTermMemory:
         store: VectorStore,
         embedder: EmbeddingProvider,
         extractor: MemoryExtractor | None,
+        profiles: ProfileStore | None = None,
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.extractor = extractor
+        self.profiles = profiles
 
     async def extract(self, turns: list[Turn], session_id: str | None = None) -> ExtractionResult:
         if self.extractor is None:
@@ -102,7 +106,35 @@ class LongTermMemory:
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
         """The memories relevant to ``message``, ready to inject into the prompt (T-057)."""
-        return await recall_context(self.store, self.embedder, message, previous)
+        return await recall_context(self.store, self.embedder, message, previous, self.profiles)
+
+    # --- profile (T-061) ---
+
+    def profile_enabled(self) -> bool:
+        return self.profiles is not None and settings.memory.profile.enabled
+
+    async def get_profile(self) -> Profile | None:
+        if not self.profile_enabled():
+            return None
+        assert self.profiles is not None
+        return await asyncio.to_thread(self.profiles.get)
+
+    async def set_profile(self, text: str, fields: dict[str, Any] | None = None) -> Profile:
+        """Replace the profile paragraph (fields are merged). ``ProfileError`` if not acceptable."""
+        if self.profiles is None or not self.profile_enabled():
+            raise MemoryUnavailableError("O perfil está desligado (memory.profile.enabled).")
+        existing = await asyncio.to_thread(self.profiles.get)
+        profile = build_profile(text, fields, existing, settings.memory.profile.max_chars)
+        await asyncio.to_thread(self.profiles.set, profile)
+        return profile
+
+    async def forget_profile(self) -> bool:
+        if self.profiles is None:
+            return False
+        return await asyncio.to_thread(self.profiles.clear)
+
+    def export_profile(self) -> dict[str, Any] | None:
+        return export_profile(self.profiles.get() if self.profiles is not None else None)
 
     def needs_model_download(self) -> bool:
         """True if there are memories to search and the embedding model is not on disk yet."""
@@ -127,14 +159,17 @@ def open_long_term_memory(llm: LLMProvider) -> LongTermMemory | None:
     if not long_term_enabled():
         return None
     try:
-        from brain.memory.mongo import MongoVectorStore
+        from brain.memory.mongo import MongoProfileStore, MongoVectorStore
     except ImportError as exc:
         raise MemoryUnavailableError(
             "Falta o driver do MongoDB (pymongo). Rode `pip install -e .` na pasta da Juniper."
         ) from exc
     store = MongoVectorStore()
     embedder = open_embedding_provider()
-    return LongTermMemory(store, embedder, MemoryExtractor(llm, embedder, store))
+    profiles = MongoProfileStore(store.connection)
+    return LongTermMemory(
+        store, embedder, MemoryExtractor(llm, embedder, store, profiles=profiles), profiles
+    )
 
 
 def open_memory_for_commands() -> LongTermMemory:
@@ -143,7 +178,7 @@ def open_memory_for_commands() -> LongTermMemory:
     Raises ``MemoryUnavailableError`` (message fit for the user) when MongoDB cannot be used.
     """
     try:
-        from brain.memory.mongo import MongoVectorStore
+        from brain.memory.mongo import MongoProfileStore, MongoVectorStore
     except ImportError as exc:
         raise MemoryUnavailableError(
             "Falta o driver do MongoDB (pymongo). Rode `pip install -e .` na pasta da Juniper."
@@ -154,4 +189,6 @@ def open_memory_for_commands() -> LongTermMemory:
     except MemoryUnavailableError:
         store.close()
         raise
-    return LongTermMemory(store, open_embedding_provider(), None)
+    return LongTermMemory(
+        store, open_embedding_provider(), None, MongoProfileStore(store.connection)
+    )

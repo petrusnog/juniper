@@ -25,6 +25,14 @@ from pymongo.errors import (
 from brain.config import MongoSettings, settings
 from brain.core.session import Session
 from brain.memory.errors import MemoryUnavailableError
+from brain.memory.profile import (
+    PROFILE_COLLECTION,
+    PROFILE_ID,
+    Profile,
+    ProfileError,
+    profile_from_doc,
+    profile_to_doc,
+)
 from brain.memory.session import (
     SessionInfo,
     SessionStoreError,
@@ -322,4 +330,32 @@ class MongoVectorStore:
     def delete(self, memory_id: str) -> bool:
         with self.connection.guard():
             result = self._memories().delete_one({"_id": memory_id})
+        return bool(result.deleted_count)
+
+
+class MongoProfileStore:
+    """The user's profile: one document (``_id: "user"``) in the ``profile`` collection."""
+
+    def __init__(self, connection: MongoConnection | None = None) -> None:
+        self.connection = connection if connection is not None else MongoConnection()
+
+    def get(self) -> Profile | None:
+        with self.connection.guard():
+            doc = self.connection.collection(PROFILE_COLLECTION).find_one({"_id": PROFILE_ID})
+        if doc is None:
+            return None
+        try:
+            return profile_from_doc(doc)
+        except ProfileError:
+            return None  # a damaged document is treated as no profile, not as a crash
+
+    def set(self, profile: Profile) -> None:
+        with self.connection.guard():
+            self.connection.collection(PROFILE_COLLECTION).replace_one(
+                {"_id": PROFILE_ID}, profile_to_doc(profile), upsert=True
+            )
+
+    def clear(self) -> bool:
+        with self.connection.guard():
+            result = self.connection.collection(PROFILE_COLLECTION).delete_one({"_id": PROFILE_ID})
         return bool(result.deleted_count)

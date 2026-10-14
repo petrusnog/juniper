@@ -67,6 +67,7 @@ class Agent:
         self._store = store
         self._memory = memory
         self._memory_message: Message | None = None
+        self._profile_message: Message | None = None
         self._executed_until: int | None = None
         self._turns: list[Turn] = []
 
@@ -109,7 +110,7 @@ class Agent:
         session = self.session
         previous = _last_user_text(session)
         session.add_user(user_input)
-        self._memory_message = await self._recall(user_input, previous)
+        self._profile_message, self._memory_message = await self._recall(user_input, previous)
         pending, self._dispatcher.pending = self._dispatcher.pending, None
         said_yes = interpret_reply(user_input) == "yes"
         consent: str | None = None
@@ -146,19 +147,23 @@ class Agent:
             await _emit(on_token, LIMIT_MESSAGE)
         return LIMIT_MESSAGE
 
-    async def _recall(self, user_input: str, previous: str | None) -> Message | None:
-        """The memories for this turn as a system message, or None. Never breaks the turn."""
+    async def _recall(
+        self, user_input: str, previous: str | None
+    ) -> tuple[Message | None, Message | None]:
+        """The profile and the relevant memories as system messages. Never breaks the turn."""
         if self._memory is None:
-            return None
+            return None, None
         try:
             context = await self._memory.context_for(user_input, previous)
         except Exception as exc:
             # The chat goes on without memory; and without retrying it on every message.
             event_log.log("error", where="memory.recall", type=type(exc).__name__, message=str(exc))
             self._memory = None
-            return None
+            return None, None
         event_log.log("memory_recall", **context.audit())
-        return Message("system", context.block) if context.block else None
+        profile = Message("system", context.profile) if context.profile else None
+        memories = Message("system", context.block) if context.block else None
+        return profile, memories
 
     async def _ensure_question(self, message: Message, on_token: TokenCallback | None) -> str:
         """If actions are parked but the assistant did not ask, the system asks for it."""
@@ -188,7 +193,9 @@ class Agent:
         calls: list[ToolCall] = []
         usage: TokenUsage | None = None
         finish_reason: str | None = None
-        messages = _with_memory(self.session.messages(), self._memory_message)
+        messages = _with_context(
+            self.session.messages(), self._profile_message, self._memory_message
+        )
         event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
         started = time.monotonic()
         async for chunk in self._provider.stream(messages, tools=schemas):
@@ -225,18 +232,24 @@ def _last_user_text(session: Session) -> str | None:
     return None
 
 
-def _with_memory(messages: list[Message], memory: Message | None) -> list[Message]:
-    """``messages`` with the recalled memories just before the current user message.
+def _with_context(
+    messages: list[Message], profile: Message | None, memory: Message | None
+) -> list[Message]:
+    """``messages`` with the user's profile and the recalled memories added for this turn.
 
-    The block is per turn: it is never saved in the history, and it sits after the stable part
-    of the prompt (persona, older turns) so providers can keep reusing their prompt cache.
+    Neither is saved in the history. The profile (who the user is) changes rarely, so it goes
+    right after the persona, in the stable part of the prompt that providers cache; the memories
+    (relevant to this message) go just before the current user message.
     """
-    if memory is None:
-        return messages
-    for index in range(len(messages) - 1, 0, -1):
-        if messages[index].role == "user":
-            return [*messages[:index], memory, *messages[index:]]
-    return messages
+    out = list(messages)
+    if memory is not None:
+        for index in range(len(out) - 1, 0, -1):
+            if out[index].role == "user":
+                out.insert(index, memory)
+                break
+    if profile is not None and out and out[0].role == "system":
+        out.insert(1, profile)
+    return out
 
 
 def _last_assistant_words(session: Session) -> str | None:
