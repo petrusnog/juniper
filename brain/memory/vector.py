@@ -96,6 +96,12 @@ class VectorStore(Protocol):
         """How many ``active`` memories there are (cheap: lets callers skip a pointless search)."""
         ...
 
+    def list_memories(
+        self, memory_type: str | None = None, include_superseded: bool = False
+    ) -> list[Memory]:
+        """Memories newest first; ``active`` only unless ``include_superseded``."""
+        ...
+
     def search(
         self,
         vector: Sequence[float],
