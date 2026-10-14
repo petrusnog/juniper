@@ -62,7 +62,10 @@
   <p><b>Carrega todos os vetores ativos a cada busca.</b> É de sobra para o volume pessoal previsto; se chegar a centenas de milhares, a troca é o Atlas Vector Search atrás da mesma interface.</p>
 </div>
 
-<h2>6. Como testar</h2>
+<h2>6. Desempenho</h2>
+<p>Medido com 5000 memórias de 384 números (o volume que o ADR prevê), <b>sem</b> a ida ao MongoDB (a collection do teste fica em memória): a busca leva cerca de <b>0,8 s</b> neste ambiente de desenvolvimento, quase tudo em ler e validar os documentos. O cosseno em si leva ~0,1 s. Com algumas centenas de memórias, que é o uso pessoal típico, cai para dezenas de milissegundos. A latência com o banco real e na VPS ainda não foi medida. Se passar a incomodar, a saída prevista é o Atlas Vector Search atrás da mesma interface. O teste <code>test_search_latency_with_five_thousand_memories</code> guarda um teto folgado (5 s) só para pegar regressões grosseiras.</p>
+
+<h2>7. Como testar</h2>
 <pre>pytest -m "not integration"   # CI: collection falsa, sem banco
 pytest -m integration         # contra o MongoDB local (docker compose up -d)</pre>
 </main>

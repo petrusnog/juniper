@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from brain.config import settings
 from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
-from brain.core.session import Session
+from brain.core.session import Session, Turn
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
@@ -55,6 +55,12 @@ class Agent:
         self._max_iterations = max_iterations or settings.agent.max_iterations
         self._store = store
         self._executed_until: int | None = None
+        self._turns: list[Turn] = []
+
+    def drain_turns(self) -> list[Turn]:
+        """The exchanges finished since the last call (for long-term memory extraction)."""
+        turns, self._turns = self._turns, []
+        return turns
 
     async def run(self, user_input: str, on_token: TokenCallback | None = None) -> str:
         """Answer ``user_input``, running tools as needed; return the final text.
@@ -73,6 +79,7 @@ class Agent:
             event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
             self._persist()
             raise
+        self._turns.append(Turn(user_input, reply))
         self._persist()
         return reply
 

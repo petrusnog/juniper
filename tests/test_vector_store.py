@@ -352,3 +352,27 @@ def test_real_mongo_round_trip(live: MongoVectorStore) -> None:
     assert live.update(b.id, status="superseded")
     assert [h.memory.id for h in live.search([0.1, 1.0])] == [a.id]
     assert live.delete(a.id) and live.search([0.1, 1.0]) == []
+
+
+def test_search_latency_with_five_thousand_memories(store: MongoVectorStore) -> None:
+    """Documents the cost of the Python cosine at the volume the ADR plans for (T-055).
+
+    Measured here without the network hop to MongoDB (the collection is in memory): about
+    0.8 s for 5000 memories of 384 numbers. The bound is loose on purpose, so slow CI runners
+    do not make it flaky; it only catches an accidental blow-up (e.g. quadratic work).
+    """
+    import random
+    import time
+
+    rng = random.Random(0)
+    docs = fake(store).docs
+    for i in range(5000):
+        m = mem(f"memória {i}", [rng.gauss(0, 1) for _ in range(384)])
+        docs[m.id] = memory_to_doc(m)
+    query = [rng.gauss(0, 1) for _ in range(384)]
+    started = time.perf_counter()
+    hits = store.search(query, top_k=5)
+    elapsed = time.perf_counter() - started
+    assert len(hits) == 5 and hits[0].score >= hits[-1].score
+    assert elapsed < 5.0, f"busca em 5000 memórias levou {elapsed:.2f}s"
+    print(f"search 5000x384: {elapsed * 1000:.0f} ms")
