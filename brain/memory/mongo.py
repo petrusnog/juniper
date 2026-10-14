@@ -251,6 +251,10 @@ class MongoVectorStore:
             doc = self._memories().find_one({"_id": memory_id})
         return None if doc is None else memory_from_doc(doc)
 
+    def count(self) -> int:
+        with self.connection.guard():
+            return int(self._memories().count_documents({"status": "active"}))
+
     def search(
         self,
         vector: Sequence[float],

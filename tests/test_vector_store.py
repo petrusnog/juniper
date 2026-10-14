@@ -67,6 +67,9 @@ class FakeCollection:
         flt = flt or {}
         return [dict(d) for d in self.docs.values() if all(_get(d, k) == v for k, v in flt.items())]
 
+    def count_documents(self, flt: dict[str, Any]) -> int:
+        return len(self.find(flt))
+
     def update_one(self, flt: dict[str, Any], update: dict[str, Any]) -> Any:
         doc = self.docs.get(flt["_id"])
         if doc is not None:
@@ -85,6 +88,12 @@ class FakeConnection(MongoConnection):
     def collection(self, name: str) -> Any:
         assert name == "memories"
         return self.fake
+
+
+@pytest.fixture(autouse=True)
+def _no_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests use tiny hand-made vectors: start from "no cut" (the real default is 0.80)."""
+    monkeypatch.setattr(settings.memory, "retrieval", RetrievalSettings(threshold=0.0))
 
 
 @pytest.fixture
@@ -304,7 +313,7 @@ def test_model_defaults_to_the_configured_one() -> None:
 
 
 def test_retrieval_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert RetrievalSettings().top_k == 5 and RetrievalSettings().threshold == 0.0
+    assert RetrievalSettings().top_k == 5 and RetrievalSettings().threshold == 0.80
     monkeypatch.setenv("JUNIPER_MEMORY__RETRIEVAL__TOP_K", "3")
     monkeypatch.setenv("JUNIPER_MEMORY__RETRIEVAL__THRESHOLD", "0.8")
     cfg = Settings(_env_file=None).memory.retrieval  # type: ignore[call-arg]

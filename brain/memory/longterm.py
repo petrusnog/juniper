@@ -13,6 +13,7 @@ from brain.llm.base import LLMProvider
 from brain.memory.embeddings import EmbeddingProvider, open_embedding_provider
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.extraction import ExtractionResult, MemoryExtractor
+from brain.memory.retrieval import RecalledContext, recall_context
 from brain.memory.vector import VectorStore
 
 
@@ -26,6 +27,15 @@ class LongTermMemory:
 
     async def extract(self, turns: list[Turn], session_id: str | None = None) -> ExtractionResult:
         return await self.extractor.extract(turns, session_id)
+
+    async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
+        """The memories relevant to ``message``, ready to inject into the prompt (T-057)."""
+        return await recall_context(self.store, self.embedder, message, previous)
+
+    def needs_model_download(self) -> bool:
+        """True if there are memories to search and the embedding model is not on disk yet."""
+        downloaded = getattr(self.embedder, "is_downloaded", None)
+        return callable(downloaded) and not downloaded() and self.store.count() > 0
 
     def close(self) -> None:
         close = getattr(self.store, "close", None)

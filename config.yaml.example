@@ -87,10 +87,11 @@ memory:
     max_length: 512
     batch_size: 16
 
-  # Busca na memória de longo prazo (T-055). Calibre o threshold com exemplos reais.
+  # Busca na memória de longo prazo (T-055/T-057). Calibre o threshold com exemplos reais.
   retrieval:
-    top_k: 5              # no máximo quantas memórias uma busca devolve
-    threshold: 0.0        # similaridade mínima (cosseno, -1 a 1); 0.0 = sem corte
+    top_k: 5              # no máximo quantas memórias entram no prompt de cada mensagem
+    threshold: 0.80       # similaridade mínima (cosseno, -1 a 1); o e5 dá notas altas a tudo
+    max_tokens: 500       # orçamento (estimado) das memórias injetadas
 
   # Extração de memórias da conversa (T-056). Roda ao encerrar o chat, só com `store: mongo`.
   extraction:
