@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-055 · VectorStore — Juniper</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Índice</a> / Memória / T-055</div>
+<h1>T-055 — VectorStore</h1>
+<p class="lead">Onde as memórias de longo prazo moram e como são achadas por <b>significado</b>. As memórias ficam na collection <code>memories</code> do MongoDB e a busca compara o vetor da pergunta com os vetores guardados (similaridade de cosseno). Arquivos: <code>brain/memory/vector.py</code> (interface e cálculo) e <code>brain/memory/mongo.py</code> (<code>MongoVectorStore</code>). Decisões de fundo no <code>ADR-011</code>.</p>
+
+<h2>1. Como funciona</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><th>Peça</th><th>O que faz</th></tr>
+    <tr><td><code>Memory</code></td><td>Uma memória: texto curto, <code>type</code> (<code>preference</code>, <code>project</code> ou <code>fact</code>), <code>status</code>, vetor e o modelo que o gerou. É validada antes de gravar.</td></tr>
+    <tr><td><code>VectorStore</code></td><td>A interface: <code>add</code>, <code>get</code>, <code>search</code>, <code>update</code> e <code>delete</code>. O resto da Juniper só conhece ela, então dá para trocar pelo Atlas Vector Search sem mexer em mais nada.</td></tr>
+    <tr><td><code>MongoVectorStore</code></td><td>Carrega do banco os vetores das memórias <code>active</code> feitas pelo modelo atual e calcula o cosseno em Python (numpy). Para centenas ou poucos milhares de memórias isso leva milissegundos e não exige Atlas.</td></tr>
+    <tr><td><code>search</code></td><td>Devolve as <code>top_k</code> mais próximas com similaridade ≥ <code>threshold</code>, a melhor primeiro, cada uma com sua nota (<code>score</code>, de -1 a 1).</td></tr>
+  </table>
+</div>
+
+<h2>2. Regras que a busca respeita</h2>
+<div class="card">
+  <p><b>Só enxerga memórias <code>active</code>.</b> Uma memória <code>superseded</code> (substituída por outra) fica no banco só para auditoria e nunca aparece, nem com filtro.</p>
+  <p><b>Só compara vetores do mesmo modelo.</b> Memórias de outro modelo de embeddings são ignoradas (não são comparáveis) até o <code>juniper memory reindex</code> da T-054 atualizá-las. Vetores de tamanho diferente também são pulados.</p>
+  <p><b>Filtros são uma lista fechada:</b> <code>type</code>, <code>source.kind</code> e <code>source.session_id</code>, com valor simples. Qualquer outra chave ou operador do MongoDB é recusado.</p>
+  <p><b>Documento corrompido é ignorado</b> na busca: um registro ruim não esconde os bons.</p>
+  <p><b><code>update</code> não mexe em <code>_id</code> nem em <code>created_at</code></b> e atualiza <code>updated_at</code> sozinho. Trocar o vetor exige informar também o <code>embedding_model</code>. <b><code>delete</code> apaga de verdade</b>, como pede o <code>forget</code>.</p>
+</div>
+
+<h2>3. O que fica no banco</h2>
+<pre>{
+  "_id": "mem_20261014033000a1b2c3",
+  "text": "O projeto X usa Laravel 11.",
+  "type": "project",
+  "status": "active",
+  "superseded_by": null,
+  "embedding": [0.012, -0.087, ...],      // 384 números
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "source": { "kind": "extracted", "session_id": "..." },
+  "created_at": "...", "updated_at": "..."
+}</pre>
+<p>Índices criados na primeira gravação ou busca: <code>(status, type)</code> e <code>created_at</code>. O vetor não tem índice no MVP.</p>
+
+<h2>4. Configuração</h2>
+<pre>memory:
+  retrieval:
+    top_k: 5          # no máximo quantas memórias uma busca devolve
+    threshold: 0.0    # similaridade mínima (cosseno); 0.0 = sem corte</pre>
+<p>Ambos podem ser passados direto em <code>search(...)</code>; sem isso valem os da configuração.</p>
+
+<h2>5. Limitações conhecidas</h2>
+<div class="card">
+  <p><b>O <code>threshold</code> ainda não foi calibrado.</b> O padrão <code>0.0</code> não filtra nada. O valor certo depende do modelo e de exemplos reais em PT-BR, e é definido na T-057 (recuperação).</p>
+  <p><b>Nada grava memórias ainda.</b> Esta task entrega o armazenamento e a busca; quem decide o que vira memória é a extração (T-056), e as tools <code>remember</code>/<code>recall</code>/<code>forget</code> vêm na T-058.</p>
+  <p><b>Carrega todos os vetores ativos a cada busca.</b> É de sobra para o volume pessoal previsto; se chegar a centenas de milhares, a troca é o Atlas Vector Search atrás da mesma interface.</p>
+</div>
+
+<h2>6. Como testar</h2>
+<pre>pytest -m "not integration"   # CI: collection falsa, sem banco
+pytest -m integration         # contra o MongoDB local (docker compose up -d)</pre>
+</main>
+<script src="assets/layout.js"></script>
+</body>
+</html>

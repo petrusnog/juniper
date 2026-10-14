@@ -14,8 +14,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from brain.memory.embeddings import EmbeddingProvider
+from brain.memory.vector import MEMORIES_COLLECTION
 
-MEMORIES_COLLECTION = "memories"
+__all__ = ["MEMORIES_COLLECTION", "ReindexResult", "reindex_memories"]
 
 
 @dataclass(frozen=True)

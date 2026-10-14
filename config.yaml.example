@@ -86,3 +86,8 @@ memory:
     dir: ~/.juniper/models
     max_length: 512
     batch_size: 16
+
+  # Busca na memória de longo prazo (T-055). Calibre o threshold com exemplos reais.
+  retrieval:
+    top_k: 5              # no máximo quantas memórias uma busca devolve
+    threshold: 0.0        # similaridade mínima (cosseno, -1 a 1); 0.0 = sem corte
