@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-010 — Gerenciamento completo da agenda do usuário — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-010 — Gerenciamento completo da agenda do usuário">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-010.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-010</div>
+<h1>ADR-010 — Gerenciamento completo da agenda do usuário</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-006 (tiers), ADR-008 (Google Calendar), T-022</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O ADR-008 limitou a Juniper a <strong>escrever só na agenda "Juniper"</strong>; a agenda principal do usuário era somente leitura (para detectar conflitos). Era uma trava de segurança enquanto a integração era nova.</p>
+<p>O Petrus pediu acesso completo: a Juniper deve gerenciar <strong>todos</strong> os agendamentos da agenda principal, inclusive alterar e apagar.</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-a-trava-passa-a-ser-por-configuracao-nao-por-regra-fixa">1. A trava passa a ser por configuração, não por regra fixa</h3>
+<ul><li><code>google.calendar_id</code>: agenda Juniper (sempre gerenciável), como antes.</li><li><strong><code>google.manage_calendar_ids</code></strong> (novo): agendas do usuário em que a Juniper também cria, altera e apaga. Vazio = comportamento antigo.</li><li><code>google.read_calendar_ids</code>: continuam só leitura.</li><li><strong><code>google.default_calendar_id</code></strong> (novo): onde caem os novos eventos sem indicação. Precisa ser a agenda Juniper ou uma gerenciável; vazio = agenda Juniper.</li><li>Todas as agendas entram na checagem de conflitos.</li></ul>
+<p>No código, <code>CalendarClient.writable_ids</code> é a única lista que as tools de escrita aceitam. Agenda só de leitura ou desconhecida é recusada com mensagem clara.</p>
+<h3 id="2-quatro-tools">2. Quatro tools</h3>
+<p><code>list_events</code> (READ), <code>create_event</code> (WRITE, <code>calendar</code> opcional), <strong><code>update_event</code> (WRITE, novo)</strong> e <code>delete_event</code> (DESTRUCTIVE, agora em qualquer agenda gerenciável: o evento é localizado pelo id).</p>
+<h3 id="3-confirmacao-na-conversa-nao-em-um-prompt-y-n">3. Confirmação na conversa, não em um prompt <code>[y/N]</code></h3>
+<p>Um <code>[y/N]</code> não serve para voz ("diga y ou n" não faz sentido) e, linha a linha, era massante. A confirmação agora é parte do diálogo:</p>
+<pre><code>Juniper: Posso apagar esses cinco agendamentos? É irreversível.
+Você:    Sim.
+Juniper: Apagado!</code></pre>
+<p>Quem decide que "sim" é um sim é <strong>o sistema, não o LLM</strong> (<code>brain/core/consent.py</code>): um interpretador determinístico e conservador de pt-BR (aceita "sim", "pode", "confirmo", "manda ver"; recusa "não"; qualquer coisa qualificada, como "sim, mas só o primeiro", uma pergunta ou uma resposta longa, <strong>não</strong> é um sim). Funciona igual com texto digitado e com a transcrição de uma fala.</p>
+<p>Duas rotas, ambas verificadas pelo sistema:</p>
+<ol><li><strong>Aprovação pelo contexto.</strong> A Juniper nomeia o que vai fazer e pergunta; você diz "sim"; ao chamar a ferramenta, o sistema checa que a pergunta <strong>citou pelo nome todos os alvos da ação</strong> (<code>Tool.subjects()</code>: títulos de eventos, id da feature) e então executa na hora. Vale só para a <strong>primeira reação</strong> ao "sim", nunca para o que o LLM decidir depois de ler dados novos (que poderiam trazer texto plantado por terceiros).</li><li><strong>Ação pendente.</strong> Se a ferramenta é chamada sem a pergunta ter nomeado os alvos, nada executa: a ação fica <em>pendente</em> (<code>PENDENTE, nada foi executado</code>), a Juniper pergunta (e, se esquecer, o sistema faz a pergunta), e o próximo "sim" claro executa exatamente o que estava parado. Qualquer outra resposta descarta o pendente: um "sim" antigo nunca dispara nada depois.</li></ol>
+<p>O que <strong>não</strong> existe: o LLM declarar "o usuário confirmou". O LLM só conversa; a decisão de executar sai do texto do usuário, interpretado pelo sistema.</p>
+<p>Tudo que chega junto (uma mensagem do assistente) é um lote: uma pergunta, um "sim". O callback <code>confirm(...)</code> do <code>Dispatcher</code> continua disponível para clientes que preferirem um prompt explícito (<code>conversational=False</code>); o CLI de chat usa o modo conversacional.</p>
+<h3 id="4-describe-e-subjects">4. <code>describe()</code> e <code>subjects()</code></h3>
+<p><code>Tool.describe()</code> descreve a ação em palavras (usada na pergunta de reserva e no callback); <code>Tool.subjects()</code> lista os nomes dos alvos, base da aprovação pelo contexto. Ferramentas que não implementam <code>subjects()</code> nunca são aprovadas pelo contexto.</p>
+<h3 id="5-salvaguardas-mantidas">5. Salvaguardas mantidas</h3>
+<ul><li>Apagar continua <code>DESTRUCTIVE</code>: nada é apagado sem um "sim" seu à pergunta que nomeou o que seria apagado (ou à ação pendente que a Juniper estacionou).</li><li>Títulos e observações de eventos são <strong>dados, não instruções</strong> (o resultado de <code>list_events</code> vem marcado assim e a persona reforça).</li><li>A permissão real vem do Google: a agenda precisa estar compartilhada com a conta de serviço como <strong>"Fazer alterações em eventos"</strong>. Sem isso a escrita falha (403) e o erro explica o que ajustar. <code>scripts/check_google.py</code> testa a permissão sem alterar nada.</li><li>Escopo OAuth inalterado (<code>calendar.events</code>).</li></ul>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<ul><li>Risco maior que no ADR-008: um erro do LLM pode, em tese, propor apagar um evento real. A mitigação é a conversa: ela precisa nomear o que vai apagar, e o seu "sim" só vale para isso. Um "sim" aprova o lote nomeado, então vale ouvir a lista.</li><li>Eventos recorrentes aparecem por ocorrência; mudar ou apagar afeta só a ocorrência escolhida.</li><li>Voltar ao modo restrito é só esvaziar <code>manage_calendar_ids</code> (e o <code>default_calendar_id</code>).</li><li>Clientes novos (celular, voz) só precisam entregar o texto do usuário ao <code>Agent.run</code>: a confirmação vem junto.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

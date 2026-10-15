@@ -3,76 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voz da Juniper — Juniper</title>
+<title>Voz no terminal — Livro de bolso Juniper</title>
+<meta name="description" content="Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/juniper.png">
 <script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/voz.md. Não edite este arquivo. -->
 </head>
 <body>
 <main id="content">
-<div class="crumb"><a href="index.html">Índice</a> / Guias / Voz da Juniper</div>
-<h1>Voz da Juniper</h1>
-<p class="lead">Desde o <code>juniper install</code>, tudo que a Juniper diz no terminal segue o mesmo padrão. Você sempre sabe quem está falando, venha a frase de uma IA ou de um texto fixo.</p>
-
-<h2>1. O padrão</h2>
-<div class="card">
-<pre>🌿 JUNIPER: Olá, sou Juniper, sua assistente de automações favorita!
+<div class="crumb"><a href="index.html">Início</a> / Clientes / Voz no terminal</div>
+<h1>Voz no terminal <span class="tag v">guia</span></h1>
+<p class="lead">Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.</p>
+<h2 id="padrao">O padrão</h2>
+<p>Tudo que a Juniper diz no terminal segue o mesmo padrão. Você sempre sabe quem está falando, venha a frase de uma IA ou de um texto fixo.</p>
+<pre><code class="lang-text">🌿 JUNIPER: Olá, sou Juniper, sua assistente de automações favorita!
 👤 VOCÊ: oi, tudo bem?
-🌿 JUNIPER: Tô bem, e você? Como foi o dia?</pre>
-  <table class="tbl" style="margin-top:12px">
-    <tr><th>Prefixo</th><th>Quem</th><th>Observação</th></tr>
-    <tr><td><code>🌿 JUNIPER:</code></td><td>A Juniper</td><td>Sempre, em qualquer comando.</td></tr>
-    <tr><td><code>👤 VOCÊ:</code></td><td>Você, ao digitar</td><td>Quando a memória existir (Sprint 2), vira o seu nome. A troca é em um único ponto.</td></tr>
-  </table>
-</div>
-
-<h2>2. Fala gerada × fala fixa</h2>
-<p class="lead">Nem tudo precisa de IA. Comandos que sempre dizem a mesma coisa usam texto pronto: é instantâneo, grátis e funciona sem internet. Só o <code>chat</code> chama o LLM.</p>
-<div class="card">
-  <table class="tbl">
-    <tr><th>Tipo</th><th>Onde</th><th>Como fala</th></tr>
-    <tr><td><span class="tag g">Gerada (IA)</span></td><td><code>juniper</code></td><td>O LLM escreve a resposta; o terminal coloca o prefixo e mostra token a token.</td></tr>
-    <tr><td rowspan="9"><span class="tag b">Fixa</span></td><td><code>juniper</code> (sem argumentos)</td><td>Apresentação e lista de comandos.</td></tr>
-    <tr><td><code>version</code>, <code>name</code>, <code>help</code></td><td>Textos prontos.</td></tr>
-    <tr><td><code>tools</code></td><td>Uma frase e a tabela do que ela sabe fazer.</td></tr>
-    <tr><td><code>search</code>, <code>deploy</code></td><td>Mensagens de progresso fixas; os commits listados são dados.</td></tr>
-    <tr><td><code>install</code>, <code>uninstall</code></td><td>Cada etapa é uma fala dela.</td></tr>
-    <tr><td>Confirmações</td><td>Na conversa: "Posso apagar esses cinco? É irreversível." e você responde "sim". Sem <code>[y/N]</code>.</td></tr>
-    <tr><td>Perguntas dos scripts</td><td>Ela pergunta; a resposta é sua, com o seu prefixo.</td></tr>
-    <tr><td>Erros</td><td>Em português, com o que fazer.</td></tr>
-    <tr><td>Abertura e despedida do chat</td><td>"Pode falar, tô te ouvindo" e "Até logo!".</td></tr>
-  </table>
-</div>
-<p><b>Regra para comandos novos:</b> se a resposta é sempre a mesma, escreva um texto fixo e fale por <code>_juniper_say</code> (shell) ou <code>voice.say</code> (Python). Só use o LLM quando a resposta depender do que você disse.</p>
-
-<h2>3. Como é implementado</h2>
-<div class="grid">
-  <div class="card type"><h3>Shell (zsh)</h3>
-<pre>_juniper_say "mensagem"
-_juniper_ask "pergunta?" resposta</pre>
-    <p style="color:var(--muted)"><code>shell/core/voice.sh</code>. <code>_juniper_ask</code> mostra a pergunta com o prefixo dela e lê a sua resposta com o seu prefixo.</p></div>
-  <div class="card type"><h3>Python</h3>
-<pre>from brain.clients import voice
-
-voice.say(console, "mensagem")
-voice.user_prompt()   # "👤 VOCÊ: "</pre>
-    <p style="color:var(--muted)"><code>brain/clients/voice.py</code>. Os instaladores em bash têm as mesmas duas constantes.</p></div>
-</div>
-<p>Um teste (<code>test_shell_and_python_voices_are_identical</code>) garante que os prefixos do shell, do Python e dos instaladores são exatamente os mesmos.</p>
-
-<h2>4. Detalhes do chat</h2>
-<div class="card">
-  <p><b>Prefixo só quando há texto.</b> Se o LLM falha antes de escrever, não sobra uma linha "🌿 JUNIPER:" vazia: o erro vem como fala dela.</p>
-  <p><b>Eco do nome é removido.</b> Se o modelo começar a frase com "Juniper:" ou "🌿 JUNIPER:", o terminal descarta, para não aparecer duplicado.</p>
-  <p><b>Confirmação é diálogo.</b> Ela pergunta em palavras, você responde "sim" ou "não", e ela conta o resultado. Funciona igual por voz.</p>
-  <p><b>Texto puro.</b> A fala nunca é interpretada como markup: colchetes e asteriscos aparecem como foram escritos.</p>
-</div>
-
-<h2>5. Fora do padrão (de propósito)</h2>
-<div class="card">
-  <p>Scripts de desenvolvimento (<code>scripts/try_*.py</code>, <code>healthcheck.py</code>, <code>check_google.py</code>) e a saída crua de ferramentas (a lista de commits do <code>search</code>, a ajuda do <code>--help</code> do Typer) não são fala dela e ficam como estão.</p>
-</div>
+🌿 JUNIPER: Tô bem, e você? Como foi o dia?</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Prefixo</th><th>Quem</th><th>Observação</th></tr></thead><tbody><tr><td><code>🌿 JUNIPER:</code></td><td>A Juniper</td><td>Sempre, em qualquer comando.</td></tr><tr><td><code>👤 VOCÊ:</code></td><td>Você, ao digitar</td><td>Um único ponto de troca (<code>voice.user_tag()</code>) para virar o seu nome quando o perfil existir.</td></tr></tbody></table></div>
+<div class="callout info"><p><strong>Nota:</strong> isto é a "voz" <strong>escrita</strong> do terminal. A voz por áudio (STT e TTS locais no cliente, wake word) é da Sprint 4 e ainda não tem ADR.</p></div>
+<h2 id="gerada-fixa">Fala gerada × fala fixa</h2>
+<p>Nem tudo precisa de IA. Comandos que sempre dizem a mesma coisa usam <strong>texto pronto</strong>: é instantâneo, grátis e funciona sem internet. Só o chat chama o LLM.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tipo</th><th>Onde</th><th>Como fala</th></tr></thead><tbody><tr><td>Gerada (IA)</td><td><code>juniper</code> (chat)</td><td>O LLM escreve a resposta; o terminal coloca o prefixo e mostra token a token.</td></tr><tr><td>Fixa</td><td><code>juniper</code> sem argumentos</td><td>Apresentação e lista de comandos.</td></tr><tr><td>Fixa</td><td><code>version</code>, <code>name</code>, <code>help</code></td><td>Textos prontos.</td></tr><tr><td>Fixa</td><td><code>tools</code></td><td>Uma frase e a tabela do que ela sabe fazer.</td></tr><tr><td>Fixa</td><td><code>search</code>, <code>deploy</code></td><td>Mensagens de progresso fixas; os commits listados são dados.</td></tr><tr><td>Fixa</td><td><code>install</code>, <code>uninstall</code></td><td>Cada etapa é uma fala dela.</td></tr><tr><td>Confirmações</td><td>Na conversa</td><td>"Posso apagar esses cinco? É irreversível." e você responde "sim". Sem <code>[y/N]</code>.</td></tr><tr><td>Perguntas dos scripts</td><td><code>_juniper_ask</code></td><td>Ela pergunta; a resposta é sua, com o seu prefixo.</td></tr><tr><td>Erros</td><td>Em português</td><td>Com o que fazer.</td></tr><tr><td>Abertura e despedida do chat</td><td>Fixas</td><td>"Pode falar, tô te ouvindo" e "Até logo!".</td></tr></tbody></table></div>
+<div class="callout tip"><p><strong>Dica:</strong> regra para comandos novos: se a resposta é sempre a mesma, escreva um texto fixo e fale por <code>_juniper_say</code> (shell) ou <code>voice.say</code> (Python). Só use o LLM quando a resposta depender do que você disse.</p></div>
+<h2 id="implementacao">Como é implementado</h2>
+<h3 id="voice">Python: voice.py</h3>
+<pre><code class="lang-python">from brain.clients import voice
+voice.say(console, &quot;mensagem&quot;)     # fala fixa (texto puro, nunca interpretado como markup)
+voice.start_reply(console)          # abre uma fala gerada: o prefixo, sem quebra de linha
+voice.user_prompt()                 # &quot;👤 VOCÊ: &quot;</code></pre>
+<p>Falas de várias linhas indentam as linhas seguintes sob a primeira.</p>
+<h3 id="voice-sh">Shell: voice.sh</h3>
+<pre><code class="lang-bash">_juniper_say &quot;mensagem&quot;
+_juniper_ask &quot;pergunta?&quot; resposta   # mostra a pergunta com o prefixo dela e lê a sua resposta com o seu prefixo</code></pre>
+<p>Os instaladores em bash têm as mesmas duas constantes. Um teste (<code>test_shell_and_python_voices_are_identical</code>) garante que os prefixos do shell, do Python e dos instaladores são <strong>exatamente</strong> os mesmos.</p>
+<h2 id="detalhes">Detalhes do chat</h2>
+<ul><li><strong>Prefixo só quando há texto.</strong> Se o LLM falha antes de escrever, não sobra uma linha <code>🌿 JUNIPER:</code> vazia: o erro vem como fala dela.</li><li><strong>Eco do nome é removido.</strong> Se o modelo começar a frase com "Juniper:" ou "🌿 JUNIPER:", o terminal descarta, para não duplicar.</li><li><strong>Confirmação é diálogo.</strong> Ela pergunta em palavras, você responde "sim" ou "não", e ela conta o resultado. Funciona igual por voz (<a href="agente.html#confirmacao">Agente</a>).</li><li><strong>Texto puro.</strong> A fala nunca é interpretada como markup: colchetes e asteriscos aparecem como foram escritos.</li></ul>
+<h2 id="fora">Fora do padrão (de propósito)</h2>
+<p>Scripts de desenvolvimento (<code>scripts/try_*.py</code>, <code>healthcheck.py</code>, <code>check_google.py</code>) e a saída crua de ferramentas (a lista de commits do <code>search</code>, a ajuda do <code>--help</code> do Typer) não são fala dela e ficam como estão.</p>
 </main>
+<script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
 </body>
 </html>

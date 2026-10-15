@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agente — Livro de bolso Juniper</title>
+<meta name="description" content="O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/agente.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Núcleo / Agente</div>
+<h1>Agente <span class="tag g">pronta</span></h1>
+<p class="lead">O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O agente é o cérebro: recebe o que você disse, pergunta ao LLM, executa as tools que ele pedir (pedindo o seu "sim" quando necessário) e repete até haver uma resposta final. Fica em <code>brain/core/</code> e <strong>nunca</strong> importa de <code>brain/clients/</code>: quem sabe falar com o usuário é o cliente.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Peça</th><th>Responsabilidade</th></tr></thead><tbody><tr><td><a href="#agent">Agent</a></td><td>O loop: chama o LLM, repassa as tool calls ao dispatcher, devolve os resultados ao LLM e repete.</td></tr><tr><td><a href="#dispatcher">Dispatcher</a></td><td>Valida, checa o tier e executa cada tool call; nunca levanta exceção.</td></tr><tr><td><a href="#confirmacao">Confirmação</a></td><td>Entende o "sim" da conversa (<code>consent.py</code>).</td></tr><tr><td><a href="#session">Session</a></td><td>Guarda o histórico e a persona; mantém tudo dentro de um orçamento de tokens.</td></tr><tr><td><a href="#clock">Relógio</a></td><td>Dá ao LLM a data e a hora de agora, no fuso configurado.</td></tr></tbody></table></div>
+<h2 id="ciclo">O ciclo de um pedido</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>#</th><th>Passo</th></tr></thead><tbody><tr><td>1</td><td>O <code>Agent</code> anota na <code>Session</code> a sua mensagem, com a data e a hora na frente (<code>[domingo, 11/10/2026, 17:30 (America/Sao_Paulo)]</code>) e compacta o histórico.</td></tr><tr><td>2</td><td>Busca o <a href="memoria-longo-prazo.html#recuperacao">perfil e as memórias</a> relevantes e os injeta só naquela chamada.</td></tr><tr><td>3</td><td>Chama o LLM em stream com persona + histórico + schemas das tools. Cada pedaço de texto vai na hora para o cliente (<code>on_token</code>).</td></tr><tr><td>4</td><td>Sem tool calls na resposta, acabou: devolve o texto.</td></tr><tr><td>5</td><td>Com tool calls, o <code>Dispatcher</code> executa cada uma e os resultados entram no histórico. Volta ao passo 3.</td></tr><tr><td>6</td><td>Depois de <code>agent.max_iterations</code> voltas ainda pedindo tools (padrão 5), a Juniper para e avisa que deu voltas demais.</td></tr></tbody></table></div>
+<h2 id="agent">Agent</h2>
+<p>Roda um turno por vez sobre uma <code>Session</code>.</p>
+<pre><code class="lang-python">from brain.core.agent import Agent
+from brain.core.dispatcher import Dispatcher
+from brain.llm.router import LLMRouter
+from brain.tools.registry import registry
+
+registry.discover()  # na partida: sem isso o registry fica vazio
+agent = Agent(LLMRouter(), Dispatcher(conversational=True))
+resposta = await agent.run(&quot;marca dentista amanhã às 16h&quot;, on_token=print)</code></pre>
+<ul><li><code>run(texto, on_token=None)</code> devolve o texto final. <code>on_token</code> pode ser função comum ou <code>async</code>.</li><li>Sempre usa <strong>stream</strong> (um só caminho de código); sem <code>on_token</code>, os pedaços só são juntados.</li><li><strong>Rollback:</strong> se o LLM falha, o turno é desfeito na <code>Session</code> e o erro sobe, então tentar de novo não vê meia conversa. As ações que você já aprovou e que já executaram <strong>continuam</strong> no histórico.</li><li><strong>Persistência:</strong> salva a conversa ao fim de cada turno (inclusive os que falham). Falha ao salvar vai para o log e nunca derruba a conversa.</li><li><code>drain_turns()</code> entrega os turnos concluídos desde a última chamada, para a <a href="memoria-longo-prazo.html#extracao">extração de memórias</a>.</li><li><code>last_timing</code> guarda o tempo total e por etapa do último turno (<a href="observabilidade.html#tempos">Observabilidade</a>).</li></ul>
+<h2 id="dispatcher">Dispatcher</h2>
+<p>Pega um <code>ToolCall</code> do LLM e devolve uma <code>Message(role=&quot;tool&quot;)</code>. <strong>Nunca levanta exceção:</strong> todo problema volta ao LLM como <code>ToolResult(success=False)</code>.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Situação</th><th>O que acontece</th></tr></thead><tbody><tr><td>Tool desconhecida</td><td>Erro ao LLM (ele pode inventar um nome) para ele corrigir.</td></tr><tr><td>Tier <code>FORBIDDEN</code></td><td>Nunca executa e nem pergunta a você.</td></tr><tr><td>Argumentos inválidos</td><td>Obrigatório ausente, argumento desconhecido ou tipo errado (<code>true</code> não vale como inteiro): erro ao LLM.</td></tr><tr><td><code>precheck</code> falha</td><td>A tool recusa antes de te incomodar (ex.: conflito na agenda). Você não é perguntado.</td></tr><tr><td>Tier <code>WRITE</code> ou <code>DESTRUCTIVE</code></td><td>Pede o seu "sim" (veja abaixo). Negado, expirado ou ausente = não executa.</td></tr><tr><td>Tier <code>READ</code>, ou <code>WRITE</code> com <code>confirm = False</code></td><td>Executa direto.</td></tr><tr><td>A tool levanta exceção</td><td>Só o <strong>nome do tipo</strong> vai ao LLM ("falha interna da ferramenta (KeyError)"); a mensagem pode ter segredos. O detalhe vai ao log.</td></tr></tbody></table></div>
+<p>Chamadas que chegam juntas (uma mensagem do assistente) são aprovadas <strong>em lote</strong>, com uma única pergunta. Várias tool calls da mesma resposta rodam uma após a outra, não em paralelo, para as confirmações não se misturarem.</p>
+<p>Há dois modos de aprovação:</p>
+<ul><li><strong>Conversacional</strong> (<code>Dispatcher(conversational=True)</code>, o do chat e o que serve a voz): as ações que pedem aprovação ficam paradas em <code>pending</code> e o LLM pergunta em palavras; o agente só as executa quando a sua próxima mensagem for um "sim" claro.</li><li><strong>Callback</strong> (<code>Dispatcher(confirm=...)</code>): o cliente injeta <code>confirm(nome, args, tier, resumo) -&gt; bool</code>, limitado por <code>tools.security.confirmation_timeout</code> (60 s). Sem callback, nega.</li></ul>
+<h2 id="confirmacao">Confirmação na conversa</h2>
+<p>Não há prompt <code>[y/N]</code>. Quando uma tool pede aprovação, a Juniper pergunta em palavras:</p>
+<pre><code class="lang-text">🌿 JUNIPER: Achei três compromissos no dia 17/01. Posso apagar esses três? É irreversível.
+👤 VOCÊ: Sim.
+🌿 JUNIPER: Prontinho, apaguei os três.</code></pre>
+<p>A sua resposta é interpretada <strong>pelo sistema</strong> (<code>interpret_reply</code>), não pelo LLM:</p>
+<ul><li>Só um "sim" claro e sem ressalvas executa. É curto (até 8 palavras) e não contém palavras que o tornem condicional ou uma pergunta ("mas", "só", "qual", "antes"...).</li><li>"Sim, mas só o primeiro", uma pergunta ou uma resposta longa <strong>não executam nada</strong>: cancelam a ação pendente e a mensagem segue ao LLM como um turno normal.</li><li>Um "sim" só vale para o que a pergunta <strong>nomeou</strong> (<code>Tool.subjects</code>). Nada fora disso é executado.</li><li>Uma confirmação pendente <strong>não sobrevive</strong> ao fechar a conversa: depois de retomar com <code>--resume</code>, nada é executado sem um novo "sim".</li></ul>
+<p>Como trabalha com texto, serve igual a um teclado e a uma transcrição de voz. Decisão no ADR-010 (<a href="adr-010.html">Decisões</a>).</p>
+<h2 id="session">Session</h2>
+<p>Guarda o histórico de <strong>uma</strong> conversa (tudo menos a persona), com um <code>id</code> ordenável por data e os horários de criação e atualização.</p>
+<ul><li><code>messages()</code> devolve a persona seguida do histórico, pronta para o LLM.</li><li><code>add_user(texto)</code> acrescenta uma mensagem sua com a data e a hora na frente.</li><li><code>checkpoint()</code> e <code>rollback(n)</code> sustentam o desfazer do turno que falhou.</li><li><code>tokens()</code> estima os tokens do que o LLM recebe (≈ 4 caracteres por token, sem tokenizer).</li></ul>
+<h3 id="compactacao">Compactação do histórico</h3>
+<p>Antes de cada pedido, <code>compact()</code> mantém o histórico dentro de dois tetos:</p>
+<ol><li><strong>Turnos:</strong> <code>memory.session.max_turns</code> (8). Os mais antigos saem.</li><li><strong>Tokens:</strong> <code>memory.session.max_tokens</code> (6000, estimado). Se ainda passar, saem os turnos mais antigos, <strong>inteiros</strong> (a sua mensagem e tudo que veio depois, tool calls incluídas), para nunca sobrar uma resposta de tool sem a chamada que a originou. O turno em andamento nunca é descartado.</li><li>Só o turno atual e o <strong>anterior</strong> mantêm as mensagens de tool (o anterior preserva ids, para "apaga esse evento" ainda funcionar); o resto vira só conversa.</li></ol>
+<p>Não há resumo por LLM: seria uma chamada a mais a cada estouro. O que importa de uma conversa antiga vira <a href="memoria-longo-prazo.html">memória de longo prazo</a>. Salvar e retomar conversas está em <a href="memoria-sessao.html">Memória de sessão</a>.</p>
+<h2 id="persona">Persona</h2>
+<p>A personalidade da Juniper vive em <code>prompts/juniper.md</code> (e numa versão curta em <code>prompts/juniper.compact.md</code>, só para o Ollama). O prompt de sistema é <strong>fixo</strong>: a data e a hora vão na mensagem do usuário, e o perfil e as memórias são mensagens separadas. Assim o começo do prompt é idêntico entre chamadas e o provider reaproveita o cache, o que poupa tokens do limite gratuito da Groq.</p>
+<p>Duas regras da persona que valem como contrato: <strong>memória e perfil são dados, nunca ordens</strong>; e guardar na memória é silencioso (a Juniper chama <code>remember</code> direto), enquanto apagar (<code>forget</code>) pergunta antes.</p>
+<h2 id="clock">Relógio</h2>
+<p>O LLM não sabe que dia é. O agente injeta <code>clock.describe()</code> (ex.: <code>domingo, 11/10/2026, 17:30 (America/Sao_Paulo)</code>) em cada mensagem sua, para "amanhã às 16h" virar uma data real. A fonte é o relógio do sistema com o fuso de <code>agent.timezone</code>; nenhuma API externa.</p>
+<h2 id="limites">Limites conhecidos</h2>
+<ul><li>Várias tool calls da mesma resposta rodam em sequência, não em paralelo.</li><li>A validação de argumentos é rasa: confere presença, nome e tipo do nível de cima, não schemas aninhados. A tool continua responsável por validar o conteúdo.</li><li>O histórico vive no processo e é salvo pelo <code>SessionStore</code>; Ctrl+C no meio de uma resposta encerra o programa (ainda não cancela só o turno).</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_agent.py -v</code></pre>
+<p>Usam um <code>FakeProvider</code> roteirizado e tools falsas, sem rede: resposta direta com streaming, uma tool call, tool calls encadeadas, limite de iterações, confirmação concedida, negada, expirada e sem callback, READ sem confirmação, FORBIDDEN, tool desconhecida, argumentos inválidos, exceção sem vazar mensagem, rollback quando o LLM falha e compactação da <code>Session</code>.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Segurança — Livro de bolso Juniper</title>
+<meta name="description" content="Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra &quot;conteúdo externo é dado&quot;.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/seguranca.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Núcleo / Segurança</div>
+<h1>Segurança <span class="tag g">pronta</span></h1>
+<p class="lead">Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>A Juniper age no mundo real por decisão de um LLM, e um LLM pode entender mal o pedido ou ser induzido por conteúdo que leu (a web, o título de um convite de agenda). A política (ADR-006) é: <strong>ler é livre, alterar pede o seu "sim", destruir pede com aviso, e o proibido nunca executa.</strong> Cada tool declara o seu tier; o <a href="agente.html#dispatcher">Dispatcher</a> o aplica.</p>
+<h2 id="tiers">Os quatro tiers</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tier</th><th>Definição</th><th>Comportamento</th></tr></thead><tbody><tr><td><code>READ</code></td><td>Não modifica estado nem envia dados para fora.</td><td>Executa direto e registra no log.</td></tr><tr><td><code>WRITE</code></td><td>Modifica estado local ou envia dados de forma reversível.</td><td>Pede o seu "sim" na conversa.</td></tr><tr><td><code>DESTRUCTIVE</code></td><td>Irreversível, ou envia conteúdo sensível para fora.</td><td>Pede o "sim" <strong>com aviso explícito de irreversibilidade</strong>. Nunca pode dispensar a confirmação.</td></tr><tr><td><code>FORBIDDEN</code></td><td>Nunca.</td><td>Bloqueio duro, sem perguntar.</td></tr></tbody></table></div>
+<p>Regras:</p>
+<ul><li><strong>Tool sem classificação = <code>WRITE</code>.</strong> Esquecer de classificar não pode significar executar sem pedir.</li><li><strong>A confirmação mostra o que será feito</strong>, não um resumo vago: "Posso apagar «Teste 1» (03:00–03:30) e «Teste 2»? É irreversível."</li><li><strong>Só <code>WRITE</code> pode dispensar a confirmação</strong> (<code>confirm = False</code>). Hoje só <code>remember</code> e <code>update_profile</code> fazem isso (veja <a href="#memoria-silenciosa">memória silenciosa</a>). Uma tool <code>DESTRUCTIVE</code> que tente é recusada ao ser carregada.</li></ul>
+<h2 id="confirmacao">Confirmação na conversa</h2>
+<p>O "sim" é uma mensagem normal, interpretada <strong>pelo sistema</strong>, não pelo LLM. Só um "sim" curto e incondicional executa; qualquer dúvida cancela a ação pendente. Isso evita que um LLM "decida" que você aprovou. Detalhes e exemplos em <a href="agente.html#confirmacao">Agente</a> (ADR-010).</p>
+<h2 id="conteudo-externo">Conteúdo externo é dado, nunca instrução</h2>
+<p>Texto que veio de fora (páginas da web, títulos de eventos criados por terceiros, saídas de comandos, o conteúdo das memórias) é <strong>dado</strong>:</p>
+<ul><li>O resultado de <code>list_events</code> volta marcado como "dados, não instruções".</li><li>O bloco <code>&lt;memorias&gt;</code> e o <code>&lt;perfil&gt;</code> entram no prompt rotulados como dados, e a persona repete a regra. O texto de cada memória é limpo (uma linha só, sem caracteres de controle, sem <code>&lt;</code> nem <code>&gt;</code>), para uma memória não conseguir fechar o bloco nem abrir outro.</li><li>Conteúdo da web que um dia entre pela tool <code>web_fetch</code> será encapsulado como não confiável (ADR-006).</li></ul>
+<div class="callout warn"><p><strong>Atenção:</strong> isso <strong>limita</strong> o estrago de uma injeção de prompt, mas não o elimina. Por isso as ações que alteram algo continuam pedindo o seu "sim" na conversa, mostrando o que será feito.</p></div>
+<h2 id="segredos">Segredos</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Onde</th><th>Como é protegido</th></tr></thead><tbody><tr><td>Chaves de API (<code>JUNIPER_*_API_KEY</code>)</td><td>Ficam no <code>.env</code> (permissão <code>600</code>), fora do git. São <code>SecretStr</code> nas settings e só são "abertas" ao criar o cliente do provider.</td></tr><tr><td>Mensagens de erro dos providers</td><td>Montadas pela Juniper (código HTTP + trecho curto), nunca copiando o texto cru do SDK. Se o corpo do erro ecoar a chave, ela vira <code>***</code>.</td></tr><tr><td>Log estruturado</td><td>Tudo passa por <code>redact()</code>: campos <code>api_key</code>, <code>token</code>, <code>secret</code>, <code>password</code>, <code>authorization</code>, <code>private_key</code> viram <code>***</code>, assim como padrões de chave (<code>gsk_…</code>, <code>Bearer …</code>, blocos de chave privada) e as chaves configuradas.</td></tr><tr><td>Memória de longo prazo</td><td>O filtro de segredos (<code>secretfilter.py</code>) mascara a conversa antes de mandá-la ao LLM de extração e recusa candidatas que pareçam segredo. É uma heurística, não uma garantia.</td></tr><tr><td>Chave da conta de serviço do Google</td><td><code>~/.juniper/certs/gcp-key.json</code>: pasta <code>700</code>, arquivo <code>600</code>, <code>certs/</code> no <code>.gitignore</code>.</td></tr><tr><td>Token dos clientes remotos (planejado)</td><td><code>~/.juniper/token</code> (<code>600</code>) no servidor; cofre do sistema no cliente (<a href="protocolo.html">Protocolo</a>, <a href="desktop.html">Desktop</a>).</td></tr></tbody></table></div>
+<h2 id="arquivos">Arquivos</h2>
+<p>Tudo que a Juniper grava com conteúdo seu tem permissão restrita: a pasta de conversas (<code>700</code>, arquivos <code>600</code>, escrita atômica), o log (<code>600</code>), o <code>.env</code> (<code>600</code>) e as credenciais (<code>600</code>). Os nomes de arquivo derivados de ids são validados (<code>[A-Za-z0-9_-]</code>) para um id malicioso não escapar da pasta.</p>
+<h2 id="memoria-silenciosa">Memória silenciosa</h2>
+<p><code>remember</code> e <code>update_profile</code> gravam <strong>sem pedir permissão</strong>, para a conversa fluir. O risco aceito: como ninguém aprova, algo plantado numa página da web que o LLM leu poderia virar memória. Ele é limitado por três coisas: o filtro de segredos e de "ordens para uma IA" (segredos, ordens e texto grande são recusados mesmo sem perguntar), as memórias entrarem no prompt sempre como dado, e você poder auditar (<code>juniper memory list</code>) e apagar (<code>forget</code>, que pergunta) quando quiser. Apagar é irreversível e por isso <strong>sempre</strong> pergunta.</p>
+<h2 id="shell">Comandos de shell</h2>
+<p>Para a futura <code>run_shell</code> (T-023), a política do ADR-006 é: um <strong>único binário</strong> por chamada, validado contra a allowlist <code>tools.security.shell_allowlist</code> (<code>git</code>, <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>rg</code>, <code>fd</code>, <code>jq</code>, <code>find</code>, <code>wc</code>, <code>head</code>, <code>tail</code>); operadores de composição (<code>;</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>|</code>, <code>$()</code>, crases, redirecionamentos) são rejeitados; e o tier é decidido pelo comando (<code>rm</code> é destrutivo; <code>rm -rf /</code>, <code>mkfs</code>, <code>dd</code> e escrita em <code>/etc</code> são <code>FORBIDDEN</code>). As tools de <code>git</code> que existem hoje não passam por uma string de shell: cada argumento é passado separado e validado (só dígitos nos ids, por exemplo).</p>
+<h2 id="producao">Produção</h2>
+<p>Com o cérebro numa VPS (propostas nos <a href="adr.html">ADRs</a> 007, 012 e 013), as travas adicionais são: nenhuma porta pública (acesso só pelo Tailscale), token em cada conexão, executor que <strong>revalida</strong> tudo o que recebe (<a href="executor.html">Executor</a>), segredos só no servidor e deploy com rollback. Veja <a href="producao.html">Produção</a>.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

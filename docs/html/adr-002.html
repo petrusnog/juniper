@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-002 — Schema de Tools — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-002 — Schema de Tools">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-002.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-002</div>
+<h1>ADR-002 — Schema de Tools</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-002, T-020, T-021, T-030</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O Juniper v3 é um agente com tool calling: o LLM decide <em>qual ferramenta chamar</em> e <em>com quais parâmetros</em>, e o core Python executa. Isso exige um formato padronizado para descrever cada tool ao LLM.</p>
+<p>Precisamos de um formato que:</p>
+<ul><li>Seja entendido nativamente tanto por Groq quanto por Ollama.</li><li>Seja extensível (novas tools sem tocar no core).</li><li>Possa ser gerado automaticamente a partir de código Python.</li><li>Não exija reescrita se futuramente adicionarmos outros providers.</li></ul>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<p>Adotamos o <strong>schema OpenAI Function Calling</strong>, literalmente. É o formato nativo do Groq, e o Ollama suporta o mesmo formato em <code>/api/chat</code> via campo <code>tools</code>. Também é o padrão de facto do ecossistema.</p>
+<h3 id="formato-canonico">Formato canônico</h3>
+<pre><code class="lang-json">{
+  &quot;type&quot;: &quot;function&quot;,
+  &quot;function&quot;: {
+    &quot;name&quot;: &quot;open_app&quot;,
+    &quot;description&quot;: &quot;Abre um aplicativo ou URL no sistema operacional do usuário&quot;,
+    &quot;parameters&quot;: {
+      &quot;type&quot;: &quot;object&quot;,
+      &quot;properties&quot;: {
+        &quot;target&quot;: {
+          &quot;type&quot;: &quot;string&quot;,
+          &quot;description&quot;: &quot;URL ou nome do app. Ex: &#x27;https://music.youtube.com&#x27; ou &#x27;firefox&#x27;&quot;
+        }
+      },
+      &quot;required&quot;: [&quot;target&quot;]
+    }
+  }
+}</code></pre>
+<h3 id="regras-de-declaracao">Regras de declaração</h3>
+<ol><li>Cada tool é uma classe Python que herda de <code>brain.tools.base.Tool</code>.</li><li>Metadados obrigatórios na classe:<ul><li><code>name: str</code> — identificador único, snake_case</li><li><code>description: str</code> — descrição em PT-BR (o LLM usa isso para decidir)</li><li><code>parameters: dict</code> — JSON Schema dos parâmetros</li><li><code>tier: Tier</code> — nível de segurança (ver ADR-006)</li></ul></li><li>Método <code>run(**kwargs) -&gt; ToolResult</code> — implementação real.</li><li><strong>Descrição importa.</strong> O LLM decide com base na <code>description</code>. Descrições vagas resultam em uso errado. Cada tool deve descrever o que faz <em>e</em> quando usar.</li></ol>
+<h3 id="geracao-automatica">Geração automática</h3>
+<p>O <code>brain.tools.registry</code> coleta todas as classes registradas (via decorator <code>@register_tool</code>) e gera a lista de schemas para passar ao LLM. Nenhuma tool precisa se registrar manualmente numa lista central.</p>
+<h3 id="toolresult">ToolResult</h3>
+<p>Retorno padronizado de toda tool:</p>
+<pre><code class="lang-python">@dataclass
+class ToolResult:
+    success: bool
+    output: str | None = None
+    error: str | None = None
+    metadata: dict | None = None</code></pre>
+<p>Isso permite que o agent loop (T-030) trate sucesso e falha de forma uniforme, e registre tudo no log estruturado.</p>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Compatibilidade nativa com Groq e Ollama sem adaptação.</li><li>Adoção futura de OpenAI, Anthropic (com conversão) ou outros é trivial.</li><li>Auto-descoberta mantém o core enxuto e a adição de tools barata.</li><li>Schema é auto-documentado — serve tanto pro LLM quanto pra humanos.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>JSON Schema é verboso. Tools complexas geram schemas longos que consomem tokens de contexto. <strong>Mitigação:</strong> manter parâmetros enxutos.</li><li>Se algum provider futuro não suportar Function Calling no formato OpenAI, precisaremos de uma camada de tradução (fora do escopo do Sprint 1).</li></ul>
+<hr>
+<h2 id="alternativas-consideradas">Alternativas consideradas</h2>
+<ol><li><strong>Formato próprio (ad-hoc).</strong> Rejeitada: reinventar a roda, perder compatibilidade com providers, obrigar tradução.</li><li><strong>Anthropic Tool Use format.</strong> Rejeitada: Groq e Ollama não suportam nativamente; obrigaria tradução para os providers principais.</li><li><strong>DSL declarativa em YAML para definir tools.</strong> Rejeitada: as tools precisam de lógica Python real (subprocess, HTTP, etc.). YAML só descreveria metadados, adicionando camada sem benefício.</li><li><strong>Registrar tools manualmente numa lista.</strong> Rejeitada: propenso a erro humano, dificulta adicionar tools.</li></ol>
+<hr>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-001 — Providers suportados</li><li>ADR-006 — Tier de segurança por tool</li><li><code>brain/tools/base.py</code>, <code>brain/tools/registry.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-002, T-020, T-021, T-030</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

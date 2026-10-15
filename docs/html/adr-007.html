@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-007 — Arquitetura de Deployment — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-007 — Arquitetura de Deployment">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-007.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-007</div>
+<h1>ADR-007 — Arquitetura de Deployment</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-01</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Pré-Sprint 1 (destrava T-010)</dd><dt>Relaciona-se com</dt><dd>T-003, T-004, T-010, T-012, T-015, Sprint 2+</dd><dt>Detalhado por</dt><dd>ADR-012 (protocolo cliente ↔ brain), ADR-013 (deploy e infraestrutura), ADR-014 (executor do desktop), ADR-015 (cliente desktop)</dd></dl>
+<blockquote><p><strong>Atualização (2026-10-15).</strong> Este ADR continua valendo como a visão geral. Três pontos mudaram desde que foi escrito:</p>
+<ul><li>O modo de deployment de produção se chama <strong><code>server</code></strong> (não <code>cloud</code>): <code>deployment.mode</code> é <code>local</code> ou <code>server</code>.</li><li>O provider de LLM principal é o <strong>DeepInfra</strong> (ADR-009); a Groq passou a ser a segunda opção.</li><li>A numeração vigente das sprints é a do <code>docs/JUNIPER.md</code> (Sprint 2 = memória, Sprint 3 = produção e clientes remotos, Sprint 4 = voz). A tabela "Roadmap impactado" abaixo é a original e está superada por ela.</li></ul>
+<p>O protocolo <strong>cliente ↔ brain</strong> (que este ADR não detalhava) está no ADR-012. O protocolo <strong>brain ↔ executor</strong> descrito aqui continua o mesmo, agora na mesma conexão do cliente (ADR-012, seção 9).</p></blockquote>
+<hr>
+<h2 id="contexto">Contexto</h2>
+<p>A Juniper v4 foi desenhada como agente autônomo com tool calling, memória de longo prazo e (futuramente) voz. A visão declarada do projeto é inspirada no J.A.R.V.I.S. do Tony Stark: <strong>sempre disponível, acessível de qualquer dispositivo, com memória persistente e capacidade de agir no mundo real</strong>.</p>
+<p>A decisão inicial de "PC como servidor" foi rejeitada pelo usuário por inviabilidade prática: manter um PC ligado 24h apenas para servir a Juniper é custoso em energia, desgasta hardware e amarra o acesso a estar em casa.</p>
+<p>Precisamos definir <strong>onde o cérebro roda</strong>, <strong>como os clientes o alcançam</strong> e <strong>como tools que agem em dispositivos específicos são executadas</strong>.</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<p>Adotamos uma arquitetura <strong>cliente-servidor distribuída com brain em nuvem e executores locais efêmeros</strong>.</p>
+<h3 id="visao-geral">Visão geral</h3>
+<pre><code class="lang-text">┌──────────────────────────────────────────────────────────┐
+│  VPS (o cérebro — sempre online)                         │
+│  • Agent loop, LLM router, memória                       │
+│  • Tools &quot;cloud&quot;: web_fetch, calendar, email             │
+│  • Sem GPU, sem LLM local — usa APIs (Groq primário)     │
+└────────────────────┬─────────────────────────────────────┘
+                     │ WebSocket persistente + HTTPS
+      ┌─────────────┼─────────────┬──────────────┐
+      ▼             ▼             ▼              ▼
+ ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌──────────┐
+ │   PC    │   │ Celular │   │Raspberry │   │ (futuro) │
+ │ (quando │   │ (sempre │   │  (casa)  │   │          │
+ │ ligado) │   │ ligado) │   │          │   │          │
+ └─────────┘   └─────────┘   └──────────┘   └──────────┘
+  executa:      executa:      executa:
+  - apps        - notifs      - luzes
+  - shell       - apps móv    - som
+  - arquivos    - GPS         - sensores</code></pre>
+<p><strong>Princípio central:</strong> o cérebro é <strong>único e sempre vivo</strong> (VPS). Os "corpos" (executores) são <strong>múltiplos e efêmeros</strong> — existem enquanto o dispositivo está ligado e desaparecem quando desligam.</p>
+<hr>
+<h3 id="componentes">Componentes</h3>
+<h4 id="1-brain-vps">1. Brain (VPS)</h4>
+<ul><li>Roda o <code>brain/core/</code> como serviço persistente (<code>juniper serve</code>).</li><li>Não executa LLM localmente — a VPS não tem GPU. O LLM é acessado via API (Groq primário, fallback em qualquer endpoint OpenAI-compatible).</li><li>Mantém:<ul><li>Agent loop e dispatcher</li><li>Roteador de providers (<code>brain/llm/router.py</code>)</li><li>Memória (MongoDB + vetorial)</li><li>Registro de tools locais (cloud) e catálogo de tools remotas anunciadas por executores conectados</li></ul></li><li>Expõe API via <code>brain/clients/server.py</code> (HTTPS + WebSocket).</li></ul>
+<h4 id="2-clientes-hmi">2. Clientes (HMI)</h4>
+<p>Clientes são <strong>finos</strong>: só capturam input (texto/voz) e exibem output. Nunca executam lógica de agente. Nunca acessam o MongoDB diretamente.</p>
+<ul><li><strong>CLI local</strong> (<code>brain/clients/cli.py</code>): terminal do usuário. No Sprint 1, roda em modo <code>deployment.mode = local</code> (brain embutido). No Sprint 2+, pode rodar em modo remoto, conectando-se à VPS.</li><li><strong>PWA / web app</strong>: acesso via navegador do celular. Sprint 2+.</li><li><strong>Cliente de voz</strong> (celular): STT/TTS nativo. Sprint 4+.</li></ul>
+<h4 id="3-executores-corpos">3. Executores (corpos)</h4>
+<p>Executores são processos leves que rodam nos dispositivos e expõem <strong>capacidades locais</strong> como tools remotas para o brain.</p>
+<ul><li><strong>PC:</strong> <code>open_app</code>, <code>run_shell</code>, acesso a arquivos, notificações desktop.</li><li><strong>Celular:</strong> notificações push, abertura de apps móveis, GPS, câmera.</li><li><strong>Raspberry/IoT:</strong> Home Assistant, sensores, atuadores.</li></ul>
+<p>Cada executor se conecta à VPS via WebSocket e anuncia seu catálogo de tools. Quando desconecta, essas tools desaparecem do brain (com aviso ao usuário quando ele tenta usá-las).</p>
+<hr>
+<h3 id="deployment-modes">Deployment modes</h3>
+<p>O <code>config.yaml</code> ganha um bloco <code>deployment</code>:</p>
+<pre><code class="lang-yaml">deployment:
+  # local — brain embutido no processo do cliente (Sprint 1)
+  # cloud — brain rodando em VPS, clientes remotos (Sprint 2+)
+  mode: local
+
+  server:
+    host: 127.0.0.1
+    port: 8765
+
+  auth:
+    # Token estático gerado no primeiro boot (Sprint 2)
+    token_file: ~/.juniper/token</code></pre>
+<ul><li><strong>Sprint 1:</strong> <code>mode: local</code>. O brain roda embutido no CLI. Nada de rede.</li><li><strong>Sprint 2+:</strong> <code>mode: cloud</code>. O brain roda na VPS; clientes conectam.</li></ul>
+<hr>
+<h3 id="autenticacao-e-exposicao">Autenticação e exposição</h3>
+<ul><li><strong>Modelo:</strong> single-user, token estático.</li><li><strong>Geração:</strong> no primeiro boot em modo <code>cloud</code>, o brain gera um token aleatório e o salva em <code>~/.juniper/token</code> (permissão 600).</li><li><strong>Uso:</strong> clientes enviam o token em <code>Authorization: Bearer &lt;token&gt;</code>.</li><li><strong>Exposição à rede:</strong> via Tailscale (recomendado) ou WireGuard. A VPS <strong>não expõe portas públicas</strong> para a internet aberta. O Tailscale resolve NAT traversal, autenticação entre dispositivos e encriptação sem configuração extra.</li><li><strong>Sem multi-usuário.</strong> Sem OAuth, sem cadastro, sem rate limiting por usuário. É um J.A.R.V.I.S. pessoal.</li></ul>
+<hr>
+<h3 id="protocolo-brain-executores">Protocolo brain ↔ executores</h3>
+<ul><li><strong>Transporte:</strong> WebSocket persistente.</li><li><strong>Mensagens:</strong> JSON-RPC simplificado.</li><li><strong>Handshake:</strong> o executor envia <code>register</code> com <code>device_id</code>, <code>device_name</code> e a lista de tools disponíveis (nome, schema, tier). O brain registra e responde com <code>registered</code>.</li><li><strong>Tool calls:</strong> o brain envia <code>invoke</code> com <code>tool_name</code>, <code>arguments</code> e <code>correlation_id</code>. O executor responde com <code>result</code> (mesmo <code>correlation_id</code>).</li><li><strong>Heartbeat:</strong> a cada 30s. Sem heartbeat por 90s → executor marcado como offline e suas tools saem do catálogo ativo.</li><li><strong>Segurança:</strong> o brain <strong>não pode escalar tier</strong>. Um executor só executa tools com os tiers que declarou no registro. Confirmações (ADR-006) são feitas no cliente que originou o pedido, não no executor.</li></ul>
+<hr>
+<h3 id="politica-de-degradacao">Política de degradação</h3>
+<p>O J.A.R.V.I.S. da ficção nunca "não está disponível" — mas a realidade é diferente. A Juniper precisa lidar com degradação de forma graciosa:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Cenário</th><th>Comportamento</th></tr></thead><tbody><tr><td>VPS offline</td><td>Clientes exibem "Juniper indisponível no momento"</td></tr><tr><td>Groq offline</td><td>Failover para Ollama (se configurado) ou API alternativa</td></tr><tr><td>LLM indisponível</td><td>Cliente informa que não consegue pensar agora</td></tr><tr><td>Executor do PC offline</td><td>Tools locais do PC ausentes; brain avisa quando solicitadas</td></tr><tr><td>MongoDB offline</td><td>Brain opera em modo "sessão apenas" (sem memória longa)</td></tr><tr><td>Tailscale offline</td><td>Clientes não alcançam a VPS; nada funciona</td></tr></tbody></table></div>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li><strong>Sempre disponível</strong> — característica central do J.A.R.V.I.S. preservada.</li><li><strong>Acessível de qualquer dispositivo</strong> — o cliente é fino, roda em qualquer lugar.</li><li><strong>Memória centralizada</strong> — uma só fonte de verdade (MongoDB na VPS).</li><li><strong>Custo previsível</strong> — VPS pequena (~$5/mês) + Groq free tier.</li><li><strong>Sem dependência de hardware do usuário</strong> — a VPS não precisa de GPU.</li><li><strong>Corpos múltiplos</strong> — o mesmo brain controla PC, celular, casa, carro, conforme executores forem sendo escritos.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li><strong>Custo mensal recorrente</strong> — diferente de rodar tudo localmente.</li><li><strong>Dependência de internet</strong> — sem rede, sem Juniper. Offline não é suportado no Sprint 2 (revisar depois).</li><li><strong>Latência adicional</strong> — cliente → VPS → LLM → VPS → cliente adiciona round-trips. Mitigado por streaming (Sprint 2) e Groq (latência baixa).</li><li><strong>Superfície de segurança</strong> — mesmo com Tailscale, a VPS é um alvo. Mitigado por: token estático, sem portas públicas, atualizações regulares.</li><li><strong>Complexidade de implementação</strong> — mais partes móveis (brain, clientes, executores) do que um monólito local. Compensado pela separação <code>brain/core/</code> ↔ <code>brain/clients/</code> já estabelecida em T-004.</li></ul>
+<hr>
+<h2 id="alternativas-consideradas">Alternativas consideradas</h2>
+<ol><li><strong>PC local como servidor (24h ligado).</strong> Rejeitada pelo usuário: inviável em energia e hardware.</li><li><strong>LLM local no celular.</strong> Rejeitada: fragmenta a memória, limita a qualidade do modelo (2-4B vs 70B) e consome bateria. Não é a Juniper que estamos construindo, é outra coisa.</li><li><strong>Serverless (Lambda, Cloud Functions).</strong> Rejeitada: o cold start mata a sensação de "sempre disponível", e o modelo de agente com sessão persistente não encaixa bem em serverless.</li><li><strong>Serviço gerenciado (Supabase, Firebase).</strong> Rejeitada: a Juniper precisa de controle total sobre o processo do agente (tools, subprocess, memória). Serviços gerenciados limitam isso.</li><li><strong>Híbrido PC + VPS com sync.</strong> Adiado. Complexidade alta para pouco benefício imediato. Revisar se a latência se provar um problema.</li></ol>
+<hr>
+<h2 id="roadmap-impactado">Roadmap impactado</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sprint</th><th>Foco</th><th>Camada J.A.R.V.I.S.</th></tr></thead><tbody><tr><td>1</td><td>Hello agent (local, CLI)</td><td>Cognição básica + primeiro reflexo</td></tr><tr><td>2</td><td>VPS + multi-dispositivo</td><td>Sempre disponível + olhos (web)</td></tr><tr><td>3</td><td>Memória (MongoDB + RAG)</td><td>Memória de longo prazo</td></tr><tr><td>4</td><td>Voz (STT + TTS + wake word)</td><td>HMI natural</td></tr><tr><td>5</td><td>Executores (PC, celular, IoT)</td><td>Corpos múltiplos</td></tr><tr><td>6</td><td>Iniciativa + scheduler</td><td>Proatividade supervisionada</td></tr></tbody></table></div>
+<hr>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-001 — Idioma, Providers, HMI</li><li>ADR-002 — Schema de Tools</li><li>ADR-003 — Configuração</li><li>ADR-006 — Segurança de Tools</li><li><code>BACKLOG.md</code> — Sprints 1-6</li><li>Inspiração: J.A.R.V.I.S. (Marvel Cinematic Universe)</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-011 — Arquitetura de Memória — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-011 — Arquitetura de Memória">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-011.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-011</div>
+<h1>ADR-011 — Arquitetura de Memória</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (itens marcados <strong>[a confirmar]</strong> aguardam decisão do Petrus; o merge deste ADR é a aprovação)</dd><dt>Data</dt><dd>2026-10-13</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 2 — "Memória" (O Hipocampo)</dd><dt>Relaciona-se com</dt><dd>ADR-003 (config), ADR-006 (segurança), ADR-007 (deployment), T-050 a T-060</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>Hoje a Juniper só lembra do que está na conversa aberta, e <code>Session</code> guarda no máximo 8 turnos em RAM. Fechou o terminal, esqueceu tudo. O marco da Sprint 2 é outro: lembrar que o Petrus prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, e usar isso sem que ele repita.</p>
+<p>Isso mistura dois problemas diferentes, com ciclos de vida diferentes:</p>
+<ol><li><strong>Conversa atual</strong> (curto prazo): o que foi dito há pouco, em ordem, inteiro.</li><li><strong>O que importa</strong> (longo prazo): fatos duráveis, destilados de várias conversas, achados por <strong>significado</strong> e não por palavra ("PHP framework" tem que achar "Laravel").</li></ol>
+<p>Também pesam as decisões anteriores: o brain vai rodar numa VPS sem GPU (ADR-007), com MongoDB como banco; a sprint roda <strong>local</strong> (<code>deployment.mode: local</code>) e o deploy vem na Sprint 3.</p>
+<p>Analogia: a memória de sessão é a mesa de trabalho (tudo à mão, mas limpa no fim do dia); a de longo prazo é o caderno de anotações (curto, organizado, consultado quando o assunto aparece).</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-duas-camadas">1. Duas camadas</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th></th><th>Sessão (curto prazo)</th><th>Longo prazo</th></tr></thead><tbody><tr><td>O que guarda</td><td>Mensagens da conversa, incluindo tool calls</td><td>Fatos duráveis em texto curto</td></tr><tr><td>Granularidade</td><td>Turnos completos, em ordem</td><td>Uma memória = uma afirmação</td></tr><tr><td>Como é achada</td><td>Vai inteira para o LLM, dentro de um orçamento de tokens</td><td>Busca por similaridade (RAG)</td></tr><tr><td>Duração</td><td>Uma conversa, retomável</td><td>Até ser apagada</td></tr><tr><td>Módulo</td><td><code>brain/core/session.py</code>, <code>brain/memory/session.py</code></td><td><code>brain/memory/</code> (vetorial, embeddings, store)</td></tr><tr><td>Task</td><td>T-051</td><td>T-053 a T-058</td></tr></tbody></table></div>
+<h3 id="2-memoria-de-sessao">2. Memória de sessão</h3>
+<ul><li><strong>Identidade:</strong> cada <code>Session</code> tem <code>id</code> (ordenável por data), <code>created_at</code> e <code>updated_at</code>.</li><li><strong>Orçamento de tokens:</strong> além do teto de turnos (<code>memory.session.max_turns</code>), a sessão respeita <code>memory.session.max_tokens</code>. Tokens são <strong>estimados</strong> (≈ 4 caracteres por token), sem dependência de tokenizer. Estourou, descartam-se os <strong>turnos mais antigos, inteiros</strong> (uma mensagem do usuário e tudo que veio depois dela, tool calls incluídas), para nunca deixar uma resposta de tool órfã. O turno atual nunca é descartado.</li><li><strong>Sem resumo por LLM no MVP.</strong> Resumir mensagens antigas custa uma chamada extra a cada estouro. O que for descartado da sessão que valha ser lembrado vira memória de longo prazo (T-056), que é o papel dela. Resumo fica como evolução.</li><li><strong>O prompt de sistema não é persistido</strong>, só o histórico. Ao retomar, vale a persona atual.</li><li><strong>Persistência atrás de uma interface</strong> <code>SessionStore</code> (<code>save</code>, <code>load</code>, <code>latest</code>, <code>list_sessions</code>). A primeira implementação grava <strong>um arquivo JSON por sessão</strong> em <code>~/.juniper/sessions/</code> (diretório <code>700</code>, arquivos <code>600</code>, escrita atômica), porque o MongoDB só chega na T-053. A implementação em MongoDB entra com a T-053 e passa a ser a usada quando houver servidor (Sprint 3); o resto do código não muda. <strong>[a confirmar]</strong></li><li><strong>Retomada:</strong> <code>juniper --resume</code> retoma a conversa mais recente. Confirmações pendentes (<code>Dispatcher.pending</code>) <strong>não</strong> sobrevivem ao reinício: depois de retomar, nada é executado sem nova confirmação (ADR-006).</li><li><strong>Falha de disco não derruba a conversa:</strong> erro ao salvar vai para o log e a conversa segue.</li></ul>
+<h3 id="3-memoria-de-longo-prazo">3. Memória de longo prazo</h3>
+<p><strong>Tipos</strong> (campo <code>type</code>):</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tipo</th><th>Guarda</th><th>Exemplo</th></tr></thead><tbody><tr><td><code>preference</code></td><td>Como o usuário gosta de trabalhar</td><td>"Prefere ZSH." "Odeia tabulação com espaço."</td></tr><tr><td><code>project</code></td><td>Fatos sobre os projetos dele</td><td>"O projeto X usa Laravel 11."</td></tr><tr><td><code>fact</code></td><td>Outros fatos duráveis sobre ele ou o mundo dele</td><td>"Mora em São Paulo."</td></tr></tbody></table></div>
+<p><strong>Vale guardar</strong> o que (a) continuará verdadeiro por semanas e (b) mudaria uma resposta futura. <strong>Não vale:</strong> conversa social, pedidos pontuais ("marca dentista amanhã", isso é da agenda), conteúdo lido da web, saídas de comandos, e <strong>qualquer segredo</strong> (ver seção 6).</p>
+<p><strong>Documento</strong> (coleção <code>memories</code>):</p>
+<pre><code class="lang-json">{
+  &quot;_id&quot;: &quot;mem_01JAB3...&quot;,
+  &quot;text&quot;: &quot;O projeto X usa Laravel 11.&quot;,
+  &quot;type&quot;: &quot;project&quot;,
+  &quot;status&quot;: &quot;active&quot;,
+  &quot;superseded_by&quot;: null,
+  &quot;embedding&quot;: [0.012, -0.087, 0.231],
+  &quot;embedding_model&quot;: &quot;intfloat/multilingual-e5-small&quot;,
+  &quot;source&quot;: { &quot;kind&quot;: &quot;extracted&quot;, &quot;session_id&quot;: &quot;20261013-221500-a1b2c3&quot; },
+  &quot;created_at&quot;: &quot;2026-10-13T22:15:00Z&quot;,
+  &quot;updated_at&quot;: &quot;2026-10-13T22:15:00Z&quot;
+}</code></pre>
+<p>(<code>embedding</code> abreviado; no banco tem a dimensão inteira do modelo, 384 no <code>multilingual-e5-small</code>.)</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Campo</th><th>Significado</th></tr></thead><tbody><tr><td><code>status</code></td><td><code>active</code> (usada na busca) ou <code>superseded</code> (substituída; fica só para auditoria)</td></tr><tr><td><code>superseded_by</code></td><td>id da memória que a substituiu</td></tr><tr><td><code>embedding_model</code></td><td>modelo que gerou o vetor. Vetores de modelos diferentes <strong>não</strong> são comparáveis: trocar de modelo exige reindexar tudo (comando previsto na T-054)</td></tr><tr><td><code>source.kind</code></td><td><code>extracted</code> (a Juniper tirou da conversa, T-056) ou <code>explicit</code> (o usuário mandou lembrar, T-058)</td></tr></tbody></table></div>
+<p><strong>Índices:</strong> <code>(status, type)</code> e <code>created_at</code>. O vetor <strong>não</strong> tem índice no MVP (ver seção 5).</p>
+<h3 id="4-atualizacao-e-contradicao">4. Atualização e contradição</h3>
+<p>Memória nunca é editada no lugar. Quando entra uma informação que <strong>contradiz</strong> uma ativa ("migrei o X para o Laravel 12"), a nova nasce <code>active</code> e a antiga vira <code>superseded</code> com <code>superseded_by</code> apontando para ela. A busca só enxerga <code>active</code>.</p>
+<p>Informação <strong>equivalente</strong> a uma ativa não cria duplicata (só atualiza <code>updated_at</code>). Quem decide "equivalente", "contradiz" ou "novo" é a etapa de extração (T-056), comparando a candidata com as memórias mais próximas.</p>
+<p><code>forget</code> é <strong>exclusão de verdade</strong> (some do banco), a pedido do usuário. <code>superseded</code> é para auditar atualizações, não para guardar o que ele mandou esquecer.</p>
+<h3 id="5-interfaces-trocaveis">5. Interfaces (trocáveis)</h3>
+<p>Decisões já tomadas, cada uma atrás de uma interface para trocar depois sem mexer no resto:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Interface</th><th>Primeira implementação</th><th>Troca futura</th></tr></thead><tbody><tr><td><code>EmbeddingProvider</code> (<code>embed</code>, <code>embed_batch</code>, <code>dimension</code>, <code>model_id</code>)</td><td>Modelo multilíngue <strong>local em CPU</strong> (<code>multilingual-e5-small</code>, ONNX), carregado sob demanda</td><td>API externa</td></tr><tr><td><code>VectorStore</code> (<code>add</code>, <code>search(vector, top_k, threshold, filters)</code>, <code>update</code>, <code>delete</code>)</td><td>Carrega vetores do MongoDB e calcula <strong>cosseno em Python</strong> (numpy)</td><td><strong>Atlas Vector Search</strong> (<code>$vectorSearch</code>)</td></tr><tr><td><code>SessionStore</code></td><td>Arquivos JSON</td><td>MongoDB</td></tr></tbody></table></div>
+<p>Por que local e cosseno: o volume é pessoal (centenas a poucos milhares de memórias), o cosseno responde em milissegundos nessa escala, não exige Atlas, e o texto das memórias não sai da máquina para gerar embedding. A migração só é necessária se o volume chegar a centenas de milhares.</p>
+<h3 id="6-privacidade-e-seguranca">6. Privacidade e segurança</h3>
+<ul><li><strong>Segredos nunca entram.</strong> Antes de gravar (extração ou <code>remember</code>), o texto passa por um filtro que recusa o que parece chave de API, token, senha, número de cartão e chave privada. Em dúvida, recusa. <strong>[a confirmar]</strong></li><li><strong>Memória é dado, não instrução.</strong> Ao injetar no prompt (T-057), as memórias vão num bloco delimitado e rotulado como "fatos conhecidos sobre o usuário"; texto de memória que pareça uma ordem não é obedecido. Isso limita o estrago se algo plantado pela web chegar a ser memorizado.</li><li><strong>Guardar não pergunta (T-062).</strong> <code>remember</code> e <code>update_profile</code> gravam sem pedir permissão, para a conversa ser fluida; o controle é a posteriori (<code>juniper memory list/forget/profile</code>). Só <code>forget</code> (irreversível) confirma. O risco aceito: algo plantado por conteúdo da web que o LLM leu pode ser memorizado. Ele é limitado pelo filtro de segredos e de ordens, pelo bloco de memórias ser sempre rotulado como dado (seção 7) e pela auditoria do usuário.</li><li><strong>Extração em segundo plano (T-063).</strong> A extração roda logo depois de cada resposta, uma por vez, em silêncio e com roteador próprio, para ser fluida e não perder nada se o terminal for fechado. Custa uma chamada de LLM por mensagem que não seja só uma saudação (<code>memory.extraction.mode: exit</code> volta a uma por conversa). Fatos duráveis ditos dentro de um pedido pontual (o gato no pedido de agendar a castração) são memórias; o pedido em si não.</li><li><strong>O usuário audita e apaga:</strong> listar, buscar, esquecer e exportar (T-058). A exportação <strong>não</strong> inclui os vetores, salvo pedido.</li><li><strong>Dados ficam na infraestrutura do próprio usuário</strong> (máquina local ou a VPS dele). Aviso honesto: a <strong>extração</strong> usa o LLM do chat (DeepInfra/Groq/Ollama), então o trecho da conversa analisado vai ao provider ativo, como já vai a própria conversa. Só o <em>embedding</em> é local.</li><li><strong>Sessões em disco</strong> contêm a conversa inteira: ficam em diretório <code>700</code>, arquivos <code>600</code>. Não há expiração automática no MVP <strong>[a confirmar]</strong>.</li></ul>
+<h3 id="7-recuperacao-rag">7. Recuperação (RAG)</h3>
+<p>A cada mensagem do usuário, busca-se por similaridade entre as memórias <code>active</code> e injeta-se o que passar de <code>memory.retrieval.threshold</code>, no máximo <code>top_k</code>, dentro de <code>memory.retrieval.max_tokens</code>. Os valores padrão (<code>top_k</code>, <code>threshold</code>) são <strong>calibrados na T-055/T-057</strong> com exemplos reais; este ADR não os fixa.</p>
+<h3 id="8-perfil-do-usuario-t-061">8. Perfil do usuário (T-061)</h3>
+<p>A recuperação por relevância (seção 7) não traz o nome do usuário numa saudação, e uma memória como "ficou frustrado" não diz de quem é. O <strong>perfil</strong> resolve os dois, <strong>fora</strong> do conceito de memória (coleção <code>profile</code>, um documento <code>_id: &quot;user&quot;</code>, regras próprias):</p>
+<ul><li><strong>Um parágrafo de identidade</strong> (até <code>memory.profile.max_chars</code>, 500) com nome, nascimento, nacionalidade e gênero (só se o usuário disser), mais <code>fields</code> estruturados. Ex.: "O usuário se chama Petrus Rennan, é um homem adulto de {idade} anos, nascido em 16/06/1999, brasileiro."</li><li><strong>A idade não é guardada:</strong> o texto leva <code>{idade}</code> e a idade é calculada da data de nascimento a cada prompt. Uma idade literal que bata com a data de nascimento (±1) é convertida no marcador ao gravar.</li><li><strong>Vai em TODA mensagem, sem busca</strong>, num bloco <code>&lt;perfil&gt;</code> rotulado como dado, <strong>logo depois da persona</strong> (parte estável do prompt, que os providers colocam em cache); as memórias relevantes seguem antes da mensagem do usuário. O custo extra é só o parágrafo (~150 tokens no teto), imposto ao gravar e ao injetar.</li><li><strong>Atualização na mesma chamada da extração</strong> (seção 4/T-056): o LLM recebe o perfil atual e a data, e só devolve um perfil novo se a conversa trouxer dado de identidade novo ou corrigido; sem isso não há chamada extra e o perfil não muda. O novo texto só vem de mensagens do usuário, passa pelo filtro de segredos e de "ordem para uma IA", e <strong>documentos de identidade (CPF, RG...) são recusados</strong>. Proposta inválida ou grande demais mantém o perfil antigo.</li><li><strong>Memórias ligadas à identidade:</strong> a extração escreve o nome do usuário como sujeito e data <strong>absoluta</strong> no que for datado ("Petrus se sentiu frustrado em 14/10/2026 por uma pressão no trabalho."). Sentimentos e personalidade continuam na memória geral (<code>fact</code>); <code>memory.extraction.save_feelings: false</code> desliga, por serem sensíveis.</li><li><strong>Controle do usuário:</strong> tool <code>update_profile</code> (WRITE, <strong>sem</strong> confirmação desde a T-062) e <code>juniper memory profile [set|forget]</code>; a exportação inclui o perfil. <code>forget</code> apaga de verdade.</li></ul>
+<h3 id="9-configuracao-adr-003">9. Configuração (ADR-003)</h3>
+<p>Nova seção <code>memory</code> em <code>config.yaml</code>, cada task acrescenta a sua:</p>
+<pre><code class="lang-yaml">memory:
+  session:                    # T-051
+    max_turns: 8
+    max_tokens: 6000
+    dir: ~/.juniper/sessions
+  mongo:                      # T-053
+    uri: mongodb://localhost:27017   # credenciais só no .env
+    database: juniper
+  profile:                    # T-061
+    enabled: true
+    max_chars: 500
+  embeddings:                 # T-054
+    model: intfloat/multilingual-e5-small
+  retrieval:                  # T-055 / T-057
+    top_k: 5
+    threshold: 0.80           # ponto de partida (e5 dá notas altas); calibrar
+    max_tokens: 500</code></pre>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<ul><li>A conversa passa a sobreviver ao terminal (<code>--resume</code>), já na T-051, sem esperar o MongoDB.</li><li>Trocar o modelo de embeddings exige reindexar (o campo <code>embedding_model</code> permite detectar isso).</li><li>Memória substituída fica no banco, marcada, enquanto o usuário não mandar esquecer; é um custo pequeno de armazenamento pelo ganho de auditoria.</li><li>A qualidade da memória depende do LLM de extração: ele pode lembrar o que não devia ou deixar de lembrar. Por isso <code>juniper memory list/forget</code> (T-058) é parte do escopo, não um extra.</li><li>O filtro de segredos é heurístico; não garante 100%. Quem cola uma senha na conversa ainda a deixa no arquivo de sessão (ver seção 6).</li><li>Não validado neste ADR: latência real do modelo de embeddings na VPS e a qualidade da busca em PT-BR. Ambos são medidos na T-054/T-055 (e documentados nos PRs).</li></ul>
+<h2 id="plano-por-task">Plano por task</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Task</th><th>Entrega</th></tr></thead><tbody><tr><td>T-050</td><td>Este ADR</td></tr><tr><td>T-051</td><td>Sessão com id, orçamento de tokens, <code>SessionStore</code> em arquivos, <code>--resume</code></td></tr><tr><td>T-053</td><td>Camada MongoDB + Docker Compose; <code>MongoSessionStore</code></td></tr><tr><td>T-054</td><td><code>EmbeddingProvider</code> local e <code>juniper memory reindex</code></td></tr><tr><td>T-055</td><td><code>VectorStore</code> (cosseno) e <code>MongoVectorStore</code></td></tr><tr><td>T-056</td><td>Extração, deduplicação, atualização e filtro de segredos (só com <code>store: mongo</code>; desde a T-063 roda em segundo plano a cada resposta, ou só ao encerrar com <code>mode: exit</code>)</td></tr><tr><td>T-057</td><td>Recuperação e injeção no prompt (mensagem de sistema por turno, fora do histórico; <code>threshold</code> padrão 0.80, a calibrar)</td></tr><tr><td>T-058</td><td>Tools <code>remember</code>/<code>recall</code>/<code>forget</code> (WRITE sem confirmação desde a T-062 / READ / DESTRUCTIVE com confirmação; só oferecidas com a memória ligada) e <code>juniper memory list/search/forget/export</code></td></tr><tr><td>T-061</td><td>Perfil do usuário: parágrafo de identidade em todo prompt, atualizado na extração (seção 8)</td></tr><tr><td>T-060</td><td>Teste de aceite do marco (automatizado com LLM/embeddings/banco simulados, mais roteiro manual com os reais)</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

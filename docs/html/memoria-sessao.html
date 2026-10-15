@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memória de sessão — Livro de bolso Juniper</title>
+<meta name="description" content="A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/memoria-sessao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Memória / Memória de sessão</div>
+<h1>Memória de sessão <span class="tag g">pronta</span></h1>
+<p class="lead">A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: <code>brain/core/session.py</code> (<a href="agente.html#session">Agente</a>) e <code>brain/memory/session.py</code>. Decisões de fundo no ADR-011.</p>
+<h2 id="uso">Uso</h2>
+<pre><code class="lang-bash">juniper                         # conversa nova (a anterior fica guardada)
+juniper --resume                # retoma a conversa mais recente (atalho: -r)
+juniper -r &quot;e o prazo?&quot;         # retoma e já manda uma mensagem</code></pre>
+<p>Toda conversa é salva sozinha ao fim de cada turno. Sem conversa anterior, <code>--resume</code> avisa e abre uma nova. Retomar mostra "Retomando a conversa de 13/10 às 19:15 (4 mensagens suas)".</p>
+<h2 id="funciona">Como funciona</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Peça</th><th>O que faz</th></tr></thead><tbody><tr><td><code>Session</code></td><td>Guarda o histórico, um id (ordenável por data) e os horários de criação e atualização.</td></tr><tr><td>Orçamento de tokens</td><td>Antes de cada pedido ao LLM, <code>compact()</code> mantém o histórico dentro de <code>memory.session.max_tokens</code>. Os tokens são estimados (≈ 4 caracteres cada), sem tokenizer.</td></tr><tr><td><code>SessionStore</code></td><td>A interface que o <code>Agent</code> usa para salvar.</td></tr><tr><td><code>FileSessionStore</code></td><td>Um arquivo JSON por conversa.</td></tr><tr><td><code>MongoSessionStore</code></td><td>Um documento por conversa no MongoDB.</td></tr><tr><td><code>Agent</code></td><td>Salva depois de cada turno, inclusive quando o turno falha (já desfeito pelo rollback).</td></tr></tbody></table></div>
+<h3 id="limite">O que sai quando passa do limite</h3>
+<p>Primeiro vale o teto de turnos (<code>max_turns</code>). Depois, se o histórico ainda passa de <code>max_tokens</code>, saem os turnos mais antigos, <strong>inteiros</strong>: a sua mensagem e tudo que veio depois dela, tool calls incluídas. Assim nunca sobra uma resposta de tool sem a chamada que a originou, que o LLM recusaria. O turno em andamento nunca é descartado. Não há resumo por LLM: o que importa de uma conversa antiga vira <a href="memoria-longo-prazo.html">memória de longo prazo</a>.</p>
+<h3 id="sessionstore">SessionStore</h3>
+<p>A interface de persistência (<code>typing.Protocol</code>): <code>save</code>, <code>load</code>, <code>latest</code> e <code>list_sessions</code> (e não <code>list</code>, que conflitaria com o tipo <code>list[...]</code> no mypy estrito). O resto da Juniper só conhece ela, então trocar arquivos por MongoDB não mexe em mais nada.</p>
+<h3 id="filesessionstore">FileSessionStore</h3>
+<p>Um arquivo JSON por conversa em <code>~/.juniper/sessions/</code>. A pasta é só sua (permissão <code>700</code>, arquivos <code>600</code>) e a escrita é <strong>atômica</strong>: uma queda no meio deixa a versão anterior, nunca um arquivo pela metade. O id vira nome de arquivo, então é validado (<code>[A-Za-z0-9_-]</code>) e um id como <code>../algo</code> não escapa da pasta. Um arquivo corrompido é ignorado ao buscar a conversa mais recente.</p>
+<h3 id="retomar">Ao retomar</h3>
+<p>Dois cuidados: <strong>a persona não é salva</strong> (vale a atual) e <strong>uma confirmação pendente não volta</strong>. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" (ADR-006).</p>
+<h2 id="mongodb">MongoDB</h2>
+<p>Com <code>memory.session.store: mongo</code>, as conversas ficam no MongoDB em vez de arquivos. É também onde ficam as <a href="memoria-longo-prazo.html">memórias de longo prazo</a>.</p>
+<div class="callout warn"><p><strong>Atenção:</strong> o MongoDB roda num container, então é preciso ter o <strong>Docker</strong> (com o plugin <code>docker compose</code>) instalado e rodando. Sem Docker, use <code>store: file</code> (o padrão): as conversas ficam em JSON e nada mais é necessário.</p></div>
+<h3 id="ligar">Como ligar</h3>
+<p>O jeito fácil: o instalador pergunta onde guardar a memória e, se você escolher o MongoDB, confere o Docker, sobe o banco, cria usuário e senha no <code>.env</code> e liga o <code>store: mongo</code> sozinho. Para fazer depois: <code>juniper install --memory=mongo</code>. À mão:</p>
+<pre><code class="lang-bash"># 1. .env (nunca é versionado): escolha usuário e senha do banco
+JUNIPER_MEMORY__MONGO__USERNAME=juniper
+JUNIPER_MEMORY__MONGO__PASSWORD=uma-senha-forte
+
+# 2. sobe o banco
+docker compose up -d
+
+# 3. config.yaml
+memory:
+  session:
+    store: mongo</code></pre>
+<p>Para voltar aos arquivos, basta <code>store: file</code>.</p>
+<div class="callout warn"><p><strong>Atenção:</strong> não troque usuário e senha depois de subir: o Mongo só lê essas variáveis quando cria o volume. Para recomeçar com outras credenciais: <code>docker compose down -v</code> (<strong>apaga os dados</strong>) e <code>docker compose up -d</code>. As conversas antigas em arquivos <strong>não migram</strong>: com <code>store: mongo</code>, o <code>--resume</code> só enxerga o banco.</p></div>
+<h3 id="mongoconnection">MongoConnection</h3>
+<p>Cria o cliente só quando preciso, faz o teste de saúde (<code>check()</code>) e traduz qualquer falha do driver em <code>MemoryUnavailableError</code>. <code>brain/memory/mongo.py</code> é o <strong>único</strong> arquivo que importa o driver (<code>pymongo</code>), e só é carregado com <code>store: mongo</code>.</p>
+<h3 id="mongosessionstore">MongoSessionStore</h3>
+<p>Implementa o <code>SessionStore</code> (<code>save</code>, <code>load</code>, <code>latest</code>, <code>list_sessions</code>); o <code>Agent</code> não sabe que mudou. Banco <code>juniper</code>, coleção <code>sessions</code>, um documento por conversa:</p>
+<pre><code class="lang-json">{
+  &quot;_id&quot;: &quot;20261014-034312-b94e9d&quot;,
+  &quot;version&quot;: 1,
+  &quot;created_at&quot;: &quot;2026-10-14T03:43:12+00:00&quot;,
+  &quot;updated_at&quot;: &quot;2026-10-14T03:44:02+00:00&quot;,
+  &quot;history&quot;: [ {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;...&quot;}, {&quot;role&quot;: &quot;assistant&quot;, &quot;content&quot;: &quot;...&quot;} ],
+  &quot;turns&quot;: 1,
+  &quot;preview&quot;: &quot;[...] meu projeto X usa Laravel 11&quot;,
+  &quot;saved_at&quot;: &quot;2026-10-14T03:44:02.123456+00:00&quot;
+}</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Quando</th><th>O que acontece</th></tr></thead><tbody><tr><td>Fim de cada turno</td><td><code>replace_one</code> com upsert: o documento inteiro é substituído.</td></tr><tr><td>Sessão vazia</td><td>Não grava nada.</td></tr><tr><td>Gravação falha</td><td>Vai para o log (evento <code>error</code>) e a conversa continua.</td></tr><tr><td><code>--resume</code></td><td>Pega a conversa de maior <code>saved_at</code> (microssegundos, para não empatar).</td></tr></tbody></table></div>
+<p>Como em arquivos, só o histórico é guardado. Há dois índices (<code>saved_at</code> e <code>updated_at + saved_at</code>), criados na primeira gravação. Um documento corrompido é ignorado em <code>latest</code> e <code>list_sessions</code>.</p>
+<h3 id="open-session-store">open_session_store</h3>
+<p>Escolhe o store por <code>memory.session.store</code>. Com <code>mongo</code>, já faz o teste de saúde: é o <em>healthcheck</em> de inicialização.</p>
+<h3 id="memoryunavailableerror">MemoryUnavailableError</h3>
+<p>Erro com mensagem escrita para você, em português, dizendo o que fazer. O CLI a imprime e sai com código 1, <strong>sem stacktrace</strong>, antes de falar com o LLM.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Situação</th><th>O que você vê</th></tr></thead><tbody><tr><td>Banco fora do ar</td><td>"Não consegui conectar ao MongoDB em mongodb://localhost:27017. Suba o banco com <code>docker compose up -d</code>, ou guarde as conversas em arquivos com <code>memory.session.store: file</code>."</td></tr><tr><td>Usuário ou senha errados</td><td>"O MongoDB recusou o usuário ou a senha." com os nomes das variáveis a conferir.</td></tr><tr><td>Driver não instalado</td><td>Pede <code>pip install -e .</code>.</td></tr></tbody></table></div>
+<p>Banco fora do ar = <strong>avisa e sai</strong>, sem cair para arquivos em silêncio (um fallback silencioso gravaria conversas num lugar que você não espera). Se o banco cair no meio da conversa, só a gravação falha (vai para o log) e a conversa segue.</p>
+<h3 id="compose">docker-compose.yml</h3>
+<p>Sobe <code>mongo:7</code> só em <code>127.0.0.1:27017</code> (a rede nunca vê o banco), com o volume <code>juniper-mongo-data</code> e <em>healthcheck</em>. Usuário e senha vêm do <code>.env</code>; sem eles o compose recusa subir. Para olhar os dados:</p>
+<pre><code class="lang-bash">docker exec -it juniper-mongo mongosh -u &lt;usuario&gt; -p --authenticationDatabase admin juniper
+&gt; db.sessions.find({}, {history: 0})</code></pre>
+<p>Atenção ao banco: sem o <code>juniper</code> no fim, o <code>mongosh</code> abre o banco <code>test</code>, que está vazio.</p>
+<h2 id="configuracao">Configuração</h2>
+<pre><code class="lang-yaml">memory:
+  session:
+    max_turns: 8          # turnos seus mantidos
+    max_tokens: 6000      # orçamento estimado do histórico
+    dir: ~/.juniper/sessions
+    store: file           # file (padrão) ou mongo
+  mongo:
+    uri: mongodb://localhost:27017
+    database: juniper
+    timeout_ms: 3000      # quanto esperar pelo servidor antes de avisar que caiu</code></pre>
+<p>Usuário e senha ficam só no <code>.env</code> (ADR-003); o mesmo par é lido pelo compose. A senha é entregue ao driver à parte, sem ir na URI: <code>@</code>, <code>:</code> e <code>/</code> não precisam de escape. Referência completa em <a href="configuracao.html#memory">Configuração</a>.</p>
+<h2 id="limitacoes">Limitações conhecidas</h2>
+<ul><li>Retoma só a mais recente; escolher outra pela lista (<code>list_sessions</code> já existe) fica para depois.</li><li>Sem expiração e sem migração dos JSONs antigos: as conversas ficam até você apagar.</li><li>A estimativa de tokens é aproximada (código e emoji podem pesar mais); o orçamento padrão tem folga.</li><li>As chamadas ao Mongo são síncronas: com o banco fora do ar, cada gravação pode esperar até <code>timeout_ms</code> (3 s).</li><li>O documento é substituído a cada turno: o que saiu do histórico sai também do banco.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest -m &quot;not integration&quot;     # sem banco: o que o CI roda
+pytest -m integration           # contra o MongoDB local (docker compose up -d)</code></pre>
+<p>Os de integração rodam o mesmo contrato do <code>FileSessionStore</code> contra o <code>MongoSessionStore</code> (<code>tests/test_session_store_contract.py</code>), mais os casos próprios do Mongo (<code>tests/test_mongo_store.py</code>). Cada teste usa um banco descartável e o apaga no fim.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

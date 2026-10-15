@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-001 — Idioma, Providers de LLM e Camada HMI — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-001 — Idioma, Providers de LLM e Camada HMI">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-001.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-001</div>
+<h1>ADR-001 — Idioma, Providers de LLM e Camada HMI</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan + Lead Architect (Juniper)</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-001, T-010, T-011, T-012, T-013, T-040, T-041</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O Juniper v2 usava <code>commands/chat.sh</code> para conversar com o Ollama via <code>curl</code> + <code>jq</code>. Essa abordagem é <em>stateless</em>, frágil para streaming de tokens, e não suporta <em>tool calling</em> — que é o pilar da v3.</p>
+<p>A v3 precisa de:</p>
+<ol><li>Suporte a múltiplos providers de LLM com <em>failover</em>.</li><li>Streaming de tokens de forma estável.</li><li><em>Tool calling</em> nativo (Function Calling).</li><li>Uma camada HMI que continue sendo "comando de terminal nativo".</li></ol>
+<p>Além disso, a persona da Juniper (sarcástica, técnica, vibrante) precisa ser preservada, e o idioma de interação com o usuário precisa ser definido.</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-idioma">1. Idioma</h3>
+<ul><li><strong>Interação com o usuário e persona:</strong> Português Brasileiro (PT-BR).</li><li><strong>Código-fonte:</strong> Nomes de variáveis, funções, classes, comentários e logs estruturados em <strong>inglês</strong>. Isso garante consistência técnica e facilita integração futura com bibliotecas e padrões do ecossistema Python.</li><li><strong>Mensagens de erro para o usuário final:</strong> PT-BR, com a persona da Juniper injetada.</li></ul>
+<h3 id="2-providers-de-llm">2. Providers de LLM</h3>
+<ul><li><strong>Groq (<code>groq-sdk</code>):</strong> Provider primário. Latência ultra-baixa via LPU, <em>tool calling</em> excelente, tier gratuito generoso.</li><li><strong>Ollama (HTTP <code>/api/chat</code>):</strong> Provider secundário / <em>fallback</em>. Roda localmente na GPU do usuário (RX 590, 8GB VRAM), suporta os mesmos <em>schemas</em> de <em>tool calling</em>.</li><li><strong>Configuração:</strong> A prioridade é configurável via <code>config.yaml</code> (<code>llm.priority</code>). O comportamento padrão é <code>[groq, ollama]</code> — tenta Groq, cai para Ollama em erro de rede, <em>timeout</em>, ou ausência de API key.</li><li><strong>Modelo default do Groq:</strong> <code>llama-3.3-70b-versatile</code> (<em>tool calling</em> confiável, contexto amplo).</li><li><strong>Modelo default do Ollama:</strong> <code>llama3.1</code> (já calibrado no v2 para 8GB VRAM).</li></ul>
+<h3 id="3-camada-hmi">3. Camada HMI</h3>
+<ul><li>O <code>commands/chat.sh</code> é removido na v3. Toda interação conversacional passa por <code>python -m brain chat</code> (invocado via <em>wrapper</em> fino em <code>shell/juniper.sh</code>).</li><li>O <code>shell/juniper.sh</code> continua sendo o ponto de entrada do usuário no terminal — mas deixa de conter lógica de negócio. Ele apenas roteia para o core Python.</li><li>Comandos legados (<code>gitgrep</code>, <code>deployfeature</code>) são preservados em <code>shell/commands/</code> e migrarão para <em>tools</em> do agente no Sprint 2.</li></ul>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Um único caminho de chat elimina ambiguidade de manutenção.</li><li><em>Failover</em> automático entre Groq e Ollama aumenta robustez.</li><li>Separação clara entre interface (<code>shell</code>) e inteligência (<code>Python</code>) viabiliza <em>tool calling</em>, streaming e memória.</li><li>Persona versionada em <code>prompts/juniper.md</code> permite evolução controlada.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>O Groq exige internet e API key. O usuário precisa configurar <code>GROQ_API_KEY</code> no <code>.env</code> (embora o sistema funcione só com Ollama, se preferir).</li><li>O Ollama exige <em>daemon</em> rodando. O <code>scripts/dev.sh</code> avisa mas não instala.</li><li>Duplicação de manutenção de <em>schemas</em> de <em>tool calling</em> entre os dois <em>providers</em> (mitigado pelo <em>schema</em> único em ADR-002).</li></ul>
+<hr>
+<h2 id="alternativas-consideradas">Alternativas Consideradas</h2>
+<ol><li><strong>Só Ollama, sem Groq.</strong> <ul><li><em>Rejeitada:</em> Latência alta prejudica a UX de agente interativo, e o <em>tool calling</em> de modelos 8B é menos confiável.</li></ul></li><li><strong>Só Groq, sem Ollama.</strong> <ul><li><em>Rejeitada:</em> Sem <em>fallback</em> offline, o usuário perde soberania sobre dados sensíveis.</li></ul></li><li><strong>Manter <code>chat.sh</code> em paralelo ao novo <code>brain</code>.</strong> <ul><li><em>Rejeitada:</em> Dívida técnica imediata, dois caminhos de manutenção, confusão de comportamento.</li></ul></li><li><strong>Internacionalização (i18n) desde o início.</strong> <ul><li><em>Rejeitada por YAGNI.</em> A persona vive em PT-BR; adicionar i18n agora é complexidade sem uso.</li></ul></li></ol>
+<hr>
+<h2 id="referencias">Referências</h2>
+<ul><li><a href="#">ADR-002 — Schema de Tools (OpenAI Function Calling)</a></li><li><a href="#">ADR-003 — Configuração (config.yaml + .env)</a></li><li><code>prompts/juniper.md</code> — Persona versionada</li><li><code>BACKLOG.md</code> — T-001, T-040, T-041</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

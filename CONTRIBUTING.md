@@ -55,3 +55,18 @@ Configuração em *Settings → Branches → Branch protection rules* (ou *Rules
 
 Mudanças que afetam a arquitetura são registradas como ADR em `docs/decisions/`
 (`ADR-NNN.md`), com status, contexto, decisão e consequências.
+
+## Documentação (livro de bolso)
+
+O livro de bolso (`docs/html`, servido por `juniper docs` e publicado no GitHub Pages) é
+**gerado**: não edite os `.html`. As fontes são:
+
+- `docs/pages/*.md`: as páginas por tópico (cada uma começa com `title`, `group`, `order`
+  e `description`). Um título marcado com `{#id kind=classe file=caminho}` entra no índice
+  de entidades e na busca;
+- `docs/decisions/ADR-*.md`: os ADRs (viram `adr-NNN.html` sozinhos).
+
+Depois de editar uma fonte, rode `python scripts/build_docs.py` e versione o resultado. O
+teste `tests/test_docs.py` falha se o HTML estiver desatualizado, se houver link ou âncora
+quebrados, se uma página citar um arquivo que não existe ou se uma opção do `config.yaml`
+não estiver documentada em `docs/pages/configuracao.md`.

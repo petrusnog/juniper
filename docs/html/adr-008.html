@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-008 — Integração com Google Calendar (primeira tool real) — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-008 — Integração com Google Calendar (primeira tool real)">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-008.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-008</div>
+<h1>ADR-008 — Integração com Google Calendar (primeira tool real)</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (itens marcados <strong>[a confirmar]</strong> aguardam decisão do Petrus)</dd><dt>Data</dt><dd>2026-10-11</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-002 (schema de tools), ADR-006 (tiers), ADR-007 (locality cloud), T-021, T-022</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>A primeira tool real da Juniper deixa de ser <code>open_app</code> e passa a ser a <strong>integração com o Google Calendar</strong>: marcar compromissos por conversa (ex.: <em>"amanhã às 16h, dentista"</em>), avisando quando já houver algo no horário.</p>
+<p>Dois problemas práticos apareceram ao planejar:</p>
+<ol><li><strong>Autenticação.</strong> O fluxo OAuth de usuário exige publicar o app na tela de consentimento do Google (campo de domínio obrigatório; o <code>localhost</code> é recusado). Em modo "Testing", o token expira em 7 dias. Além disso, o OAuth precisa de navegador, o que não existe na VPS do Sprint 2.</li><li><strong>Data e hora.</strong> O LLM não sabe que dia é hoje. Sem isso, "amanhã" e "sexta" viram datas erradas.</li></ol>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-autenticacao-por-conta-de-servico">1. Autenticação por conta de serviço</h3>
+<ul><li>Uma <strong>conta de serviço</strong> do Google Cloud acessa a Calendar API; o usuário compartilha os calendários com o e-mail dela (como se fosse uma pessoa).</li><li>Chave JSON em <code>~/.juniper/certs/gcp-key.json</code>, permissão <code>600</code>, no <code>.gitignore</code>, <strong>nunca logada</strong>.</li><li>Sem tela de consentimento, sem token que expira, sem navegador: funciona igual local e na VPS.</li><li>Escopo: <code>https://www.googleapis.com/auth/calendar.events</code>.</li></ul>
+<h3 id="2-calendarios">2. Calendários</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Calendário</th><th>Permissão dada à conta de serviço</th><th>Uso</th></tr></thead><tbody><tr><td><strong>Juniper</strong> (novo, na conta Gmail pessoal)</td><td>Fazer alterações em eventos</td><td>Onde a Juniper <strong>cria e apaga</strong> eventos</td></tr><tr><td>Principal</td><td>Ver todos os detalhes do evento <strong>[a confirmar]</strong></td><td>Só leitura, para detectar conflitos</td></tr></tbody></table></div>
+<ul><li>O ID do calendário Juniper fica em <code>config.yaml</code> (<code>google.calendar_id</code>).</li><li>Eventos aparecem no celular normalmente (app Google Agenda sincroniza as agendas da conta).</li><li><strong>Trava de segurança [a confirmar]:</strong> <code>create_event</code> e <code>delete_event</code> só operam no calendário configurado; o calendário principal nunca é alterado.</li></ul>
+<h3 id="3-tools">3. Tools</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tool</th><th>Tier</th><th>Locality</th><th>O que faz</th></tr></thead><tbody><tr><td><code>list_events</code></td><td>READ</td><td>CLOUD</td><td>Lista compromissos de um intervalo (título e horário; sem descrição/local/convidados)</td></tr><tr><td><code>create_event</code></td><td>WRITE</td><td>CLOUD</td><td>Cria o evento; <strong>antes de criar, checa conflitos</strong></td></tr><tr><td><code>delete_event</code></td><td>DESTRUCTIVE</td><td>CLOUD</td><td>Remove um evento do calendário Juniper</td></tr></tbody></table></div>
+<h3 id="4-fluxo-de-conflito-conversacional">4. Fluxo de conflito (conversacional)</h3>
+<ol><li><strong>Ordem:</strong> o LLM chama <code>create_event</code> direto (sem <code>list_events</code> antes, para poupar chamadas). Um gancho <code>Tool.precheck</code> valida a entrada e procura conflitos <strong>antes</strong> do <code>[y/N]</code>; assim o usuário nunca confirma algo que vai falhar. O <code>run</code> checa de novo antes de gravar. <code>list_events</code> fica para responder "o que tenho marcado?" e para obter ids.</li><li><code>create_event</code> encontra um evento no horário e <strong>não cria</strong>: devolve <code>ToolResult(success=False)</code> com o nome, o horário e o id do evento conflitante.</li><li>O LLM pergunta ao usuário: <em>"Já existe «Dentista» às 16h. Desmarco para marcar este?"</em></li><li>Se o usuário aceitar, o LLM chama <code>delete_event</code>; o dispatcher ainda pede a confirmação do tier DESTRUCTIVE (dupla segurança). Depois chama <code>create_event</code> de novo.</li><li>Se o conflito estiver no calendário principal, a Juniper <strong>só avisa</strong> (não apaga); a decisão é do usuário.</li></ol>
+<h3 id="5-data-e-hora">5. Data e hora</h3>
+<ul><li>Fonte: <strong>relógio do sistema</strong> + <code>zoneinfo</code> com <code>settings.agent.timezone</code> (<code>America/Sao_Paulo</code>). Sem API externa (uma API de hora adicionaria dependência de rede sem ganho; o relógio da VPS usa NTP).</li><li>Módulo <code>brain/core/clock.py</code> expõe a hora atual com fuso.</li><li>O agente injeta no prompt, <strong>a cada requisição</strong> (não só no início da sessão), algo como: <em>"Agora: domingo, 11/10/2026, 17:30 (America/Sao_Paulo)"</em>.</li><li>Tools recebem datas em <strong>ISO 8601 com offset</strong>; datas no passado são recusadas.</li><li>Aviso operacional: no WSL o relógio pode atrasar depois de suspender o PC; sincronizá-lo resolve.</li></ul>
+<h3 id="6-padroes">6. Padrões</h3>
+<ul><li>Duração padrão quando não informada: <strong>1 hora [a confirmar]</strong>.</li><li>Lembrete padrão dos eventos criados: <strong>a definir</strong> (sugestão: 30 min antes).</li><li>Descrição dos eventos criados inclui a assinatura <em>"Agendado pela Juniper"</em>.</li></ul>
+<h3 id="6b-economia-de-tokens-groq-gratuito">6b. Economia de tokens (Groq gratuito)</h3>
+<p>O plano gratuito limita tokens por minuto (≈8k) e cada chamada reenvia o prompt. Decisões: menos chamadas por pedido (item 0 acima); prompt de sistema <strong>estável</strong> (a hora vai na mensagem do usuário) para permitir cache; <code>llm.groq.reasoning_effort</code> configurável (<code>low</code> para <code>gpt-oss</code>); descrições de tools enxutas; histórico limitado, sem resultados antigos de tools; uso de tokens exibido por chamada.</p>
+<h3 id="7-privacidade">7. Privacidade</h3>
+<p>Compromissos lidos viram texto enviado ao LLM (Groq, na nuvem). Por isso <code>list_events</code> devolve o mínimo necessário (título e horário).</p>
+<h3 id="8-identidade-da-juniper-adiado">8. Identidade da Juniper (adiado)</h3>
+<p>Com conta de serviço, o criador do evento aparece como o e-mail da conta de serviço (sem nome nem foto). Uma <strong>conta Google própria da Juniper</strong> (nome + foto como organizadora) fica para <strong>depois do deploy em nuvem</strong>, quando houver domínio para a tela de consentimento OAuth.</p>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Sem expiração de token e sem passo de navegador; serve também para a VPS.</li><li>A Juniper não toca na agenda real (escrita só no calendário Juniper).</li><li>Reaproveita a base de tools, os tiers e a confirmação já decididos.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>A chave da conta de serviço é um segredo de longa duração.</li><li>Três tools (e não uma) e dependências novas: <code>google-api-python-client</code> e <code>google-auth</code> (bibliotecas síncronas, executadas via <code>asyncio.to_thread</code>).</li><li>O primeiro teste ponta a ponta depende da configuração manual no Google Cloud.</li><li>Eventos aparecem com o e-mail da conta de serviço como criador até a conta própria existir.</li></ul>
+<hr>
+<h2 id="alternativas-consideradas">Alternativas consideradas</h2>
+<ol><li><strong>OAuth de usuário publicado.</strong> Rejeitada por ora: o console exige domínio e a tela de consentimento; volta após o deploy (item 8).</li><li><strong>OAuth em modo "Testing".</strong> Rejeitada: token expira a cada 7 dias.</li><li><strong>Conta Google dedicada à Juniper agora.</strong> Adiada: exige OAuth e o mesmo domínio.</li><li><strong>API externa de data e hora.</strong> Rejeitada: dependência extra sem ganho real.</li><li><strong>Manter <code>open_app</code> como primeira tool.</strong> Substituída por esta decisão do usuário; <code>open_app</code> continua no backlog.</li></ol>
+<hr>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-002 — formato das tools · ADR-006 — tiers · ADR-007 — locality</li><li><code>brain/tools/</code> — implementação (T-022 em diante)</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

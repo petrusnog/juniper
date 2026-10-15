@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM — Livro de bolso Juniper</title>
+<meta name="description" content="O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/llm.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Núcleo / LLM</div>
+<h1>LLM <span class="tag g">pronta</span></h1>
+<p class="lead">O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O agente só conhece o <strong>contrato</strong> <code>LLMProvider</code>. Quem fala com DeepInfra, Groq ou Ollama é um provider, que traduz entre o vocabulário da Juniper e o do modelo. Trocar de modelo, ou adicionar um provider novo, não exige mexer no agente.</p>
+<pre><code class="lang-text">Agent ──► LLMRouter ──► DeepInfraProvider  (nuvem, principal)
+                  ├──► GroqProvider        (nuvem, segunda opção)
+                  └──► OllamaProvider      (local, reserva)</code></pre>
+<p>Código em <code>brain/llm/</code>. A ordem do failover vem de <code>llm.priority</code> (padrão: <code>deepinfra → groq → ollama</code>).</p>
+<h2 id="vocabulario">Vocabulário</h2>
+<p>Os tipos de <code>brain/llm/types.py</code> são todos <strong>imutáveis</strong>.</p>
+<h3 id="message">Message</h3>
+<p>Uma "carta" da conversa.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Campo</th><th>O que é</th></tr></thead><tbody><tr><td><code>role</code></td><td><code>system</code>, <code>user</code>, <code>assistant</code> ou <code>tool</code></td></tr><tr><td><code>content</code></td><td>O texto (pode ser vazio)</td></tr><tr><td><code>tool_calls</code></td><td>Pedidos de ferramenta (só em <code>assistant</code>)</td></tr><tr><td><code>tool_call_id</code></td><td>A qual pedido uma resposta <code>tool</code> responde</td></tr><tr><td><code>name</code></td><td>Nome da tool (em <code>tool</code>)</td></tr></tbody></table></div>
+<p><code>to_openai()</code> converte para o formato OpenAI function calling (ADR-002). O ciclo de uma tool: o <code>assistant</code> pede (<code>tool_calls</code>), a mensagem <code>tool</code> devolve o resultado com o mesmo <code>tool_call_id</code>, e o ciclo se repete até o modelo responder só com texto.</p>
+<h3 id="toolcall">ToolCall</h3>
+<p>O modelo pedindo uma ferramenta: <code>id</code>, <code>name</code> e <code>arguments</code> (um <code>dict</code> já pronto, <strong>não</strong> texto JSON).</p>
+<h3 id="llmresponse">LLMResponse</h3>
+<p>A resposta completa: <code>message</code> (a <code>Message</code> do assistente), <code>model</code>, <code>provider</code>, <code>usage</code> (opcional) e <code>finish_reason</code>.</p>
+<h3 id="streamchunk">StreamChunk</h3>
+<p>Um pedaço da resposta no modo streaming: <code>delta</code> (o texto novo), e, só no último chunk, <code>tool_calls</code> completas, <code>usage</code> e <code>finish_reason</code>.</p>
+<h3 id="tokenusage">TokenUsage</h3>
+<p>O consumo: <code>prompt_tokens</code>, <code>completion_tokens</code> e <code>total_tokens</code>, todos opcionais (nem todo provider informa).</p>
+<h2 id="erros">Erros</h2>
+<p>O tipo do erro diz ao router o que fazer. Todos herdam de <code>LLMError</code> (<code>brain/llm/errors.py</code>).</p>
+<h3 id="llmerror">LLMError</h3>
+<p>Mãe de todos: capturar este pega qualquer falha de LLM.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Erro</th><th>Quando</th><th>Failover</th></tr></thead><tbody><tr><td><code>LLMTimeoutError</code></td><td>Demorou demais para responder.</td><td>sim</td></tr><tr><td><code>LLMRateLimitError</code></td><td>Limite de uso estourado (HTTP 429).</td><td>sim</td></tr><tr><td><code>LLMUnavailableError</code></td><td>Fora do ar: conexão recusada, 5xx, stream cortado.</td><td>sim</td></tr><tr><td><code>LLMAuthError</code></td><td>Chave ausente, inválida ou sem crédito (401/402/403). O provider está inutilizável.</td><td>sim</td></tr><tr><td><code>LLMError</code> (outros)</td><td>Pedido inválido, modelo inexistente (404), resposta malformada. Falharia igual no outro provider.</td><td><strong>não</strong></td></tr></tbody></table></div>
+<p>As mensagens de erro são montadas pela Juniper, <strong>nunca</strong> copiando o texto cru do SDK ou da API: assim a chave de API não vaza nem em mensagem nem em log.</p>
+<h2 id="llmprovider">LLMProvider</h2>
+<p>O contrato. Um provider que não implementa os três métodos nem consegue ser criado.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Método</th><th>O que faz</th></tr></thead><tbody><tr><td><code>chat(messages, *, tools, temperature, max_tokens)</code></td><td>Manda as mensagens e espera a resposta inteira (<code>LLMResponse</code>).</td></tr><tr><td><code>stream(messages, ...)</code></td><td>Devolve a resposta aos pedaços (<code>AsyncIterator[StreamChunk]</code>).</td></tr><tr><td><code>health_check()</code></td><td>Pergunta "você está vivo?" (<code>True</code> ou <code>False</code>, nunca levanta).</td></tr></tbody></table></div>
+<p><code>tools</code> usa o schema OpenAI (ADR-002). <code>compact_prompt</code> (atributo de classe) pede ao router uma persona e descrições de tool mais curtas, usado só pelo Ollama.</p>
+<h2 id="providers">Providers</h2>
+<h3 id="deepinfraprovider">DeepInfraProvider</h3>
+<p>O LLM principal na nuvem (ADR-009). API compatível com a da OpenAI via <code>httpx</code>, sem SDK.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>Valor</th></tr></thead><tbody><tr><td>Endpoint</td><td><code>POST https://api.deepinfra.com/v1/openai/chat/completions</code></td></tr><tr><td>Autenticação</td><td><code>Authorization: Bearer &lt;chave&gt;</code> (<code>JUNIPER_DEEPINFRA_API_KEY</code>)</td></tr><tr><td>Streaming</td><td>SSE: linhas <code>data: {...}</code> até <code>data: [DONE]</code></td></tr><tr><td>Tools</td><td><code>tools</code> + <code>tool_choice: &quot;auto&quot;</code>; argumentos voltam como string JSON e viram <code>dict</code></td></tr><tr><td>Saúde</td><td><code>GET /models</code> (falso se não há chave)</td></tr><tr><td>Modelo padrão</td><td><code>deepseek-ai/DeepSeek-V4-Flash-0731</code> (precisa suportar tool calling)</td></tr></tbody></table></div>
+<p>Mapeamento HTTP: 401/402/403 → <code>LLMAuthError</code>; 429 → <code>LLMRateLimitError</code>; 5xx, conexão e stream cortado → <code>LLMUnavailableError</code>; timeout → <code>LLMTimeoutError</code>; demais 4xx → <code>LLMError</code> (sem failover). Chave ausente falha na <strong>primeira chamada</strong> (não no construtor), para um <code>.env</code> sem a chave não derrubar a partida: o router segue para a Groq.</p>
+<h3 id="groqprovider">GroqProvider</h3>
+<p>Segunda opção, na nuvem, pelo SDK oficial <code>groq</code>. A Groq fala o formato OpenAI, então a ida é direta (<code>Message.to_openai()</code>); o trabalho está em ler a volta e traduzir os erros do SDK.</p>
+<ul><li><code>max_retries=0</code> no SDK: retry e failover são do router.</li><li><code>arguments</code> da tool chega como string JSON; JSON quebrado, ou que não seja objeto, é <code>LLMError</code>; vazio vira <code>{}</code>.</li><li><code>llm.groq.reasoning_effort: low</code> (só modelos gpt-oss) reduz os tokens de raciocínio, que são cobrados como resposta.</li><li>O limite do plano gratuito (HTTP 429) é o motivo do <code>LLMRateLimitError</code> existir.</li></ul>
+<h3 id="ollamaprovider">OllamaProvider</h3>
+<p>Reserva local, via <code>POST /api/chat</code> (<code>httpx</code>, <code>stream:false</code> no <code>chat</code>, NDJSON no <code>stream</code>). Tem conversão própria (não usa <code>to_openai()</code>), porque o formato não é igual:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Campo</th><th>OpenAI</th><th>Ollama</th></tr></thead><tbody><tr><td><code>content</code> vazio</td><td><code>null</code></td><td><code>&quot;&quot;</code></td></tr><tr><td><code>arguments</code> da tool</td><td>string JSON</td><td><code>dict</code></td></tr><tr><td>id da chamada</td><td>sempre presente</td><td>ausente: a Juniper gera <code>call_&lt;12 hex&gt;</code></td></tr><tr><td>resposta de tool</td><td><code>tool_call_id</code></td><td><code>tool_name</code></td></tr><tr><td><code>max_tokens</code></td><td><code>max_tokens</code></td><td><code>options.num_predict</code></td></tr></tbody></table></div>
+<p>Limitações: em CPU, o Ollama lê ~30 tokens de prompt por segundo, então recebe o <strong>prompt compacto</strong> (<a href="#prompt-compacto">abaixo</a>); o contexto padrão é de 4096 tokens; e o 8B segue persona e tool calling pior que os modelos da nuvem, por isso é o último da fila.</p>
+<h2 id="streaming">Streaming</h2>
+<p><code>stream()</code> entrega a resposta em pedaços, à medida que o modelo escreve. Cada pedaço de texto sai num <code>StreamChunk</code> com <code>delta</code>; o <strong>último</strong> chunk traz o que só se sabe no fim (<code>tool_calls</code>, <code>usage</code>, <code>finish_reason</code>).</p>
+<ul><li><strong>Regra de ouro:</strong> juntar todos os <code>delta</code> dá o mesmo texto que <code>chat()</code> devolveria.</li><li><strong>Tool calls só no chunk final</strong>, completas e juntas, mesmo que o provider as envie antes ou em fragmentos: uma ferramenta pela metade não serve ao agente. Na Groq e na DeepInfra elas chegam fragmentadas por <code>index</code> (o <code>id</code> e o <code>name</code> no primeiro fragmento, os <code>arguments</code> em pedaços) e são montadas no fim; só então o JSON é interpretado.</li><li><strong>Stream cortado</strong> (sem <code>done</code>/<code>finish_reason</code>) vira <code>LLMUnavailableError</code>: entregar uma resposta pela metade como completa seria pior que um erro.</li><li>Os erros de <code>stream()</code> aparecem <strong>durante a iteração</strong>, não na chamada.</li><li>Não há retry de stream: retomar no meio duplicaria texto.</li></ul>
+<h2 id="llmrouter">LLMRouter</h2>
+<p>Um provider "de mentira" que esconde vários de verdade. Implementa a mesma interface (<code>chat</code>, <code>stream</code>, <code>health_check</code>); o agente fala só com ele.</p>
+<ul><li>Cada chamada começa pelo primeiro provider de <code>llm.priority</code>. Se ele responde, os outros nem são tocados.</li><li><strong>Troca de provider</strong> em <code>LLMUnavailableError</code>, <code>LLMTimeoutError</code>, <code>LLMRateLimitError</code> <strong>e</strong> <code>LLMAuthError</code>. Outros <code>LLMError</code> são relançados (esconder um 404 de modelo atrás do Ollama dificultaria o diagnóstico).</li><li><strong>No stream, só troca antes do primeiro chunk.</strong> Depois de já ter entregue texto, relança o erro: reenviar a pergunta repetiria o começo da resposta.</li><li>Se <strong>todos</strong> falham, sai um <code>LLMError</code> com a causa de cada provider.</li><li><code>last_provider</code> diz quem atendeu a última chamada; <code>providers</code> lista (somente leitura); <code>health_check()</code> consulta todos em paralelo e vale <code>True</code> se <strong>algum</strong> estiver saudável; <code>aclose()</code> fecha todos.</li><li><code>on_failover(falhou, erro, próximo)</code> é um gancho para o cliente avisar o usuário ("A DeepInfra recusou as credenciais. Vou tentar a Groq.") em vez de ficar em silêncio. Toda troca também vai para o <a href="observabilidade.html">log</a> (evento <code>failover</code>).</li></ul>
+<pre><code class="lang-python">router = LLMRouter()                  # lê llm.priority
+async for c in router.stream(msgs):
+    print(c.delta, end=&quot;&quot;)
+print(router.last_provider)           # &quot;deepinfra&quot;, &quot;groq&quot; ou &quot;ollama&quot;
+await router.aclose()</code></pre>
+<h3 id="prompt-compacto">Prompt compacto</h3>
+<p>Um Ollama em CPU levaria mais de um minuto para ler o prompt completo (persona + todas as tools, ~2.200 tokens) antes do primeiro token. Para providers com <code>compact_prompt = True</code>, o router envia uma persona curta (<code>prompts/juniper.compact.md</code>) e schemas de tool enxutos (descrições de até 100 caracteres, parâmetros até 60). Nomes, tipos, <code>required</code> e <code>enum</code> não mudam, então o tool calling continua funcionando. DeepInfra e Groq recebem o prompt completo.</p>
+<h2 id="configuracao">Configuração</h2>
+<pre><code class="lang-yaml">llm:
+  priority: [deepinfra, groq, ollama]   # só estes três; a ordem é a do failover
+  deepinfra:
+    model: deepseek-ai/DeepSeek-V4-Flash-0731
+    timeout: 30
+  groq:
+    model: openai/gpt-oss-120b
+    timeout: 30
+    reasoning_effort: low
+  ollama:
+    url: http://localhost:11434
+    model: llama3.1
+    timeout: 300</code></pre>
+<p>Segredos no <code>.env</code>: <code>JUNIPER_DEEPINFRA_API_KEY</code> e <code>JUNIPER_GROQ_API_KEY</code>. Sem a chave da DeepInfra a Juniper não quebra: o provider falha com "chave ausente" e o router começa pela Groq. Se você já tinha um <code>config.yaml</code>, a linha <code>priority</code> dele vence o padrão do código. Referência completa em <a href="configuracao.html#llm">Configuração</a>.</p>
+<pre><code class="lang-bash">juniper -p deepinfra &quot;oi&quot;    # força só a DeepInfra, sem failover</code></pre>
+<h2 id="limitacoes">Limitações conhecidas</h2>
+<ul><li>Sem controle de custo: nenhum limite de tokens ou gasto é imposto; acompanhe o painel do provider.</li><li>O formato exato dos erros 4xx da DeepInfra não é documentado; o provider tenta <code>error</code>, <code>detail</code> e <code>message</code>.</li><li>O stream não pode ser cancelado de forma explícita; interromper a iteração fecha a conexão.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_llm_base.py tests/test_ollama_provider.py tests/test_groq_provider.py \
+       tests/test_deepinfra_provider.py tests/test_llm_router.py tests/test_llm_compact.py -v</code></pre>
+<p>Sem rede nem chave: <code>httpx.MockTransport</code> para Ollama e DeepInfra, um cliente falso do SDK (com as exceções reais) para a Groq e providers falsos para o router (1º responde; 1º falha e o 2º responde; todos falham; falha no meio do stream não duplica saída).</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
