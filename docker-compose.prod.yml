@@ -1,0 +1,91 @@
+# Produção: brain + MongoDB (ADR-013, T-080). O mesmo arquivo roda na VPS e na sua máquina.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build   # sobe (e constrói a imagem local)
+#   docker compose -f docker-compose.prod.yml ps               # o brain deve ficar "healthy"
+#   docker compose -f docker-compose.prod.yml down             # desliga (os dados ficam nos volumes)
+#   docker compose -f docker-compose.prod.yml down -v          # desliga e APAGA os dados
+#
+# Variáveis (no .env desta pasta, que o compose lê para preencher o arquivo):
+#   JUNIPER_MEMORY__MONGO__USERNAME / JUNIPER_MEMORY__MONGO__PASSWORD   obrigatórias
+#   JUNIPER_IMAGE        imagem do brain (padrão: juniper-brain:local, construída aqui)
+#   TAILSCALE_IP         endereço onde publicar a porta (padrão: 127.0.0.1; na VPS, o IP Tailscale)
+#   JUNIPER_CONFIG_FILE  config do brain (padrão: docker/config.prod.yaml)
+#   JUNIPER_ENV_FILE     .env com as chaves de LLM (padrão: .env)
+#   JUNIPER_CERTS_DIR    pasta com a chave do Google (padrão: certs)
+#
+# O nome do projeto é outro (juniper-prod) para não encostar nos volumes do docker-compose.yml de
+# desenvolvimento (juniper_juniper-mongo-data).
+name: juniper-prod
+
+services:
+  brain:
+    image: ${JUNIPER_IMAGE:-juniper-brain:local}
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    container_name: juniper-brain
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s   # o brain fecha as conexões com 1012 e conclui a extração de memória
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      # Nunca em 0.0.0.0: na VPS só o endereço Tailscale (ADR-013, seção 2).
+      - "${TAILSCALE_IP:-127.0.0.1}:8765:8765"
+    environment:
+      # A senha do Mongo e as chaves de LLM vêm do .env montado abaixo, não daqui.
+      JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
+    volumes:
+      # Segredos e configuração: montados do servidor, só leitura. Nada disso está na imagem.
+      - ${JUNIPER_CONFIG_FILE:-./docker/config.prod.yaml}:/home/juniper/.juniper/config.yaml:ro
+      - ${JUNIPER_ENV_FILE:-./.env}:/home/juniper/.juniper/.env:ro
+      - ${JUNIPER_CERTS_DIR:-./certs}:/home/juniper/.juniper/certs:ro
+      # Estado do brain.
+      - juniper-state:/home/juniper/.juniper/state     # token dos clientes
+      - juniper-logs:/home/juniper/.juniper/logs       # eventos JSONL
+      - juniper-models:/home/juniper/.juniper/models   # modelo de embeddings (baixa uma vez)
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo:
+    image: mongo:7
+    container_name: juniper-prod-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${JUNIPER_MEMORY__MONGO__USERNAME:?defina JUNIPER_MEMORY__MONGO__USERNAME no .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${JUNIPER_MEMORY__MONGO__PASSWORD:?defina JUNIPER_MEMORY__MONGO__PASSWORD no .env}
+    # Sem `ports`: o banco só existe na rede interna do compose, onde o brain o alcança em
+    # mongo:27017. Para olhar o banco da própria máquina: `docker compose exec mongo mongosh`.
+    volumes:
+      - juniper-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  juniper-mongo-data:
+  juniper-state:
+  juniper-logs:
+  juniper-models:

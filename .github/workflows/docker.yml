@@ -1,0 +1,64 @@
+name: Docker
+
+# Constrói e sobe a imagem do brain (ADR-013). Só roda quando algo que entra na imagem muda.
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.prod.yml
+      - docker-compose.dev.yml
+      - docker/**
+      - requirements.txt
+      - brain/**
+      - prompts/**
+      - .github/workflows/docker.yml
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Constrói a imagem do brain
+        run: docker build -t juniper-brain:ci --build-arg GIT_SHA=${{ github.sha }} .
+      - name: A imagem roda sem privilégio
+        run: |
+          user=$(docker image inspect juniper-brain:ci --format '{{.Config.User}}')
+          test "$user" = "juniper"
+          docker run --rm --entrypoint id juniper-brain:ci -u | grep -qx 10001
+      - name: A imagem não contém segredos
+        run: |
+          # Nada de .env, config.yaml, token ou chaves em nenhuma camada.
+          docker run --rm --entrypoint sh juniper-brain:ci -c \
+            'find / -xdev \( -name ".env" -o -name "config.yaml" -o -name "token" -o -name "gcp-key*" -o -name "*.pem" \) -not -path "/proc/*" -not -path "/usr/lib/python3*" -not -path "/usr/local/lib/python3*" -not -path "/etc/ssl/*" -not -path "/usr/lib/ssl/*" 2>/dev/null' \
+            | tee /tmp/found
+          test ! -s /tmp/found
+          ! docker history --no-trunc juniper-brain:ci | grep -Ei 'password|api_key|secret'
+      - name: O compose de produção é válido
+        run: |
+          printf 'JUNIPER_MEMORY__MONGO__USERNAME=ci\nJUNIPER_MEMORY__MONGO__PASSWORD=ci\n' > /tmp/ci.env
+          mkdir -p /tmp/certs
+          JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs \
+            docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env config --quiet
+      - name: Brain e Mongo sobem e o brain fica saudável
+        run: |
+          export JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs JUNIPER_IMAGE=juniper-brain:ci
+          docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env up -d --wait --wait-timeout 120
+          curl -fsS http://127.0.0.1:8765/health
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env logs --no-color
+      - name: Desliga
+        if: always()
+        run: docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env down -v

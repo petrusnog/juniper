@@ -1,0 +1,25 @@
+# Configuração do brain dentro do contêiner (docker-compose.prod.yml monta este arquivo em
+# ~/.juniper/config.yaml). Não tem segredos: as chaves de LLM e a senha do Mongo vêm do `.env`.
+#
+# Na VPS, aponte JUNIPER_CONFIG_FILE para o seu config.yaml de produção (com as agendas do
+# Google etc.) se precisar de mais do que isto.
+
+llm:
+  priority: [deepinfra, groq]   # o Ollama roda na máquina do usuário, não na VPS
+
+agent:
+  timezone: America/Sao_Paulo
+
+deployment:
+  mode: server
+  server:
+    host: 0.0.0.0               # dentro do contêiner; quem restringe é a publicação da porta (compose)
+    port: 8765
+  auth:
+    token_file: /home/juniper/.juniper/state/token
+
+memory:
+  session:
+    store: mongo
+  mongo:
+    uri: mongodb://mongo:27017  # o serviço `mongo` do compose; usuário e senha vêm do .env

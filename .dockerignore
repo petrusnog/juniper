@@ -1,0 +1,41 @@
+# Segredos e configuração local: nunca entram na imagem (ADR-013, seção 4).
+.env
+.env.*
+!.env.example
+config.yaml
+certs/
+*.pem
+*.key
+*service-account*.json
+client_secret*.json
+gcp-key.json
+token
+
+# Estado e artefatos locais
+.git/
+.github/
+.claude/
+.claudeignore
+.vscode/
+.venv/
+venv/
+sessions/
+logs/
+*.log
+juniper.log
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Não é necessário para rodar
+tests/
+docs/
+scripts/
+shell/
+docker/
+docker-compose*.yml
+Dockerfile
+.dockerignore

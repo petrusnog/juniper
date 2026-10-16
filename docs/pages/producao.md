@@ -33,9 +33,30 @@ O cérebro roda numa **VPS** sempre ligada e os clientes (CLI remoto, app deskto
 | Serviço | Imagem | Notas |
 |---|---|---|
 | `brain` | `ghcr.io/petrusnog/juniper:<sha>` | Python 3.12, usuário sem privilégio, `juniper serve`, reinício automático, *healthcheck* em `GET /health`. |
-| `mongo` | `mongo:7` | Só em `127.0.0.1`, volume nomeado `juniper-mongo-data`, usuário e senha do `.env`. |
+| `mongo` | `mongo:7` | Só na rede interna do compose (sem porta publicada), volume nomeado `juniper-mongo-data`, usuário e senha do `.env`. |
 
-A porta `8765` do brain é publicada **apenas no endereço Tailscale** da VPS, nunca em `0.0.0.0`. O `.env` e a chave do Google são montados do servidor (somente leitura); **segredos nunca entram na imagem**. O modo é `deployment.mode: server` ([Configuração](configuracao.html#deployment)).
+A porta `8765` do brain é publicada **apenas no endereço Tailscale** da VPS, nunca em `0.0.0.0`. O `.env` e a chave do Google são montados do servidor (somente leitura); **segredos nunca entram na imagem**. O modelo de embeddings fica no volume `juniper-models` (baixa uma vez). O modo é `deployment.mode: server` ([Configuração](configuracao.html#deployment)).
+
+## Rodar a produção na sua máquina {#local}
+
+O mesmo `docker-compose.prod.yml` da VPS roda no seu computador, com a porta publicada só em `127.0.0.1`. Serve para testar a arquitetura real (brain e Mongo em contêineres, cliente de fora) antes do deploy. Os arquivos: `Dockerfile`, `.dockerignore`, `docker-compose.prod.yml` e `docker/config.prod.yaml` (a configuração do contêiner, sem segredos).
+
+```bash
+# .env com JUNIPER_MEMORY__MONGO__USERNAME e JUNIPER_MEMORY__MONGO__PASSWORD (e as chaves de LLM)
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps        # o brain fica "healthy"
+
+# o token dos clientes é criado no primeiro boot, dentro do volume juniper-state
+docker exec juniper-brain cat /home/juniper/.juniper/state/token > /tmp/token
+python scripts/smoke_server.py --health
+python scripts/smoke_server.py --token-file /tmp/token "oi, tudo bem?"
+python scripts/smoke_server.py --token-file /tmp/token --resume "do que falávamos?"
+```
+
+- **Sem chave de LLM:** `python scripts/fake_ollama.py` sobe um Ollama de mentira (ecoa a mensagem). No `.env`, `JUNIPER_LLM__PRIORITY=["ollama"]` e `JUNIPER_LLM__OLLAMA__URL=http://host.docker.internal:11999` (no Linux, o serviço `brain` precisa de `extra_hosts: host.docker.internal:host-gateway`).
+- **Variáveis do compose:** `JUNIPER_IMAGE` (imagem do brain; padrão `juniper-brain:local`, construída ali), `TAILSCALE_IP` (onde publicar a porta; padrão `127.0.0.1`), `JUNIPER_CONFIG_FILE`, `JUNIPER_ENV_FILE` e `JUNIPER_CERTS_DIR` (de onde montar a configuração, o `.env` e a chave do Google, sempre somente leitura).
+- **Os dados ficam nos volumes** (`juniper-mongo-data`, `juniper-state`, `juniper-logs`, `juniper-models`): reiniciar ou reconstruir o brain não perde conversas nem memórias. `down -v` apaga tudo.
+- O projeto se chama `juniper-prod`, então não mexe no banco do `docker-compose.yml` de desenvolvimento.
 
 ## Tailscale {#tailscale kind=conceito}
 
