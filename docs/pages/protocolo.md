@@ -80,6 +80,10 @@ O servidor manda `{"type":"ping"}` a cada 30 s e o cliente responde `{"type":"po
 
 Uma conversa fica ligada a **uma conexão** por vez *(a confirmar)*. Uma **confirmação pendente não sobrevive** a uma queda ou a um `session.resume`: depois de retomar, nada executa sem um novo "sim".
 
+## Tools do servidor {#tools}
+
+`tools.request` (`id`) responde `tools.listed` (`reply_to`, `tools[]` com `name`, `description`, `tier` e `locality`): as tools do servidor mais as dos executores conectados. É o que o `juniper tools` mostra no modo `server`. Mensagem nova e compatível: não muda `protocol_version`.
+
 ## Comandos de memória {#memoria}
 
 ```json

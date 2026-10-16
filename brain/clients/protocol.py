@@ -440,6 +440,29 @@ class Result(_Message):
 
 
 # ---------------------------------------------------------------------------------------------
+# Tools do servidor (`juniper tools` no modo server)
+# ---------------------------------------------------------------------------------------------
+
+
+class ToolsRequest(_Message):
+    type: Literal["tools.request"] = "tools.request"
+    id: str
+
+
+class ToolInfo(_Message):
+    name: str
+    description: str
+    tier: str
+    locality: str
+
+
+class ToolsListed(_Message):
+    type: Literal["tools.listed"] = "tools.listed"
+    reply_to: str
+    tools: list[ToolInfo]
+
+
+# ---------------------------------------------------------------------------------------------
 # Uniões e (de)serialização
 # ---------------------------------------------------------------------------------------------
 
@@ -454,6 +477,7 @@ ClientMessage = (
     | MemoryRequest
     | Register
     | Result
+    | ToolsRequest
 )
 ServerMessage = (
     Welcome
@@ -468,6 +492,7 @@ ServerMessage = (
     | MemoryResult
     | Registered
     | Invoke
+    | ToolsListed
 )
 Message = Annotated[ClientMessage | ServerMessage, Field(discriminator="type")]
 """Todas as mensagens, discriminadas por `type` (e `memory.request` também por `op`)."""
@@ -486,6 +511,7 @@ _CLIENT_TYPES: Final = frozenset(
         "memory.request",
         "register",
         "result",
+        "tools.request",
     }
 )
 _SERVER_TYPES: Final = frozenset(
@@ -502,6 +528,7 @@ _SERVER_TYPES: Final = frozenset(
         "memory.result",
         "registered",
         "invoke",
+        "tools.listed",
     }
 )
 

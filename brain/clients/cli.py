@@ -375,6 +375,10 @@ async def remember_conversation(
 
 
 async def _chat(message: str | None, provider: str | None, resume: bool = False) -> int:
+    if settings.deployment.mode == "server":  # o brain é o do servidor (T-086)
+        from brain.clients import remote_cli
+
+        return await remote_cli.chat(message, resume, Printer(console), LineReader())
     registry.discover()
     router = build_router(provider)
     printer = Printer(console)
@@ -639,8 +643,15 @@ def memory_reindex(
 
 
 def _command_memory() -> LongTermMemory:
-    """Memory for a ``juniper memory`` command, or exit 1 saying why it cannot be used."""
+    """Memory for a ``juniper memory`` command, or exit 1 saying why it cannot be used.
+
+    In ``server`` mode it is the server's memory, reached over the protocol (T-086).
+    """
     try:
+        if settings.deployment.mode == "server":
+            from brain.clients.remote_cli import RemoteMemory
+
+            return RemoteMemory()  # type: ignore[return-value]  # same interface as LongTermMemory
         return open_memory_for_commands()
     except MemoryUnavailableError as exc:
         voice.say(console, str(exc), "red")
@@ -868,10 +879,31 @@ def memory_profile_forget(
     voice.say(console, "Esqueci o seu perfil." if removed else "Você não tinha perfil guardado.")
 
 
+def _server_tools() -> list[tuple[str, Tier, str, str]]:
+    """The tools the server's Juniper has right now, or exit 1 saying why not."""
+    from brain.clients import remote_cli
+    from brain.clients.remote import RemoteError
+
+    try:
+        listed = asyncio.run(remote_cli.list_tools())
+    except RemoteError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    return [(t.name, Tier(t.tier), t.locality, t.description) for t in listed]
+
+
 @app.command()
 def tools() -> None:
     """Lista as tools registradas: nome, tier, locality e descrição."""
-    registry.discover()
+    rows: list[tuple[str, Tier, str, str]]
+    if settings.deployment.mode == "server":
+        rows = _server_tools()
+    else:
+        registry.discover()
+        rows = [
+            (t.name, t.tier, str(t.locality), t.description)
+            for t in sorted(registry.all(), key=lambda t: t.name)
+        ]
     table = Table(header_style="bold")
     for column in ("Nome", "Tier", "Locality", "Descrição"):
         table.add_column(column, overflow="fold")
@@ -881,11 +913,9 @@ def tools() -> None:
         Tier.DESTRUCTIVE: "red",
         Tier.FORBIDDEN: "bold red",
     }
-    for tool in sorted(registry.all(), key=lambda t: t.name):
-        color = colors[tool.tier]
-        table.add_row(
-            tool.name, f"[{color}]{tool.tier}[/{color}]", str(tool.locality), tool.description
-        )
+    for name, tier, locality, description in rows:
+        color = colors[tier]
+        table.add_row(name, f"[{color}]{tier}[/{color}]", locality, description)
     voice.say(console, "Isto é o que sei fazer hoje:")
     console.print(table)
 

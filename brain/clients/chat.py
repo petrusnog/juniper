@@ -161,6 +161,8 @@ class ChatHandler:
             await self._session_resume(conn, message)
         elif isinstance(message, p.SessionList):
             await self._session_list(conn, message)
+        elif isinstance(message, p.ToolsRequest):
+            await conn.send(self._tools_listed(message))
         elif isinstance(message, p.Register):
             accepted = self.executors.register(conn, message.tools)
             await conn.send(p.Registered(tools=accepted))
@@ -376,6 +378,24 @@ class ChatHandler:
                 conversation.background.submit(turn)
         if conversation.owner is None:  # o cliente caiu durante o turno
             self._retire(conversation)
+
+    # --- tools ---
+
+    def _tools_listed(self, request: p.ToolsRequest) -> p.ToolsListed:
+        """As tools que a Juniper tem agora: as do servidor e as dos executores conectados."""
+        tools = sorted(self._registry.all(), key=lambda t: t.name)
+        return p.ToolsListed(
+            reply_to=request.id,
+            tools=[
+                p.ToolInfo(
+                    name=t.name,
+                    description=t.description,
+                    tier=str(t.tier),
+                    locality=str(t.locality),
+                )
+                for t in tools
+            ],
+        )
 
     # --- memória ---
 

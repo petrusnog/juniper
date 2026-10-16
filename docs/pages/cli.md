@@ -9,7 +9,7 @@ tags: juniper comando terminal chat repl provider resume memory tools docs insta
 
 ## Visão geral {#visao-geral}
 
-O CLI é o cliente atual da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Hoje o cérebro roda dentro do mesmo processo; a Sprint 3 adiciona o modo remoto ([Produção](producao.html), [Protocolo](protocolo.html)).
+O CLI é o cliente atual da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Por padrão o cérebro roda dentro do mesmo processo (`deployment.mode: local`); no modo `server` o CLI fala com o brain remoto ([Modo server](#server), [Produção](producao.html), [Protocolo](protocolo.html)).
 
 Tudo que o terminal diz segue o padrão de [Voz no terminal](voz.html).
 
@@ -46,6 +46,30 @@ juniper -r "e o prazo?"           # retoma e já manda uma mensagem
 ### Códigos de saída {#saida}
 
 Uma mensagem única sai com `1` se nenhum LLM respondeu. No REPL, um erro de LLM é mostrado e a sessão continua. `--provider` inválido sai com `2`; Ctrl+C sai com `130`; memória indisponível sai com `1` (antes de falar com o LLM).
+
+## Modo server: o CLI falando com o brain remoto {#server}
+
+Com `deployment.mode: server`, o `juniper` não monta o `Agent` no próprio processo: abre um WebSocket com o servidor (`brain/clients/remote.py` e `remote_cli.py`) e só entrega texto e mostra texto. **A aparência é a mesma**: `juniper`, `juniper <mensagem>` e `--resume` funcionam igual, com streaming, confirmação na conversa e o tempo por etapa quando o servidor liga `agent.show_timing`. Conversas, memórias e perfil ficam **no servidor**: existe uma memória só.
+
+```yaml
+# config.yaml do cliente
+deployment:
+  mode: server
+  server:
+    host: 127.0.0.1          # o nome do servidor na rede (na VPS, o nome Tailscale)
+    port: 8765
+  auth:
+    token_file: ~/.juniper/token   # o token que o servidor criou no primeiro boot
+```
+
+No ambiente Docker de desenvolvimento ([Produção](producao.html#dev)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
+
+- **Ctrl+C** durante uma resposta **cancela o turno** (o chat continua); no prompt, sai.
+- **Queda de conexão:** o cliente reconecta sozinho (1, 2, 4, 8, 16 e depois 30 s, com variação; logo depois de um deploy, em até 2 s) e retoma a conversa. Se cair no meio de uma resposta, o turno termina no servidor e, ao reconectar, o CLI mostra a resposta que ficou salva. Sem servidor: "Juniper indisponível no momento".
+- **Comandos de memória** (`list`, `search`, `forget`, `export`, `profile`) falam com a memória do servidor; a confirmação do `forget` continua no cliente. `memory reindex` é administrativo e só roda no servidor.
+- **`juniper tools`** lista as tools do servidor (inclui as de executores conectados).
+- **Comandos locais** (`search`, `deploy`, `install`, `docs`, `version`) não precisam do servidor.
+- Cada processo do CLI é uma conexão própria (`juniper memory list` não derruba o chat aberto).
 
 ## Como funciona {#funciona}
 
