@@ -21,9 +21,18 @@ from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError, LLMUnava
 from brain.llm.types import LLMResponse, Message, StreamChunk
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.session import FileSessionStore
+from brain.tools.base import Locality
+from brain.tools.registry import ToolRegistry
 from tests.test_agent import FakeProvider, batch_registry, say, several
 
 TOKEN = "token-de-teste"
+
+
+def server_side(registry: ToolRegistry) -> ToolRegistry:
+    """`Tool.locality` defaults to EXECUTOR; on a server those go to devices, so mark them local."""
+    for cls in registry.all():
+        cls.locality = Locality.CLOUD
+    return registry
 
 
 def hello(device_id: str = "dev-1", **resume: Any) -> str:
@@ -230,6 +239,7 @@ async def test_turn_timeout_ends_with_error(tmp_path: Path) -> None:
 
 async def test_confirmation_is_the_next_message(tmp_path: Path) -> None:
     registry, ran = batch_registry()
+    server_side(registry)
     provider = FakeProvider(
         [
             several(("wipe", {"id": "1"})),
@@ -247,6 +257,7 @@ async def test_confirmation_is_the_next_message(tmp_path: Path) -> None:
 
 async def test_pending_confirmation_does_not_survive_a_reconnection(tmp_path: Path) -> None:
     registry, ran = batch_registry()
+    server_side(registry)
     provider = FakeProvider(
         [several(("wipe", {"id": "1"})), say("Posso apagar o item 1?"), say("Não executei nada.")]
     )

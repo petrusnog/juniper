@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from brain.clients import protocol as p
+from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
 from brain.clients.server import Connection
 from brain.config import settings
@@ -36,6 +37,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
 from brain.memory.session import SessionStore, SessionStoreError
 from brain.tools.registry import ToolRegistry
+from brain.tools.registry import registry as default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -111,12 +113,16 @@ class ChatHandler:
         tool_registry: ToolRegistry | None = None,
         turn_timeout: float = TURN_TIMEOUT_SECONDS,
         commands_memory: LongTermMemory | None = None,
+        executors: ExecutorHub | None = None,
     ) -> None:
         self._store = store
         self._provider = provider
         self._memory = memory
         self._background = background_extraction and memory is not None
-        self._registry = tool_registry
+        base = tool_registry or default_registry
+        self.executors = executors or ExecutorHub(base)
+        # What a conversation sees: the server's own tools plus the connected devices' ones.
+        self._registry = ExecutorToolRegistry(base, self.executors)
         self._turn_timeout = turn_timeout
         # Os comandos `memory ...` só precisam do banco, não do LLM da extração.
         self._memory_service = MemoryService(commands_memory or memory)
@@ -155,6 +161,11 @@ class ChatHandler:
             await self._session_resume(conn, message)
         elif isinstance(message, p.SessionList):
             await self._session_list(conn, message)
+        elif isinstance(message, p.Register):
+            accepted = self.executors.register(conn, message.tools)
+            await conn.send(p.Registered(tools=accepted))
+        elif isinstance(message, p.Result):
+            self.executors.handle_result(conn, message)
         elif message.type == "memory.request":
             # Pode demorar (o 1º uso carrega o modelo de embeddings): não trava o heartbeat.
             conn.spawn(self._memory_request(conn, message))
@@ -165,6 +176,7 @@ class ChatHandler:
             )
 
     async def close(self, conn: Connection) -> None:
+        self.executors.unregister(conn)
         await self._release(conn)
 
     async def shutdown(self) -> None:
@@ -185,7 +197,9 @@ class ChatHandler:
     # --- conversas ---
 
     def _new_conversation(self, session: Session | None = None) -> Conversation:
-        dispatcher = Dispatcher(conversational=True, tool_registry=self._registry)
+        dispatcher = Dispatcher(
+            conversational=True, tool_registry=self._registry, gateway=self.executors
+        )
         agent = Agent(
             self._provider,
             dispatcher,
@@ -316,6 +330,7 @@ class ChatHandler:
         async def on_token(piece: str) -> None:
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
+        current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
         try:
             try:
                 async with asyncio.timeout(self._turn_timeout):

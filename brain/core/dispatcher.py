@@ -8,7 +8,8 @@ injects an async ``confirm`` callback
 (``confirm(tool_name, args, tier) -> bool``); the dispatcher bounds it with
 ``tools.security.confirmation_timeout``. Everything that goes wrong is returned to the
 LLM as ``ToolResult(success=False)``; ``dispatch`` never raises. Sprint 2+ will route to
-remote executors by ``Tool.locality`` (ADR-007); for now everything runs locally.
+remote executors by ``Tool.locality`` (ADR-007) when a ``gateway`` is given; without one
+everything runs locally.
 """
 
 from __future__ import annotations
@@ -18,13 +19,13 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from brain.config import settings
 from brain.core.consent import mentions_all
 from brain.eventlog import event_log
 from brain.llm.types import Message, ToolCall
-from brain.tools.base import Tier, Tool, ToolResult
+from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 
@@ -68,6 +69,16 @@ def tool_message(call: ToolCall, result: ToolResult) -> Message:
     """The ``role="tool"`` message that reports ``result`` back to the LLM."""
     text = (result.output or "ok") if result.success else f"ERRO: {result.error}"
     return Message("tool", text, tool_call_id=call.id, name=call.name)
+
+
+class RemoteGateway(Protocol):
+    """Where ``Locality.EXECUTOR`` tools really run, when the brain is a server (ADR-007).
+
+    ``invoke`` never raises: an executor that is offline, slow or gone comes back as a failed
+    ``ToolResult`` with a message the LLM can pass on to the user.
+    """
+
+    async def invoke(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult: ...
 
 
 @dataclass
@@ -123,8 +134,11 @@ class Dispatcher:
         confirmation_timeout: float | None = None,
         *,
         conversational: bool = False,
+        gateway: RemoteGateway | None = None,
     ) -> None:
         self._confirm = confirm
+        # Set on the server: EXECUTOR tools go to the connected devices instead of running here.
+        self._gateway = gateway
         self._conversational = conversational
         # Actions waiting for the user's "yes" (conversational mode). The agent consumes it.
         self.pending: PendingBatch | None = None
@@ -242,7 +256,7 @@ class Dispatcher:
         return plan
 
     async def _run(self, plan: _Plan) -> tuple[ToolResult, str]:
-        assert plan.tool is not None  # plans with early results never get here
+        assert plan.tool is not None and plan.tool_cls is not None  # early plans never get here
         decision = (
             "confirmed_in_context"
             if plan.in_context
@@ -251,6 +265,8 @@ class Dispatcher:
             else "auto"
         )
         try:
+            if self._gateway is not None and plan.tool_cls.locality is Locality.EXECUTOR:
+                return await self._gateway.invoke(plan.call.name, plan.call.arguments), decision
             return await plan.tool.run(**plan.call.arguments), decision
         except Exception as exc:  # type only, never the message: it may hold secrets
             return self._crashed(plan.call, exc), "crashed"

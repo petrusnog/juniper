@@ -442,6 +442,8 @@ class Invoke(_Message):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     timeout_ms: int = Field(gt=0)
+    tier: str | None = None
+    """O tier que o executor declarou no `register`; o cliente confere (ADR-014, seção 5)."""
 
 
 class Result(_Message):
