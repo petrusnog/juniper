@@ -272,6 +272,37 @@ async def test_pending_confirmation_does_not_survive_a_reconnection(tmp_path: Pa
     assert ran == []  # sem um novo "sim" depois de retomar, nada executa
 
 
+async def test_pending_confirmation_does_not_survive_another_connection_taking_over(
+    tmp_path: Path,
+) -> None:
+    registry, ran = batch_registry()
+    provider = FakeProvider(
+        [several(("wipe", {"id": "1"})), say("Posso apagar o item 1?"), say("Não executei nada.")]
+    )
+    async with Scenario(provider, tmp_path, tool_registry=registry) as s:
+        old = await connect_client(s.server, "dev-old")
+        await old.chat("apaga o item 1")
+        new = await connect_client(s.server, "dev-new", session_id=old.welcome.session.id)
+        await new.chat("Sim.", id="c-2")
+    assert ran == []  # o "sim" do outro dispositivo não confirma o que o primeiro perguntou
+
+
+async def test_pending_confirmation_does_not_survive_resuming_the_same_conversation(
+    tmp_path: Path,
+) -> None:
+    registry, ran = batch_registry()
+    provider = FakeProvider(
+        [several(("wipe", {"id": "1"})), say("Posso apagar o item 1?"), say("Não executei nada.")]
+    )
+    async with Scenario(provider, tmp_path, tool_registry=registry) as s:
+        client = await connect_client(s.server)
+        await client.chat("apaga o item 1")
+        await client.send(type="session.resume", id="s-1", session_id=client.welcome.session.id)
+        await client.until(p.SessionState)
+        await client.chat("Sim.", id="c-2")
+    assert ran == []
+
+
 # --- sessões ------------------------------------------------------------------------------
 
 
@@ -514,3 +545,32 @@ def test_serve_refuses_to_start_in_local_mode() -> None:
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 1
     assert "deployment.mode: server" in result.output
+
+
+async def test_failing_start_releases_what_was_already_opened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.clients import chat as chat_module
+    from brain.llm import router as router_module
+    from brain.memory import stores
+
+    closed: list[str] = []
+    real_close = stores.close_session_store
+    monkeypatch.setattr(
+        stores, "close_session_store", lambda store: (closed.append("store"), real_close(store))[1]
+    )
+    calls = {"n": 0}
+    real_router = router_module.LLMRouter
+
+    def router_that_fails_second() -> object:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("falha ao montar o segundo router")
+        return real_router()
+
+    monkeypatch.setattr(router_module, "LLMRouter", router_that_fails_second)
+    monkeypatch.setenv("JUNIPER_GROQ_API_KEY", "")
+    with pytest.raises(RuntimeError):
+        async with chat_module.open_chat_handler():
+            pass
+    assert closed == ["store"]

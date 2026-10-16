@@ -105,8 +105,12 @@ class ExecutorHub:
         base: ToolRegistry | None = None,
         *,
         timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        unknown_tool_floor: Tier = Tier.WRITE,
     ) -> None:
         self._base = base or default_registry
+        # Tier mínimo de uma tool que o servidor não conhece (só o dispositivo a descreve): ela
+        # nunca roda sem confirmação, mesmo que o dispositivo a declare `read` (ADR-014).
+        self._floor = unknown_tool_floor
         self._timeout_ms = timeout_ms
         self._executors: dict[str, ExecutorSession] = {}  # por id da conexão
         self._pending: dict[str, tuple[asyncio.Future[p.Result], ExecutorSession]] = {}
@@ -124,7 +128,20 @@ class ExecutorHub:
             reason = self._refusal(spec, accepted)
             if reason is None:
                 tier = Tier(spec.tier)
-                accepted[spec.name] = RemoteTool(spec, tier, _remote_class(spec, tier))
+                effective = tier
+                if (
+                    self._base.get(spec.name) is None
+                    and _STRICTNESS[tier] < _STRICTNESS[self._floor]
+                ):
+                    effective = self._floor  # o `invoke` ainda leva o tier declarado
+                    event_log.log(
+                        "executor",
+                        action="tier_raised",
+                        tool=spec.name,
+                        declared=tier.value,
+                        effective=effective.value,
+                    )
+                accepted[spec.name] = RemoteTool(spec, tier, _remote_class(spec, effective))
             else:
                 event_log.log(
                     "executor", action="tool_refused", tool=spec.name, reason=reason, device=conn.id
