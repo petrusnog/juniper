@@ -77,6 +77,11 @@ class Agent:
         self._recall_timings: dict[str, int] = {}
         self._llm_calls = 0
 
+    def clear_pending(self) -> None:
+        """Forget actions waiting for a "yes". Called when the conversation changes hands or is
+        resumed: after that, nothing runs without a new, explicit confirmation (ADR-012)."""
+        self._dispatcher.pending = None
+
     def drain_turns(self) -> list[Turn]:
         """The exchanges finished since the last call (for long-term memory extraction)."""
         turns, self._turns = self._turns, []
