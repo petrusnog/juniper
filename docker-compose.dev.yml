@@ -18,6 +18,7 @@
 #   JUNIPER_DEEPINFRA_API_KEY / JUNIPER_GROQ_API_KEY                    opcionais (LLM de verdade)
 #   JUNIPER_DEV_PORT        porta do brain no host (padrão: 8765)
 #   JUNIPER_DEV_MONGO_PORT  porta do Mongo no host, para mongosh/Compass (padrão: 27018)
+#   JUNIPER_BASE_CONFIG_FILE  seu config.yaml pessoal, usado como base (padrão: config.yaml)
 #   JUNIPER_ENV_FILE        .env que o brain lê (padrão: .env)
 #   JUNIPER_CERTS_DIR       pasta com a chave do Google (padrão: certs)
 #
@@ -46,12 +47,16 @@ services:
       - "127.0.0.1:${JUNIPER_DEV_PORT:-8765}:8765"
     environment:
       JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
+      # O seu config.yaml pessoal entra como base: agenda do Google, persona etc. valem aqui
+      # também. A infraestrutura (deployment, mongo) continua sendo a do config.dev.yaml.
+      JUNIPER_BASE_CONFIG_PATH: /home/juniper/.juniper/config.base.yaml
     volumes:
       # O código: editado no host, visto na hora no contêiner.
       - ./brain:/app/brain:ro
       - ./prompts:/app/prompts:ro
       # Configuração e segredos, como na produção (somente leitura).
       - ./docker/config.dev.yaml:/home/juniper/.juniper/config.yaml:ro
+      - ${JUNIPER_BASE_CONFIG_FILE:-./config.yaml}:/home/juniper/.juniper/config.base.yaml:ro
       - ${JUNIPER_ENV_FILE:-./.env}:/home/juniper/.juniper/.env:ro
       - ${JUNIPER_CERTS_DIR:-./certs}:/home/juniper/.juniper/certs:ro
       # Estado no host (.juniper-dev/): o token fica à mão para o CLI remoto e os logs, legíveis.

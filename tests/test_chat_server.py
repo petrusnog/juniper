@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, ClassVar
@@ -514,3 +515,70 @@ def test_serve_refuses_to_start_in_local_mode() -> None:
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 1
     assert "deployment.mode: server" in result.output
+
+
+# --- aquecimento do modelo de embeddings --------------------------------------------------
+
+
+class SlowEmbedder:
+    """Um modelo que demora a carregar: `dimension` só volta quando o teste libera."""
+
+    def __init__(self) -> None:
+        self.gate = threading.Event()
+
+    @property
+    def dimension(self) -> int:
+        self.gate.wait(5)
+        return 384
+
+
+class WarmableMemory(FakeMemory):
+    def __init__(self) -> None:
+        super().__init__()
+        self.embedder = SlowEmbedder()
+        self.recalls: list[str] = []
+
+    def needs_model_download(self) -> bool:
+        return True
+
+    async def context_for(self, message: str, previous: str | None = None) -> Any:
+        from brain.memory.retrieval import RecalledContext
+
+        self.recalls.append(message)
+        return RecalledContext()
+
+
+async def test_chat_does_not_wait_for_the_embedding_model_download(tmp_path: Path) -> None:
+    memory = WarmableMemory()
+    provider = FakeProvider([say("Já respondo."), say("Agora com memória.")])
+    async with Scenario(provider, tmp_path, memory=memory) as s:  # type: ignore[arg-type]
+        warm_up = asyncio.create_task(s.handler.warm_up())
+        client = await connect_client(s.server)
+        # o modelo ainda está "baixando": a conversa responde na hora, sem consultar a memória
+        assert texts(await client.chat("você se lembra de mim?")) == "Já respondo."
+        assert memory.recalls == [] and not s.handler.memory_ready
+
+        memory.embedder.gate.set()  # o download terminou
+        await asyncio.wait_for(warm_up, 3)
+        assert s.handler.memory_ready
+        assert texts(await client.chat("e agora?", id="c-2")) == "Agora com memória."
+    assert len(memory.recalls) == 1
+
+
+async def test_failed_warm_up_retries_and_never_takes_the_server_down(tmp_path: Path) -> None:
+    memory = WarmableMemory()
+    attempts = 0
+
+    class Flaky(SlowEmbedder):
+        @property
+        def dimension(self) -> int:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise OSError("sem rede")
+            return 384
+
+    memory.embedder = Flaky()
+    async with Scenario(FakeProvider([]), tmp_path, memory=memory) as s:  # type: ignore[arg-type]
+        await asyncio.wait_for(s.handler.warm_up(retry_seconds=0.01), 3)
+        assert attempts == 2 and s.handler.memory_ready

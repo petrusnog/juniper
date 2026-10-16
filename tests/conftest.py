@@ -28,3 +28,13 @@ def _isolated_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(settings.memory.session, "dir", tmp_path / "sessions")
     monkeypatch.setattr(settings.memory.session, "store", "file")
+
+
+@pytest.fixture(autouse=True)
+def _local_deployment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests start in `local` mode, whatever the developer's own config.yaml says.
+
+    A developer who runs the Docker dev environment sets `deployment.mode: server` in their
+    config.yaml; the tests that exercise the server mode set it themselves.
+    """
+    monkeypatch.setattr(settings.deployment, "mode", "local")

@@ -18,6 +18,9 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(fake_home))
     # Reaponta Path.home() para o fake
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+    # E sai da raiz do repo: lá mora o config.yaml pessoal do desenvolvedor, que não vale aqui.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("JUNIPER_CONFIG_PATH", raising=False)
     return fake_home
 
 
@@ -216,3 +219,39 @@ def test_calendar_management_settings(
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.google.manage_calendar_ids == ["eu@gmail.com"]
     assert s.google.default_calendar_id == "eu@gmail.com"
+
+
+def test_base_config_fills_in_only_what_the_main_config_does_not_define(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JUNIPER_BASE_CONFIG_PATH: o config do ambiente Docker manda; o pessoal completa."""
+    main = tmp_path / "main.yaml"
+    main.write_text("deployment:\n  mode: server\nllm:\n  priority: [groq]\n", encoding="utf-8")
+    base = tmp_path / "base.yaml"
+    base.write_text(
+        "deployment:\n  mode: local\n"
+        "llm:\n  priority: [ollama]\n"
+        "google:\n  calendar_id: minha-agenda\n  manage_calendar_ids: [eu@exemplo.com]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(main))
+    monkeypatch.setenv("JUNIPER_BASE_CONFIG_PATH", str(base))
+    for var in ("JUNIPER_DEPLOYMENT__MODE", "JUNIPER_LLM__PRIORITY"):
+        monkeypatch.delenv(var, raising=False)
+    loaded = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert loaded.deployment.mode == "server"  # o principal vence
+    assert loaded.llm.priority == ["groq"]
+    assert loaded.google.calendar_id == "minha-agenda"  # o que faltava vem da base
+    assert loaded.google.manage_calendar_ids == ["eu@exemplo.com"]
+
+
+def test_base_config_that_is_not_a_file_is_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Se o config.yaml não existe, o Docker monta uma PASTA no lugar: não pode quebrar."""
+    main = tmp_path / "main.yaml"
+    main.write_text("agent:\n  max_iterations: 7\n", encoding="utf-8")
+    (tmp_path / "pasta").mkdir()
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(main))
+    monkeypatch.setenv("JUNIPER_BASE_CONFIG_PATH", str(tmp_path / "pasta"))
+    assert Settings(_env_file=None).agent.max_iterations == 7  # type: ignore[call-arg]

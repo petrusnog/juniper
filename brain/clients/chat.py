@@ -35,6 +35,7 @@ from brain.llm.friendly import friendly_error
 from brain.memory.background import BackgroundExtractor
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
+from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
@@ -83,6 +84,24 @@ class Conversation:
         return self.turn is not None and (self.turn.task is None or not self.turn.task.done())
 
 
+class WarmingMemory:
+    """A memória como o `Agent` a enxerga: enquanto o modelo de embeddings não está pronto,
+    a busca devolve "nada lembrado" na hora, em vez de segurar a conversa no download.
+
+    Sem isso, a primeira pergunta que aciona a memória ficava minutos em silêncio (o modelo tem
+    centenas de MB) e o usuário achava que a Juniper tinha travado.
+    """
+
+    def __init__(self, memory: LongTermMemory) -> None:
+        self._memory = memory
+        self.ready = False
+
+    async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
+        if not self.ready:
+            return RecalledContext()
+        return await self._memory.context_for(message, previous)
+
+
 def visible_history(session: Session) -> list[p.HistoryItem]:
     """O que o usuário vê: suas mensagens e as respostas, sem datas, dicas nem tools."""
     items: list[p.HistoryItem] = []
@@ -118,6 +137,7 @@ class ChatHandler:
         self._store = store
         self._provider = provider
         self._memory = memory
+        self._warming = WarmingMemory(memory) if memory is not None else None
         self._background = background_extraction and memory is not None
         base = tool_registry or default_registry
         self.executors = executors or ExecutorHub(base)
@@ -181,6 +201,31 @@ class ChatHandler:
         self.executors.unregister(conn)
         await self._release(conn)
 
+    async def warm_up(self, retry_seconds: float = 30.0) -> None:
+        """Deixa o modelo de embeddings pronto (baixa na primeira vez). Roda em segundo plano.
+
+        Até terminar, as conversas andam sem consultar a memória. Se falhar (sem rede...), tenta
+        de novo depois, sem derrubar o servidor.
+        """
+        if self._memory is None or self._warming is None:
+            return
+        memory = self._memory
+        while not self._warming.ready:
+            try:
+                if memory.needs_model_download():
+                    event_log.log("memory_warmup", action="download_start")
+                await asyncio.to_thread(lambda: memory.embedder.dimension)
+            except Exception as exc:  # sem rede, disco cheio...: a conversa segue sem memória
+                event_log.log("error", where="chat.warm_up", type=type(exc).__name__)
+                await asyncio.sleep(retry_seconds)
+                continue
+            self._warming.ready = True
+            event_log.log("memory_warmup", action="ready")
+
+    @property
+    def memory_ready(self) -> bool:
+        return self._warming is None or self._warming.ready
+
     async def shutdown(self) -> None:
         """Servidor saindo: dá um tempo para os turnos acabarem e conclui a extração."""
         running = [c.turn.task for c in self._live.values() if c.turn and c.turn.task]
@@ -208,7 +253,7 @@ class ChatHandler:
             session=session,
             tool_registry=self._registry,
             store=self._store,
-            memory=self._memory,
+            memory=self._warming,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -533,9 +578,12 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     handler = ChatHandler(
         store, router, memory, background_extraction=background, commands_memory=commands
     )
+    warm_up = asyncio.get_running_loop().create_task(handler.warm_up())
     try:
         yield handler
     finally:
+        warm_up.cancel()
+        await asyncio.gather(warm_up, return_exceptions=True)
         await handler.shutdown()
         memory_tools.bind(None)
         if memory is not None:

@@ -226,8 +226,9 @@ def test_dev_mounts_the_code_so_edits_show_up_without_a_rebuild() -> None:
 def test_dev_secrets_and_config_are_read_only_and_never_inline() -> None:
     mounts = DEV["services"]["brain"]["volumes"]
     for needle in (".env", "certs", "config"):
-        (mount,) = (m for m in mounts if needle in m.split(":/")[0])
-        assert mount.endswith(":ro"), mount
+        matching = [m for m in mounts if needle in m.split(":/")[0]]
+        assert matching, needle
+        assert all(m.endswith(":ro") for m in matching), matching
     for service in DEV["services"].values():
         for key, value in service.get("environment", {}).items():
             if re.search(r"PASSWORD|API_KEY|TOKEN|SECRET", key):
@@ -267,3 +268,12 @@ def test_dev_config_loads_and_ends_the_failover_in_the_fake_llm(
     prod = yaml.safe_load(CONFIG_PROD.read_text("utf-8"))
     dev = yaml.safe_load(CONFIG_DEV.read_text("utf-8"))
     assert dev["deployment"] == prod["deployment"] and dev["memory"] == prod["memory"]
+
+
+def test_dev_brain_gets_the_users_config_as_a_base_layer() -> None:
+    """A agenda do Google etc. vêm do seu config.yaml; a infraestrutura, do config.dev.yaml."""
+    brain = DEV["services"]["brain"]
+    base = "/home/juniper/.juniper/config.base.yaml"
+    assert brain["environment"]["JUNIPER_BASE_CONFIG_PATH"] == base
+    (mount,) = (m for m in brain["volumes"] if m.split(":/")[1].startswith(base.lstrip("/")))
+    assert mount.startswith("${JUNIPER_BASE_CONFIG_FILE:-./config.yaml}:") and mount.endswith(":ro")

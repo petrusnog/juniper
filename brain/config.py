@@ -335,6 +335,15 @@ def _locate_config_file() -> Path:
     return home_config
 
 
+def _locate_base_config() -> Path | None:
+    """O config.yaml de base (JUNIPER_BASE_CONFIG_PATH), se a variável existe e é um arquivo."""
+    explicit = os.environ.get("JUNIPER_BASE_CONFIG_PATH")
+    if not explicit:
+        return None
+    path = Path(explicit).expanduser()
+    return path if path.is_file() else None  # o Docker cria uma pasta se a origem não existe
+
+
 class Settings(BaseSettings):
     """Configuração raiz da Juniper.
 
@@ -383,7 +392,8 @@ class Settings(BaseSettings):
             2. Variáveis de ambiente
             3. .env
             4. config.yaml
-            5. Secrets files
+            5. config de base (JUNIPER_BASE_CONFIG_PATH), só o que falta nos de cima
+            6. Secrets files
         """
         config_path = _locate_config_file()
 
@@ -395,6 +405,13 @@ class Settings(BaseSettings):
 
         if config_path.exists():
             sources.append(YamlConfigSettingsSource(settings_cls, yaml_file=config_path))
+
+        # Camada base (opcional, só o que o arquivo principal não define): o ambiente Docker de
+        # desenvolvimento monta aqui o seu config.yaml pessoal (agenda do Google, persona...) e
+        # deixa a infraestrutura (deployment, mongo) com o config.dev.yaml.
+        base_path = _locate_base_config()
+        if base_path is not None and base_path != config_path:
+            sources.append(YamlConfigSettingsSource(settings_cls, yaml_file=base_path))
 
         sources.append(file_secret_settings)
         return tuple(sources)
