@@ -1,0 +1,1376 @@
+{
+  "$defs": {
+    "ChatCancel": {
+      "properties": {
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.cancel",
+          "default": "chat.cancel",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_id"
+      ],
+      "title": "ChatCancel",
+      "type": "object"
+    },
+    "ChatEnd": {
+      "properties": {
+        "finish": {
+          "enum": [
+            "ok",
+            "cancelled",
+            "max_iterations",
+            "error"
+          ],
+          "title": "Finish",
+          "type": "string"
+        },
+        "timing": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timing"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.end",
+          "default": "chat.end",
+          "title": "Type",
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usage"
+        }
+      },
+      "required": [
+        "turn_id",
+        "finish"
+      ],
+      "title": "ChatEnd",
+      "type": "object"
+    },
+    "ChatSend": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 32000,
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.send",
+          "default": "chat.send",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "ChatSend",
+      "type": "object"
+    },
+    "ChatStarted": {
+      "properties": {
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.started",
+          "default": "chat.started",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "turn_id",
+        "session_id"
+      ],
+      "title": "ChatStarted",
+      "type": "object"
+    },
+    "ChatToken": {
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.token",
+          "default": "chat.token",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_id",
+        "text"
+      ],
+      "title": "ChatToken",
+      "type": "object"
+    },
+    "ClientInfo": {
+      "properties": {
+        "device_id": {
+          "title": "Device Id",
+          "type": "string"
+        },
+        "device_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Name"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "device_id"
+      ],
+      "title": "ClientInfo",
+      "type": "object"
+    },
+    "Error": {
+      "properties": {
+        "code": {
+          "enum": [
+            "unauthorized",
+            "unsupported_version",
+            "bad_request",
+            "turn_in_progress",
+            "session_not_found",
+            "llm_auth",
+            "llm_rate_limit",
+            "llm_unavailable",
+            "llm_timeout",
+            "llm_error",
+            "memory_unavailable",
+            "not_found",
+            "executor_unavailable",
+            "internal"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "Hello": {
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/ClientInfo"
+        },
+        "protocol_version": {
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resume"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "hello",
+          "default": "hello",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "client"
+      ],
+      "title": "Hello",
+      "type": "object"
+    },
+    "HistoryItem": {
+      "properties": {
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "HistoryItem",
+      "type": "object"
+    },
+    "Invoke": {
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "invoke",
+          "default": "invoke",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "tool_name",
+        "timeout_ms"
+      ],
+      "title": "Invoke",
+      "type": "object"
+    },
+    "MemoryExportArgs": {
+      "properties": {
+        "vectors": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vectors"
+        }
+      },
+      "title": "MemoryExportArgs",
+      "type": "object"
+    },
+    "MemoryExportRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryExportArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "export",
+          "default": "export",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MemoryExportRequest",
+      "type": "object"
+    },
+    "MemoryForgetArgs": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MemoryForgetArgs",
+      "type": "object"
+    },
+    "MemoryForgetRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryForgetArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "forget",
+          "default": "forget",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "args"
+      ],
+      "title": "MemoryForgetRequest",
+      "type": "object"
+    },
+    "MemoryListArgs": {
+      "properties": {
+        "all": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "All"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        }
+      },
+      "title": "MemoryListArgs",
+      "type": "object"
+    },
+    "MemoryListRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryListArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "list",
+          "default": "list",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MemoryListRequest",
+      "type": "object"
+    },
+    "MemoryNoArgs": {
+      "description": "Operações sem argumentos (`profile.get`, `profile.forget`).",
+      "properties": {},
+      "title": "MemoryNoArgs",
+      "type": "object"
+    },
+    "MemoryProfileForgetRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryNoArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "profile.forget",
+          "default": "profile.forget",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MemoryProfileForgetRequest",
+      "type": "object"
+    },
+    "MemoryProfileGetRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryNoArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "profile.get",
+          "default": "profile.get",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MemoryProfileGetRequest",
+      "type": "object"
+    },
+    "MemoryProfileSetArgs": {
+      "properties": {
+        "birth_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Birth Date"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "nationality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nationality"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MemoryProfileSetArgs",
+      "type": "object"
+    },
+    "MemoryProfileSetRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemoryProfileSetArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "profile.set",
+          "default": "profile.set",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "args"
+      ],
+      "title": "MemoryProfileSetRequest",
+      "type": "object"
+    },
+    "MemoryResult": {
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.result",
+          "default": "memory.result",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "ok"
+      ],
+      "title": "MemoryResult",
+      "type": "object"
+    },
+    "MemorySearchArgs": {
+      "properties": {
+        "limit": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "MemorySearchArgs",
+      "type": "object"
+    },
+    "MemorySearchRequest": {
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MemorySearchArgs"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "search",
+          "default": "search",
+          "title": "Op",
+          "type": "string"
+        },
+        "type": {
+          "const": "memory.request",
+          "default": "memory.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "args"
+      ],
+      "title": "MemorySearchRequest",
+      "type": "object"
+    },
+    "Ping": {
+      "properties": {
+        "type": {
+          "const": "ping",
+          "default": "ping",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "Ping",
+      "type": "object"
+    },
+    "Pong": {
+      "properties": {
+        "type": {
+          "const": "pong",
+          "default": "pong",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "Pong",
+      "type": "object"
+    },
+    "Register": {
+      "properties": {
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolSpec"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "type": {
+          "const": "register",
+          "default": "register",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "title": "Register",
+      "type": "object"
+    },
+    "Registered": {
+      "properties": {
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolSpec"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "type": {
+          "const": "registered",
+          "default": "registered",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "title": "Registered",
+      "type": "object"
+    },
+    "Result": {
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output"
+        },
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "result",
+          "default": "result",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "success"
+      ],
+      "title": "Result",
+      "type": "object"
+    },
+    "Resume": {
+      "description": "Retomada da conversa: `session_id` ou `latest`.",
+      "properties": {
+        "latest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        }
+      },
+      "title": "Resume",
+      "type": "object"
+    },
+    "SessionDetached": {
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "session.detached",
+          "default": "session.detached",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "reason"
+      ],
+      "title": "SessionDetached",
+      "type": "object"
+    },
+    "SessionList": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "type": {
+          "const": "session.list",
+          "default": "session.list",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "SessionList",
+      "type": "object"
+    },
+    "SessionListed": {
+      "properties": {
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/SessionSummary"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "type": {
+          "const": "session.listed",
+          "default": "session.listed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "sessions"
+      ],
+      "title": "SessionListed",
+      "type": "object"
+    },
+    "SessionNew": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "session.new",
+          "default": "session.new",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "SessionNew",
+      "type": "object"
+    },
+    "SessionResume": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "latest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "type": {
+          "const": "session.resume",
+          "default": "session.resume",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "SessionResume",
+      "type": "object"
+    },
+    "SessionState": {
+      "properties": {
+        "history": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/HistoryItem"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "turns": {
+          "title": "Turns",
+          "type": "integer"
+        },
+        "type": {
+          "const": "session.state",
+          "default": "session.state",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "session_id",
+        "turns"
+      ],
+      "title": "SessionState",
+      "type": "object"
+    },
+    "SessionSummary": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "preview": {
+          "title": "Preview",
+          "type": "string"
+        },
+        "turns": {
+          "title": "Turns",
+          "type": "integer"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "updated_at",
+        "turns",
+        "preview"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    },
+    "ToolSpec": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "tier"
+      ],
+      "title": "ToolSpec",
+      "type": "object"
+    },
+    "Welcome": {
+      "properties": {
+        "heartbeat_seconds": {
+          "title": "Heartbeat Seconds",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "server_version": {
+          "title": "Server Version",
+          "type": "string"
+        },
+        "session": {
+          "$ref": "#/$defs/WelcomeSession"
+        },
+        "type": {
+          "const": "welcome",
+          "default": "welcome",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "server_version",
+        "heartbeat_seconds",
+        "session"
+      ],
+      "title": "Welcome",
+      "type": "object"
+    },
+    "WelcomeSession": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "resumed": {
+          "title": "Resumed",
+          "type": "boolean"
+        },
+        "turns": {
+          "title": "Turns",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "resumed",
+        "turns"
+      ],
+      "title": "WelcomeSession",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "chat.cancel": "#/$defs/ChatCancel",
+      "chat.end": "#/$defs/ChatEnd",
+      "chat.send": "#/$defs/ChatSend",
+      "chat.started": "#/$defs/ChatStarted",
+      "chat.token": "#/$defs/ChatToken",
+      "error": "#/$defs/Error",
+      "hello": "#/$defs/Hello",
+      "invoke": "#/$defs/Invoke",
+      "memory.request": {
+        "discriminator": {
+          "mapping": {
+            "export": "#/$defs/MemoryExportRequest",
+            "forget": "#/$defs/MemoryForgetRequest",
+            "list": "#/$defs/MemoryListRequest",
+            "profile.forget": "#/$defs/MemoryProfileForgetRequest",
+            "profile.get": "#/$defs/MemoryProfileGetRequest",
+            "profile.set": "#/$defs/MemoryProfileSetRequest",
+            "search": "#/$defs/MemorySearchRequest"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/MemoryListRequest"
+          },
+          {
+            "$ref": "#/$defs/MemorySearchRequest"
+          },
+          {
+            "$ref": "#/$defs/MemoryForgetRequest"
+          },
+          {
+            "$ref": "#/$defs/MemoryExportRequest"
+          },
+          {
+            "$ref": "#/$defs/MemoryProfileGetRequest"
+          },
+          {
+            "$ref": "#/$defs/MemoryProfileSetRequest"
+          },
+          {
+            "$ref": "#/$defs/MemoryProfileForgetRequest"
+          }
+        ]
+      },
+      "memory.result": "#/$defs/MemoryResult",
+      "ping": "#/$defs/Ping",
+      "pong": "#/$defs/Pong",
+      "register": "#/$defs/Register",
+      "registered": "#/$defs/Registered",
+      "result": "#/$defs/Result",
+      "session.detached": "#/$defs/SessionDetached",
+      "session.list": "#/$defs/SessionList",
+      "session.listed": "#/$defs/SessionListed",
+      "session.new": "#/$defs/SessionNew",
+      "session.resume": "#/$defs/SessionResume",
+      "session.state": "#/$defs/SessionState",
+      "welcome": "#/$defs/Welcome"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Hello"
+    },
+    {
+      "$ref": "#/$defs/Pong"
+    },
+    {
+      "$ref": "#/$defs/ChatSend"
+    },
+    {
+      "$ref": "#/$defs/ChatCancel"
+    },
+    {
+      "$ref": "#/$defs/SessionNew"
+    },
+    {
+      "$ref": "#/$defs/SessionResume"
+    },
+    {
+      "$ref": "#/$defs/SessionList"
+    },
+    {
+      "discriminator": {
+        "mapping": {
+          "export": "#/$defs/MemoryExportRequest",
+          "forget": "#/$defs/MemoryForgetRequest",
+          "list": "#/$defs/MemoryListRequest",
+          "profile.forget": "#/$defs/MemoryProfileForgetRequest",
+          "profile.get": "#/$defs/MemoryProfileGetRequest",
+          "profile.set": "#/$defs/MemoryProfileSetRequest",
+          "search": "#/$defs/MemorySearchRequest"
+        },
+        "propertyName": "op"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MemoryListRequest"
+        },
+        {
+          "$ref": "#/$defs/MemorySearchRequest"
+        },
+        {
+          "$ref": "#/$defs/MemoryForgetRequest"
+        },
+        {
+          "$ref": "#/$defs/MemoryExportRequest"
+        },
+        {
+          "$ref": "#/$defs/MemoryProfileGetRequest"
+        },
+        {
+          "$ref": "#/$defs/MemoryProfileSetRequest"
+        },
+        {
+          "$ref": "#/$defs/MemoryProfileForgetRequest"
+        }
+      ]
+    },
+    {
+      "$ref": "#/$defs/Register"
+    },
+    {
+      "$ref": "#/$defs/Result"
+    },
+    {
+      "$ref": "#/$defs/Welcome"
+    },
+    {
+      "$ref": "#/$defs/Ping"
+    },
+    {
+      "$ref": "#/$defs/Error"
+    },
+    {
+      "$ref": "#/$defs/ChatStarted"
+    },
+    {
+      "$ref": "#/$defs/ChatToken"
+    },
+    {
+      "$ref": "#/$defs/ChatEnd"
+    },
+    {
+      "$ref": "#/$defs/SessionState"
+    },
+    {
+      "$ref": "#/$defs/SessionListed"
+    },
+    {
+      "$ref": "#/$defs/SessionDetached"
+    },
+    {
+      "$ref": "#/$defs/MemoryResult"
+    },
+    {
+      "$ref": "#/$defs/Registered"
+    },
+    {
+      "$ref": "#/$defs/Invoke"
+    }
+  ],
+  "title": "Juniper client-brain protocol",
+  "x-error-codes": {
+    "bad_request": false,
+    "executor_unavailable": true,
+    "internal": true,
+    "llm_auth": false,
+    "llm_error": false,
+    "llm_rate_limit": true,
+    "llm_timeout": true,
+    "llm_unavailable": true,
+    "memory_unavailable": true,
+    "not_found": false,
+    "session_not_found": false,
+    "turn_in_progress": true,
+    "unauthorized": false,
+    "unsupported_version": false
+  },
+  "x-max-message-bytes": 1048576,
+  "x-protocol-version": 1
+}
