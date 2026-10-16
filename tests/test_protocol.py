@@ -313,3 +313,27 @@ def test_core_does_not_import_clients() -> None:
         )
     ]
     assert offenders == []
+
+
+CLIENT = {"kind": "cli", "version": "0.1.0", "device_id": "d-1"}
+
+
+@pytest.mark.parametrize(
+    "resume",
+    [{}, {"session_id": "a", "latest": True}, {"latest": False}, {"session_id": ""}],
+)
+def test_resume_needs_exactly_one_target(resume: dict[str, object]) -> None:
+    hello = {"type": "hello", "protocol_version": 1, "client": CLIENT, "resume": resume}
+    with pytest.raises(p.InvalidMessageError):
+        p.parse_message(source="client", raw=hello)
+    with pytest.raises(p.InvalidMessageError):
+        p.parse_message(source="client", raw={"type": "session.resume", "id": "s-1", **resume})
+
+
+def test_resume_accepts_either_target() -> None:
+    for resume in ({"session_id": "abc"}, {"latest": True}):
+        hello = p.parse_message(
+            source="client",
+            raw={"type": "hello", "protocol_version": 1, "client": CLIENT, "resume": resume},
+        )
+        assert isinstance(hello, p.Hello) and hello.resume is not None
