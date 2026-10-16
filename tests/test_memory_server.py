@@ -235,3 +235,16 @@ async def test_a_slow_memory_request_does_not_block_the_connection(
         assert isinstance(await client.recv(), p.SessionListed)  # respondeu antes da busca
         gate.set()
         assert isinstance(await client.recv(), p.MemoryResult)
+
+
+async def test_result_larger_than_one_frame_is_a_typed_error_not_silence(
+    tmp_path: Path, memory: LongTermMemory, store: MongoVectorStore
+) -> None:
+    for i in range(4):
+        seed(store, f"Memória longa {i}: " + "x" * (p.MAX_MESSAGE_BYTES // 3))
+    async with Harness(tmp_path, memory) as client:
+        reply = await ask(client, "list")
+        assert isinstance(reply, p.Error) and reply.code == "bad_request"
+        assert "grande demais" in reply.message
+        ok = await ask(client, "profile.get", id="m-2")  # a conexão continua atendendo
+        assert isinstance(ok, p.MemoryResult)
