@@ -351,3 +351,47 @@ async def test_health_stops_answering_after_stop() -> None:
     await server.stop()
     with pytest.raises(OSError):
         await asyncio.to_thread(_get, address)
+
+
+# --- falhas de um pedido não derrubam a conexão ---------------------------------------------
+
+
+async def test_handler_bug_gets_internal_error_and_connection_survives() -> None:
+    class Buggy(RecordingHandler):
+        async def handle(self, conn: Connection, message: p.ClientMessage) -> None:
+            if isinstance(message, p.ChatSend):
+                raise RuntimeError("bug no tratador")
+            await super().handle(conn, message)
+
+    server, handler = await start(Buggy())
+    try:
+        ws = await open_client(server)
+        await ws.send(json.dumps({"type": "chat.send", "id": "c-1", "text": "oi"}))
+        error = p.parse_message(await ws.recv(), source="server")
+        assert isinstance(error, p.Error)
+        assert (error.code, error.reply_to) == ("internal", "c-1")
+        assert "bug no tratador" not in error.message  # o detalhe não vai ao cliente
+        await ws.send(json.dumps({"type": "chat.cancel", "turn_id": "t"}))
+        await wait_until(lambda: len(handler.messages) == 1)  # a conexão continua atendendo
+        await ws.close()
+    finally:
+        await server.stop()
+
+
+async def test_oversized_reply_becomes_an_error_instead_of_silence() -> None:
+    class Big(RecordingHandler):
+        async def handle(self, conn: Connection, message: p.ClientMessage) -> None:
+            await conn.send(
+                p.MemoryResult(reply_to="m-1", ok=True, data={"x": "a" * p.MAX_MESSAGE_BYTES})
+            )
+
+    server, _ = await start(Big())
+    try:
+        ws = await open_client(server)
+        await ws.send(json.dumps({"type": "chat.cancel", "turn_id": "t"}))
+        error = p.parse_message(await ws.recv(), source="server")
+        assert isinstance(error, p.Error) and error.code == "internal"
+        assert error.reply_to == "m-1"
+        await ws.close()
+    finally:
+        await server.stop()
