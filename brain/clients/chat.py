@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from brain.clients import protocol as p
+from brain.clients.memory_service import MemoryService
 from brain.clients.server import Connection
 from brain.config import settings
 from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent
@@ -109,6 +110,7 @@ class ChatHandler:
         background_extraction: bool = False,
         tool_registry: ToolRegistry | None = None,
         turn_timeout: float = TURN_TIMEOUT_SECONDS,
+        commands_memory: LongTermMemory | None = None,
     ) -> None:
         self._store = store
         self._provider = provider
@@ -116,6 +118,8 @@ class ChatHandler:
         self._background = background_extraction and memory is not None
         self._registry = tool_registry
         self._turn_timeout = turn_timeout
+        # Os comandos `memory ...` só precisam do banco, não do LLM da extração.
+        self._memory_service = MemoryService(commands_memory or memory)
         self._live: dict[str, Conversation] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -151,6 +155,9 @@ class ChatHandler:
             await self._session_resume(conn, message)
         elif isinstance(message, p.SessionList):
             await self._session_list(conn, message)
+        elif message.type == "memory.request":
+            # Pode demorar (o 1º uso carrega o modelo de embeddings): não trava o heartbeat.
+            conn.spawn(self._memory_request(conn, message))
         else:
             reply_to = getattr(message, "id", None)
             await conn.send(
@@ -355,6 +362,11 @@ class ChatHandler:
         if conversation.owner is None:  # o cliente caiu durante o turno
             self._retire(conversation)
 
+    # --- memória ---
+
+    async def _memory_request(self, conn: Connection, request: p.ClientMessage) -> None:
+        await conn.send(await self._memory_service.handle(request))
+
     # --- sessões ---
 
     async def _state(self, conn: Connection, reply_to: str, note: str) -> None:
@@ -450,7 +462,11 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     é o healthcheck de partida.
     """
     from brain.llm.router import LLMRouter
-    from brain.memory.longterm import long_term_enabled, open_long_term_memory
+    from brain.memory.longterm import (
+        long_term_enabled,
+        open_long_term_memory,
+        open_memory_for_commands,
+    )
     from brain.memory.stores import close_session_store, open_session_store
     from brain.tools import memory as memory_tools
     from brain.tools.registry import registry
@@ -468,8 +484,20 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         await router.aclose()
         await memory_llm.aclose()
         raise
+    # Com a extração desligada ainda dá para listar/buscar/apagar memórias: só precisa do banco.
+    commands: LongTermMemory | None = memory
+    if memory is None and settings.memory.session.store == "mongo":
+        try:
+            commands = open_memory_for_commands()
+        except MemoryUnavailableError:
+            close_session_store(store)
+            await router.aclose()
+            await memory_llm.aclose()
+            raise
     memory_tools.bind(memory)
-    handler = ChatHandler(store, router, memory, background_extraction=background)
+    handler = ChatHandler(
+        store, router, memory, background_extraction=background, commands_memory=commands
+    )
     try:
         yield handler
     finally:
@@ -477,6 +505,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         memory_tools.bind(None)
         if memory is not None:
             memory.close()
+        if commands is not None and commands is not memory:
+            commands.close()
         await memory_llm.aclose()
         await router.aclose()
         close_session_store(store)
