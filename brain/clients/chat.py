@@ -198,7 +198,11 @@ class ChatHandler:
         if live is not None:
             return live
         session = await asyncio.to_thread(self._store.load, session_id)
-        return None if session is None else self._new_conversation(session)
+        if session is None:
+            return None
+        # Outra conexão pode ter carregado a mesma conversa enquanto esperávamos o disco: duas
+        # `Conversation` (dois agentes) para a mesma sessão não podem existir.
+        return self._live.get(session_id) or self._new_conversation(session)
 
     async def _latest(self) -> tuple[Conversation | None, str]:
         session = await asyncio.to_thread(self._store.latest)
@@ -209,6 +213,7 @@ class ChatHandler:
 
     async def _attach(self, conn: Connection, conversation: Conversation) -> None:
         """Liga a conversa à conexão, tomando-a de outra se for o caso (`session.detached`)."""
+        conversation.agent.clear_pending()  # retomar nunca herda um "Posso?" sem resposta
         previous = conversation.owner
         if previous is not None and previous is not conn:
             previous.state = None
@@ -349,6 +354,8 @@ class ChatHandler:
     def _turn_done(self, conversation: Conversation, run: TurnRun) -> None:
         if conversation.turn is run:
             conversation.turn = None
+        if conversation.owner is not run.owner:  # a conversa mudou de mãos durante o turno
+            conversation.agent.clear_pending()
         if conversation.background is not None:  # entrega ao extrator o que já foi respondido
             for turn in conversation.agent.drain_turns():
                 conversation.background.submit(turn)
@@ -371,6 +378,7 @@ class ChatHandler:
         )
 
     async def _switch(self, conn: Connection, conversation: Conversation) -> None:
+        conversation.agent.clear_pending()  # vale também para retomar a conversa em que já está
         if conn.state is conversation:
             return
         await self._release(conn)
@@ -457,17 +465,21 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
 
     registry.discover()
     store = open_session_store()
-    router = LLMRouter()
-    # A extração ganha o próprio router: ela não pode competir com a conversa pelo failover.
-    memory_llm = LLMRouter()
+    router: LLMRouter | None = None
+    memory_llm: LLMRouter | None = None
     background = long_term_enabled() and settings.memory.extraction.mode == "turn"
     try:
+        router = LLMRouter()
+        # A extração ganha o próprio router: ela não pode competir com a conversa pelo failover.
+        memory_llm = LLMRouter()
         memory = open_long_term_memory(memory_llm)
-    except MemoryUnavailableError:
+    except Exception:  # nada do que foi aberto pode ficar para trás
         close_session_store(store)
-        await router.aclose()
-        await memory_llm.aclose()
+        for opened in (router, memory_llm):
+            if opened is not None:
+                await opened.aclose()
         raise
+    assert router is not None and memory_llm is not None
     memory_tools.bind(memory)
     handler = ChatHandler(store, router, memory, background_extraction=background)
     try:
