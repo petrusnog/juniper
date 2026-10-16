@@ -78,11 +78,15 @@ O servidor manda `{"type":"ping"}` a cada 30 s e o cliente responde `{"type":"po
 | `session.list` | Responde `session.listed` com as conversas (`id`, `updated_at`, `turns`, `preview`). |
 | `session.detached` (servidor → cliente) | Outra conexão assumiu esta conversa. |
 
-Uma conversa fica ligada a **uma conexão** por vez *(a confirmar)*. Uma **confirmação pendente não sobrevive** a uma queda ou a um `session.resume`: depois de retomar, nada executa sem um novo "sim".
+Uma conversa fica ligada a **uma conexão** por vez *(a confirmar)*. Uma **confirmação pendente não sobrevive** a uma queda, a um `session.resume` (inclusive da conversa em que a conexão já está) nem a outra conexão assumir a conversa: depois de retomar, nada executa sem um novo "sim". A retomada (`resume` no `hello` e `session.resume`) leva `session_id` **ou** `latest: true`, nunca os dois nem nenhum (`bad_request`).
 
 ## Tools do servidor {#tools}
 
 `tools.request` (`id`) responde `tools.listed` (`reply_to`, `tools[]` com `name`, `description`, `tier` e `locality`): as tools do servidor mais as dos executores conectados. É o que o `juniper tools` mostra no modo `server`. Mensagem nova e compatível: não muda `protocol_version`.
+
+## Diário de mensagens {#trace}
+
+Se o `hello` leva `"trace": true` **e** o servidor tem `trace.enabled`, o servidor manda mensagens `trace` (`layer`, `text`, `at`) intercaladas com a resposta, para o cliente escrever no seu `message.log`. Desligado por padrão: o texto das conversas passa por aí. Também compatível: não muda `protocol_version`.
 
 ## Comandos de memória {#memoria}
 

@@ -122,9 +122,11 @@ class Connection:
             self._trace_pump = self.spawn(self._pump_trace())
 
     async def _pump_trace(self) -> None:
-        async with self._send_lock:
-            await self._drain_trace()
-            self._trace_pump = None  # sem await entre o esvaziamento e isto: não perde passo
+        try:
+            async with self._send_lock:
+                await self._drain_trace()
+        finally:
+            self._trace_pump = None  # mesmo se falhar, o próximo passo cria outro pump
 
     async def send(self, message: p.ClientMessage | p.ServerMessage) -> bool:
         """Manda uma mensagem. `False` se a conexão já caiu (não é erro para quem manda).

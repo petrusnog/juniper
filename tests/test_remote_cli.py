@@ -360,3 +360,34 @@ def test_local_mode_is_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not remote_cli.remote_mode()
     result = jun("tools")
     assert result.exit_code == 0 and "create_event" in result.output
+
+
+# --- token em claro --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("host", "trusted"),
+    [
+        ("127.0.0.1", True),
+        ("localhost", True),
+        ("::1", True),
+        ("192.168.0.10", True),
+        ("100.101.102.103", True),  # faixa do Tailscale
+        ("juniper-brain", True),  # MagicDNS curto
+        ("juniper-brain.tail1234.ts.net", True),
+        ("8.8.8.8", False),  # internet
+        ("brain.example.com", False),
+        ("100.63.255.255", False),  # logo abaixo da faixa do Tailscale
+    ],
+)
+def test_plaintext_warning_only_for_hosts_outside_private_networks(
+    host: str, trusted: bool
+) -> None:
+    assert remote_cli.is_trusted_host(host) is trusted
+
+
+def test_warning_text_is_shown_for_public_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings.deployment.server, "host", "8.8.8.8")
+    assert "sem cifra" in (remote_cli.plaintext_warning() or "")
+    monkeypatch.setattr(settings.deployment.server, "host", "0.0.0.0")
+    assert remote_cli.plaintext_warning() is None

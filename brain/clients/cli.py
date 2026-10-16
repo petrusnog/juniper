@@ -602,7 +602,7 @@ def serve() -> None:
 
     async def run() -> None:
         async with open_chat_handler() as handler:
-            await run_server(BrainServer(host, port, token, handler))
+            await run_server(BrainServer(host, port, token, handler, health=handler.health))
 
     voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).")
     try:

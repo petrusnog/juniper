@@ -99,6 +99,7 @@ class WarmingMemory:
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
         if not self.ready:
+            event_log.log("memory_warmup", action="recall_skipped")
             return RecalledContext()
         return await self._memory.context_for(message, previous)
 
@@ -226,6 +227,14 @@ class ChatHandler:
     @property
     def memory_ready(self) -> bool:
         return self._warming is None or self._warming.ready
+
+    def health(self) -> dict[str, Any]:
+        """Para o `/health`: 200 mesmo aquecendo (não reinicia o contêiner), mas diz o estado."""
+        if self._warming is None:
+            return {"status": "ok", "memory": "off"}
+        if self._warming.ready:
+            return {"status": "ok", "memory": "ready"}
+        return {"status": "degraded", "memory": "warming_up"}
 
     async def shutdown(self) -> None:
         """Servidor saindo: dá um tempo para os turnos acabarem e conclui a extração."""

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import os
 import secrets
 import signal
@@ -63,6 +64,36 @@ def server_url() -> str:
     if host in ("", "0.0.0.0", "::"):  # endereço de escuta do servidor, não de destino
         host = "127.0.0.1"
     return f"ws://{host}:{settings.deployment.server.port}/v1/ws"
+
+
+_TAILSCALE_RANGE = ipaddress.ip_network("100.64.0.0/10")
+
+
+def is_trusted_host(host: str) -> bool:
+    """O tráfego até esse endereço já é cifrado ou nunca sai da máquina/rede privada?
+
+    Loopback, rede privada, link-local, a faixa do Tailscale (100.64.0.0/10), nomes `*.ts.net` e
+    nomes simples sem ponto (MagicDNS) são confiáveis. O resto é a internet: `ws://` não cifra.
+    """
+    name = host.strip("[]").lower()
+    if name == "localhost" or name.endswith(".ts.net") or ("." not in name and ":" not in name):
+        return True
+    try:
+        ip = ipaddress.ip_address(name)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_link_local or ip in _TAILSCALE_RANGE
+
+
+def plaintext_warning() -> str | None:
+    """Aviso se o token vai em claro por `ws://` até um endereço fora de rede privada."""
+    host = settings.deployment.server.host
+    if host in ("", "0.0.0.0", "::") or is_trusted_host(host):
+        return None
+    return (
+        f"Atenção: {host} não é um endereço do Tailscale nem de rede privada, e a conexão é "
+        "ws:// (sem cifra): o token e a conversa viajariam em claro. Use o endereço do Tailscale."
+    )
 
 
 def read_token() -> str:
@@ -140,6 +171,8 @@ async def chat(
     message: str | None, resume: bool, printer: cli.Printer, reader: cli.LineReader
 ) -> int:
     """`juniper` / `juniper <mensagem>` / `--resume`, falando com o brain do servidor."""
+    if (warning := plaintext_warning()) is not None:
+        printer.say(warning, "yellow")
     try:
         client = make_client(_status_printer(printer))
         welcome = await client.start(

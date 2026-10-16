@@ -95,6 +95,9 @@
 <hr>
 <h2 id="referencias">Referências</h2>
 <ul><li>ADR-006 — Segurança de tools</li><li>ADR-007 — Arquitetura de deployment</li><li>ADR-010 — Confirmação na conversa</li><li>ADR-011 — Arquitetura de memória</li><li>ADR-013 — Deploy e infraestrutura</li><li>ADR-014 — Executor do desktop e <code>open_url</code></li><li>ADR-015 — Cliente desktop (Electron)</li></ul>
+<h2 id="adendo-sprint-3-t-086-extensoes-compativeis">Adendo (Sprint 3, T-086): extensões compatíveis</h2>
+<p>Não mudam <code>protocol_version</code> (campos e tipos novos são ignorados por quem não os conhece):</p>
+<ul><li><code>tools.request</code> / <code>tools.listed</code>: lista as tools do servidor e dos executores conectados (<code>juniper tools</code> no modo <code>server</code>).</li><li><code>hello.trace</code> e a mensagem <code>trace</code> (<code>layer</code>, <code>text</code>, <code>at</code>): o diário <code>message.log</code>; desligado por padrão (<code>trace.enabled</code>).</li><li><code>invoke.tier</code>: o tier que o executor declarou no <code>register</code> (ADR-014).</li><li>A retomada (<code>hello.resume</code>, <code>session.resume</code>) exige exatamente um de <code>session_id</code> ou <code>latest: true</code>.</li><li>Uma confirmação pendente é descartada também quando outra conexão assume a conversa ou ela é retomada de novo.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

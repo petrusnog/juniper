@@ -642,3 +642,20 @@ async def test_failing_start_releases_what_was_already_opened(
         async with chat_module.open_chat_handler():
             pass
     assert closed == ["store"]
+
+
+# --- /health e aquecimento ------------------------------------------------------------------
+
+
+async def test_health_reports_memory_warming_up_then_ready(tmp_path: Path) -> None:
+    memory = WarmableMemory()
+    async with Scenario(FakeProvider([]), tmp_path, memory=memory) as s:  # type: ignore[arg-type]
+        assert s.handler.health() == {"status": "degraded", "memory": "warming_up"}
+        memory.embedder.gate.set()
+        await asyncio.wait_for(s.handler.warm_up(), 3)
+        assert s.handler.health() == {"status": "ok", "memory": "ready"}
+
+
+async def test_health_without_memory_is_ok(tmp_path: Path) -> None:
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        assert s.handler.health() == {"status": "ok", "memory": "off"}

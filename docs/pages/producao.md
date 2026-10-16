@@ -127,7 +127,7 @@ PR mergeado no master
 
 ## Observabilidade {#observabilidade-producao}
 
-`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Os logs JSONL ([Observabilidade](observabilidade.html)) ficam num volume, com rotação e limite de tamanho. Alertas ativos ficam fora da Sprint 3.
+`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html)) ficam num volume, com rotação e limite de tamanho. Alertas ativos ficam fora da Sprint 3.
 
 ## Riscos aceitos {#riscos}
 

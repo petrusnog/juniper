@@ -62,6 +62,8 @@ deployment:
     token_file: ~/.juniper/token   # o token que o servidor criou no primeiro boot
 ```
 
+O endereço é `ws://` (sem TLS): o token e a conversa só ficam protegidos dentro do Tailscale ou de uma rede privada. Se `deployment.server.host` for um endereço público, o CLI avisa antes de conectar.
+
 No ambiente Docker de desenvolvimento ([Produção](producao.html#dev)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
 
 - **Ctrl+C** durante uma resposta **cancela o turno** (o chat continua); no prompt, sai.

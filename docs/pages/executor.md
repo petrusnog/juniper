@@ -28,7 +28,7 @@ Como cumprir é decisão do cliente (qual navegador, qual API do sistema). Isso 
 
 Depois do `welcome` ([Protocolo](protocolo.html)), o executor manda `register` com as suas tools (nome, descrição em PT-BR, `parameters`, `tier`) e o brain responde `registered`. O catálogo é **por conexão**: some quando a conexão cai ou o heartbeat expira, e o executor se registra de novo ao reconectar. Para o LLM, uma tool de executor é uma tool como as outras.
 
-**O brain não escala tier:** só despacha uma tool com o tier que o executor declarou, e o [Dispatcher](agente.html#dispatcher) aplica a política de sempre. A **confirmação é a conversa**, feita no cérebro com o cliente que originou o pedido; o executor não pergunta nada.
+**O brain não escala tier:** só despacha uma tool com o tier que o executor declarou, e o [Dispatcher](agente.html#dispatcher) aplica a política de sempre. Uma tool que o **servidor não conhece** (só o dispositivo a descreve) nunca roda sem confirmação: o brain a trata como no mínimo `WRITE`, mesmo que o dispositivo diga `read`; o `invoke` continua levando o tier declarado, que é o que o cliente confere. Tools que o servidor já declara (como `open_url`) seguem a política do servidor. A **confirmação é a conversa**, feita no cérebro com o cliente que originou o pedido; o executor não pergunta nada.
 
 ## Roteamento {#roteamento}
 
