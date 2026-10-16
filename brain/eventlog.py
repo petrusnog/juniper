@@ -2,7 +2,7 @@
 
 Events: ``llm_request``, ``llm_response``, ``tool_call``, ``failover``, ``error``,
 ``memory_recall``, ``timing`` (where a turn or the memory work spent its time),
-``embedding`` and ``embedding_model_load``.
+``embedding``, ``embedding_model_load``, ``connection`` and ``server`` (the WebSocket server).
 Secrets are redacted before anything touches the disk. Logging never breaks the app:
 an unwritable log directory is silently skipped.
 """

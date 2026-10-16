@@ -14,3 +14,4 @@ pymongo>=4.7
 numpy>=1.26
 onnxruntime>=1.18
 tokenizers>=0.19
+websockets>=14

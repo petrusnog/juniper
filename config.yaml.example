@@ -29,12 +29,16 @@ agent:
 
 deployment:
   # local  = brain roda embutido no processo do cliente (Sprint 1)
-  # server = brain expõe API para clientes remotos (Sprint 2+)
+  # server = brain expõe API para clientes remotos (`juniper serve`, ADR-012)
   mode: local
 
   server:
     host: 127.0.0.1
     port: 8765
+
+  auth:
+    # Token Bearer dos clientes; criado (modo 600) no primeiro `juniper serve`.
+    token_file: ~/.juniper/token
 
 tools:
   security:
