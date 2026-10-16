@@ -177,6 +177,8 @@ class Hello(_Message):
     protocol_version: int
     client: ClientInfo
     resume: Resume | None = None
+    trace: bool | None = None
+    """Pede ao servidor os passos de cada turno (mensagens `trace`) para o `message.log`."""
 
 
 class WelcomeSession(_Message):
@@ -199,6 +201,16 @@ class Ping(_Message):
 
 class Pong(_Message):
     type: Literal["pong"] = "pong"
+
+
+class Trace(_Message):
+    """Um passo que o servidor deu (só vem se o `hello` pediu e o servidor permite)."""
+
+    type: Literal["trace"] = "trace"
+    layer: str
+    text: str
+    at: str
+    """Instante do passo no servidor (ISO 8601, com fuso)."""
 
 
 class Error(_Message):
@@ -456,6 +468,29 @@ class Result(_Message):
 
 
 # ---------------------------------------------------------------------------------------------
+# Tools do servidor (`juniper tools` no modo server)
+# ---------------------------------------------------------------------------------------------
+
+
+class ToolsRequest(_Message):
+    type: Literal["tools.request"] = "tools.request"
+    id: str
+
+
+class ToolInfo(_Message):
+    name: str
+    description: str
+    tier: str
+    locality: str
+
+
+class ToolsListed(_Message):
+    type: Literal["tools.listed"] = "tools.listed"
+    reply_to: str
+    tools: list[ToolInfo]
+
+
+# ---------------------------------------------------------------------------------------------
 # Uniões e (de)serialização
 # ---------------------------------------------------------------------------------------------
 
@@ -470,6 +505,7 @@ ClientMessage = (
     | MemoryRequest
     | Register
     | Result
+    | ToolsRequest
 )
 ServerMessage = (
     Welcome
@@ -484,6 +520,8 @@ ServerMessage = (
     | MemoryResult
     | Registered
     | Invoke
+    | ToolsListed
+    | Trace
 )
 Message = Annotated[ClientMessage | ServerMessage, Field(discriminator="type")]
 """Todas as mensagens, discriminadas por `type` (e `memory.request` também por `op`)."""
@@ -502,6 +540,7 @@ _CLIENT_TYPES: Final = frozenset(
         "memory.request",
         "register",
         "result",
+        "tools.request",
     }
 )
 _SERVER_TYPES: Final = frozenset(
@@ -518,6 +557,8 @@ _SERVER_TYPES: Final = frozenset(
         "memory.result",
         "registered",
         "invoke",
+        "tools.listed",
+        "trace",
     }
 )
 

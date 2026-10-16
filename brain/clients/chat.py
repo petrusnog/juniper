@@ -35,9 +35,11 @@ from brain.llm.friendly import friendly_error
 from brain.memory.background import BackgroundExtractor
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
+from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
+from brain.trace import message_trace, quote
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,25 @@ class Conversation:
         return self.turn is not None and (self.turn.task is None or not self.turn.task.done())
 
 
+class WarmingMemory:
+    """A memória como o `Agent` a enxerga: enquanto o modelo de embeddings não está pronto,
+    a busca devolve "nada lembrado" na hora, em vez de segurar a conversa no download.
+
+    Sem isso, a primeira pergunta que aciona a memória ficava minutos em silêncio (o modelo tem
+    centenas de MB) e o usuário achava que a Juniper tinha travado.
+    """
+
+    def __init__(self, memory: LongTermMemory) -> None:
+        self._memory = memory
+        self.ready = False
+
+    async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
+        if not self.ready:
+            event_log.log("memory_warmup", action="recall_skipped")
+            return RecalledContext()
+        return await self._memory.context_for(message, previous)
+
+
 def visible_history(session: Session) -> list[p.HistoryItem]:
     """O que o usuário vê: suas mensagens e as respostas, sem datas, dicas nem tools."""
     items: list[p.HistoryItem] = []
@@ -118,6 +139,7 @@ class ChatHandler:
         self._store = store
         self._provider = provider
         self._memory = memory
+        self._warming = WarmingMemory(memory) if memory is not None else None
         self._background = background_extraction and memory is not None
         base = tool_registry or default_registry
         self.executors = executors or ExecutorHub(base)
@@ -161,6 +183,8 @@ class ChatHandler:
             await self._session_resume(conn, message)
         elif isinstance(message, p.SessionList):
             await self._session_list(conn, message)
+        elif isinstance(message, p.ToolsRequest):
+            await conn.send(self._tools_listed(message))
         elif isinstance(message, p.Register):
             accepted = self.executors.register(conn, message.tools)
             await conn.send(p.Registered(tools=accepted))
@@ -178,6 +202,39 @@ class ChatHandler:
     async def close(self, conn: Connection) -> None:
         self.executors.unregister(conn)
         await self._release(conn)
+
+    async def warm_up(self, retry_seconds: float = 30.0) -> None:
+        """Deixa o modelo de embeddings pronto (baixa na primeira vez). Roda em segundo plano.
+
+        Até terminar, as conversas andam sem consultar a memória. Se falhar (sem rede...), tenta
+        de novo depois, sem derrubar o servidor.
+        """
+        if self._memory is None or self._warming is None:
+            return
+        memory = self._memory
+        while not self._warming.ready:
+            try:
+                if memory.needs_model_download():
+                    event_log.log("memory_warmup", action="download_start")
+                await asyncio.to_thread(lambda: memory.embedder.dimension)
+            except Exception as exc:  # sem rede, disco cheio...: a conversa segue sem memória
+                event_log.log("error", where="chat.warm_up", type=type(exc).__name__)
+                await asyncio.sleep(retry_seconds)
+                continue
+            self._warming.ready = True
+            event_log.log("memory_warmup", action="ready")
+
+    @property
+    def memory_ready(self) -> bool:
+        return self._warming is None or self._warming.ready
+
+    def health(self) -> dict[str, Any]:
+        """Para o `/health`: 200 mesmo aquecendo (não reinicia o contêiner), mas diz o estado."""
+        if self._warming is None:
+            return {"status": "ok", "memory": "off"}
+        if self._warming.ready:
+            return {"status": "ok", "memory": "ready"}
+        return {"status": "degraded", "memory": "warming_up"}
 
     async def shutdown(self) -> None:
         """Servidor saindo: dá um tempo para os turnos acabarem e conclui a extração."""
@@ -206,7 +263,7 @@ class ChatHandler:
             session=session,
             tool_registry=self._registry,
             store=self._store,
-            memory=self._memory,
+            memory=self._warming,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -294,19 +351,42 @@ class ChatHandler:
     # --- chat ---
 
     async def _chat_send(self, conn: Connection, message: p.ChatSend) -> None:
-        conversation: Conversation | None = conn.state
-        if conversation is None:
-            await conn.send(p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id))
-            return
-        if conversation.busy:
-            await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
-            return
-        run = TurnRun(turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn)
-        conversation.turn = run  # a partir daqui a conversa está ocupada
-        await conn.send(
-            p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
-        )
-        run.task = self._start(self._run_turn(conversation, run, message.text))
+        # Os passos deste turno vão para o message.log do cliente (se ele pediu). A tarefa do turno
+        # é criada dentro do bloco e herda a ligação.
+        with message_trace.bound(conn.trace):
+            message_trace.step(
+                "Servidor · WebSocket",
+                f"Recebi o quadro chat.send da conexão {conn.id} (dispositivo "
+                f"{conn.device_name or conn.device_id}), com {conn.frame_bytes} bytes. Conferi o "
+                f"JSON contra o protocolo versão {p.PROTOCOL_VERSION}: id {message.id}, "
+                f"{len(message.text)} caracteres. Entreguei ao tratador de chat.",
+            )
+            conversation: Conversation | None = conn.state
+            if conversation is None:
+                await conn.send(
+                    p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id)
+                )
+                return
+            if conversation.busy:
+                message_trace.step(
+                    "Servidor · conversa",
+                    f"A conversa {conversation.id} ainda está respondendo à mensagem anterior, "
+                    "então recusei esta com o erro turn_in_progress.",
+                )
+                await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
+                return
+            run = TurnRun(turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn)
+            conversation.turn = run  # a partir daqui a conversa está ocupada
+            message_trace.step(
+                "Servidor · conversa",
+                f"A conversa {conversation.id} tem {count_turns(conversation.agent.session)} "
+                f"mensagem(ns) sua(s) e estava livre. Abri o turno {run.turn_id}, avisei o cliente "
+                "com chat.started e passei a sua mensagem ao agente.",
+            )
+            await conn.send(
+                p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
+            )
+            run.task = self._start(self._run_turn(conversation, run, message.text))
 
     def _chat_cancel(self, conn: Connection, message: p.ChatCancel) -> None:
         conversation: Conversation | None = conn.state
@@ -326,8 +406,12 @@ class ChatHandler:
 
     async def _run_turn(self, conversation: Conversation, run: TurnRun, text: str) -> None:
         finish: p.FinishReason = "ok"
+        pieces = 0
+        reply = ""
 
         async def on_token(piece: str) -> None:
+            nonlocal pieces
+            pieces += 1
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
         current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
@@ -353,6 +437,12 @@ class ChatHandler:
                 logger.exception("Turno falhou")
                 event_log.log("error", where="chat.turn", type=type(exc).__name__)
                 await self._fail(conversation, run, "internal", UNEXPECTED_MESSAGE)
+            message_trace.step(
+                "Servidor · conversa",
+                f"O agente terminou o turno {run.turn_id} com «{finish}»: mandei {pieces} "
+                f"pedaço(s) da resposta (chat.token) e vou fechar com chat.end"
+                + ("; a resposta foi " + quote(reply, 300) + "." if reply else "."),
+            )
             await self._deliver(
                 conversation,
                 run,
@@ -381,8 +471,31 @@ class ChatHandler:
         if conversation.background is not None:  # entrega ao extrator o que já foi respondido
             for turn in conversation.agent.drain_turns():
                 conversation.background.submit(turn)
+                message_trace.step(
+                    "Memória de longo prazo",
+                    "Entreguei o turno à extração em segundo plano, que procura fatos duráveis "
+                    "sobre você sem atrasar a conversa.",
+                )
         if conversation.owner is None:  # o cliente caiu durante o turno
             self._retire(conversation)
+
+    # --- tools ---
+
+    def _tools_listed(self, request: p.ToolsRequest) -> p.ToolsListed:
+        """As tools que a Juniper tem agora: as do servidor e as dos executores conectados."""
+        tools = sorted(self._registry.all(), key=lambda t: t.name)
+        return p.ToolsListed(
+            reply_to=request.id,
+            tools=[
+                p.ToolInfo(
+                    name=t.name,
+                    description=t.description,
+                    tier=str(t.tier),
+                    locality=str(t.locality),
+                )
+                for t in tools
+            ],
+        )
 
     # --- memória ---
 
@@ -520,9 +633,12 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     handler = ChatHandler(
         store, router, memory, background_extraction=background, commands_memory=commands
     )
+    warm_up = asyncio.get_running_loop().create_task(handler.warm_up())
     try:
         yield handler
     finally:
+        warm_up.cancel()
+        await asyncio.gather(warm_up, return_exceptions=True)
         await handler.shutdown()
         memory_tools.bind(None)
         if memory is not None:

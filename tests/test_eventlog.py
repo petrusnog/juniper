@@ -154,3 +154,10 @@ def test_redact_keeps_token_counts_but_masks_tokens() -> None:
         "access_token": REDACTED,
         "token": REDACTED,
     }
+
+
+def test_redact_keeps_the_llm_first_token_timing_but_still_masks_real_tokens() -> None:
+    out = redact({"llm_first_token": 312, "access_token": "abc123", "auth_token": "x", "tokens": 5})
+    assert out["llm_first_token"] == 312  # é um tempo em ms, não um segredo
+    assert out["access_token"] == REDACTED and out["auth_token"] == REDACTED
+    assert out["tokens"] == 5

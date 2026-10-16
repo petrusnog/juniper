@@ -25,6 +25,7 @@ from brain.memory.session import SessionStore
 from brain.timing import Stages
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
+from brain.trace import message_trace, quote
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,15 @@ class Agent:
         self._turns.append(Turn(user_input, reply))
         with self._stages.stage("persist"):
             self._persist()
+        message_trace.step(
+            "Agente",
+            f"A resposta final ficou pronta ({len(reply)} caracteres) e a conversa foi salva"
+            + (
+                " no armazenamento de sessões."
+                if self._store is not None
+                else " (sem armazenamento)."
+            ),
+        )
         self._log_timing()
         return reply
 
@@ -142,12 +152,24 @@ class Agent:
         session = self.session
         previous = _last_user_text(session)
         session.add_user(user_input)
+        message_trace.step(
+            "Agente",
+            f"Recebi a mensagem {quote(user_input)}. Acrescentei ao histórico da sessão "
+            f"{session.id}, carimbada com a data e a hora (o histórico tem {len(session.history)} "
+            f"{'mensagem' if len(session.history) == 1 else 'mensagens'} agora), e vou consultar "
+            "a memória de longo prazo antes de falar com o modelo.",
+        )
         with self._stages.stage("recall"):
             self._profile_message, self._memory_message = await self._recall(user_input, previous)
         pending, self._dispatcher.pending = self._dispatcher.pending, None
         said_yes = interpret_reply(user_input) == "yes"
         consent: str | None = None
         if pending is not None and said_yes:
+            message_trace.step(
+                "Agente",
+                "Havia ação(ões) esperando a sua confirmação e você respondeu sim: o sistema "
+                "(não o modelo) interpretou o sim e vai executar o que foi aprovado.",
+            )
             await self._execute_approved(pending)
         elif pending is None and said_yes:
             # The user answered "sim" to something the assistant just said in plain words. If

@@ -265,6 +265,18 @@
           ],
           "default": null
         },
+        "trace": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace"
+        },
         "type": {
           "const": "hello",
           "default": "hello",
@@ -1128,6 +1140,34 @@
       "title": "SessionSummary",
       "type": "object"
     },
+    "ToolInfo": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "locality": {
+          "title": "Locality",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "tier",
+        "locality"
+      ],
+      "title": "ToolInfo",
+      "type": "object"
+    },
     "ToolSpec": {
       "properties": {
         "description": {
@@ -1154,6 +1194,82 @@
         "tier"
       ],
       "title": "ToolSpec",
+      "type": "object"
+    },
+    "ToolsListed": {
+      "properties": {
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolInfo"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "type": {
+          "const": "tools.listed",
+          "default": "tools.listed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "tools"
+      ],
+      "title": "ToolsListed",
+      "type": "object"
+    },
+    "ToolsRequest": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "tools.request",
+          "default": "tools.request",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ToolsRequest",
+      "type": "object"
+    },
+    "Trace": {
+      "description": "Um passo que o servidor deu (só vem se o `hello` pediu e o servidor permite).",
+      "properties": {
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "trace",
+          "default": "trace",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "text",
+        "at"
+      ],
+      "title": "Trace",
       "type": "object"
     },
     "Welcome": {
@@ -1272,6 +1388,9 @@
       "session.new": "#/$defs/SessionNew",
       "session.resume": "#/$defs/SessionResume",
       "session.state": "#/$defs/SessionState",
+      "tools.listed": "#/$defs/ToolsListed",
+      "tools.request": "#/$defs/ToolsRequest",
+      "trace": "#/$defs/Trace",
       "welcome": "#/$defs/Welcome"
     },
     "propertyName": "type"
@@ -1342,6 +1461,9 @@
       "$ref": "#/$defs/Result"
     },
     {
+      "$ref": "#/$defs/ToolsRequest"
+    },
+    {
       "$ref": "#/$defs/Welcome"
     },
     {
@@ -1376,6 +1498,12 @@
     },
     {
       "$ref": "#/$defs/Invoke"
+    },
+    {
+      "$ref": "#/$defs/ToolsListed"
+    },
+    {
+      "$ref": "#/$defs/Trace"
     }
   ],
   "title": "Juniper client-brain protocol",

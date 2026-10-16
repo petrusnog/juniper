@@ -22,6 +22,7 @@ services:
     image: ${JUNIPER_IMAGE:-juniper-brain:local}
     build:
       context: .
+      target: prod
       args:
         GIT_SHA: ${GIT_SHA:-local}
     container_name: juniper-brain

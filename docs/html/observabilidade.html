@@ -31,6 +31,26 @@
 <p>O que <strong>você</strong> digita não é gravado (só quantidades), mas a saída das tools é: um <code>git_search</code> grava os commits que achou. Por isso o arquivo é criado com permissão <code>600</code>.</p>
 <h3 id="decisoes-log">Decisões</h3>
 <ul><li>O log fica em <code>brain/eventlog.py</code>, <strong>fora</strong> de <code>core/</code>: router, dispatcher e agente o usam sem depender uns dos outros.</li><li><strong>Logar nunca derruba a Juniper:</strong> disco cheio ou pasta sem permissão pulam o evento.</li><li>Os testes nunca escrevem no log real (<code>tests/conftest.py</code>).</li><li>Não há rotação nem limpeza hoje: apagar os arquivos antigos é manual (em produção isso muda; veja <a href="producao.html">Produção</a>). O <code>juniper.log</code> do shell é outro arquivo, com o texto simples dos comandos legados.</li></ul>
+<h2 id="message-log">O diário das mensagens (message.log)</h2>
+<p>Um arquivo separado do log de eventos, em <strong>texto corrido</strong>, que conta cada interação passo a passo: o que você digitou, por qual camada a mensagem passou, o que cada uma fez e o que voltou. Serve para ver na prática o caminho completo. Fica desligado por padrão (guarda o texto das conversas); para ligar, no <code>config.yaml</code>:</p>
+<pre><code class="lang-yaml">trace:
+  enabled: true      # arquivo: ~/.juniper/logs/message.log (ou trace.file)</code></pre>
+<p>Cada interação abre com um cabeçalho (número, dia, hora, conversa e modo) e segue com uma frase por passo, com a hora em milissegundos. No modo <code>server</code> a ordem é esta:</p>
+<pre><code class="lang-text">Terminal (CLI)              você digitou «...»; no modo server o terminal só repassa o texto
+Cliente remoto · WebSocket  montei o chat.send e o enviei pela conexão
+Servidor · WebSocket        recebi o quadro (bytes), validei contra o protocolo
+Servidor · conversa         a conversa estava livre; abri o turno; passei ao agente
+Agente                      acrescentei ao histórico; vou consultar a memória
+Memória de longo prazo      busquei por significado; injetei N lembranças + o perfil
+Agente → roteador de LLMs   montei o pedido: N mensagens, M ferramentas
+LLM                         o provedor respondeu em X ms; gastou N tokens
+Ferramentas                 o modelo pediu «x» com estes argumentos; decisão; resultado
+Agente                      resposta final pronta; conversa salva
+Servidor · conversa         o turno terminou; mandei N pedaços; enviei chat.end
+Cliente remoto · WebSocket  recebi chat.end: N pedaços, M caracteres, T ms
+Terminal (CLI)              mostrei a resposta no terminal: «...»</code></pre>
+<p>No modo <code>local</code> não há servidor nem rede: o terminal passa a mensagem direto ao agente, e as camadas do servidor não aparecem.</p>
+<ul><li><strong>Quem escreve é o cliente.</strong> Os passos do servidor viajam até ele numa mensagem <code>trace</code> do <a href="protocolo.html">protocolo</a> (só se o <code>hello</code> pediu <strong>e</strong> o servidor também tem <code>trace.enabled</code>). Assim o arquivo sai numa ordem só, mesmo com o servidor num contêiner.</li><li><strong>Segredos</strong> (chaves, tokens) são mascarados como no log de eventos, e textos longos são cortados.</li><li>Os passos de agente, LLM, ferramentas, memória e tempos são a tradução em frases dos mesmos eventos do log estruturado (<code>brain/trace.py</code>), sem código novo em cada módulo.</li><li>No ambiente Docker de dev: <code>JUNIPER_TRACE__ENABLED=true docker compose -f docker-compose.dev.yml up -d</code> liga só o lado do servidor sem editar o <code>config.yaml</code>.</li></ul>
 <h2 id="tempos">Tempos por etapa</h2>
 <pre><code class="lang-bash">JUNIPER_AGENT__SHOW_TIMING=true juniper     # ou show_timing: true no config.yaml</code></pre>
 <p>Depois de cada resposta aparece uma linha apagada, e no fim do chat uma da extração:</p>

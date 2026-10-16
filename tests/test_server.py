@@ -395,3 +395,43 @@ async def test_oversized_reply_becomes_an_error_instead_of_silence() -> None:
         await ws.close()
     finally:
         await server.stop()
+
+
+async def test_trace_pump_recovers_after_a_failed_drain() -> None:
+    from datetime import UTC, datetime
+
+    server, _ = await start(RecordingHandler())
+    try:
+        ws = await connect(url(server), additional_headers=auth())
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "hello",
+                    "protocol_version": 1,
+                    "client": {"kind": "cli", "version": "t", "device_id": "dev-t"},
+                    "trace": True,
+                }
+            )
+        )
+        await ws.recv()
+        await wait_until(lambda: bool(server.connections))
+        conn = server.connections[0]
+        conn.wants_trace = True
+        calls = {"n": 0}
+        real = conn._drain_trace
+
+        async def flaky() -> bool:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("falha ao enviar o passo")
+            return await real()
+
+        conn._drain_trace = flaky  # type: ignore[method-assign]
+        conn.trace("Teste", "primeiro", datetime.now(UTC))
+        await wait_until(lambda: conn._trace_pump is None)  # o pump morreu, mas liberou o lugar
+        conn.trace("Teste", "segundo", datetime.now(UTC))
+        message = p.parse_message(await asyncio.wait_for(ws.recv(), 2), source="server")
+        assert isinstance(message, p.Trace)
+        await ws.close()
+    finally:
+        await server.stop()

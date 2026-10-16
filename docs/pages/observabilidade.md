@@ -67,6 +67,40 @@ O que **você** digita não é gravado (só quantidades), mas a saída das tools
 - Os testes nunca escrevem no log real (`tests/conftest.py`).
 - Não há rotação nem limpeza hoje: apagar os arquivos antigos é manual (em produção isso muda; veja [Produção](producao.html)). O `juniper.log` do shell é outro arquivo, com o texto simples dos comandos legados.
 
+## O diário das mensagens (message.log) {#message-log kind=módulo file=brain/trace.py}
+
+Um arquivo separado do log de eventos, em **texto corrido**, que conta cada interação passo a passo: o que você digitou, por qual camada a mensagem passou, o que cada uma fez e o que voltou. Serve para ver na prática o caminho completo. Fica desligado por padrão (guarda o texto das conversas); para ligar, no `config.yaml`:
+
+```yaml
+trace:
+  enabled: true      # arquivo: ~/.juniper/logs/message.log (ou trace.file)
+```
+
+Cada interação abre com um cabeçalho (número, dia, hora, conversa e modo) e segue com uma frase por passo, com a hora em milissegundos. No modo `server` a ordem é esta:
+
+```text
+Terminal (CLI)              você digitou «...»; no modo server o terminal só repassa o texto
+Cliente remoto · WebSocket  montei o chat.send e o enviei pela conexão
+Servidor · WebSocket        recebi o quadro (bytes), validei contra o protocolo
+Servidor · conversa         a conversa estava livre; abri o turno; passei ao agente
+Agente                      acrescentei ao histórico; vou consultar a memória
+Memória de longo prazo      busquei por significado; injetei N lembranças + o perfil
+Agente → roteador de LLMs   montei o pedido: N mensagens, M ferramentas
+LLM                         o provedor respondeu em X ms; gastou N tokens
+Ferramentas                 o modelo pediu «x» com estes argumentos; decisão; resultado
+Agente                      resposta final pronta; conversa salva
+Servidor · conversa         o turno terminou; mandei N pedaços; enviei chat.end
+Cliente remoto · WebSocket  recebi chat.end: N pedaços, M caracteres, T ms
+Terminal (CLI)              mostrei a resposta no terminal: «...»
+```
+
+No modo `local` não há servidor nem rede: o terminal passa a mensagem direto ao agente, e as camadas do servidor não aparecem.
+
+- **Quem escreve é o cliente.** Os passos do servidor viajam até ele numa mensagem `trace` do [protocolo](protocolo.html) (só se o `hello` pediu **e** o servidor também tem `trace.enabled`). Assim o arquivo sai numa ordem só, mesmo com o servidor num contêiner.
+- **Segredos** (chaves, tokens) são mascarados como no log de eventos, e textos longos são cortados.
+- Os passos de agente, LLM, ferramentas, memória e tempos são a tradução em frases dos mesmos eventos do log estruturado (`brain/trace.py`), sem código novo em cada módulo.
+- No ambiente Docker de dev: `JUNIPER_TRACE__ENABLED=true docker compose -f docker-compose.dev.yml up -d` liga só o lado do servidor sem editar o `config.yaml`.
+
 ## Tempos por etapa {#tempos kind=conceito file=brain/timing.py}
 
 ```bash
