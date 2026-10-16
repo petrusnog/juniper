@@ -308,6 +308,18 @@
           "title": "Call Id",
           "type": "string"
         },
+        "tier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
         "timeout_ms": {
           "exclusiveMinimum": 0,
           "title": "Timeout Ms",
