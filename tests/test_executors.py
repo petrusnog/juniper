@@ -81,9 +81,11 @@ class Setup:
         provider: Any,
         *,
         timeout_ms: int = 5000,
+        floor: Tier = Tier.READ,
     ) -> None:
+        # Nos testes o piso é READ para exercitar o roteamento; o padrão de produção é WRITE.
         self.registry = server_registry()
-        self.hub = ExecutorHub(self.registry, timeout_ms=timeout_ms)
+        self.hub = ExecutorHub(self.registry, timeout_ms=timeout_ms, unknown_tool_floor=floor)
         self.handler = ChatHandler(
             FileSessionStore(tmp_path / "sessions"),
             provider,
@@ -360,3 +362,32 @@ def test_dispatcher_without_gateway_still_runs_executor_tools_locally() -> None:
     registry.register(Local)
     result = asyncio.run(Dispatcher(tool_registry=registry).execute(ToolCall("1", "local_thing")))
     assert result.success and ran == ["local"]
+
+
+# --- tools desconhecidas do servidor nunca rodam sem confirmação ----------------------------
+
+
+async def test_unknown_tool_declared_read_still_needs_confirmation_by_default(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        [use("open_thing", url="https://x.com"), say("Posso abrir?"), say("Aberto.")]
+    )
+    async with Setup(tmp_path, provider, floor=Tier.WRITE) as s:
+        pc, _ = await s.executor("pc", OPEN_URL)  # o dispositivo diz "read"
+        await pc.send(type="chat.send", id="c-1", text="abre")
+        got = await pc.until(p.ChatEnd)
+        assert not any(isinstance(m, p.Invoke) for m in got)  # nada vai ao dispositivo ainda
+        await pc.send(type="chat.send", id="c-2", text="Sim.")
+        invoke = (await pc.until(p.Invoke))[-1]
+        assert isinstance(invoke, p.Invoke)
+        assert invoke.tier == "read"  # o cliente confere o tier que ele mesmo declarou
+        await pc.send(type="result", call_id=invoke.call_id, success=True, output="ok")
+        assert texts(await pc.until(p.ChatEnd)) == "Aberto."
+
+
+async def test_server_known_tool_keeps_its_own_policy(tmp_path: Path) -> None:
+    async with Setup(tmp_path, FakeProvider([]), floor=Tier.DESTRUCTIVE) as s:
+        await s.executor("pc", {**OPEN_URL, "name": "static_open", "tier": "write"})
+        cls = s.handler._registry.get("static_open")
+        assert cls is not None and cls.tier is Tier.WRITE  # a do servidor, sem piso

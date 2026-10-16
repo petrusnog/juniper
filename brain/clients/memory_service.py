@@ -97,8 +97,20 @@ class MemoryService:
                     "internal", "Não consegui falar com a memória agora.", request.id
                 ),
             )
+        result = p.MemoryResult(reply_to=request.id, ok=True, data=data)
+        try:
+            p.serialize_message(
+                result
+            )  # cabe em um quadro (1 MiB)? Senão o cliente ficaria sem resposta
+        except p.InvalidMessageError:
+            hint = "Exporte sem vetores." if op == "export" else "Filtre por tipo."
+            return self._failed(
+                op,
+                request.id,
+                p.Error.from_code("bad_request", f"Resultado grande demais. {hint}", request.id),
+            )
         event_log.log("memory_request", op=op, ok=True)
-        return p.MemoryResult(reply_to=request.id, ok=True, data=data)
+        return result
 
     @staticmethod
     def _failed(op: str, request_id: str, error: p.Error) -> p.Error:

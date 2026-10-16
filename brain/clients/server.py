@@ -46,6 +46,7 @@ HEALTH_PATH: Final = "/health"
 HEARTBEAT_SECONDS: Final = 30.0
 IDLE_TIMEOUT_SECONDS: Final = 90.0
 HELLO_TIMEOUT_SECONDS: Final = 10.0
+INTERNAL_MESSAGE: Final = "Algo deu errado aqui dentro. Tenta de novo daqui a pouco?"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -138,7 +139,18 @@ class Connection:
 
     async def _send_now(self, message: p.ClientMessage | p.ServerMessage) -> bool:
         try:
-            await self.websocket.send(p.serialize_message(message))
+            try:
+                text = p.serialize_message(message)
+            except p.InvalidMessageError:  # grande demais para um quadro: nunca deixar sem resposta
+                event_log.log("error", where="server.send", type=type(message).__name__)
+                text = p.serialize_message(
+                    p.Error.from_code(
+                        "internal",
+                        "A resposta ficou grande demais para enviar.",
+                        getattr(message, "reply_to", None),
+                    )
+                )
+            await self.websocket.send(text)
         except ConnectionClosed:
             return False
         return True
@@ -383,7 +395,12 @@ class BrainServer:
                 await conn.send(p.Error.from_code("bad_request", "O 'hello' já foi enviado."))
                 continue
             conn.frame_bytes = len(frame.encode("utf-8")) if isinstance(frame, str) else len(frame)
-            await self._handler.handle(conn, message)
+            try:
+                await self._handler.handle(conn, message)
+            except Exception as exc:  # um bug em um pedido não derruba a conexão (ADR-012, seção 9)
+                logger.exception("Pedido falhou")
+                event_log.log("error", where="server.handle", type=type(exc).__name__)
+                await conn.send(p.Error.from_code("internal", INTERNAL_MESSAGE, _id_of(frame)))
 
     async def _watchdog(self, conn: Connection) -> None:
         """Manda `ping` a cada intervalo; sem nenhum sinal por `idle_timeout`, derruba."""
