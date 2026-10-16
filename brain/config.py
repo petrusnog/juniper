@@ -294,6 +294,17 @@ class MemorySettings(BaseModel):
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
 
 
+class TraceSettings(BaseModel):
+    """O diário das mensagens (`message.log`): cada interação contada, camada por camada."""
+
+    # Desligado por padrão: o arquivo guarda o texto das conversas. Ligue para ver o caminho que
+    # uma mensagem percorre (o CLI escreve o arquivo; o servidor manda os passos dele pelo
+    # WebSocket, então ligar no config.yaml pessoal liga o CLI e o contêiner de dev juntos).
+    enabled: bool = False
+    # Onde escrever. None = logs/message.log, ao lado dos logs de eventos.
+    file: Path | None = None
+
+
 class PathsSettings(BaseModel):
     """Paths canônicos do runtime da Juniper.
 
@@ -357,6 +368,7 @@ class Settings(BaseSettings):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     google: GoogleSettings = Field(default_factory=GoogleSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
+    trace: TraceSettings = Field(default_factory=TraceSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")

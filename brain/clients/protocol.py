@@ -166,6 +166,8 @@ class Hello(_Message):
     protocol_version: int
     client: ClientInfo
     resume: Resume | None = None
+    trace: bool | None = None
+    """Pede ao servidor os passos de cada turno (mensagens `trace`) para o `message.log`."""
 
 
 class WelcomeSession(_Message):
@@ -188,6 +190,16 @@ class Ping(_Message):
 
 class Pong(_Message):
     type: Literal["pong"] = "pong"
+
+
+class Trace(_Message):
+    """Um passo que o servidor deu (só vem se o `hello` pediu e o servidor permite)."""
+
+    type: Literal["trace"] = "trace"
+    layer: str
+    text: str
+    at: str
+    """Instante do passo no servidor (ISO 8601, com fuso)."""
 
 
 class Error(_Message):
@@ -493,6 +505,7 @@ ServerMessage = (
     | Registered
     | Invoke
     | ToolsListed
+    | Trace
 )
 Message = Annotated[ClientMessage | ServerMessage, Field(discriminator="type")]
 """Todas as mensagens, discriminadas por `type` (e `memory.request` também por `op`)."""
@@ -529,6 +542,7 @@ _SERVER_TYPES: Final = frozenset(
         "registered",
         "invoke",
         "tools.listed",
+        "trace",
     }
 )
 

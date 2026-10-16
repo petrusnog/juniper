@@ -39,6 +39,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.profile import Profile, ProfileError
 from brain.memory.vector import Memory, SearchHit
 from brain.timing import summarize_turn
+from brain.trace import message_trace, quote
 
 T = TypeVar("T")
 
@@ -207,9 +208,20 @@ async def converse(
 
 async def _turn(client: RemoteClient, printer: cli.Printer, text: str, known_turns: int) -> int:
     """Manda `text` e mostra a resposta em stream. Ctrl+C cancela o turno, não fecha o chat."""
+    message_trace.begin(f"conversa {client.session_id} · modo server ({client._url})")
+    message_trace.step(
+        "Terminal (CLI)",
+        f"Você digitou {quote(text)}. No modo server o terminal só repassa o texto ao cliente "
+        "remoto: quem pensa, lembra e responde é o servidor.",
+    )
     printer.begin_reply()
     loop = asyncio.get_running_loop()
     interrupted = False
+    shown: list[str] = []
+
+    def show(piece: str) -> None:
+        shown.append(piece)
+        printer.token(piece)
 
     def on_sigint() -> None:
         nonlocal interrupted
@@ -219,7 +231,7 @@ async def _turn(client: RemoteClient, printer: cli.Printer, text: str, known_tur
     with contextlib.suppress(NotImplementedError, ValueError, RuntimeError):
         loop.add_signal_handler(signal.SIGINT, on_sigint)
     try:
-        result = await client.chat(text, printer.token)
+        result = await client.chat(text, show)
     except ServerUnavailableError as exc:
         printer.end_line()
         printer.say(f"{exc} Tenta de novo daqui a pouco.", "red")
@@ -237,6 +249,12 @@ async def _turn(client: RemoteClient, printer: cli.Printer, text: str, known_tur
         with contextlib.suppress(NotImplementedError, ValueError, RuntimeError):
             loop.remove_signal_handler(signal.SIGINT)
     printer.end_line()
+    message_trace.step(
+        "Terminal (CLI)",
+        f"Mostrei a resposta no terminal, pedaço a pedaço: {quote(''.join(shown), 1500)}"
+        if shown
+        else "Não havia texto de resposta para mostrar.",
+    )
     if result.error is not None:
         printer.say(result.error.message, "red")
     elif result.finish == "cancelled" or interrupted:

@@ -152,6 +152,15 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
             ],
         },
     ),
+    (
+        "server",
+        {
+            "type": "trace",
+            "layer": "Servidor",
+            "text": "Recebi.",
+            "at": "2026-10-16T01:12:03-03:00",
+        },
+    ),
     ("client", {"type": "tools.request", "id": "t-1"}),
     (
         "server",

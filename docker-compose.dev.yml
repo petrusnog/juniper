@@ -50,6 +50,9 @@ services:
       # O seu config.yaml pessoal entra como base: agenda do Google, persona etc. valem aqui
       # também. A infraestrutura (deployment, mongo) continua sendo a do config.dev.yaml.
       JUNIPER_BASE_CONFIG_PATH: /home/juniper/.juniper/config.base.yaml
+      # Repasse: só vale se você exportar JUNIPER_TRACE__ENABLED=true no shell (liga o diário de
+      # mensagens deste lado sem mexer no config.yaml). Sem isso, manda o trace.enabled do yaml.
+      JUNIPER_TRACE__ENABLED:
     volumes:
       # O código: editado no host, visto na hora no contêiner.
       - ./brain:/app/brain:ro

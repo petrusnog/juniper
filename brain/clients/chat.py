@@ -39,6 +39,7 @@ from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
+from brain.trace import message_trace, quote
 
 logger = logging.getLogger(__name__)
 
@@ -336,19 +337,42 @@ class ChatHandler:
     # --- chat ---
 
     async def _chat_send(self, conn: Connection, message: p.ChatSend) -> None:
-        conversation: Conversation | None = conn.state
-        if conversation is None:
-            await conn.send(p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id))
-            return
-        if conversation.busy:
-            await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
-            return
-        run = TurnRun(turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn)
-        conversation.turn = run  # a partir daqui a conversa está ocupada
-        await conn.send(
-            p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
-        )
-        run.task = self._start(self._run_turn(conversation, run, message.text))
+        # Os passos deste turno vão para o message.log do cliente (se ele pediu). A tarefa do turno
+        # é criada dentro do bloco e herda a ligação.
+        with message_trace.bound(conn.trace):
+            message_trace.step(
+                "Servidor · WebSocket",
+                f"Recebi o quadro chat.send da conexão {conn.id} (dispositivo "
+                f"{conn.device_name or conn.device_id}), com {conn.frame_bytes} bytes. Conferi o "
+                f"JSON contra o protocolo versão {p.PROTOCOL_VERSION}: id {message.id}, "
+                f"{len(message.text)} caracteres. Entreguei ao tratador de chat.",
+            )
+            conversation: Conversation | None = conn.state
+            if conversation is None:
+                await conn.send(
+                    p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id)
+                )
+                return
+            if conversation.busy:
+                message_trace.step(
+                    "Servidor · conversa",
+                    f"A conversa {conversation.id} ainda está respondendo à mensagem anterior, "
+                    "então recusei esta com o erro turn_in_progress.",
+                )
+                await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
+                return
+            run = TurnRun(turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn)
+            conversation.turn = run  # a partir daqui a conversa está ocupada
+            message_trace.step(
+                "Servidor · conversa",
+                f"A conversa {conversation.id} tem {count_turns(conversation.agent.session)} "
+                f"mensagem(ns) sua(s) e estava livre. Abri o turno {run.turn_id}, avisei o cliente "
+                "com chat.started e passei a sua mensagem ao agente.",
+            )
+            await conn.send(
+                p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
+            )
+            run.task = self._start(self._run_turn(conversation, run, message.text))
 
     def _chat_cancel(self, conn: Connection, message: p.ChatCancel) -> None:
         conversation: Conversation | None = conn.state
@@ -368,8 +392,12 @@ class ChatHandler:
 
     async def _run_turn(self, conversation: Conversation, run: TurnRun, text: str) -> None:
         finish: p.FinishReason = "ok"
+        pieces = 0
+        reply = ""
 
         async def on_token(piece: str) -> None:
+            nonlocal pieces
+            pieces += 1
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
         current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
@@ -395,6 +423,12 @@ class ChatHandler:
                 logger.exception("Turno falhou")
                 event_log.log("error", where="chat.turn", type=type(exc).__name__)
                 await self._fail(conversation, run, "internal", UNEXPECTED_MESSAGE)
+            message_trace.step(
+                "Servidor · conversa",
+                f"O agente terminou o turno {run.turn_id} com «{finish}»: mandei {pieces} "
+                f"pedaço(s) da resposta (chat.token) e vou fechar com chat.end"
+                + ("; a resposta foi " + quote(reply, 300) + "." if reply else "."),
+            )
             await self._deliver(
                 conversation,
                 run,
@@ -421,6 +455,11 @@ class ChatHandler:
         if conversation.background is not None:  # entrega ao extrator o que já foi respondido
             for turn in conversation.agent.drain_turns():
                 conversation.background.submit(turn)
+                message_trace.step(
+                    "Memória de longo prazo",
+                    "Entreguei o turno à extração em segundo plano, que procura fatos duráveis "
+                    "sobre você sem atrasar a conversa.",
+                )
         if conversation.owner is None:  # o cliente caiu durante o turno
             self._retire(conversation)
 

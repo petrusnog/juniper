@@ -73,6 +73,13 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `deployment.server.port` | `8765` | Porta. |
 | `deployment.auth.token_file` | `~/.juniper/token` | Arquivo do token estático dos clientes. |
 
+## trace {#trace}
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
+| `trace.file` | `logs/message.log` | Onde escrever o diário. |
+
 ## tools {#tools}
 
 | Opção | Padrão | O que faz |

@@ -22,6 +22,7 @@ import secrets
 import signal
 import time
 from collections.abc import Callable, Coroutine
+from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -34,6 +35,7 @@ from websockets.http11 import Request, Response
 
 from brain import __version__
 from brain.clients import protocol as p
+from brain.config import settings
 from brain.core.session import new_session_id
 from brain.eventlog import event_log
 
@@ -103,13 +105,48 @@ class Connection:
         self.session_id: str | None = None
         self.state: Any = None  # do handler
         self._tasks: set[asyncio.Task[None]] = set()
+        # message.log: o cliente pediu os passos do servidor e o servidor permite
+        self.wants_trace = bool(hello.trace) and settings.trace.enabled
+        self.frame_bytes = 0  # tamanho do último quadro recebido
+        self._trace_queue: asyncio.Queue[p.Trace] = asyncio.Queue()
+        self._trace_pump: asyncio.Task[None] | None = None
+        self._send_lock = asyncio.Lock()
+
+    def trace(self, layer: str, text: str, moment: datetime) -> None:
+        """Um passo do servidor para o `message.log` do cliente (em ordem; nunca bloqueia)."""
+        if not self.wants_trace:
+            return
+        self._trace_queue.put_nowait(p.Trace(layer=layer, text=text, at=moment.isoformat()))
+        if self._trace_pump is None:  # nenhuma mensagem vai levar o passo: manda sozinho
+            self._trace_pump = self.spawn(self._pump_trace())
+
+    async def _pump_trace(self) -> None:
+        async with self._send_lock:
+            await self._drain_trace()
+            self._trace_pump = None  # sem await entre o esvaziamento e isto: não perde passo
 
     async def send(self, message: p.ClientMessage | p.ServerMessage) -> bool:
-        """Manda uma mensagem. `False` se a conexão já caiu (não é erro para quem manda)."""
+        """Manda uma mensagem. `False` se a conexão já caiu (não é erro para quem manda).
+
+        Os passos do `message.log` que já foram anotados saem antes dela, no mesmo lock: assim o
+        cliente os recebe na ordem em que aconteceram, intercalados com a resposta.
+        """
+        async with self._send_lock:
+            if not await self._drain_trace():
+                return False
+            return await self._send_now(message)
+
+    async def _send_now(self, message: p.ClientMessage | p.ServerMessage) -> bool:
         try:
             await self.websocket.send(p.serialize_message(message))
         except ConnectionClosed:
             return False
+        return True
+
+    async def _drain_trace(self) -> bool:
+        while not self._trace_queue.empty():
+            if not await self._send_now(self._trace_queue.get_nowait()):
+                return False
         return True
 
     async def close(self, code: int, reason: str = "") -> None:
@@ -345,6 +382,7 @@ class BrainServer:
             if isinstance(message, p.Hello):
                 await conn.send(p.Error.from_code("bad_request", "O 'hello' já foi enviado."))
                 continue
+            conn.frame_bytes = len(frame.encode("utf-8")) if isinstance(frame, str) else len(frame)
             await self._handler.handle(conn, message)
 
     async def _watchdog(self, conn: Connection) -> None:

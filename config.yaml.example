@@ -115,3 +115,8 @@ memory:
   profile:
     enabled: true
     max_chars: 500
+
+trace:
+  # Diário das mensagens: cada interação contada em texto corrido, camada por camada
+  # (logs/message.log). Guarda o texto das conversas, por isso vem desligado.
+  enabled: false

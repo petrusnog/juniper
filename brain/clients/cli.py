@@ -54,6 +54,7 @@ from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
 from brain.tools.juniper_cmds import legacy_argv
 from brain.tools.registry import registry
+from brain.trace import message_trace, quote
 
 console = Console()
 
@@ -275,10 +276,20 @@ async def converse(
                 continue
         else:
             text = pending
+        message_trace.begin(f"conversa {agent.session.id} · modo local")
+        message_trace.step(
+            "Terminal (CLI)",
+            f"Você digitou {quote(text)}. No modo local não há servidor nem rede: o agente roda "
+            "neste mesmo processo e a mensagem vai direto do terminal ao Agent.",
+        )
         printer.begin_reply()
         code = 0
         try:
-            await agent.run(text, on_token=printer.token)
+            reply = await agent.run(text, on_token=printer.token)
+            message_trace.step(
+                "Terminal (CLI)",
+                f"Mostrei a resposta no terminal, pedaço a pedaço: {quote(reply, 1500)}",
+            )
         except LLMError as exc:
             printer.say(friendly_error(exc), "red")
             code = 1

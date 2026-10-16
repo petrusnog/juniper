@@ -18,6 +18,7 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Final
 
 from websockets.asyncio.client import ClientConnection, connect
@@ -25,7 +26,9 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketExce
 
 from brain import __version__
 from brain.clients import protocol as p
+from brain.config import settings
 from brain.eventlog import event_log
+from brain.trace import message_trace, quote
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +260,7 @@ class RemoteClient:
                 device_name=self._device_name,
             ),
             resume=self._resume,
+            trace=True if settings.trace.enabled else None,
         )
 
     async def _read_welcome(self, ws: ClientConnection) -> p.Welcome:
@@ -295,6 +299,11 @@ class RemoteClient:
     async def _dispatch(self, ws: ClientConnection, message: p.ServerMessage) -> None:
         if isinstance(message, p.Ping):
             await ws.send(p.serialize_message(p.Pong()))
+        elif isinstance(message, p.Trace):  # um passo do servidor, para o message.log
+            if self._turn is not None:  # na fila do turno, para sair na ordem em que chegou
+                self._turn.put_nowait(message)
+            else:
+                self._write_trace(message)
         elif isinstance(message, p.SessionDetached):
             self.detached = True
         elif isinstance(message, p.ChatStarted | p.ChatToken | p.ChatEnd):
@@ -309,6 +318,10 @@ class RemoteClient:
             reply_to = getattr(message, "reply_to", None)
             if isinstance(reply_to, str):
                 self._settle(reply_to, message)
+
+    @staticmethod
+    def _write_trace(message: p.Trace) -> None:
+        message_trace.file_line(message.layer, message.text, datetime.fromisoformat(message.at))
 
     def _settle(self, request_id: str, message: p.ServerMessage) -> None:
         future = self._pending.pop(request_id, None)
@@ -375,21 +388,58 @@ class RemoteClient:
         self._turn_id = None
         self._cancel_requested = False
         error: p.Error | None = None
+        started = time.monotonic()
+        pieces = chars = 0
         try:
+            message_trace.step(
+                "Cliente remoto · WebSocket",
+                f"Montei a mensagem chat.send (id {request_id}, {len(text)} caracteres) e a enviei "
+                f"pela conexão com {self._url}, na conversa {self.session_id}.",
+            )
             await self._send(p.ChatSend(id=request_id, text=text))
             while True:
                 message = await self._turn.get()
                 if message is None:
+                    message_trace.step(
+                        "Cliente remoto · WebSocket",
+                        "A conexão caiu no meio da resposta; vou reconectar e retomar a conversa.",
+                    )
                     raise ConnectionLostError(UNAVAILABLE_MESSAGE)
                 if isinstance(message, p.ChatStarted):
                     self._turn_id = message.turn_id
+                    message_trace.step(
+                        "Cliente remoto · WebSocket",
+                        f"Recebi chat.started: o servidor abriu o turno {message.turn_id}.",
+                    )
                     if self._cancel_requested:
                         await self._send(p.ChatCancel(turn_id=message.turn_id))
+                elif isinstance(message, p.Trace):
+                    self._write_trace(message)
                 elif isinstance(message, p.ChatToken):
+                    if pieces == 0:
+                        message_trace.step(
+                            "Cliente remoto · WebSocket",
+                            "Chegou o primeiro pedaço da resposta (chat.token), "
+                            f"{round((time.monotonic() - started) * 1000)} ms depois do envio. "
+                            "Entrego cada pedaço ao terminal assim que chega.",
+                        )
+                    pieces += 1
+                    chars += len(message.text)
                     on_token(message.text)
                 elif isinstance(message, p.Error):
                     error = message
+                    message_trace.step(
+                        "Cliente remoto · WebSocket",
+                        f"Recebi um erro tipado do servidor: {message.code} "
+                        f"({quote(message.message, 200)}).",
+                    )
                 elif isinstance(message, p.ChatEnd):
+                    message_trace.step(
+                        "Cliente remoto · WebSocket",
+                        f"Recebi chat.end (finish «{message.finish}»): ao todo {pieces} pedaço(s) "
+                        f"e {chars} caracteres, {round((time.monotonic() - started) * 1000)} ms "
+                        "depois do envio.",
+                    )
                     return ChatResult(message.turn_id, message.finish, error, message.timing)
         finally:
             self._turn = None
