@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ambiente de desenvolvimento com Docker — Livro de bolso Juniper</title>
+<meta name="description" content="Passo a passo para subir o brain e o MongoDB em contêineres, conversar pelo CLI remoto e desenvolver com reinício automático.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/dev-docker.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Começando / Ambiente de desenvolvimento com Docker</div>
+<h1>Ambiente de desenvolvimento com Docker <span class="tag v">guia</span></h1>
+<p class="lead">Passo a passo para subir o brain e o MongoDB em contêineres, conversar pelo CLI remoto e desenvolver com reinício automático.</p>
+<p>Este guia leva do zero a uma conversa com o brain rodando em contêiner, com o código da sua máquina valendo na hora. A mesma topologia vai para a produção (<a href="producao.html">Produção</a>): brain e MongoDB em contêineres, o cliente de fora, falando por WebSocket (<a href="protocolo.html">Protocolo</a>).</p>
+<div class="callout info"><p><strong>Nota:</strong> o compose de desenvolvimento é o arquivo <strong><code>docker-compose.dev.yml</code></strong>. Os outros dois (<code>docker-compose.prod.yml</code> e o <code>docker-compose.yml</code> só com o Mongo) são de outras situações e <strong>não</strong> criam a pasta <code>.juniper-dev/</code>. Sempre use <code>-f docker-compose.dev.yml</code>.</p></div>
+<h2 id="pre-requisitos">Pré-requisitos</h2>
+<ul><li><strong>Docker</strong> com o plugin <strong>Compose v2</strong> (<code>docker compose version</code>). Em Linux, seu usuário no grupo <code>docker</code>.</li><li><strong>Python 3.11+</strong> na sua máquina, só para o CLI e os testes (<a href="install.html">Instalação</a>).</li><li>Cerca de 3 GB livres (imagens, o Mongo e o modelo de embeddings, que baixa uma vez).</li></ul>
+<h2 id="preparar">1. Prepare a pasta</h2>
+<p>Na raiz do repositório:</p>
+<pre><code class="lang-bash">pip install -e &quot;.[dev]&quot;        # o comando `juniper` e os testes, na sua máquina
+./scripts/dev_setup.sh         # cria o que o compose espera encontrar</code></pre>
+<p>O <code>scripts/dev_setup.sh</code> é seguro de repetir. Ele cria <code>.juniper-dev/state</code>, <code>.juniper-dev/logs</code> e <code>certs/</code>, copia <code>.env.example</code> para <code>.env</code> e <code>config.yaml.example</code> para <code>config.yaml</code> (se ainda não existem) e confere se o usuário e a senha do Mongo estão preenchidos.</p>
+<p>Abra o <code>.env</code> e preencha <strong>os dois valores do Mongo</strong> (escolha qualquer um; o banco é criado com eles):</p>
+<pre><code class="lang-bash">JUNIPER_MEMORY__MONGO__USERNAME=juniper
+JUNIPER_MEMORY__MONGO__PASSWORD=uma-senha-qualquer</code></pre>
+<p>As chaves <code>JUNIPER_DEEPINFRA_API_KEY</code> e <code>JUNIPER_GROQ_API_KEY</code> são <strong>opcionais</strong>: sem elas o ambiente usa o <code>fake-llm</code>, um LLM de mentira que só ecoa a sua mensagem. Dá para testar a arquitetura inteira sem gastar nada.</p>
+<p>Se o <code>dev_setup.sh</code> avisar que o seu uid não é 1000 (<code>id -u</code>), rode <code>export UID</code> no terminal antes do próximo passo. Assim os arquivos de <code>.juniper-dev/</code> ficam seus.</p>
+<div class="callout warn"><p><strong>Atenção:</strong> se você pular este passo e o Docker não achar <code>.juniper-dev/</code>, <code>.env</code> ou <code>config.yaml</code>, ele <strong>cria sozinho</strong>, como root (e <code>.env</code> e <code>config.yaml</code> viram <em>pastas</em>). O brain então não consegue gravar o token. Veja <a href="#problemas">Problemas comuns</a>.</p></div>
+<h2 id="subir">2. Suba o ambiente</h2>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml ps</code></pre>
+<p>Na primeira vez, o <code>--build</code> baixa as imagens e instala as dependências (alguns minutos). Espere <code>juniper-dev-brain</code> aparecer como <strong>healthy</strong> (até ~1 minuto) e <code>juniper-dev-mongo</code> como <strong>healthy</strong>. Os três serviços:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Contêiner</th><th>O que é</th><th>Porta no seu computador</th></tr></thead><tbody><tr><td><code>juniper-dev-brain</code></td><td>O servidor (<code>juniper serve</code>), com o código montado por volume.</td><td><code>127.0.0.1:8765</code></td></tr><tr><td><code>juniper-dev-mongo</code></td><td>MongoDB com as memórias e conversas.</td><td><code>127.0.0.1:27018</code></td></tr><tr><td><code>juniper-dev-fake-llm</code></td><td>LLM de mentira, o último da fila de failover.</td><td>nenhuma</td></tr></tbody></table></div>
+<p>Se o <code>ps</code> mostrar <code>unhealthy</code> ou o brain reiniciando, veja os logs: <code>docker compose -f docker-compose.dev.yml logs brain</code>.</p>
+<h2 id="conferir">3. Confira que está de pé</h2>
+<pre><code class="lang-bash">curl -s http://127.0.0.1:8765/health
+ls .juniper-dev/state          # deve ter o arquivo `token`
+python scripts/smoke_server.py --token-file .juniper-dev/state/token &quot;oi, tudo bem?&quot;</code></pre>
+<ul><li>O <code>/health</code> devolve <code>{&quot;status&quot;: ..., &quot;memory&quot;: ...}</code>. Enquanto o modelo de embeddings baixa na primeira vez, aparece <code>&quot;status&quot;: &quot;degraded&quot;, &quot;memory&quot;: &quot;warming_up&quot;</code> (é normal, a conversa já funciona, sem consultar memória). Quando termina, vira <code>ok</code> / <code>ready</code>.</li><li>A pasta <code>.juniper-dev/</code> <strong>só existe depois</strong> deste <code>up</code> com o <code>docker-compose.dev.yml</code>. Dentro dela, <code>state/token</code> é o token que os clientes usam, e <code>logs/</code> tem os eventos do brain.</li><li>O <code>smoke_server.py</code> conecta, conversa e imprime a resposta chegando em pedaços. Com o <code>fake-llm</code>, a resposta é o eco da sua mensagem.</li></ul>
+<h2 id="cli">4. Converse pelo CLI</h2>
+<p>O CLI da sua máquina vira cliente remoto quando está em <code>deployment.mode: server</code>. Para <strong>não mexer no seu <code>config.yaml</code></strong>, passe isto só no comando (rode da raiz do repositório):</p>
+<pre><code class="lang-bash">export JUNIPER_DEPLOYMENT__MODE=server
+export JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=&quot;$PWD/.juniper-dev/state/token&quot;
+
+juniper &quot;oi&quot;                # uma mensagem
+juniper                     # conversa interativa
+juniper --resume            # retoma a última conversa
+juniper memory list         # as memórias, lidas do servidor
+juniper tools               # as tools do servidor</code></pre>
+<p>Para voltar ao brain local (sem Docker), é só <code>unset JUNIPER_DEPLOYMENT__MODE JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE</code>. O erro <em>"Não achei o token do servidor em ~/.juniper/token"</em> significa que o CLI está em modo <code>server</code> mas a variável do token não foi definida (ou o ambiente não foi iniciado): veja <a href="#problemas">Problemas comuns</a>.</p>
+<h2 id="desenvolver">5. Desenvolva</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Você mudou</th><th>O que fazer</th></tr></thead><tbody><tr><td>Algo em <code>brain/</code> ou <code>prompts/</code></td><td>Nada. O servidor reinicia sozinho (watchfiles) e o CLI reconecta. <code>logs -f brain</code> mostra cada reinício.</td></tr><tr><td><code>.env</code> ou <code>docker/config.dev.yaml</code></td><td><code>docker compose -f docker-compose.dev.yml restart brain</code></td></tr><tr><td><code>requirements.txt</code></td><td><code>docker compose -f docker-compose.dev.yml up -d --build</code></td></tr><tr><td>O seu <code>config.yaml</code> pessoal</td><td><code>restart brain</code> (ele entra como base: agenda do Google, persona etc.)</td></tr></tbody></table></div>
+<p>Os testes rodam na sua máquina, sem Docker: <code>pytest -m &quot;not integration&quot;</code>.</p>
+<p><strong>Acompanhar o que acontece</strong></p>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml logs -f brain     # servidor
+tail -f .juniper-dev/logs/*.jsonl                           # eventos estruturados</code></pre>
+<p><strong>Diário de mensagens (<code>message.log</code>):</strong> conta, camada por camada, o caminho de cada mensagem. Desligado por padrão. Para ligar neste ambiente: <code>export JUNIPER_TRACE__ENABLED=true</code>, rode <code>restart brain</code> e use o CLI no mesmo terminal. O arquivo fica em <code>logs/message.log</code> (veja <a href="observabilidade.html">Observabilidade</a>).</p>
+<p><strong>Olhar o banco</strong></p>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml exec mongo mongosh -u juniper -p uma-senha-qualquer --authenticationDatabase admin</code></pre>
+<p>(use o usuário e a senha do seu <code>.env</code>; também dá para apontar o Compass para <code>127.0.0.1:27018</code>).</p>
+<p><strong>LLM de verdade:</strong> ponha <code>JUNIPER_DEEPINFRA_API_KEY</code> (e/ou a do Groq) no <code>.env</code> e rode <code>restart brain</code>. Os provedores reais passam a responder primeiro; o <code>fake-llm</code> só entra se eles falharem.</p>
+<h2 id="limpar">6. Parar e limpar</h2>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml down        # desliga; os dados ficam nos volumes
+docker compose -f docker-compose.dev.yml down -v     # desliga e APAGA o banco e o modelo baixado
+rm -rf .juniper-dev                                  # zera o token e os logs (um novo token é criado no próximo up)</code></pre>
+<p>Depois de apagar o token, o CLI e o <code>smoke_server.py</code> precisam ler o novo arquivo.</p>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td><strong>A pasta <code>.juniper-dev</code> não existe.</strong></td><td>Você subiu outro compose. Só o <code>docker-compose.dev.yml</code> a cria. Rode <code>docker compose -f docker-compose.dev.yml up -d --build</code>. Confira com <code>docker ps</code>: os contêineres devem se chamar <code>juniper-dev-*</code>.</td></tr><tr><td><strong>"Não achei o token do servidor em ~/.juniper/token"</strong></td><td>O CLI está em modo <code>server</code> e procura o token no caminho padrão. Defina <code>JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=&quot;$PWD/.juniper-dev/state/token&quot;</code> (<a href="#cli">passo 4</a>) ou volte ao modo local.</td></tr><tr><td><strong>O token não aparece em <code>.juniper-dev/state</code>, e o brain reinicia.</strong></td><td>A pasta foi criada pelo Docker como root. Rode <code>docker compose -f docker-compose.dev.yml down</code>, depois <code>sudo chown -R &quot;$USER&quot; .juniper-dev</code> (ou <code>rm -rf .juniper-dev</code>), rode <code>./scripts/dev_setup.sh</code> e suba de novo.</td></tr><tr><td><strong><code>.env</code> ou <code>config.yaml</code> viraram pastas.</strong></td><td>O Docker as criou porque não existiam. <code>down</code>, <code>rm -rf .env config.yaml</code> (são pastas vazias), <code>./scripts/dev_setup.sh</code> e suba de novo.</td></tr><tr><td><strong><code>defina JUNIPER_MEMORY__MONGO__USERNAME no .env</code></strong></td><td>Falta o usuário ou a senha do Mongo no <code>.env</code> (passo 1). Se o banco já tinha sido criado com outros valores, use <code>down -v</code>.</td></tr><tr><td><strong>Porta 8765 ou 27018 ocupada.</strong></td><td>Defina <code>JUNIPER_DEV_PORT</code> / <code>JUNIPER_DEV_MONGO_PORT</code> no <code>.env</code>. O CLI precisa da mesma porta em <code>JUNIPER_DEPLOYMENT__SERVER__PORT</code>.</td></tr><tr><td><strong><code>unhealthy</code>, ou o brain não conecta ao Mongo.</strong></td><td><code>logs brain</code> mostra o motivo. Quase sempre é usuário/senha diferentes dos do banco já criado: <code>down -v</code> e suba de novo.</td></tr><tr><td><strong>A resposta é só o eco da mensagem.</strong></td><td>É o <code>fake-llm</code>: nenhuma chave de LLM válida no <code>.env</code>, ou o provedor real falhou. Preencha as chaves e faça <code>restart brain</code>.</td></tr><tr><td><strong>Os arquivos de <code>.juniper-dev</code> são de outro usuário.</strong></td><td>O seu uid não é 1000. <code>export UID</code> antes de <code>up -d --build</code> (precisa reconstruir a imagem).</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

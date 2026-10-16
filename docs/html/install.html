@@ -40,6 +40,7 @@ bash ~/.juniper/scripts/install.sh</code></pre>
 <pre><code class="lang-bash">juniper install --dev                      # dentro do shell (zsh), ou:
 bash ~/.juniper/scripts/install.sh --dev</code></pre>
 <h2 id="dev">Ambiente de desenvolvimento</h2>
+<blockquote><p><strong>Docker:</strong> para subir o brain e o MongoDB em contêineres, com o código montado por volume, veja o <a href="dev-docker.html">tutorial do ambiente de desenvolvimento com Docker</a>.</p></blockquote>
 <pre><code class="lang-bash">bash ~/.juniper/scripts/install.sh --dev
 source ~/.juniper/.venv/bin/activate
 pytest tests/ -v            # testes (não usam rede nem chave real)
