@@ -28,6 +28,8 @@ FORMAT_VERSION = 1
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _ROLES = {"system", "user", "assistant", "tool"}
 PREVIEW_CHARS = 60
+# The "[quinta-feira, 15/10/2026, 23:18 (...)] " stamp every user turn carries (core.session).
+_DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
 
 
 class SessionStoreError(Exception):
@@ -120,7 +122,7 @@ def session_from_dict(data: dict[str, Any]) -> Session:
 
 def session_info(session: Session) -> SessionInfo:
     users = [m for m in session.history if m.role == "user"]
-    first = (users[0].content or "") if users else ""
+    first = _DATE_PREFIX.sub("", (users[0].content or ""), count=1) if users else ""
     return SessionInfo(
         id=session.id,
         created_at=session.created_at,

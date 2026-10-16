@@ -33,8 +33,10 @@ from brain.clients import voice
 from brain.config import settings
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
+from brain.core.resume import previous_session
 from brain.core.session import Session
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
+from brain.llm.friendly import PROVIDER_PT, friendly_error
 from brain.llm.router import PROVIDERS, LLMRouter
 from brain.memory.background import BackgroundExtractor
 from brain.memory.errors import MemoryUnavailableError
@@ -46,7 +48,6 @@ from brain.memory.longterm import (
     open_memory_for_commands,
 )
 from brain.memory.profile import ProfileError, render
-from brain.memory.session import SessionStore
 from brain.memory.stores import close_session_store, open_session_store
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
@@ -83,8 +84,6 @@ app = typer.Typer(
     cls=JuniperGroup,
 )
 
-# Gendered article + display name, so the messages read right ("a Groq", "o Ollama").
-_PROVIDER_PT = {"deepinfra": ("a", "DeepInfra"), "groq": ("a", "Groq"), "ollama": ("o", "Ollama")}
 _EXIT = {"/sair", "/exit"}
 CHAT_COMMAND = "_chat"
 
@@ -173,7 +172,7 @@ class Printer:
 
     def notify_failover(self, failed: str, exc: LLMError, following: str | None) -> None:
         """A provider failed and another takes over: say so instead of going silent."""
-        art, name = _PROVIDER_PT.get(failed, ("o", failed))
+        art, name = PROVIDER_PT.get(failed, ("o", failed))
         if isinstance(exc, LLMAuthError):
             why = f"{art} {name} recusou as credenciais"
         elif isinstance(exc, LLMRateLimitError):
@@ -183,7 +182,7 @@ class Printer:
         if following is None:
             self.say(f"Falhou: {why}.", "yellow")
             return
-        next_art, next_name = _PROVIDER_PT.get(following, ("o", following))
+        next_art, next_name = PROVIDER_PT.get(following, ("o", following))
         extra = " Sem GPU isso pode levar alguns minutos." if following == "ollama" else ""
         self.say(f"{why[0].upper()}{why[1:]}. Vou tentar {next_art} {next_name}.{extra}", "yellow")
         self._spin(f"esperando {next_art} {next_name}...")
@@ -241,29 +240,6 @@ class Printer:
             self._mid_line = False
 
 
-_KEY_VARS = {"deepinfra": "JUNIPER_DEEPINFRA_API_KEY", "groq": "JUNIPER_GROQ_API_KEY"}
-
-
-def friendly_error(exc: LLMError) -> str:
-    """Translate an LLM failure into an actionable PT-BR message (plain text)."""
-    detail = str(exc)
-    hints: list[str] = []
-    for name in re.findall(r"(\w+): LLMAuthError", detail):
-        if name in _KEY_VARS:
-            hints.append(
-                f"{_PROVIDER_PT[name][1]} sem chave válida: defina {_KEY_VARS[name]} no .env."
-            )
-    for name in re.findall(r"(\w+): LLMRateLimitError", detail):
-        art, shown = _PROVIDER_PT.get(name, ("o", name))
-        hints.append(f"Limite d{art} {shown} atingido: espere um minuto.")
-    if re.search(r"ollama: (LLMUnavailableError|LLMTimeoutError)", detail):
-        hints.append("Ollama não respondeu: ele está rodando? (`ollama serve`)")
-    text = "Não consegui falar com nenhum LLM agora."
-    if hints:
-        text += "\n" + "\n".join(f"· {h}" for h in hints)
-    return f"{text}\nDetalhe técnico: {detail}"
-
-
 def build_router(provider: str | None) -> LLMRouter:
     """Router over ``llm.priority``, or over a single provider when ``--provider`` is given."""
     if provider is None:
@@ -317,25 +293,6 @@ async def converse(
             return code
         printer.out.print()
         pending = None
-
-
-def _when(timestamp: str) -> str:
-    """``2026-10-13T22:15:00+00:00`` as local time: ``13/10 às 19:15``."""
-    moment = datetime.fromisoformat(timestamp).astimezone(ZoneInfo(settings.agent.timezone))
-    return f"{moment:%d/%m} às {moment:%H:%M}"
-
-
-def previous_session(store: SessionStore) -> tuple[Session | None, str]:
-    """The conversation ``--resume`` picks up, and what Juniper says about it."""
-    try:
-        session = store.latest()
-    except (OSError, MemoryUnavailableError):
-        session = None
-    if session is None:
-        return None, "Não achei nenhuma conversa anterior, então vamos começar uma nova."
-    turns = sum(1 for m in session.history if m.role == "user")
-    plural = "mensagem" if turns == 1 else "mensagens"
-    return session, f"Retomando a conversa de {_when(session.updated_at)} ({turns} {plural} suas)."
 
 
 async def prepare_memory(memory: LongTermMemory | None, printer: Printer) -> None:
@@ -613,6 +570,7 @@ def docs() -> None:
 @app.command()
 def serve() -> None:
     """Sobe o brain como servidor WebSocket para os clientes remotos (deployment.mode: server)."""
+    from brain.clients.chat import open_chat_handler
     from brain.clients.server import BrainServer, ensure_token, run_server
 
     if settings.deployment.mode != "server":
@@ -626,10 +584,17 @@ def serve() -> None:
     token_file = settings.deployment.auth.token_file
     token = ensure_token(token_file)
     host, port = settings.deployment.server.host, settings.deployment.server.port
-    server = BrainServer(host, port, token)
-    voice.say(console, f"No ar em ws://{host}:{port}/v1/ws (token em {token_file}).")
+
+    async def run() -> None:
+        async with open_chat_handler() as handler:
+            await run_server(BrainServer(host, port, token, handler))
+
+    voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).")
     try:
-        asyncio.run(run_server(server))
+        asyncio.run(run())
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
     except OSError as exc:  # porta ocupada, endereço inválido...
         voice.say(console, f"Não consegui abrir {host}:{port}: {exc}", "red")
         raise typer.Exit(1) from None

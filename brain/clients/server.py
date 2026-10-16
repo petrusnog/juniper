@@ -146,6 +146,9 @@ class ConnectionHandler(Protocol):
     async def close(self, conn: Connection) -> None:
         """A conexão acabou (qualquer motivo): solta o que ela segurava."""
 
+    async def shutdown(self) -> None:
+        """O servidor está saindo e todas as conexões já fecharam: conclui o que ficou."""
+
 
 class BaseHandler:
     """Handler mínimo: uma conversa nova por conexão e nenhuma mensagem tratada ainda."""
@@ -161,6 +164,9 @@ class BaseHandler:
         )
 
     async def close(self, conn: Connection) -> None:
+        return None
+
+    async def shutdown(self) -> None:
         return None
 
 
@@ -225,6 +231,7 @@ class BrainServer:
             return
         server.close(close_connections=True, code=code, reason=reason)
         await server.wait_closed()
+        await self._handler.shutdown()
         event_log.log("server", action="stop", code=code)
 
     # --- HTTP: autenticação antes do upgrade e /health ---
