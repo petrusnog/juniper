@@ -39,7 +39,7 @@ As chaves `JUNIPER_DEEPINFRA_API_KEY` e `JUNIPER_GROQ_API_KEY` são **opcionais*
 
 Se o `dev_setup.sh` avisar que o seu uid não é 1000 (`id -u`), rode `export UID` no terminal antes do próximo passo. Assim os arquivos de `.juniper-dev/` ficam seus.
 
-> **Atenção:** se você pular este passo e o Docker não achar `.juniper-dev/`, `.env` ou `config.yaml`, ele **cria sozinho**, como root (e `.env` e `config.yaml` viram *pastas*). O brain então não consegue gravar o token. Veja [Problemas comuns](#problemas).
+> **Atenção:** se você pular este passo e o Docker não achar `.juniper-dev/`, `.env` ou `config.yaml`, ele **cria sozinho**, como root (e `.env` e `config.yaml` viram *pastas*). Para `.juniper-dev/` o compose já se protege (o serviço `fix-perms` acerta o dono antes do brain subir), mas `.env` e `config.yaml` continuam dependendo deste passo. Veja [Problemas comuns](#problemas).
 
 ## 2. Suba o ambiente {#subir}
 
@@ -48,10 +48,11 @@ docker compose -f docker-compose.dev.yml up -d --build
 docker compose -f docker-compose.dev.yml ps
 ```
 
-Na primeira vez, o `--build` baixa as imagens e instala as dependências (alguns minutos). Espere `juniper-dev-brain` aparecer como **healthy** (até ~1 minuto) e `juniper-dev-mongo` como **healthy**. Os três serviços:
+Na primeira vez, o `--build` baixa as imagens e instala as dependências (alguns minutos). Espere `juniper-dev-brain` aparecer como **healthy** (até ~1 minuto) e `juniper-dev-mongo` como **healthy**. Os serviços:
 
 | Contêiner | O que é | Porta no seu computador |
 |---|---|---|
+| `juniper-dev-fix-perms` | Roda uma vez e termina (`Exited (0)` é o normal): acerta o dono de `.juniper-dev/`. | nenhuma |
 | `juniper-dev-brain` | O servidor (`juniper serve`), com o código montado por volume. | `127.0.0.1:8765` |
 | `juniper-dev-mongo` | MongoDB com as memórias e conversas. | `127.0.0.1:27018` |
 | `juniper-dev-fake-llm` | LLM de mentira, o último da fila de failover. | nenhuma |
@@ -133,7 +134,7 @@ Depois de apagar o token, o CLI e o `smoke_server.py` precisam ler o novo arquiv
 |---|---|
 | **A pasta `.juniper-dev` não existe.** | Você subiu outro compose. Só o `docker-compose.dev.yml` a cria. Rode `docker compose -f docker-compose.dev.yml up -d --build`. Confira com `docker ps`: os contêineres devem se chamar `juniper-dev-*`. |
 | **"Não achei o token do servidor em ~/.juniper/token"** | O CLI está em modo `server` e procura o token no caminho padrão. Defina `JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE="$PWD/.juniper-dev/state/token"` ([passo 4](#cli)) ou volte ao modo local. |
-| **O token não aparece em `.juniper-dev/state`, e o brain reinicia.** | A pasta foi criada pelo Docker como root. Rode `docker compose -f docker-compose.dev.yml down`, depois `sudo chown -R "$USER" .juniper-dev` (ou `rm -rf .juniper-dev`), rode `./scripts/dev_setup.sh` e suba de novo. |
+| **`Permission denied` ao gravar o token; `state/` vazio; o brain reinicia.** | `.juniper-dev/` é do root (`ls -ln .juniper-dev` mostra `0 0`), porque o Docker a criou numa versão antiga do compose. `down`, `sudo chown -R "$(id -u):$(id -g)" .juniper-dev` e `up -d`. Com o serviço `fix-perms` atual isso se corrige sozinho no `up`. |
 | **`.env` ou `config.yaml` viraram pastas.** | O Docker as criou porque não existiam. `down`, `rm -rf .env config.yaml` (são pastas vazias), `./scripts/dev_setup.sh` e suba de novo. |
 | **`defina JUNIPER_MEMORY__MONGO__USERNAME no .env`** | Falta o usuário ou a senha do Mongo no `.env` (passo 1). Se o banco já tinha sido criado com outros valores, use `down -v`. |
 | **Porta 8765 ou 27018 ocupada.** | Defina `JUNIPER_DEV_PORT` / `JUNIPER_DEV_MONGO_PORT` no `.env`. O CLI precisa da mesma porta em `JUNIPER_DEPLOYMENT__SERVER__PORT`. |
