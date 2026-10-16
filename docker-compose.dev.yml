@@ -43,6 +43,8 @@ services:
         condition: service_healthy
       fake-llm:
         condition: service_started
+      fix-perms:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${JUNIPER_DEV_PORT:-8765}:8765"
     environment:
@@ -104,6 +106,18 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Se a pasta .juniper-dev/ não existia, o Docker a criou como root e o brain (sem privilégio)
+  # não conseguiria gravar o token. Este passo roda uma vez, antes do brain, e corrige o dono.
+  fix-perms:
+    image: python:3.12-slim
+    container_name: juniper-dev-fix-perms
+    user: "0:0"
+    command: ["chown", "-R", "${UID:-1000}:${UID:-1000}", "/state", "/logs"]
+    volumes:
+      - ./.juniper-dev/state:/state
+      - ./.juniper-dev/logs:/logs
+    restart: "no"
 
   fake-llm:
     image: python:3.12-slim

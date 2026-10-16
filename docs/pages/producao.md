@@ -39,9 +39,12 @@ A porta `8765` do brain é publicada **apenas no endereço Tailscale** da VPS, n
 
 ## Ambiente de desenvolvimento (Docker) {#dev}
 
+> **Passo a passo:** o [tutorial do ambiente de desenvolvimento](dev-docker.html) tem os comandos completos, do `./scripts/dev_setup.sh` ao CLI remoto, e os problemas comuns.
+
 Para desenvolver, o `docker-compose.dev.yml` sobe a **mesma topologia da produção** (brain e Mongo em contêineres na mesma rede, o mesmo `Dockerfile`, a mesma configuração) com o **código montado por volume**: mexeu em `brain/` ou `prompts/`, o servidor reinicia sozinho (watchfiles) e os clientes reconectam. Não há `build` a cada mudança.
 
 ```bash
+./scripts/dev_setup.sh                                    # cria .juniper-dev/, .env e config.yaml (rode antes do primeiro up)
 docker compose -f docker-compose.dev.yml up -d --build   # precisa do .env com JUNIPER_MEMORY__MONGO__USERNAME/PASSWORD
 docker compose -f docker-compose.dev.yml logs -f brain   # mostra cada reinício
 python scripts/smoke_server.py --token-file .juniper-dev/state/token "oi"

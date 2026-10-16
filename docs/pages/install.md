@@ -79,6 +79,8 @@ bash ~/.juniper/scripts/install.sh --dev
 
 ## Ambiente de desenvolvimento {#dev}
 
+> **Docker:** para subir o brain e o MongoDB em contêineres, com o código montado por volume, veja o [tutorial do ambiente de desenvolvimento com Docker](dev-docker.html).
+
 ```bash
 bash ~/.juniper/scripts/install.sh --dev
 source ~/.juniper/.venv/bin/activate

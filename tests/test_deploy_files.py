@@ -201,7 +201,7 @@ CONFIG_DEV = ROOT / "docker" / "config.dev.yaml"
 
 
 def test_dev_has_the_same_topology_as_prod_plus_a_fake_llm() -> None:
-    assert set(DEV["services"]) == set(COMPOSE["services"]) | {"fake-llm"}
+    assert set(DEV["services"]) == set(COMPOSE["services"]) | {"fake-llm", "fix-perms"}
     assert DEV["name"] == "juniper-dev" != COMPOSE["name"]
     assert DEV["services"]["mongo"]["image"] == COMPOSE["services"]["mongo"]["image"]
     assert (
@@ -277,3 +277,15 @@ def test_dev_brain_gets_the_users_config_as_a_base_layer() -> None:
     assert brain["environment"]["JUNIPER_BASE_CONFIG_PATH"] == base
     (mount,) = (m for m in brain["volumes"] if m.split(":/")[1].startswith(base.lstrip("/")))
     assert mount.startswith("${JUNIPER_BASE_CONFIG_FILE:-./config.yaml}:") and mount.endswith(":ro")
+
+
+def test_dev_fixes_the_owner_of_the_state_folders_before_the_brain_starts() -> None:
+    """Pasta criada pelo Docker é do root: sem isto o brain não grava o token."""
+    fix = DEV["services"]["fix-perms"]
+    assert fix["restart"] == "no" and "chown" in fix["command"]
+    assert DEV["services"]["brain"]["depends_on"]["fix-perms"] == {
+        "condition": "service_completed_successfully"
+    }
+    state_mounts = {m for m in DEV["services"]["brain"]["volumes"] if ".juniper-dev/" in m}
+    for mount in state_mounts:  # as mesmas pastas do brain
+        assert mount.split(":")[0] in " ".join(fix["volumes"])
