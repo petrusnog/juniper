@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Annotated, Any, Final, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from brain.llm.errors import (
     LLMAuthError,
@@ -146,6 +146,12 @@ class _Message(BaseModel):
 # ---------------------------------------------------------------------------------------------
 
 
+def _require_one_target(session_id: str | None, latest: bool | None) -> None:
+    """A retomada diz *qual* conversa: `session_id` ou `latest: true`, nunca os dois nem nenhum."""
+    if bool(session_id) == bool(latest):
+        raise ValueError("informe 'session_id' ou 'latest: true' (apenas um dos dois)")
+
+
 class ClientInfo(_Message):
     kind: str
     """`cli` ou `desktop`; novos tipos entram sem quebrar nada."""
@@ -159,6 +165,11 @@ class Resume(_Message):
 
     session_id: str | None = None
     latest: bool | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Resume:
+        _require_one_target(self.session_id, self.latest)
+        return self
 
 
 class Hello(_Message):
@@ -261,6 +272,11 @@ class SessionResume(_Message):
     id: str
     session_id: str | None = None
     latest: bool | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> SessionResume:
+        _require_one_target(self.session_id, self.latest)
+        return self
 
 
 class SessionList(_Message):
