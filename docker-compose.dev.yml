@@ -1,0 +1,115 @@
+# Ambiente de desenvolvimento: a MESMA topologia da produção (docker-compose.prod.yml), mas com o
+# código montado por volume. Mexeu em brain/ ou prompts/, o servidor reinicia sozinho (watchfiles).
+#
+#   docker compose -f docker-compose.dev.yml up -d --build   # sobe tudo
+#   docker compose -f docker-compose.dev.yml logs -f brain   # acompanha (mostra cada reinício)
+#   docker compose -f docker-compose.dev.yml down            # desliga (os dados ficam nos volumes)
+#   docker compose -f docker-compose.dev.yml down -v         # desliga e APAGA os dados
+#
+# Serviços: brain (o servidor), mongo (memória e conversas) e fake-llm (LLM de mentira, último da
+# fila de failover: sem chaves de LLM o ambiente ainda responde). O que a produção tem a mais
+# (Tailscale, GitHub Actions, backup) não faz sentido numa máquina só e fica de fora.
+#
+# O que NÃO reinicia sozinho: mudança em requirements.txt (rode `up -d --build`), em
+# docker/config.dev.yaml ou no .env (rode `restart brain`).
+#
+# Variáveis (no .env desta pasta, que o compose também lê para preencher este arquivo):
+#   JUNIPER_MEMORY__MONGO__USERNAME / JUNIPER_MEMORY__MONGO__PASSWORD   obrigatórias
+#   JUNIPER_DEEPINFRA_API_KEY / JUNIPER_GROQ_API_KEY                    opcionais (LLM de verdade)
+#   JUNIPER_DEV_PORT        porta do brain no host (padrão: 8765)
+#   JUNIPER_DEV_MONGO_PORT  porta do Mongo no host, para mongosh/Compass (padrão: 27018)
+#   JUNIPER_ENV_FILE        .env que o brain lê (padrão: .env)
+#   JUNIPER_CERTS_DIR       pasta com a chave do Google (padrão: certs)
+#
+# O nome do projeto é juniper-dev: não encosta nos volumes de produção (juniper-prod) nem no
+# Mongo do docker-compose.yml (juniper_juniper-mongo-data).
+name: juniper-dev
+
+services:
+  brain:
+    image: juniper-brain:dev
+    build:
+      context: .
+      target: dev
+      args:
+        UID: ${UID:-1000}
+    container_name: juniper-dev-brain
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    depends_on:
+      mongo:
+        condition: service_healthy
+      fake-llm:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${JUNIPER_DEV_PORT:-8765}:8765"
+    environment:
+      JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
+    volumes:
+      # O código: editado no host, visto na hora no contêiner.
+      - ./brain:/app/brain:ro
+      - ./prompts:/app/prompts:ro
+      # Configuração e segredos, como na produção (somente leitura).
+      - ./docker/config.dev.yaml:/home/juniper/.juniper/config.yaml:ro
+      - ${JUNIPER_ENV_FILE:-./.env}:/home/juniper/.juniper/.env:ro
+      - ${JUNIPER_CERTS_DIR:-./certs}:/home/juniper/.juniper/certs:ro
+      # Estado no host (.juniper-dev/): o token fica à mão para o CLI remoto e os logs, legíveis.
+      - ./.juniper-dev/state:/home/juniper/.juniper/state
+      - ./.juniper-dev/logs:/home/juniper/.juniper/logs
+      - juniper-dev-models:/home/juniper/.juniper/models
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo:
+    image: mongo:7
+    container_name: juniper-dev-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${JUNIPER_MEMORY__MONGO__USERNAME:?defina JUNIPER_MEMORY__MONGO__USERNAME no .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${JUNIPER_MEMORY__MONGO__PASSWORD:?defina JUNIPER_MEMORY__MONGO__PASSWORD no .env}
+    ports:
+      # Só a própria máquina (nunca na rede); na produção o banco nem publica porta.
+      - "127.0.0.1:${JUNIPER_DEV_MONGO_PORT:-27018}:27017"
+    volumes:
+      - juniper-dev-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fake-llm:
+    image: python:3.12-slim
+    container_name: juniper-dev-fake-llm
+    restart: unless-stopped
+    command: ["python", "/scripts/fake_ollama.py", "--port", "11999"]
+    volumes:
+      - ./scripts/fake_ollama.py:/scripts/fake_ollama.py:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  juniper-dev-mongo-data:
+  juniper-dev-models:

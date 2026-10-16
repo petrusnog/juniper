@@ -1,0 +1,30 @@
+# Configuração do brain no ambiente docker de DESENVOLVIMENTO (docker-compose.dev.yml monta este
+# arquivo em ~/.juniper/config.yaml). Igual à de produção, exceto onde está dito.
+# Segredos (chaves de LLM, senha do Mongo) vêm do `.env`.
+
+llm:
+  # Produção usa [deepinfra, groq]. Aqui o último da fila é o LLM de mentira do compose
+  # (serviço `fake-llm`, só ecoa): sem chave nenhuma, o ambiente ainda conversa de ponta a ponta.
+  # Com chaves no .env, os provedores reais respondem primeiro.
+  priority: [deepinfra, groq, ollama]
+  ollama:
+    url: http://fake-llm:11999
+    model: fake
+    timeout: 30
+
+agent:
+  timezone: America/Sao_Paulo
+
+deployment:
+  mode: server
+  server:
+    host: 0.0.0.0               # dentro do contêiner; quem restringe é a publicação da porta (compose)
+    port: 8765
+  auth:
+    token_file: /home/juniper/.juniper/state/token
+
+memory:
+  session:
+    store: mongo
+  mongo:
+    uri: mongodb://mongo:27017  # o serviço `mongo` do compose; usuário e senha vêm do .env

@@ -37,7 +37,27 @@ O cérebro roda numa **VPS** sempre ligada e os clientes (CLI remoto, app deskto
 
 A porta `8765` do brain é publicada **apenas no endereço Tailscale** da VPS, nunca em `0.0.0.0`. O `.env` e a chave do Google são montados do servidor (somente leitura); **segredos nunca entram na imagem**. O modelo de embeddings fica no volume `juniper-models` (baixa uma vez). O modo é `deployment.mode: server` ([Configuração](configuracao.html#deployment)).
 
-## Rodar a produção na sua máquina {#local}
+## Ambiente de desenvolvimento (Docker) {#dev}
+
+Para desenvolver, o `docker-compose.dev.yml` sobe a **mesma topologia da produção** (brain e Mongo em contêineres na mesma rede, o mesmo `Dockerfile`, a mesma configuração) com o **código montado por volume**: mexeu em `brain/` ou `prompts/`, o servidor reinicia sozinho (watchfiles) e os clientes reconectam. Não há `build` a cada mudança.
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build   # precisa do .env com JUNIPER_MEMORY__MONGO__USERNAME/PASSWORD
+docker compose -f docker-compose.dev.yml logs -f brain   # mostra cada reinício
+python scripts/smoke_server.py --token-file .juniper-dev/state/token "oi"
+```
+
+| Serviço | O que é |
+|---|---|
+| `brain` | Alvo `dev` do `Dockerfile`: sem o código na imagem, `watchfiles` reiniciando `juniper serve`. Porta `127.0.0.1:8765`. |
+| `mongo` | O mesmo `mongo:7` da produção, com volume próprio. Publicado em `127.0.0.1:27018` (para `mongosh`/Compass). |
+| `fake-llm` | LLM de mentira (`scripts/fake_ollama.py`), o **último da fila de failover**: sem chave de LLM o ambiente ainda responde (ecoando). Com chaves no `.env`, DeepInfra e Groq respondem primeiro. |
+
+- **Estado no host:** o token dos clientes e os logs ficam em `.juniper-dev/` (fora do git), com o seu usuário como dono: o CLI remoto lê o token dali.
+- **Não reinicia sozinho:** `requirements.txt` (use `up -d --build`), `docker/config.dev.yaml` e `.env` (use `restart brain`).
+- **O que a produção tem a mais** (Tailscale, GitHub Actions, backup) não faz sentido numa máquina só e fica de fora. O projeto se chama `juniper-dev`: não encosta nos volumes de produção nem no Mongo do `docker-compose.yml`.
+
+## Produção na sua máquina {#local}
 
 O mesmo `docker-compose.prod.yml` da VPS roda no seu computador, com a porta publicada só em `127.0.0.1`. Serve para testar a arquitetura real (brain e Mongo em contêineres, cliente de fora) antes do deploy. Os arquivos: `Dockerfile`, `.dockerignore`, `docker-compose.prod.yml` e `docker/config.prod.yaml` (a configuração do contêiner, sem segredos).
 

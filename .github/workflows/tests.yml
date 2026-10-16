@@ -51,6 +51,11 @@ jobs:
             | tee /tmp/found
           test ! -s /tmp/found
           ! docker history --no-trunc juniper-brain:ci | grep -Ei 'password|api_key|secret'
+      - name: O compose de desenvolvimento é válido e a imagem dev constrói
+        run: |
+          printf 'JUNIPER_MEMORY__MONGO__USERNAME=ci\nJUNIPER_MEMORY__MONGO__PASSWORD=ci\n' > /tmp/ci.env
+          JUNIPER_ENV_FILE=/tmp/ci.env docker compose -f docker-compose.dev.yml --env-file /tmp/ci.env config --quiet
+          docker build --target dev -t juniper-brain:ci-dev .
       - name: O compose de produção é válido
         run: |
           printf 'JUNIPER_MEMORY__MONGO__USERNAME=ci\nJUNIPER_MEMORY__MONGO__PASSWORD=ci\n' > /tmp/ci.env

@@ -39,3 +39,4 @@ docker/
 docker-compose*.yml
 Dockerfile
 .dockerignore
+.juniper-dev/

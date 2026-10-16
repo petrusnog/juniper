@@ -40,10 +40,30 @@ def instructions(name: str) -> list[str]:
 # --- Dockerfile ---------------------------------------------------------------------------
 
 
+def stage(name: str) -> str:
+    """O texto de um estágio do Dockerfile (`FROM ... AS <name>` até o próximo `FROM`)."""
+    parts = re.split(r"^FROM ", DOCKERFILE, flags=re.M)[1:]
+    (text,) = (p for p in parts if re.match(rf"\S+ AS {name}\b", p))
+    return text
+
+
 def test_image_is_python_311_or_newer() -> None:
-    (base,) = instructions("FROM")
-    version = re.match(r"python:(\d+)\.(\d+)", base)
+    bases = [b for b in instructions("FROM") if not b.endswith(("AS base", "AS dev", "AS prod"))]
+    assert bases == []  # todo estágio sai de `python:...` (base) ou de outro estágio nosso
+    version = re.match(r"python:(\d+)\.(\d+)", instructions("FROM")[0])
     assert version is not None and (int(version[1]), int(version[2])) >= (3, 11)
+
+
+def test_prod_is_the_default_target() -> None:
+    assert re.findall(r"^FROM .* AS (\w+)", DOCKERFILE, flags=re.M)[-1] == "prod"
+    assert COMPOSE["services"]["brain"]["build"]["target"] == "prod"
+
+
+def test_prod_carries_the_code_and_dev_does_not() -> None:
+    assert "COPY brain" in stage("prod") and "COPY prompts" in stage("prod")
+    assert "COPY brain" not in stage("dev") and "COPY prompts" not in stage("dev")
+    assert "watchfiles" in stage("dev") and "watchfiles" not in stage("prod")
+    assert "USER juniper" in stage("dev") and "USER juniper" in stage("prod")
 
 
 def test_container_runs_as_an_unprivileged_user() -> None:
@@ -172,3 +192,78 @@ def test_secrets_reach_the_container_through_the_mounted_env_file() -> None:
     assert any(mount_target(m) == "/home/juniper/.juniper/.env" for m in mounts)
     env = Settings.model_config["env_file"]
     assert isinstance(env, tuple) and str(env[0]).endswith("/.juniper/.env")
+
+
+# --- docker-compose.dev.yml ---------------------------------------------------------------
+
+DEV: dict[str, Any] = yaml.safe_load((ROOT / "docker-compose.dev.yml").read_text("utf-8"))
+CONFIG_DEV = ROOT / "docker" / "config.dev.yaml"
+
+
+def test_dev_has_the_same_topology_as_prod_plus_a_fake_llm() -> None:
+    assert set(DEV["services"]) == set(COMPOSE["services"]) | {"fake-llm"}
+    assert DEV["name"] == "juniper-dev" != COMPOSE["name"]
+    assert DEV["services"]["mongo"]["image"] == COMPOSE["services"]["mongo"]["image"]
+    assert (
+        DEV["services"]["brain"]["healthcheck"]["test"]
+        == (COMPOSE["services"]["brain"]["healthcheck"]["test"])
+    )
+
+
+def test_dev_does_not_share_volumes_with_prod() -> None:
+    assert not set(DEV["volumes"]) & set(COMPOSE["volumes"])
+    dev_mounts = " ".join(DEV["services"]["brain"]["volumes"])
+    for prod_volume in COMPOSE["volumes"]:
+        assert prod_volume not in dev_mounts
+
+
+def test_dev_mounts_the_code_so_edits_show_up_without_a_rebuild() -> None:
+    mounts = DEV["services"]["brain"]["volumes"]
+    assert "./brain:/app/brain:ro" in mounts and "./prompts:/app/prompts:ro" in mounts
+    assert DEV["services"]["brain"]["build"]["target"] == "dev"
+
+
+def test_dev_secrets_and_config_are_read_only_and_never_inline() -> None:
+    mounts = DEV["services"]["brain"]["volumes"]
+    for needle in (".env", "certs", "config"):
+        (mount,) = (m for m in mounts if needle in m.split(":/")[0])
+        assert mount.endswith(":ro"), mount
+    for service in DEV["services"].values():
+        for key, value in service.get("environment", {}).items():
+            if re.search(r"PASSWORD|API_KEY|TOKEN|SECRET", key):
+                assert str(value).startswith("${"), key
+
+
+def test_dev_ports_are_loopback_only() -> None:
+    for name in ("brain", "mongo"):
+        for port in DEV["services"][name]["ports"]:
+            assert port.startswith("127.0.0.1:"), port
+    assert "ports" not in DEV["services"]["fake-llm"]
+
+
+def test_dev_state_lives_in_a_git_and_docker_ignored_folder() -> None:
+    assert ".juniper-dev/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".juniper-dev/" in DOCKERIGNORE
+    mounts = DEV["services"]["brain"]["volumes"]
+    assert any(m.startswith("./.juniper-dev/state:") for m in mounts)
+
+
+def test_dev_config_loads_and_ends_the_failover_in_the_fake_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(CONFIG_DEV))
+    for var in (
+        "JUNIPER_DEPLOYMENT__MODE",
+        "JUNIPER_MEMORY__SESSION__STORE",
+        "JUNIPER_LLM__PRIORITY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    config = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert config.deployment.mode == "server" and config.memory.session.store == "mongo"
+    assert config.memory.mongo.uri == "mongodb://mongo:27017"
+    assert config.llm.priority[-1] == "ollama"
+    assert config.llm.ollama.url == "http://fake-llm:11999"
+    assert config.memory.mongo.password is None and config.groq_api_key is None
+    prod = yaml.safe_load(CONFIG_PROD.read_text("utf-8"))
+    dev = yaml.safe_load(CONFIG_DEV.read_text("utf-8"))
+    assert dev["deployment"] == prod["deployment"] and dev["memory"] == prod["memory"]
