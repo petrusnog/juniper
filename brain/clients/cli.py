@@ -610,6 +610,32 @@ def docs() -> None:
         voice.say(console, "Docs encerradas.")
 
 
+@app.command()
+def serve() -> None:
+    """Sobe o brain como servidor WebSocket para os clientes remotos (deployment.mode: server)."""
+    from brain.clients.server import BrainServer, ensure_token, run_server
+
+    if settings.deployment.mode != "server":
+        voice.say(
+            console,
+            "O servidor só sobe com `deployment.mode: server` no config.yaml "
+            "(ou JUNIPER_DEPLOYMENT__MODE=server).",
+            "red",
+        )
+        raise typer.Exit(1)
+    token_file = settings.deployment.auth.token_file
+    token = ensure_token(token_file)
+    host, port = settings.deployment.server.host, settings.deployment.server.port
+    server = BrainServer(host, port, token)
+    voice.say(console, f"No ar em ws://{host}:{port}/v1/ws (token em {token_file}).")
+    try:
+        asyncio.run(run_server(server))
+    except OSError as exc:  # porta ocupada, endereço inválido...
+        voice.say(console, f"Não consegui abrir {host}:{port}: {exc}", "red")
+        raise typer.Exit(1) from None
+    voice.say(console, "Servidor encerrado.")
+
+
 memory_app = typer.Typer(help="Memória de longo prazo.", no_args_is_help=True)
 app.add_typer(memory_app, name="memory")
 

@@ -11,7 +11,7 @@ Este módulo só descreve e valida mensagens: não abre conexão nem conhece o a
 from __future__ import annotations
 
 import json
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
@@ -544,6 +544,16 @@ def parse_message(
     except ValidationError as exc:
         raise InvalidMessageError(_describe(exc)) from exc
     return message
+
+
+def parse_client_message(raw: str | bytes | dict[str, Any]) -> ClientMessage:
+    """`parse_message` para quem recebe do cliente (o servidor)."""
+    return cast(ClientMessage, parse_message(raw, source="client"))
+
+
+def parse_server_message(raw: str | bytes | dict[str, Any]) -> ServerMessage:
+    """`parse_message` para quem recebe do servidor (o cliente)."""
+    return cast(ServerMessage, parse_message(raw, source="server"))
 
 
 def serialize_message(message: BaseModel) -> str:
