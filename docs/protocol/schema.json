@@ -554,6 +554,18 @@
           "default": null,
           "title": "Birth Date"
         },
+        "gender": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gender"
+        },
         "name": {
           "anyOf": [
             {

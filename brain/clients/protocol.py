@@ -351,6 +351,7 @@ class MemoryProfileSetArgs(_Message):
     name: str | None = None
     birth_date: str | None = None
     nationality: str | None = None
+    gender: str | None = None
 
 
 class _MemoryRequestBase(_Message):
