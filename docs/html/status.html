@@ -10,6 +10,7 @@
 </head>
 <body>
 <main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Ferramentas / Painel de status</div>
 <h1>Painel de status</h1>
 <p class="lead">Até onde a Juniper está funcional hoje. Esta página mostra o resultado da <b>última execução</b> de <code>scripts/healthcheck.py</code>; ela não roda nada sozinha (um HTML não pode chamar Python).</p>
 
@@ -35,11 +36,13 @@
     <p style="color:var(--muted)">Tudo com servidores e SDKs falsos: não precisa de rede.</p></div>
   <div class="card"><b>CLI atual</b>
     <div class="cmd"><pre id="c6">juniper version</pre><button data-copy="c6">Copiar</button></div>
-    <p style="color:var(--muted)"><code>juniper</code> ainda é um placeholder (T-040).</p></div>
+    <p style="color:var(--muted)">Mostra a versão e confirma que o comando está instalado. Para conversar: <code>juniper</code> (veja o <a href="cli.html">CLI</a>).</p></div>
 </div>
 </main>
 <script src="assets/status.js" onerror="void 0"></script>
+<script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
 <script>
 (function () {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));

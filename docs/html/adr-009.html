@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-009 — DeepInfra como provider principal e nova ordem do failover — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-009 — DeepInfra como provider principal e nova ordem do failover">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-009.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-009</div>
+<h1>ADR-009 — DeepInfra como provider principal e nova ordem do failover</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-001 (providers), ADR-002 (tools), ADR-003 (config), T-011, T-013, T-015, T-016</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>A Juniper falava com dois LLMs: Groq (nuvem, primário) e Ollama (local, reserva). Na prática, o limite do plano gratuito da Groq e o Ollama em CPU (lento, com pouca RAM) deixaram a experiência frágil: quando a Groq cai, o fallback leva minutos para o primeiro token.</p>
+<p>A DeepInfra oferece uma API compatível com a da OpenAI (<code>https://api.deepinfra.com/v1/openai</code>), com streaming SSE e tool calling, o que encaixa no contrato <code>LLMProvider</code> sem mudar o resto do cérebro.</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-novo-provider-deepinfraprovider-brain-llm-deepinfra-provider-py">1. Novo provider <code>DeepInfraProvider</code> (<code>brain/llm/deepinfra_provider.py</code>)</h3>
+<ul><li>Implementa o mesmo contrato dos outros (<code>chat</code>, <code>stream</code>, <code>health_check</code>), com os erros tipados de <code>brain/llm/errors.py</code>.</li><li><strong>Sem SDK:</strong> usa <code>httpx</code> (já é dependência). A superfície é pequena (um endpoint) e o transporte fica injetável nos testes (<code>httpx.MockTransport</code>).</li><li><strong>Autenticação:</strong> <code>Authorization: Bearer</code>, chave em <code>JUNIPER_DEEPINFRA_API_KEY</code> (<code>.env</code>). Resolvida de forma preguiçosa: sem chave, o provider existe, mas a primeira chamada levanta <code>LLMAuthError</code> e o router segue adiante.</li><li><strong>Streaming:</strong> linhas SSE <code>data: {...}</code> até <code>data: [DONE]</code>. Tool calls podem chegar fragmentadas e são acumuladas por <code>index</code> (se o índice faltar, um fragmento com <code>id</code> abre uma chamada nova). O <code>usage</code> pode vir no chunk final ou num chunk à parte; os dois casos são tratados.</li><li><strong>Mapeamento de erros HTTP:</strong></li></ul>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>HTTP</th><th>Erro</th><th>Failover</th></tr></thead><tbody><tr><td>401, 402, 403</td><td><code>LLMAuthError</code> (chave inválida ou sem crédito)</td><td>sim</td></tr><tr><td>429</td><td><code>LLMRateLimitError</code></td><td>sim</td></tr><tr><td>5xx, conexão, stream cortado</td><td><code>LLMUnavailableError</code></td><td>sim</td></tr><tr><td>timeout</td><td><code>LLMTimeoutError</code></td><td>sim</td></tr><tr><td>demais 4xx</td><td><code>LLMError</code> (com trecho do erro, sem a chave)</td><td>não: repetiria igual</td></tr></tbody></table></div>
+<ul><li><strong>Modelo padrão:</strong> <code>deepseek-ai/DeepSeek-V4-Flash-0731</code>, o usado nos exemplos de tool calling da própria documentação. É configurável (<code>llm.deepinfra.model</code>); precisa suportar tool calling.</li></ul>
+<h3 id="2-nova-ordem-de-prioridade">2. Nova ordem de prioridade</h3>
+<pre><code>llm.priority: [deepinfra, groq, ollama]</code></pre>
+<p>DeepInfra primeiro; se cair, Groq; se cair, o modelo local. É o novo padrão do código e do <code>config.yaml.example</code>. Quem já tem <code>config.yaml</code> precisa atualizar a linha <code>priority</code> (o arquivo local vence o padrão do código).</p>
+<h3 id="3-prompt-compacto-continua-so-no-local">3. Prompt compacto continua só no local</h3>
+<p>Somente o Ollama (CPU) recebe a persona curta e as descrições de tool enxutas (<code>compact_prompt</code>). DeepInfra e Groq recebem o prompt completo.</p>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<ul><li>Uma chave a mais no <code>.env</code> (o instalador pergunta; Enter pula). Sem a chave, o failover simplesmente começa na Groq.</li><li>Os avisos de failover (<code>A DeepInfra recusou as credenciais. Vou tentar a Groq.</code>) e as dicas de erro passam a citar o provider certo.</li><li>O log estruturado mascara também a chave da DeepInfra.</li><li>Se a DeepInfra mudar o formato de erro ou de stream, só <code>deepinfra_provider.py</code> e seus testes mudam.</li><li>Não validado ao vivo neste ADR: os testes usam transporte HTTP falso; a primeira chamada real depende da chave do Petrus.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

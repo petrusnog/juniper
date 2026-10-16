@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memória — Livro de bolso Juniper</title>
+<meta name="description" content="Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/memoria.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Memória / Memória</div>
+<h1>Memória <span class="tag g">pronta</span></h1>
+<p class="lead">Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>A Juniper lembra em duas camadas (ADR-011):</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Camada</th><th>O que guarda</th><th>Onde</th><th>Página</th></tr></thead><tbody><tr><td><strong>Memória de sessão</strong> (curto prazo)</td><td>A conversa atual, dentro de um orçamento de tokens; pode ser retomada com <code>--resume</code>.</td><td>Arquivos JSON ou MongoDB</td><td><a href="memoria-sessao.html">Memória de sessão</a></td></tr><tr><td><strong>Memória de longo prazo</strong></td><td>Fatos duráveis sobre você (preferências, projetos, fatos) e o seu <strong>perfil</strong> (quem você é), achados por significado.</td><td>MongoDB (<code>memories</code> e <code>profile</code>)</td><td><a href="memoria-longo-prazo.html">Memória de longo prazo</a></td></tr></tbody></table></div>
+<p>O marco: a Juniper lembra que você prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, <strong>entre sessões</strong>, e deixa de ser estranha.</p>
+<h2 id="fluxo">Como as peças se encaixam</h2>
+<pre><code class="lang-text">sua mensagem ──► recuperação ──► o prompt ganha &lt;perfil&gt; e &lt;memorias&gt; ──► LLM ──► resposta
+                      ▲                                                            │
+            busca por significado                                                  ▼
+            (embeddings + cosseno)                              fim do turno: extração em segundo plano
+                      ▲                                                            │
+                 VectorStore  ◄──── grava / atualiza / substitui ◄──── LLM de extração + filtro de segredos</code></pre>
+<ol><li><strong>A cada mensagem</strong>, o <a href="memoria-longo-prazo.html#perfil">perfil</a> entra sempre; as memórias mais parecidas com o assunto entram dentro de um orçamento de tokens (<a href="memoria-longo-prazo.html#recuperacao">recuperação</a>).</li><li><strong>Depois de cada resposta</strong>, um trabalhador em segundo plano (<a href="memoria-longo-prazo.html#extracao">extração</a>) separa o que vale lembrar, sem duplicar e sem segredos.</li><li><strong>Você controla</strong>: <code>juniper memory list|search|forget|export|profile</code> (<a href="cli.html#memory">CLI</a>) e as tools <code>remember</code>, <code>recall</code>, <code>forget</code> (<a href="memoria-longo-prazo.html#tools-de-memoria">tools de memória</a>).</li></ol>
+<p>Princípios do ADR-011: <strong>memória nunca é editada, só substituída</strong> (a antiga fica <code>superseded</code>, para auditoria); <strong>segredos nunca são gravados</strong>; um registro ruim não esconde os bons; uma falha de memória <strong>nunca derruba o chat</strong>.</p>
+<h2 id="ligar">Ligar a memória</h2>
+<p>A memória de sessão funciona com arquivos, sem instalar nada. A de longo prazo precisa do MongoDB:</p>
+<pre><code class="lang-bash">juniper install --memory=mongo     # confere o Docker, sobe o banco, cria usuário e senha e liga o store</code></pre>
+<p>Detalhes (e como fazer à mão) em <a href="memoria-sessao.html#mongodb">Memória de sessão</a>. Para desligar a de longo prazo sem desligar o banco: <code>memory.extraction.enabled: false</code>.</p>
+<h2 id="validar">Validar na sua máquina</h2>
+<p>O marco da Sprint 2 tem um teste automatizado (<code>tests/test_acceptance_sprint2.py</code>, roda no CI) e um roteiro manual com o LLM, o modelo e o banco <strong>reais</strong>.</p>
+<h3 id="teste-automatizado">O teste automatizado</h3>
+<p>Abre o chat de verdade (<code>cli._chat</code>) várias vezes, como várias sessões na mesma máquina e no mesmo banco:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sessão</th><th>O que acontece</th></tr></thead><tbody><tr><td>1</td><td>Você diz "Prefiro ZSH", "Odeio tabulação com espaço" e "O projeto X usa Laravel 11". A Juniper avisa "Guardei 3 coisas sobre você".</td></tr><tr><td>2 (nova)</td><td>"Qual shell eu uso?" → ZSH. "Como devo indentar?" → tabulação. "Que framework PHP o projeto X usa?" → Laravel 11 (associação por significado). Só a memória relevante entra no prompt de cada pergunta.</td></tr><tr><td>3</td><td>"Migrei o X para o Laravel 12": a memória nova substitui a antiga, que fica <code>superseded</code>. A pergunta seguinte responde Laravel 12.</td></tr><tr><td>4</td><td>"Esquece o projeto X": a Juniper pergunta antes e nada some; depois do "sim", o projeto X some do banco (inclusive a versão antiga). ZSH e tabulação continuam.</td></tr></tbody></table></div>
+<p><strong>O que é real:</strong> chat, agente, sessão, extração, deduplicação e atualização, filtro de segredos, <code>VectorStore</code>, recuperação, injeção no prompt, tools e confirmação. <strong>O que é simulado:</strong> o LLM (regras fixas), o modelo de embeddings (um mapa de conceitos) e o MongoDB (coleção em memória). O teste prova que o encanamento funciona; <strong>não</strong> prova a qualidade do LLM nem do modelo reais.</p>
+<h3 id="roteiro">Roteiro manual</h3>
+<p>Pré-requisitos: Docker rodando, <code>juniper install --memory=mongo</code> feito e chaves de LLM no <code>.env</code>. Na primeira conversa com memórias, a Juniper baixa o modelo de embeddings (~120 MB).</p>
+<pre><code class="lang-bash"># 0. comece limpo (opcional)
+juniper memory list
+
+# 1. sessão 1: diga e feche com /sair
+juniper
+ &gt; prefiro ZSH
+ &gt; odeio tabulação com espaço
+ &gt; o projeto X usa Laravel 11
+ &gt; /sair                      # deve dizer &quot;Guardei N coisas sobre você&quot;
+juniper memory list           # confira o que foi guardado (e o que NÃO foi)
+
+# 2. sessão 2 (nova, SEM -r)
+juniper
+ &gt; qual shell eu uso?                    # espera: ZSH
+ &gt; como devo indentar?                   # espera: tabulação
+ &gt; que framework PHP o projeto X usa?    # espera: Laravel 11 (por significado)
+ &gt; /sair
+
+# 3. atualização
+juniper
+ &gt; migrei o X para o Laravel 12
+ &gt; /sair
+juniper memory list --all                 # a de Laravel 11 deve estar &quot;superseded&quot;
+juniper &quot;que framework o projeto X usa?&quot;  # espera: Laravel 12
+
+# 4. esquecer
+juniper &quot;esquece o que eu disse sobre o projeto X&quot;   # ela lista e pergunta; responda &quot;sim&quot;
+juniper memory list --all                            # nada do projeto X, nem a versão antiga
+juniper &quot;que framework o projeto X usa?&quot;             # espera: não lembra</code></pre>
+<h3 id="diagnostico">Se algo falhar</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Onde olhar</th></tr></thead><tbody><tr><td>Não guardou nada, ou guardou lixo</td><td>A extração depende do LLM. <code>juniper memory list</code> mostra o que entrou; o prompt está em <code>brain/memory/extraction.py</code>. Apague o que não presta com <code>juniper memory forget &lt;id&gt;</code>.</td></tr><tr><td>Guardou, mas não lembra na sessão 2</td><td>Quase sempre o <code>retrieval.threshold</code> (0.80, um palpite). Rode <code>juniper memory search &quot;que framework PHP o projeto X usa&quot; --threshold -1</code>: ele mostra a nota de cada memória. Ponha o corte entre a menor nota do que é relevante e a maior do que não é.</td></tr><tr><td>Traz memória que não tem a ver</td><td>O mesmo: suba o <code>threshold</code>.</td></tr><tr><td>Duplicou ou não substituiu a versão antiga</td><td>É o "juiz" do LLM (<code>duplicate</code>/<code>supersede</code>) ou o <code>extraction.neighbor_threshold</code> (0.75) que não considerou as duas parecidas. Veja a nota com <code>memory search</code>.</td></tr><tr><td>Nada foi extraído</td><td>Confira <code>memory.session.store: mongo</code> e <code>memory.extraction.enabled: true</code>. No modo <code>exit</code>, Ctrl+C não extrai: use <code>/sair</code> ou Ctrl+D.</td></tr></tbody></table></div>
+<p>Há também um teste com o modelo real de embeddings que imprime as notas das perguntas do marco: <code>pytest -m integration -s tests/test_acceptance_sprint2.py</code> (baixa ~120 MB).</p>
+<div class="callout warn"><p><strong>Atenção:</strong> a Sprint 2 só se considera encerrada depois do roteiro manual passar na sua máquina. Os parâmetros <code>retrieval.threshold</code> (0.80) e <code>extraction.neighbor_threshold</code> (0.75), e os prompts de extração e de julgamento, ainda não foram calibrados com uso real; a latência real sob carga também não foi medida.</p></div>
+<h2 id="futuro">Próximos passos</h2>
+<p>Depois do deploy, o plano é deixar a memória mais fluida e menos engessada, mais próxima da memória cerebral (esquecimento gradual, associações, consolidação). Isso ainda não tem ADR.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

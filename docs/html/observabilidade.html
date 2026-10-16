@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observabilidade — Livro de bolso Juniper</title>
+<meta name="description" content="O log estruturado (JSONL), os eventos, a redação de segredos e a medição de tempo por etapa.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/observabilidade.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Núcleo / Observabilidade</div>
+<h1>Observabilidade <span class="tag g">pronta</span></h1>
+<p class="lead">O log estruturado (JSONL), os eventos, a redação de segredos e a medição de tempo por etapa.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Tudo que a Juniper faz fica registrado: cada chamada ao LLM, cada tool, cada troca de provider e cada erro. É <strong>uma linha JSON por evento, um arquivo por dia</strong>, com segredos mascarados. Além disso, ela mede onde o tempo de cada resposta vai, para você saber o que está lento (o embedding local, o LLM, o banco) em vez de adivinhar.</p>
+<h2 id="log">Log estruturado</h2>
+<pre><code class="lang-text">~/.juniper/logs/2026-10-11.jsonl     # um arquivo por dia, permissão 600</code></pre>
+<pre><code class="lang-bash">tail -f ~/.juniper/logs/$(date +%F).jsonl | jq .     # acompanhar ao vivo</code></pre>
+<p>Cada linha tem <code>ts</code> (com fuso), <code>run</code> (id curto que agrupa os eventos de uma execução do CLI) e <code>event</code>, mais os campos do evento.</p>
+<h3 id="eventos">Eventos</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Evento</th><th>Quando</th><th>Campos principais</th></tr></thead><tbody><tr><td><code>llm_request</code></td><td>Antes de cada chamada ao LLM</td><td><code>messages</code>, <code>tools</code> (quantidades)</td></tr><tr><td><code>llm_response</code></td><td>Quando a resposta termina</td><td><code>provider</code>, <code>latency_ms</code>, <code>usage</code>, <code>finish_reason</code>, <code>tool_calls</code> (nomes)</td></tr><tr><td><code>tool_call</code></td><td>Depois de cada tool pedida</td><td><code>name</code>, <code>tier</code>, <code>args</code>, <code>decision</code>, <code>success</code>, <code>output</code>/<code>error</code>, <code>duration_ms</code></td></tr><tr><td><code>failover</code></td><td>Um provider falhou e o próximo assumiu</td><td><code>provider</code>, <code>type</code>, <code>message</code></td></tr><tr><td><code>error</code></td><td>Falha do LLM no turno, tool que quebrou ou gravação que falhou</td><td><code>where</code>, <code>type</code>, <code>message</code></td></tr><tr><td><code>timing</code></td><td>Fim de cada turno e de cada extração de memória</td><td><code>scope</code>, <code>total_ms</code>, <code>stages_ms</code></td></tr><tr><td><code>memory_recall</code></td><td>Memórias injetadas no prompt</td><td>ids, tipos e notas (sem o texto)</td></tr><tr><td><code>embedding</code>, <code>embedding_model_load</code></td><td>Embedding local</td><td>tempo de inferência por chamada; carga do modelo (uma vez por processo)</td></tr></tbody></table></div>
+<p>Valores de <code>decision</code> em <code>tool_call</code>:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th><code>decision</code></th><th>Significa</th></tr></thead><tbody><tr><td><code>auto</code></td><td>Tool de leitura, executou direto.</td></tr><tr><td><code>confirmed</code></td><td>Pediu confirmação e você disse sim.</td></tr><tr><td><code>denied</code></td><td>Você negou, o tempo esgotou ou não havia como perguntar.</td></tr><tr><td><code>forbidden</code>, <code>unknown</code>, <code>invalid</code></td><td>Tool proibida, nome inventado pelo LLM ou argumentos errados.</td></tr><tr><td><code>precheck_failed</code></td><td>A tool recusou antes de te perguntar (ex.: conflito na agenda).</td></tr><tr><td><code>crashed</code></td><td>A tool levantou exceção (também gera um <code>error</code>).</td></tr></tbody></table></div>
+<h3 id="segredos">Segredos no log</h3>
+<p>Nada vai para o disco sem passar por <code>redact()</code>:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>O que</th><th>Resultado</th></tr></thead><tbody><tr><td>Campos com nome <code>api_key</code>, <code>token</code>, <code>secret</code>, <code>password</code>, <code>authorization</code>, <code>private_key</code></td><td><code>***</code> (contadores como <code>prompt_tokens</code> são preservados)</td></tr><tr><td>Textos com <code>gsk_…</code>, <code>Bearer …</code> ou blocos de chave privada</td><td>Trecho trocado por <code>***</code></td></tr><tr><td>As chaves de API configuradas, onde quer que apareçam</td><td><code>***</code></td></tr><tr><td>Textos com mais de 2000 caracteres</td><td>Cortados, com a contagem do que sobrou</td></tr></tbody></table></div>
+<p>O que <strong>você</strong> digita não é gravado (só quantidades), mas a saída das tools é: um <code>git_search</code> grava os commits que achou. Por isso o arquivo é criado com permissão <code>600</code>.</p>
+<h3 id="decisoes-log">Decisões</h3>
+<ul><li>O log fica em <code>brain/eventlog.py</code>, <strong>fora</strong> de <code>core/</code>: router, dispatcher e agente o usam sem depender uns dos outros.</li><li><strong>Logar nunca derruba a Juniper:</strong> disco cheio ou pasta sem permissão pulam o evento.</li><li>Os testes nunca escrevem no log real (<code>tests/conftest.py</code>).</li><li>Não há rotação nem limpeza hoje: apagar os arquivos antigos é manual (em produção isso muda; veja <a href="producao.html">Produção</a>). O <code>juniper.log</code> do shell é outro arquivo, com o texto simples dos comandos legados.</li></ul>
+<h2 id="tempos">Tempos por etapa</h2>
+<pre><code class="lang-bash">JUNIPER_AGENT__SHOW_TIMING=true juniper     # ou show_timing: true no config.yaml</code></pre>
+<p>Depois de cada resposta aparece uma linha apagada, e no fim do chat uma da extração:</p>
+<pre><code class="lang-text">⏱ total 2.4s · memória 210ms · LLM 1.9s · 1ª palavra 780ms · salvar sessão 4ms [memória: embedding 160ms · busca 40ms]
+⏱ memória (extração) total 6.1s · LLM extração 2.2s · carga do modelo 1.4s · embedding 90ms · busca 12ms · LLM julgamento 2.1s · gravação 18ms · 2 chamada(s) ao LLM</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Etapa</th><th>O que é</th></tr></thead><tbody><tr><td>memória</td><td>Buscar o perfil e as memórias da sua mensagem: perfil (leitura no banco), contagem, carga do modelo (uma vez por processo), embedding (a pergunta vira vetor, local, na CPU) e busca (ler e comparar os vetores).</td></tr><tr><td>LLM / 1ª palavra</td><td>Tempo total do LLM e até ele começar a responder.</td></tr><tr><td>ferramentas</td><td>Execução das tools (agenda, git, memória...).</td></tr><tr><td>salvar sessão</td><td>Gravar a conversa.</td></tr><tr><td>extração</td><td>LLM de extração (uma chamada), LLM de julgamento (uma por memória nova parecida com alguma guardada), carga do modelo, embedding, busca e gravação.</td></tr></tbody></table></div>
+<p>Etapas abaixo de 1 ms não aparecem. Tudo vai também para o log, mesmo com <code>show_timing</code> desligado:</p>
+<pre><code class="lang-bash"># cada resposta e cada extração
+jq -c &#x27;select(.event==&quot;timing&quot;) | {scope, total_ms, stages_ms}&#x27; ~/.juniper/logs/*.jsonl
+# o embedding local: tempo de inferência por chamada e a carga do modelo
+jq -c &#x27;select(.event==&quot;embedding&quot; or .event==&quot;embedding_model_load&quot;)&#x27; ~/.juniper/logs/*.jsonl</code></pre>
+<h3 id="ler-tempos">Como ler o resultado</h3>
+<p>São hipóteses a partir do código; o seu uso diz qual vale.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>O que aparece</th><th>Quer dizer</th></tr></thead><tbody><tr><td>Carga do modelo alta, só uma vez</td><td>O custo de abrir o modelo de embeddings na primeira vez do processo; acontece uma vez por chat.</td></tr><tr><td>Embedding alto em toda mensagem (centenas de ms)</td><td>É a CPU local. Teste <code>memory.embeddings.threads</code>: menos threads aliviam a máquina.</td></tr><tr><td>LLM julgamento e LLM extração altos</td><td>É rede e provider, não a máquina local. Cada memória nova parecida com uma antiga custa uma chamada a mais.</td></tr><tr><td>Busca alta</td><td>Ler os vetores do MongoDB; cresce com o número de memórias.</td></tr><tr><td>1ª palavra alta</td><td>O provider demora para começar (ou houve failover).</td></tr></tbody></table></div>
+<p>Os tempos são de relógio (wall-clock): com a máquina ocupada, qualquer etapa pesa mais. Compare várias respostas, não uma.</p>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_eventlog.py tests/test_timing.py -v</code></pre>
+<p>Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token), o arquivo por dia com permissão <code>600</code>, o log que nunca levanta erro, os eventos do agente, cada <code>decision</code> do dispatcher, erro de tool, erro de LLM e o failover do router.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

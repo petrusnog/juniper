@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produção — Livro de bolso Juniper</title>
+<meta name="description" content="Como a Juniper vai rodar numa VPS: topologia, Tailscale, deploy automático com rollback, backup e custos.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/producao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Produção</div>
+<h1>Produção <span class="tag a">proposto</span></h1>
+<p class="lead">Como a Juniper vai rodar numa VPS: topologia, Tailscale, deploy automático com rollback, backup e custos.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página descreve o que está <strong>proposto</strong> (Sprint 3, <a href="adr-013.html">ADR-013</a> e <a href="adr-007.html">ADR-007</a>). Nada disto está em produção ainda: o cérebro hoje roda dentro do CLI. Itens marcados <em>a confirmar</em> dependem de decisão ou de medição (T-081).</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O cérebro roda numa <strong>VPS</strong> sempre ligada e os clientes (CLI remoto, app desktop) falam com ele por um único WebSocket (<a href="protocolo.html">Protocolo</a>). A VPS <strong>não expõe nenhuma porta pública</strong>: o acesso é pela rede privada do <strong>Tailscale</strong>. O que fica no servidor (conversas, memórias, perfil) é pessoal, então cada passo prioriza segurança e recuperação.</p>
+<pre><code class="lang-text">   PC (Electron + executor)  ──┐                            ┌─ DeepInfra / Groq (LLM, EUA)
+   CLI remoto                ──┼── Tailscale (WebSocket) ──►│  VPS Hetzner, Ashburn
+   (futuro: celular, voz)    ──┘                            │   ├─ brain  (Docker)
+                                                            │   └─ mongo  (Docker, volume)
+   GitHub Actions ── merge no master ── deploy (SSH pela tailnet) ──┘</code></pre>
+<h2 id="hospedagem">Hospedagem</h2>
+<ul><li><strong>Hetzner Cloud em Ashburn (EUA), x86.</strong> O cérebro chama o LLM várias vezes por turno e o cliente só uma; como o DeepInfra roda nos EUA, a VPS deve ficar <strong>perto do LLM</strong>, não perto do usuário. A conta em RTTs está no ADR-013; a T-081 mede para confirmar.</li><li><strong>Tamanho:</strong> ponto de partida de 2 vCPU e 4 GB de RAM (Mongo + embeddings + brain somam 1,5 a 2 GB). O tipo exato é fixado depois da T-081.</li><li><strong>Custo previsto:</strong> ~US$ 4 a 5 por mês pela VPS, mais o armazenamento de backups <em>(a confirmar)</em>. O DeepInfra é cobrado por uso.</li><li>Ubuntu LTS; acesso de emergência pelo console web da Hetzner.</li></ul>
+<h2 id="compose">Composição (Docker Compose)</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Serviço</th><th>Imagem</th><th>Notas</th></tr></thead><tbody><tr><td><code>brain</code></td><td><code>ghcr.io/petrusnog/juniper:&lt;sha&gt;</code></td><td>Python 3.12, usuário sem privilégio, <code>juniper serve</code>, reinício automático, <em>healthcheck</em> em <code>GET /health</code>.</td></tr><tr><td><code>mongo</code></td><td><code>mongo:7</code></td><td>Só em <code>127.0.0.1</code>, volume nomeado <code>juniper-mongo-data</code>, usuário e senha do <code>.env</code>.</td></tr></tbody></table></div>
+<p>A porta <code>8765</code> do brain é publicada <strong>apenas no endereço Tailscale</strong> da VPS, nunca em <code>0.0.0.0</code>. O <code>.env</code> e a chave do Google são montados do servidor (somente leitura); <strong>segredos nunca entram na imagem</strong>. O modo é <code>deployment.mode: server</code> (<a href="configuracao.html#deployment">Configuração</a>).</p>
+<h2 id="tailscale">Tailscale</h2>
+<p>O Tailscale é uma <strong>rede privada entre os seus dispositivos</strong>: a VPS e o seu PC recebem endereços privados (e nomes, como <code>juniper-brain.&lt;tailnet&gt;.ts.net</code>) e o tráfego é cifrado. Para o usuário: instale o Tailscale e entre na mesma conta em cada dispositivo.</p>
+<ul><li><strong>Etiquetas e ACL:</strong> a VPS é <code>tag:juniper-server</code>, os clientes <code>tag:juniper-client</code>, o runner do CI <code>tag:ci</code>; a política só deixa clientes e CI alcançarem o servidor na porta <code>8765</code> e no SSH.</li><li><strong>Firewall da Hetzner:</strong> sem nenhuma regra de entrada. O SSH só pela tailnet.</li><li><strong>Autenticação:</strong> o token estático do ADR-007 por cima da rede: duas travas independentes.</li><li><strong>Limite:</strong> dispositivos que não aceitam instalar o Tailscale (TV, carro) não alcançam a VPS; é um problema de futuro.</li></ul>
+<h2 id="deploy">Deploy automático</h2>
+<p>Cada PR mergeado no <code>master</code> vira deploy, sem passo manual (<code>.github/workflows/deploy.yml</code>):</p>
+<pre><code class="lang-text">PR mergeado no master
+  → pytest verde (tests.yml)
+  → build da imagem e push para o GHCR (tag = SHA)
+  → o runner entra na tailnet com uma chave temporária (nó efêmero, tag:ci)
+  → SSH na VPS → mongodump de segurança
+  → grava o SHA atual como &quot;anterior&quot; e troca para o novo
+  → docker compose pull &amp;&amp; docker compose up -d      (nunca down -v)
+  → espera o healthcheck (até 90 s)
+       ok     → fim
+       falhou → volta para a imagem anterior; o job falha e avisa</code></pre>
+<ul><li><strong>Gatilho seguro:</strong> só roda depois que o <code>pytest</code> passou no mesmo commit.</li><li><strong>Um deploy por vez;</strong> um novo merge espera a vez.</li><li><strong>Rollback automático</strong> para o SHA anterior; <strong>manual</strong> para um SHA específico (<code>JUNIPER_IMAGE=...:&lt;sha&gt; docker compose up -d</code>).</li><li><strong>O banco não é tocado:</strong> o deploy nunca apaga volumes, e mudanças de esquema precisam ser compatíveis para trás (o rollback usa os dados como estão).</li><li><strong>Conexões abertas:</strong> ao reiniciar, o brain fecha as conexões com o código <code>1012</code> e os clientes reconectam sozinhos (<a href="protocolo.html#reconexao">Protocolo</a>).</li></ul>
+<h3 id="segredos">Segredos</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Segredo</th><th>Onde fica</th></tr></thead><tbody><tr><td>Chaves de LLM, usuário e senha do Mongo</td><td><code>.env</code> no servidor (<code>600</code>)</td></tr><tr><td>Chave da conta de serviço do Google</td><td><code>certs/gcp-key.json</code> no servidor (<code>600</code>)</td></tr><tr><td>Token dos clientes</td><td><code>~/.juniper/token</code> no servidor; cofre do sistema no cliente</td></tr><tr><td>Chave SSH de deploy, credenciais OAuth do Tailscale</td><td>GitHub Secrets (<code>DEPLOY_SSH_KEY</code>, <code>TS_OAUTH_CLIENT_ID</code>, <code>TS_OAUTH_SECRET</code>)</td></tr></tbody></table></div>
+<h2 id="backup">Dados: backup e restauração</h2>
+<ul><li><code>mongodump</code> diário no servidor, comprimido, com retenção de 7 diários e 4 semanais <em>(a confirmar)</em>.</li><li><strong>Cópia fora do servidor</strong> (um bucket barato com <code>rclone</code>, ou outro destino a definir) e <strong>backup sob demanda antes de cada deploy</strong>.</li><li><strong>Restauração testada de verdade</strong> num Mongo vazio, conferindo com <code>juniper memory list</code>: um backup que nunca foi restaurado não conta.</li></ul>
+<h2 id="observabilidade-producao">Observabilidade</h2>
+<p><code>GET /health</code> distingue <em>saudável</em>, <em>degradado</em> (ex.: Mongo fora, o brain opera só com a sessão) e <em>fora</em>. Os logs JSONL (<a href="observabilidade.html">Observabilidade</a>) ficam num volume, com rotação e limite de tamanho. Alertas ativos ficam fora da Sprint 3.</p>
+<h2 id="riscos">Riscos aceitos</h2>
+<ul><li>Servidor único, sem alta disponibilidade (rebuild pelo runbook + restauração do backup).</li><li>Dependência do Tailscale, do DeepInfra e do GitHub (mitigada pelo failover de LLM e pelo deploy manual).</li><li>Dados pessoais numa VPS: nenhuma porta pública, token, usuário sem privilégio, permissões restritas. Criptografia em repouso <em>(a avaliar)</em>.</li><li>Deploy sem revisão humana no último passo: <code>pytest</code> obrigatório, <em>healthcheck</em>, rollback e backup pré-deploy.</li></ul>
+<h2 id="tasks">Tasks da Sprint 3</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Task</th><th>O que entrega</th></tr></thead><tbody><tr><td>T-080</td><td><code>Dockerfile</code> do brain e compose de produção</td></tr><tr><td>T-081</td><td>Teste de capacidade e latência; fixa o tipo da VPS</td></tr><tr><td>T-082</td><td>Provisionamento, hardening, Tailscale e runbook</td></tr><tr><td>T-083</td><td>Backup e restauração do Mongo</td></tr><tr><td>T-084</td><td><code>deploy.yml</code> com rollback</td></tr><tr><td>T-085</td><td>Saúde e logs em produção</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-003 — Configuração — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-003 — Configuração">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-003.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-003</div>
+<h1>ADR-003 — Configuração</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan + Lead Architect (Juniper)</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-003, T-010</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O Juniper v3 precisa de configuração para:</p>
+<ul><li>Ordem de prioridade dos providers de LLM (Groq, Ollama)</li><li>Modelos default de cada provider</li><li>Timeouts</li><li>Idioma e iterações máximas do agente</li><li>Política de segurança das tools (allowlist de shell)</li><li>Credenciais sensíveis (chaves de API)</li></ul>
+<p>Credenciais <strong>não podem</strong> ser versionadas. Preferências <strong>devem</strong> ser versionadas (auditáveis, revisáveis em PR). Precisamos separar essas duas classes.</p>
+<hr>
+<h2 id="decisao">Decisão</h2>
+<p>Adotamos uma abordagem híbrida com <strong>três camadas de precedência</strong>:</p>
+<ol><li><strong>Variáveis de ambiente</strong> (maior precedência) — segredos e overrides pontuais</li><li><strong><code>config.yaml</code></strong> (versionado) — preferências do projeto</li><li><strong>Defaults no código</strong> (menor precedência) — valores sensatos</li></ol>
+<h3 id="arquivos">Arquivos</h3>
+<ul><li><strong><code>config.yaml</code></strong> — versionado, com <code>config.yaml.example</code> como template. Contém preferências. Nunca contém segredos.</li><li><strong><code>.env</code></strong> — <strong>NUNCA</strong> versionado (bloqueado em <code>.gitignore</code>), com <code>.env.example</code> como template. Contém segredos e overrides locais.</li></ul>
+<h3 id="config-yaml-example-draft-inicial"><code>config.yaml.example</code> (draft inicial)</h3>
+<pre><code class="lang-yaml">llm:
+  priority: [groq, ollama]
+  groq:
+    model: llama-3.3-70b-versatile
+    timeout: 30
+  ollama:
+    url: http://localhost:11434
+    model: llama3.1
+    timeout: 120
+
+agent:
+  max_iterations: 5
+  language: pt-BR
+
+tools:
+  security:
+    shell_allowlist: [git, ls, cat, grep, rg, fd, jq, find, wc, head, tail]
+    shell_require_confirmation: true
+    confirmation_timeout: 60</code></pre>
+<h3 id="env-example-draft-inicial"><code>.env.example</code> (draft inicial)</h3>
+<pre><code class="lang-bash"># Providers
+GROQ_API_KEY=
+
+# Overrides opcionais (se ausentes, config.yaml manda)
+# OLLAMA_URL=http://localhost:11434
+# JUNIPER_LOG_LEVEL=INFO</code></pre>
+<h3 id="carregamento">Carregamento</h3>
+<ul><li><strong>Biblioteca:</strong> <code>pydantic-settings</code>.</li><li>Modelo de settings tipado em <code>brain/config.py</code>.</li><li>Precedência ENV &gt; YAML &gt; defaults é nativa do <code>pydantic-settings</code> quando configurado com <code>yaml_file</code> + <code>env_file</code>.</li><li><strong>Falha cedo:</strong> se <code>config.yaml</code> não existir e não houver <code>config.yaml.example</code>, o boot aborta com erro claro.</li></ul>
+<h3 id="logs">Logs</h3>
+<ul><li>Diretório de logs runtime: <code>~/.juniper/logs/</code> (fora do repo).</li><li>Formato: JSON Lines (<code>.jsonl</code>), um evento por linha.</li><li>Log estruturado inclui: timestamp, tool, tier, decisão, output, exit code.</li></ul>
+<hr>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Trocar modelo Groq ou prioridade de providers não exige editar código.</li><li>Segredos fora do repo por design.</li><li>CI pode rodar com <code>config.yaml.example</code> + env fake.</li><li>Configuração auditável via PR.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>Duas fontes de verdade (YAML + ENV) exigem documentação clara da precedência. <strong>Mitigação:</strong> <code>.env.example</code> com comentários indicando quando cada variável se aplica.</li><li><code>pydantic-settings</code> adiciona uma dependência. Aceitável — é padrão de facto e traz validação de tipos de graça.</li></ul>
+<hr>
+<h2 id="alternativas-consideradas">Alternativas consideradas</h2>
+<ol><li><strong>Só <code>.env</code>.</strong> Rejeitada: listas complexas (como allowlist de shell) ficam horríveis como strings separadas por vírgula. YAML é mais expressivo.</li><li><strong>Só <code>config.yaml</code> (segredos em campos).</strong> Rejeitada: risco de commitar segredos por acidente.</li><li><strong>TOML.</strong> Rejeitada: YAML é mais legível para estruturas aninhadas e já é familiar para o usuário.</li><li><strong>Configuração em código Python.</strong> Rejeitada: viola separação código/config, exige rebuild para trocar valor.</li></ol>
+<hr>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-001 — Providers configurados via <code>llm.priority</code></li><li>ADR-006 — Política de segurança usa <code>tools.security.*</code></li><li><code>brain/config.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-003, T-010</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

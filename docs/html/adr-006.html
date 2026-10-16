@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-006 — Política de Segurança para Execução de Comandos — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-006 — Política de Segurança para Execução de Comandos">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-006.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-006</div>
+<h1>ADR-006 — Política de Segurança para Execução de Comandos</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan + Lead Architect (Juniper)</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-006, T-023 (run_shell), T-031 (logging estruturado)</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O agente Juniper v3 executa ações no sistema operacional do usuário por decisão de um LLM. Isso introduz uma superfície de risco: o LLM pode interpretar mal a intenção do usuário, ou pode ser induzido (via prompt injection em conteúdo lido por <code>web_fetch</code>) a executar comandos destrutivos.</p>
+<p>Precisamos de uma política clara, implementável e auditável que defina:</p>
+<ol><li>O que o agente executa sozinho.</li><li>O que exige confirmação explícita do usuário.</li><li>O que é bloqueado independentemente de confirmação.</li></ol>
+<h2 id="decisao">Decisão</h2>
+<p>Adotamos um modelo de <strong>4 tiers</strong> de permissão. Cada tool declara seu tier como atributo de classe. O comportamento do agente é determinado pelo tier no momento da execução.</p>
+<h3 id="tiers">Tiers</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tier</th><th>Definição</th><th>Comportamento</th><th>Exemplos</th></tr></thead><tbody><tr><td><strong>READ</strong></td><td>Não modifica estado local nem envia dados para fora.</td><td>Auto-executa. Loga em <code>agent.jsonl</code>.</td><td><code>web_fetch</code> (GET), <code>web_search</code>, <code>gitgrep</code>, <code>ls</code>, <code>cat</code>, <code>git log</code>, <code>git status</code>, <code>rg</code>, <code>fd</code>, <code>jq</code> (leitura)</td></tr><tr><td><strong>WRITE</strong></td><td>Modifica estado local <strong>ou</strong> envia dados para fora de forma reversível.</td><td>Confirmação inline (prompt <code>[y/N]</code>, timeout 60s).</td><td><code>open_app</code>, <code>git commit</code>, <code>git checkout</code>, edição de arquivo, <code>curl POST</code>, <code>git push</code> (sem force), <code>npm install</code> local, <code>pip install</code> em venv</td></tr><tr><td><strong>DESTRUCTIVE</strong></td><td>Modifica estado de forma <strong>irreversível</strong> ou envia dados sensíveis/conteúdo para fora.</td><td>Confirmação inline com <strong>aviso explícito de irreversibilidade</strong>. Timeout 60s aborta com exit code 2.</td><td><code>rm</code>, <code>rm -rf</code>, esvaziar lixeira, <code>git reset --hard</code>, <code>git push --force</code>, <code>git clean -fdx</code>, <code>mv</code> que sobrescreve, <code>&gt; arquivo</code> (truncamento), envio por e-mail/WhatsApp/Telegram, <code>scp</code>, <code>rsync</code> remoto, <code>publish</code> (npm/docker/pypi), <code>docker system prune</code>, <code>git commit --amend</code> em commit já pushado</td></tr><tr><td><strong>FORBIDDEN</strong></td><td>Nunca executa, independente de confirmação.</td><td>Bloqueio duro com mensagem de erro.</td><td><code>dd</code> em device, <code>mkfs</code>, <code>rm -rf /</code>, <code>chmod -R /</code>, <code>chown -R /</code>, escrita em <code>/etc</code>, <code>/boot</code>, <code>/sys</code>, <code>/proc</code>, <code>/dev</code>, <code>kill -9 1</code>, <code>systemctl stop</code> em serviços críticos</td></tr></tbody></table></div>
+<h3 id="regras-de-implementacao">Regras de implementação</h3>
+<ol><li><strong>Toda tool declara seu tier</strong> como atributo de classe (<code>tier: Tier</code>).</li><li><strong>Default = WRITE.</strong> Tool não classificada explicitamente é tratada como WRITE. Isso força revisão consciente ao adicionar tools novas em vez de auto-executar por esquecimento.</li><li><strong>Confirmação mostra o comando exato.</strong> Nunca um resumo, nunca uma paráfrase. O usuário precisa ver literalmente o que será executado.</li><li><strong>Persona injetada na confirmação.</strong> A mensagem de confirmação mantém a voz da Juniper sem obscurecer o comando:</li></ol>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

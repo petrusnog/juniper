@@ -86,7 +86,7 @@ usuário → clients/cli.py → core/agent.py ──► llm/router.py ──► 
 Loop agentic: **decide → chama tool → reavalia**, limitado por `agent.max_iterations` (padrão 5).
 
 ### 4.3 Deployment (ADR-007)
-Cérebro único e sempre vivo (VPS); "corpos" (executores) múltiplos e efêmeros (PC, celular, Raspberry) conectados por WebSocket + HTTPS via Tailscale (sem portas públicas). Auth por token estático em `~/.juniper/token` (Sprint 2+). Modos: `local` (Sprint 1) e `server` (Sprint 2+). Tools têm *locality* (cloud vs. executor) — ver `Locality` em T-020.
+Cérebro único e sempre vivo (VPS); "corpos" (executores) múltiplos e efêmeros (PC, celular, Raspberry) conectados por WebSocket + HTTPS via Tailscale (sem portas públicas). Auth por token estático em `~/.juniper/token` (Sprint 2+). Modos: `local` (Sprint 1) e `server` (Sprint 2+). Tools têm *locality* (cloud vs. executor) — ver `Locality` em T-020. O protocolo dos clientes (chat, sessões, memória e executor, num único WebSocket) está no **ADR-012**.
 
 ### 4.4 Segurança (ADR-006)
 | Tier | Comportamento | Exemplos |
@@ -209,6 +209,7 @@ pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
 | 009 | DeepInfra como provider principal (API compatível com OpenAI, via `httpx`); failover `deepinfra → groq → ollama`. |
 | 011 | **(Proposto)** Memória em duas camadas: sessão (id, orçamento de tokens, retomável via `SessionStore`) e longo prazo (MongoDB + RAG; embeddings locais em CPU e cosseno em Python, ambos atrás de interfaces); memória nunca editada, só substituída; segredos nunca gravados. |
 | 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
+| 012 | **(Proposto)** Protocolo cliente ↔ brain: um WebSocket por cliente (JSON, `ws://host:porta/v1/ws`), token no handshake, `hello`/`welcome` com `protocol_version`, chat em stream (`chat.send`/`chat.token`/`chat.end`), sessões, comandos de memória, erros tipados, heartbeat de 30 s, reconexão com backoff; o turno termina no servidor mesmo com o cliente caído. |
 
 ---
 

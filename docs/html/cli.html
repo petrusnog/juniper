@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI — Livro de bolso Juniper</title>
+<meta name="description" content="O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/cli.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Clientes / CLI</div>
+<h1>CLI <span class="tag g">pronta</span></h1>
+<p class="lead">O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O CLI é o cliente atual da Juniper: um cliente <strong>fino</strong> que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em <code>brain/core</code>. Arquivo: <code>brain/clients/cli.py</code> (Typer + Rich). Hoje o cérebro roda dentro do mesmo processo; a Sprint 3 adiciona o modo remoto (<a href="producao.html">Produção</a>, <a href="protocolo.html">Protocolo</a>).</p>
+<p>Tudo que o terminal diz segue o padrão de <a href="voz.html">Voz no terminal</a>.</p>
+<h2 id="conversar">Conversar</h2>
+<pre><code class="lang-bash">juniper &quot;o que tenho amanhã?&quot;     # uma mensagem: responde e sai
+juniper                           # conversa (REPL)
+python -m brain chat              # equivalente, sem instalar o atalho</code></pre>
+<p>Qualquer coisa que não seja um comando conhecido é uma mensagem: <code>juniper oi</code> e <code>juniper &quot;marca dentista amanhã às 16h&quot;</code> funcionam sem aspas ou comando. No REPL:</p>
+<pre><code class="lang-text">👤 VOCÊ: oi
+🌿 JUNIPER: Oi! ...
+👤 VOCÊ: /sair</code></pre>
+<p><code>/sair</code>, <code>/exit</code> ou Ctrl+D encerram; Ctrl+C também (ainda não cancela só o turno).</p>
+<h3 id="opcoes">Opções do chat</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Opção</th><th>O que faz</th></tr></thead><tbody><tr><td><code>--provider</code>, <code>-p</code> <code>deepinfra</code>/<code>groq</code>/<code>ollama</code></td><td>Força um provider, <strong>sem failover</strong> (útil para testar o Ollama sem a Groq responder no lugar). Um nome inválido é recusado antes de qualquer trabalho, listando os válidos.</td></tr><tr><td><code>--resume</code>, <code>-r</code></td><td>Retoma a conversa mais recente (<a href="memoria-sessao.html">Memória de sessão</a>).</td></tr></tbody></table></div>
+<pre><code class="lang-bash">juniper -p ollama &quot;oi&quot;
+juniper -r &quot;e o prazo?&quot;           # retoma e já manda uma mensagem</code></pre>
+<h3 id="saida">Códigos de saída</h3>
+<p>Uma mensagem única sai com <code>1</code> se nenhum LLM respondeu. No REPL, um erro de LLM é mostrado e a sessão continua. <code>--provider</code> inválido sai com <code>2</code>; Ctrl+C sai com <code>130</code>; memória indisponível sai com <code>1</code> (antes de falar com o LLM).</p>
+<h2 id="funciona">Como funciona</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Peça</th><th>O que faz</th></tr></thead><tbody><tr><td><code>chat</code></td><td>Comando do Typer: monta o router, o <code>Dispatcher(conversational=True)</code>, a memória e o <code>Agent</code>, e chama <code>converse</code>.</td></tr><tr><td><code>converse</code></td><td>Um turno (mensagem única) ou um laço de turnos (REPL). Entrega cada turno ao <a href="memoria-longo-prazo.html#backgroundextractor">extrator de memória</a> em segundo plano.</td></tr><tr><td><code>Printer</code></td><td>Imprime cada token assim que chega, sem interpretar colchetes como markup do Rich (uma resposta com <code>[bold]</code> sai literal).</td></tr><tr><td><code>LineReader</code></td><td>Lê o teclado numa thread, sem travar o event loop.</td></tr><tr><td><code>friendly_error</code></td><td>Traduz falhas do LLM em instruções em PT-BR.</td></tr><tr><td>Confirmações</td><td>Sem prompt: a Juniper pergunta em palavras e o seu "sim" é interpretado pelo sistema (<a href="agente.html#confirmacao">Agente</a>).</td></tr></tbody></table></div>
+<h2 id="erros">Erros em português</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Situação</th><th>O que você vê (resumo)</th></tr></thead><tbody><tr><td>Chave ausente ou inválida</td><td>"Não consegui falar com nenhum LLM agora." e a dica "· Groq sem chave válida: defina <code>JUNIPER_GROQ_API_KEY</code> no .env." (o provider certo é citado)</td></tr><tr><td>Limite do provider (429)</td><td>"· Limite da Groq atingido: espere um minuto."</td></tr><tr><td>Ollama fora do ar ou lento</td><td>"· Ollama não respondeu: ele está rodando? (<code>ollama serve</code>)"</td></tr><tr><td>Troca de provider (failover)</td><td>"A DeepInfra recusou as credenciais. Vou tentar a Groq." (e, ao cair no Ollama: "Sem GPU isso pode levar alguns minutos.")</td></tr></tbody></table></div>
+<p>Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provider, para depuração.</p>
+<h2 id="comandos">Comandos</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Comando</th><th>O que faz</th></tr></thead><tbody><tr><td><code>juniper version</code></td><td>Mostra a versão.</td></tr><tr><td><code>juniper tools</code></td><td>Lista as <a href="tools.html#disponiveis">tools</a> registradas: nome, tier, locality e descrição.</td></tr><tr><td><code>juniper search &lt;termos&gt;</code></td><td>Busca commits (<a href="git.html">Comandos git</a>).</td></tr><tr><td><code>juniper deploy &lt;feature&gt; [opções]</code></td><td>Cherry-pick de feature em develop e stage (<a href="git.html">Comandos git</a>).</td></tr><tr><td><code>juniper install [--dev|--check|--clean|--yes|--memory=...]</code></td><td>Instala ou repara a Juniper (<a href="install.html#opcoes">Instalação</a>).</td></tr><tr><td><code>juniper docs</code></td><td>Serve este livro de bolso em <code>http://localhost:47831</code>.</td></tr><tr><td><code>juniper memory ...</code></td><td>Memória de longo prazo (abaixo).</td></tr></tbody></table></div>
+<h3 id="memory">juniper memory</h3>
+<p>Precisam do MongoDB no ar; se não estiver, a mensagem diz o que fazer, sem stacktrace.</p>
+<pre><code class="lang-bash">juniper memory list [--type preference|project|fact] [--all]
+juniper memory search &lt;termo...&gt; [--limit N] [--threshold X]
+juniper memory forget &lt;id&gt; [--yes]
+juniper memory export [--vectors] [--output arquivo.json]
+juniper memory profile                         # ver
+juniper memory profile set &quot;...&quot; --name &quot;...&quot; --birth-date AAAA-MM-DD --nationality &quot;...&quot;
+juniper memory profile forget [--yes]
+juniper memory reindex [--force]</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Comando</th><th>O que faz</th></tr></thead><tbody><tr><td><code>list</code></td><td>Mais novas primeiro, com id, tipo, status, data e texto. <code>--all</code> inclui as <code>superseded</code> (só para auditoria).</td></tr><tr><td><code>search</code></td><td>Mostra a <strong>nota de cada resultado</strong>: é a ferramenta para calibrar <code>memory.retrieval.threshold</code> (<code>--threshold -1</code> mostra a nota de tudo).</td></tr><tr><td><code>forget</code></td><td>Mostra o texto, pergunta "Pode apagar?" (padrão não) e apaga com as versões antigas. <code>--yes</code> pula a pergunta.</td></tr><tr><td><code>export</code></td><td>JSON com <code>{&quot;profile&quot;: ..., &quot;memories&quot;: [...]}</code>; sem os vetores, a menos que <code>--vectors</code>.</td></tr><tr><td><code>profile</code></td><td>Mostra, define (<code>set</code>) ou apaga (<code>forget</code>) o perfil.</td></tr><tr><td><code>reindex</code></td><td>Refaz os vetores (<a href="memoria-longo-prazo.html#reindex">Memória de longo prazo</a>).</td></tr></tbody></table></div>
+<h3 id="docs">juniper docs</h3>
+<p>Serve a documentação localmente; abra <code>http://localhost:47831</code> no navegador (a Juniper não abre sozinha). Ctrl+C encerra. Se a porta estiver ocupada, usa a próxima livre (47832, 47833...) e mostra o endereço certo.</p>
+<h2 id="aliases">Aliases escondidos</h2>
+<p><code>grep</code> e <code>gitgrep</code> (= <code>search</code>) e <code>deployfeature</code> (= <code>deploy</code>) continuam funcionando, escondidos do <code>--help</code>.</p>
+<h2 id="limitacoes">Limitações conhecidas</h2>
+<ul><li>Resposta em texto puro: não há renderização de Markdown (a persona já evita Markdown fora de código).</li><li>Ctrl+C encerra o programa mesmo no meio de uma resposta.</li><li>Se uma confirmação expirar, a pergunta antiga continua na tela até você digitar algo.</li><li><code>input()</code> não pode ser cancelado: a thread de leitura é reaproveitada, e é <em>daemon</em>, então nunca impede o programa de fechar.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_cli.py -v</code></pre>
+<p>Cobrem: versão, mensagem única com streaming, colchetes literais, REPL até <code>/sair</code> e até EOF, <code>--provider</code> inválido e válido, chave ausente (instrução do <code>.env</code>, saída 1), REPL sobrevivendo a erro de LLM, as dicas de <code>friendly_error</code>, o aviso de irreversível, o reaproveitamento da thread de leitura e um fluxo completo com confirmação negada. Para ver ao vivo, com a chave no <code>.env</code>: <code>juniper &quot;marca um teste amanhã às 10h&quot;</code>.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

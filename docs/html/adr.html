@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decisões (ADRs) — Livro de bolso Juniper</title>
+<meta name="description" content="As decisões de arquitetura: contexto, escolha, consequências e alternativas.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Referência / Decisões (ADRs)</div>
+<h1>Decisões (ADRs)</h1>
+<p class="lead">As decisões de arquitetura: contexto, escolha, consequências e alternativas.</p>
+<h2 id="lista">Todas as decisões</h2>
+<p>Cada decisão de arquitetura da Juniper fica registrada num ADR (<em>Architecture Decision Record</em>): o contexto, o que foi decidido, as consequências e as alternativas descartadas. Os ADRs <strong>propostos</strong> descrevem o que está planejado e ainda não foi construído; os <strong>aceitos</strong> descrevem o que vale hoje. Os arquivos-fonte ficam em <code>docs/decisions/</code>.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>ADR</th><th>Decisão</th><th>Status</th><th>Data</th><th>Relaciona-se com</th></tr></thead><tbody><tr><td><a href="adr-001.html">ADR-001</a></td><td>Idioma, Providers de LLM e Camada HMI</td><td><span class="tag g">aceito</span></td><td>2026-09-19</td><td>T-001, T-010, T-011, T-012, T-013, T-040, T-041</td></tr><tr><td><a href="adr-002.html">ADR-002</a></td><td>Schema de Tools</td><td><span class="tag g">aceito</span></td><td>2026-09-19</td><td>T-002, T-020, T-021, T-030</td></tr><tr><td><a href="adr-003.html">ADR-003</a></td><td>Configuração</td><td><span class="tag g">aceito</span></td><td>2026-09-19</td><td>T-003, T-010</td></tr><tr><td><a href="adr-006.html">ADR-006</a></td><td>Política de Segurança para Execução de Comandos</td><td><span class="tag g">aceito</span></td><td>2026-09-19</td><td>T-006, T-023 (run_shell), T-031 (logging estruturado)</td></tr><tr><td><a href="adr-007.html">ADR-007</a></td><td>Arquitetura de Deployment</td><td><span class="tag g">aceito</span></td><td>2026-10-01</td><td>T-003, T-004, T-010, T-012, T-015, Sprint 2+</td></tr><tr><td><a href="adr-008.html">ADR-008</a></td><td>Integração com Google Calendar (primeira tool real)</td><td><span class="tag a">proposto</span></td><td>2026-10-11</td><td>ADR-002 (schema de tools), ADR-006 (tiers), ADR-007 (locality cloud), T-021, T-022</td></tr><tr><td><a href="adr-009.html">ADR-009</a></td><td>DeepInfra como provider principal e nova ordem do failover</td><td><span class="tag g">aceito</span></td><td>2026-10-12</td><td>ADR-001 (providers), ADR-002 (tools), ADR-003 (config), T-011, T-013, T-015, T-016</td></tr><tr><td><a href="adr-010.html">ADR-010</a></td><td>Gerenciamento completo da agenda do usuário</td><td><span class="tag g">aceito</span></td><td>2026-10-12</td><td>ADR-006 (tiers), ADR-008 (Google Calendar), T-022</td></tr><tr><td><a href="adr-011.html">ADR-011</a></td><td>Arquitetura de Memória</td><td><span class="tag a">proposto</span></td><td>2026-10-13</td><td>ADR-003 (config), ADR-006 (segurança), ADR-007 (deployment), T-050 a T-060</td></tr><tr><td><a href="adr-012.html">ADR-012</a></td><td>Protocolo cliente ↔ brain</td><td><span class="tag a">proposto</span></td><td>2026-10-15</td><td>ADR-006 (segurança), ADR-007 (deployment), ADR-010 (confirmação na conversa), ADR-011 (memória), ADR-013, ADR-014, ADR-015, T-070, T-074 a T-079</td></tr><tr><td><a href="adr-013.html">ADR-013</a></td><td>Deploy e infraestrutura de produção</td><td><span class="tag a">proposto</span></td><td>2026-10-15</td><td>ADR-003 (config), ADR-007 (deployment), ADR-009 (DeepInfra), ADR-011 (memória), ADR-012 (protocolo), T-071, T-075, T-080 a T-085</td></tr><tr><td><a href="adr-014.html">ADR-014</a></td><td>Executor do desktop e a tool <code>open_url</code></td><td><span class="tag a">proposto</span></td><td>2026-10-15</td><td>ADR-002 (schema de tools), ADR-006 (segurança), ADR-007 (executores), ADR-010 (confirmação na conversa), ADR-012 (protocolo), ADR-015 (cliente desktop), T-072, T-078, T-079, T-087, T-090</td></tr><tr><td><a href="adr-015.html">ADR-015</a></td><td>Cliente desktop (Electron)</td><td><span class="tag a">proposto</span></td><td>2026-10-15</td><td>ADR-007 (clientes e executores), ADR-012 (protocolo), ADR-013 (deploy), ADR-014 (executor), T-073, T-088, T-089, T-090</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
