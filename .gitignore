@@ -52,3 +52,6 @@ sessions/
 
 # Estado do ambiente docker de desenvolvimento (token, logs)
 .juniper-dev/
+
+# Id desta instalação do CLI remoto (criado em ~/.juniper)
+device_id
