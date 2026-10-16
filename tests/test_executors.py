@@ -136,7 +136,10 @@ async def test_executor_registers_a_tool_and_the_agent_can_call_it(tmp_path: Pat
 async def test_tool_leaves_the_catalog_when_the_executor_disconnects(tmp_path: Path) -> None:
     async with Setup(tmp_path, FakeProvider([])) as s:
         pc, _ = await s.executor("pc", OPEN_URL)
-        names = lambda: {x["function"]["name"] for x in s.handler._registry.schemas()}  # noqa: E731
+
+        def names() -> set[str]:
+            return {x["function"]["name"] for x in s.handler._registry.schemas()}
+
         assert "open_thing" in names()
         await pc.ws.close()
         await wait_until(lambda: not s.hub.executors)
