@@ -59,9 +59,11 @@ ssh root@&lt;IP&gt;</code></pre>
 <p>Na VPS, nesta ordem (<strong>não feche a primeira sessão antes de testar a chave em outra</strong>):</p>
 <pre><code class="lang-bash">apt update &amp;&amp; apt -y upgrade
 
-# 1. Só chave, sem senha
-printf &#x27;PasswordAuthentication no\nPermitRootLogin prohibit-password\n&#x27; &gt; /etc/ssh/sshd_config.d/99-juniper.conf
-systemctl restart ssh          # teste `ssh root@&lt;IP&gt;` em OUTRO terminal antes de seguir
+# 1. Só chave, sem senha. O arquivo se chama 00-: o sshd vale o PRIMEIRO valor que lê, e imagens de nuvem
+#    trazem um 50-cloud-init.conf com `PasswordAuthentication yes` (um 99- perderia para ele)
+printf &#x27;PasswordAuthentication no\nPermitRootLogin prohibit-password\n&#x27; &gt; /etc/ssh/sshd_config.d/00-juniper.conf
+sshd -t &amp;&amp; systemctl restart ssh      # teste `ssh root@&lt;IP&gt;` em OUTRO terminal antes de seguir
+sshd -T | grep -Ei &#x27;passwordauthentication|permitrootlogin&#x27;   # deve mostrar `no` e `without-password`
 
 # 2. Docker e Tailscale (instaladores oficiais)
 curl -fsSL https://get.docker.com | sh
