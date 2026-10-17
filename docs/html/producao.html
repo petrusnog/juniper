@@ -49,6 +49,44 @@ python scripts/smoke_server.py --health
 python scripts/smoke_server.py --token-file /tmp/token &quot;oi, tudo bem?&quot;
 python scripts/smoke_server.py --token-file /tmp/token --resume &quot;do que falávamos?&quot;</code></pre>
 <ul><li><strong>Sem chave de LLM:</strong> <code>python scripts/fake_ollama.py</code> sobe um Ollama de mentira (ecoa a mensagem). No <code>.env</code>, <code>JUNIPER_LLM__PRIORITY=[&quot;ollama&quot;]</code> e <code>JUNIPER_LLM__OLLAMA__URL=http://host.docker.internal:11999</code> (no Linux, o serviço <code>brain</code> precisa de <code>extra_hosts: host.docker.internal:host-gateway</code>).</li><li><strong>Variáveis do compose:</strong> <code>JUNIPER_IMAGE</code> (imagem do brain; padrão <code>juniper-brain:local</code>, construída ali), <code>TAILSCALE_IP</code> (onde publicar a porta; padrão <code>127.0.0.1</code>), <code>JUNIPER_CONFIG_FILE</code>, <code>JUNIPER_ENV_FILE</code> e <code>JUNIPER_CERTS_DIR</code> (de onde montar a configuração, o <code>.env</code> e a chave do Google, sempre somente leitura).</li><li><strong>Os dados ficam nos volumes</strong> (<code>juniper-mongo-data</code>, <code>juniper-state</code>, <code>juniper-logs</code>, <code>juniper-models</code>): reiniciar ou reconstruir o brain não perde conversas nem memórias. <code>down -v</code> apaga tudo.</li><li>O projeto se chama <code>juniper-prod</code>, então não mexe no banco do <code>docker-compose.yml</code> de desenvolvimento.</li></ul>
+<h2 id="capacidade">Teste de capacidade (T-081)</h2>
+<p>Antes de fixar a VPS, a T-081 mede se a Juniper cabe nela e quão rápida ela fica. O alvo é o menor tamanho que roda brain, MongoDB e o modelo de embeddings com folga. O script é o <code>scripts/bench_server.py</code> (só biblioteca padrão) e roda <strong>na VPS</strong>.</p>
+<div class="callout info"><p><strong>Nota:</strong> a escolha do provedor está em aberto no <a href="adr-013.html">ADR-013</a>, que ainda cita a Hetzner. O resultado desta medição decide e vira um adendo ao ADR.</p></div>
+<h3 id="preparar-vps">Preparar a VPS</h3>
+<p>No seu computador, com o IP da VPS (o Contabo envia a senha de root por e-mail):</p>
+<pre><code class="lang-bash">ssh-copy-id root@&lt;IP&gt;          # copia a sua chave pública
+ssh root@&lt;IP&gt;</code></pre>
+<p>Na VPS, nesta ordem (<strong>não feche a primeira sessão antes de testar a chave em outra</strong>):</p>
+<pre><code class="lang-bash">apt update &amp;&amp; apt -y upgrade
+
+# 1. Só chave, sem senha
+printf &#x27;PasswordAuthentication no\nPermitRootLogin prohibit-password\n&#x27; &gt; /etc/ssh/sshd_config.d/99-juniper.conf
+systemctl restart ssh          # teste `ssh root@&lt;IP&gt;` em OUTRO terminal antes de seguir
+
+# 2. Docker e Tailscale (instaladores oficiais)
+curl -fsSL https://get.docker.com | sh
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --hostname=juniper-brain      # abre uma URL: entre na sua conta Tailscale
+
+# 3. Firewall: nada de entrada pública; só o que vem pelo Tailscale
+apt -y install ufw
+ufw default deny incoming &amp;&amp; ufw default allow outgoing
+ufw allow in on tailscale0
+ufw allow 22/tcp               # temporário
+ufw --force enable</code></pre>
+<p>Com o Tailscale também no seu computador, confira <code>ssh root@juniper-brain</code> (ou o IP <code>100.x.y.z</code>). Só então feche o SSH público: <code>ufw delete allow 22/tcp</code>. O Docker publica portas por fora do <code>ufw</code>: por isso o compose publica a 8765 <strong>só no IP do Tailscale</strong> (<code>TAILSCALE_IP</code>) e o Mongo não publica porta nenhuma.</p>
+<h3 id="subir-vps">Subir a Juniper</h3>
+<pre><code class="lang-bash">git clone https://github.com/petrusnog/juniper.git &amp;&amp; cd juniper    # repositório privado? use scp ou um token só de leitura
+cp .env.example .env
+# edite o .env: JUNIPER_MEMORY__MONGO__USERNAME/PASSWORD e a chave do DeepInfra (temporária)
+echo &quot;TAILSCALE_IP=$(tailscale ip -4)&quot; &gt;&gt; .env
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps        # o brain fica &quot;healthy&quot;</code></pre>
+<h3 id="medir">Medir</h3>
+<pre><code class="lang-bash">JUNIPER_DEEPINFRA_API_KEY=... python3 scripts/bench_server.py --rounds 5 --llm --stack --out ~/bench-1.json</code></pre>
+<p>Faça <strong>uma vez com a pilha parada</strong> (sem <code>--stack</code>), <strong>outra com a pilha de pé e uma conversa em andamento</strong>, e repita em horários diferentes (manhã, tarde, noite). O que o script mede:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>O que responde</th><th>Sinal de alerta</th></tr></thead><tbody><tr><td>CPU: variação entre rodadas e <em>steal</em></td><td>O desempenho é previsível numa VPS compartilhada?</td><td>variação acima de ~20% ou <em>steal</em> acima de ~5%</td></tr><tr><td>Disco: escrita e <code>fsync</code></td><td>O Mongo grava sem engasgar?</td><td><code>fsync</code> com mediana acima de ~10 ms</td></tr><tr><td>Memória livre com a pilha de pé</td><td>Cabe com folga?</td><td>menos de ~1 GB livre</td></tr><tr><td>Rede até DeepInfra e Groq</td><td>O trajeto até o LLM é curto?</td><td>RTT acima de ~100 ms</td></tr><tr><td>LLM: primeiro token e tempo total</td><td>Quanto a localização custa numa resposta real?</td><td>primeiro token bem acima do que o DeepInfra entrega de perto</td></tr></tbody></table></div>
+<p>A chave do LLM só vai pelo ambiente (nunca por argumento) e não é gravada no resultado. Ao terminar, mande o conteúdo dos <code>bench-*.json</code>: o veredito (tamanho e provedor) sai deles.</p>
 <h2 id="tailscale">Tailscale</h2>
 <p>O Tailscale é uma <strong>rede privada entre os seus dispositivos</strong>: a VPS e o seu PC recebem endereços privados (e nomes, como <code>juniper-brain.&lt;tailnet&gt;.ts.net</code>) e o tráfego é cifrado. Para o usuário: instale o Tailscale e entre na mesma conta em cada dispositivo.</p>
 <ul><li><strong>Etiquetas e ACL:</strong> a VPS é <code>tag:juniper-server</code>, os clientes <code>tag:juniper-client</code>, o runner do CI <code>tag:ci</code>; a política só deixa clientes e CI alcançarem o servidor na porta <code>8765</code> e no SSH.</li><li><strong>Firewall da Hetzner:</strong> sem nenhuma regra de entrada. O SSH só pela tailnet.</li><li><strong>Autenticação:</strong> o token estático do ADR-007 por cima da rede: duas travas independentes.</li><li><strong>Limite:</strong> dispositivos que não aceitam instalar o Tailscale (TV, carro) não alcançam a VPS; é um problema de futuro.</li></ul>
