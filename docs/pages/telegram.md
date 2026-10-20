@@ -37,7 +37,7 @@ Seu celular ─► Telegram (nuvem) ◄── long polling ── Bot ──ws:/
 
 ### Descobrir o seu ID {#descobrir-id}
 
-O ID é um **número** (não o *username*). Não use bots de terceiros para descobri-lo. Suba o bot com a lista vazia e mande uma mensagem a ele: ninguém recebe resposta, e o log mostra uma linha como `Telegram: mensagem de usuário não autorizado (id=123456789)`. Copie o número para a lista e reinicie o bot. O **texto** da mensagem nunca vai para o log.
+O ID é um **número** (não o *username*). Não use bots de terceiros para descobri-lo. Suba o bot com a lista vazia, espere o log mostrar `Telegram: conectado como @... escutando mensagens.` e **só então** mande uma mensagem a ele: ninguém recebe resposta, e o log mostra uma linha como `Telegram: mensagem de usuário não autorizado (id=123456789)`. Mensagens enviadas **antes** de o bot subir são descartadas de propósito (ele não responde a pedidos velhos de horas), então, se a linha não aparecer, mande outra. Copie o número para a lista e reinicie o bot. O **texto** da mensagem nunca vai para o log.
 
 ### Rodar na sua máquina (desenvolvimento) {#rodar-dev}
 
@@ -83,6 +83,7 @@ Agora mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.en
 | Sintoma | Causa e solução |
 |---|---|
 | O contêiner reinicia sem parar | Falta `JUNIPER_TELEGRAM_BOT_TOKEN`, ou o Telegram **recusou o token** (o log diz qual dos dois; o token nunca aparece no log). Corrija o `.env` e rode `up -d telegram`. |
+| A mensagem não aparece no log | Foi enviada antes de o bot subir (as pendentes são descartadas): espere `escutando mensagens` e mande de novo. Se ainda assim nada aparecer, veja `logs telegram` por uma linha `erro da biblioteca (...)` (o tipo do erro: `Conflict` = outro processo usa o **mesmo token**; `NetworkError` = a VPS não alcança o Telegram) e confira com `docker compose -f docker-compose.prod.yml exec telegram sh -c 'tail -n 20 /home/juniper/.juniper/logs/*.jsonl'`. |
 | O bot não responde a você | O seu ID não está na lista (o log mostra `não autorizado (id=...)`), ou você escreveu num grupo. |
 | "Não consegui falar com o servidor" | O brain não está saudável: veja `ps` e `logs brain`. |
 | `unhealthy` | O laço do bot travou; `logs telegram` mostra o motivo. O Docker reinicia o contêiner. |
@@ -131,6 +132,10 @@ Com **mais de um ID** na lista, todos compartilham a conversa mais recente e lee
 - **Só conversa.** Memória (listar, buscar, exportar, apagar), perfil, `juniper tools` e o diário de mensagens **não** passam pelo Telegram. Assuntos sensíveis ficam no CLI e no desktop.
 - **Nunca grava o texto** das mensagens em log nem em evento; só metadados (ID, tamanho, duração, resultado).
 - **Privacidade:** as mensagens passam pelos servidores do Telegram e não têm criptografia ponta a ponta (os chats secretos não existem para bots). O que a Juniper guarda no seu servidor continua só seu.
+
+## Logs {#logs}
+
+`docker compose logs telegram` mostra o essencial, **sem nunca imprimir o texto das mensagens nem o token**: a linha de início (`conectado como @... escutando mensagens`), os IDs não autorizados e os erros da biblioteca (só o tipo). Só o logger do bot é ligado; o `httpx` não, porque em INFO ele imprime a URL das requisições e ela leva o token.
 
 ## Eventos {#eventos}
 

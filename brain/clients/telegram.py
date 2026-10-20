@@ -538,6 +538,28 @@ class PTBMessenger:
         await self._bot.delete_message(chat_id=chat_id, message_id=message_id)
 
 
+def _setup_logging() -> None:
+    """Faz as linhas do bot aparecerem em `docker compose logs` (só o NOSSO logger).
+
+    Não mexe no logger raiz nem no `httpx`: em INFO ele imprime a URL de cada requisição, e ela
+    leva o token do bot.
+    """
+    if any(getattr(h, "_juniper_telegram", False) for h in logger.handlers):
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
+    handler._juniper_telegram = True  # type: ignore[attr-defined]
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
+def _bot_username(bot: Any) -> str:
+    try:
+        return str(bot.username)
+    except Exception:  # ainda não inicializado (testes)
+        return "?"
+
+
 class BotStartError(Exception):
     """O bot não conseguiu subir. `str(exc)` é seguro de imprimir: nunca leva o token."""
 
@@ -580,6 +602,7 @@ def run_bot(
     from telegram.error import TelegramError
     from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
+    _setup_logging()
     factory = make_client_factory()
 
     async def post_init(app: Application) -> None:  # type: ignore[type-arg]
@@ -592,6 +615,11 @@ def run_bot(
         )
         app.bot_data["bridge"] = bridge
         app.bot_data["heartbeat"] = asyncio.get_running_loop().create_task(_heartbeat())
+        logger.info(
+            "Telegram: conectado como @%s; %d usuário(s) autorizado(s); escutando mensagens.",
+            _bot_username(app.bot),
+            len(allowed_user_ids),
+        )
         event_log.log(
             "telegram",
             action="start",
@@ -617,7 +645,9 @@ def run_bot(
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Só o tipo: o erro pode conter o token na URL da requisição.
-        event_log.log("telegram", action="error", where="ptb", type=type(context.error).__name__)
+        error_type = type(context.error).__name__
+        event_log.log("telegram", action="error", where="ptb", type=error_type)
+        logger.warning("Telegram: erro da biblioteca (%s)", error_type)  # só o tipo, nunca o texto
 
     app = (
         Application.builder()

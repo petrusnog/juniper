@@ -1046,3 +1046,111 @@ async def test_the_unauthorized_log_is_pruned_so_it_cannot_grow_without_bound(
         clock.now += tg.UNAUTHORIZED_LOG_INTERVAL_SECONDS + 1
         await bridge.handle(msg("oi", user_id=999, chat_id=999))
         assert set(bridge._unauthorized_logged) == {999}  # os velhos saíram
+
+
+# --- a ligação real com a biblioteca (o mesmo caminho do `run_bot`) -------------------------
+
+
+def _fake_polling(updates: list[dict[str, Any]]) -> Callable[..., None]:
+    """Troca o `run_polling` (rede) por: initialize, post_init e entregar `updates`."""
+    from unittest.mock import AsyncMock, patch
+
+    import telegram
+
+    def run_polling(self: Any, *args: Any, **kwargs: Any) -> None:
+        async def go() -> None:
+            with patch.object(telegram.Bot, "initialize", new=AsyncMock()):
+                await self.initialize()
+                await self.post_init(self)  # o `run_polling` de verdade chama isto
+                for raw in updates:
+                    await self.process_update(telegram.Update.de_json(raw, bot=self.bot))
+                await asyncio.sleep(0.3)  # deixa os handlers concorrentes terminarem
+                await self.post_shutdown(self)
+
+        asyncio.run(go())
+
+    return run_polling
+
+
+def _private_message(user_id: int, text: str, update_id: int = 1) -> dict[str, Any]:
+    return {
+        "update_id": update_id,
+        "message": {
+            "message_id": 5,
+            "date": 0,
+            "chat": {"id": user_id, "type": "private"},
+            "from": {"id": user_id, "is_bot": False, "first_name": "P"},
+            "text": text,
+        },
+    }
+
+
+def test_the_real_wiring_logs_the_id_of_a_stranger_the_way_the_guide_promises(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """É assim que o dono descobre o ID: a linha tem de sair para o log do contêiner."""
+    from telegram.ext import Application
+
+    monkeypatch.setattr(Application, "run_polling", _fake_polling([_private_message(4242, "oi")]))
+    monkeypatch.setattr(tg, "make_client_factory", lambda: lambda _: None)  # type: ignore[arg-type,return-value]
+    caplog.set_level(logging.INFO, logger="brain")
+    tg.run_bot("123456:ABC-fake", [])  # lista vazia: ninguém autorizado
+    assert "id=4242" in caplog.text
+    assert "escutando mensagens" in caplog.text  # a linha de "estou conectado" também aparece
+
+
+def test_the_real_wiring_answers_the_owner_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Update do Telegram -> handlers da biblioteca -> bridge -> cérebro -> send_message."""
+    from unittest.mock import AsyncMock, patch
+
+    import telegram
+    from telegram.ext import Application
+
+    sent: list[dict[str, Any]] = []
+
+    async def send_message(self: Any, **kwargs: Any) -> Any:
+        sent.append(kwargs)
+        return type("Sent", (), {"message_id": 9})()
+
+    async def main() -> None:
+        async with Scenario(FakeProvider([say("Oi, Petrus!")]), tmp_path) as s:
+            monkeypatch.setattr(tg, "make_client_factory", lambda: factory_for(s))
+            monkeypatch.setattr(
+                Application, "run_polling", _fake_polling([_private_message(OWNER, "oi")])
+            )
+            with (
+                patch.object(telegram.Bot, "send_message", new=send_message),
+                patch.object(telegram.Bot, "send_chat_action", new=AsyncMock()),
+            ):
+                await asyncio.to_thread(tg.run_bot, "123456:ABC-fake", [OWNER])
+
+    asyncio.run(main())
+    assert [call["text"] for call in sent] == ["Oi, Petrus!"]
+    assert sent[0]["chat_id"] == OWNER
+
+
+def test_library_errors_are_visible_in_the_container_log_without_the_message(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from telegram.ext import Application
+
+    async def boom(self: Any, msg: tg.Incoming) -> None:
+        raise RuntimeError("detalhe com o token 123456:ABC-fake")
+
+    monkeypatch.setattr(tg.TelegramBridge, "handle", boom)
+    monkeypatch.setattr(Application, "run_polling", _fake_polling([_private_message(OWNER, "oi")]))
+    monkeypatch.setattr(tg, "make_client_factory", lambda: lambda _: None)  # type: ignore[arg-type,return-value]
+    caplog.set_level(logging.INFO, logger="brain")
+    tg.run_bot("123456:ABC-fake", [OWNER])
+    assert "erro da biblioteca (RuntimeError)" in caplog.text
+    assert "123456:ABC-fake" not in caplog.text  # só o tipo
+
+
+def test_logging_setup_is_idempotent_and_never_touches_httpx() -> None:
+    tg._setup_logging()
+    tg._setup_logging()
+    ours = [h for h in tg.logger.handlers if getattr(h, "_juniper_telegram", False)]
+    assert len(ours) == 1
+    assert logging.getLogger("httpx").level in (logging.NOTSET, logging.WARNING)  # intocado
