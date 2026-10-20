@@ -7,7 +7,7 @@ status: proposto
 tags: telegram bot botfather cliente celular token allowed_user_ids lista permissão privacidade long polling python-telegram-bot mensagens chat id
 ---
 
-> **Nota:** esta página resume o [ADR-016](adr-016.html). O bot (`brain/clients/telegram.py`, comando `juniper telegram`) e o serviço no compose de produção estão implementados; o endurecimento (limite de mensagens, apagar depois de N horas) vem na T-097.
+> **Nota:** esta página resume o [ADR-016](adr-016.html). O bot (`brain/clients/telegram.py`, comando `juniper telegram`), o serviço no compose de produção e o endurecimento (limite de mensagens, apagar depois de N horas) estão implementados.
 
 ## Visão geral {#visao-geral}
 
@@ -107,6 +107,23 @@ Agora mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.en
 | **Mensagens encaminhadas, áudio, foto, arquivo** | Recebem um aviso ("só entendo texto") e não chegam ao cérebro. |
 
 Comandos: `/ajuda` (e `/start`) mostra a ajuda; `/novo` começa uma conversa nova.
+
+## Limites e proteções {#protecoes}
+
+| Proteção | Como funciona | Opção |
+|---|---|---|
+| **Limite de mensagens** | Por usuário, numa janela de 60 s. Acima do limite o bot avisa **uma vez** ("Muitas mensagens em pouco tempo") e ignora o resto em silêncio; **nada chega ao cérebro**, então não gera custo de LLM. | `telegram.rate_limit_per_minute` (padrão 20) |
+| **Mensagem grande demais** | Acima de 4.096 caracteres: aviso, sem ir ao cérebro. | n/a |
+| **Estranho insistindo** | Quem não está na lista nunca recebe resposta. O aviso no log sai no máximo **uma vez a cada 10 minutos por ID**: quem insiste não enche o log. | n/a |
+| **Apagar depois de N horas** | Apaga a sua mensagem e as respostas do bot (inclusive avisos e respostas de comandos) depois de N horas. Reduz o que fica no histórico do Telegram, **mas o que o Telegram retém internamente depois de apagar não é verificável**. Desligado por padrão: ligar também some com o histórico que você vê no chat. | `telegram.delete_after_hours` (0 a 48; padrão 0) |
+
+Detalhes do apagar: só vale para mensagens com menos de 48 h (por isso o prazo é limitado a 47,5 h); o agendamento fica **em memória** e se perde se o bot reiniciar; falhas ao apagar (mensagem já apagada, Telegram fora) são ignoradas.
+
+## Uma conversa, várias janelas {#janelas}
+
+No servidor, uma conversa fica ligada a **uma conexão por vez** ([Protocolo](protocolo.html#sessoes)). Se você abrir o terminal com `juniper --resume` (ou o desktop) enquanto conversa pelo Telegram, a janela nova **assume** a conversa. O bot percebe: se estava no meio de uma resposta, avisa que "outra janela assumiu" e o resto aparece lá; na mensagem seguinte abre uma **conversa nova**, sem roubar a conversa de volta.
+
+Com **mais de um ID** na lista, todos compartilham a conversa mais recente (o servidor é de um usuário só). Use um único ID.
 
 ## O que o bot não faz {#limites}
 

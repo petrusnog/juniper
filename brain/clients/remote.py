@@ -39,6 +39,7 @@ IDLE_TIMEOUT_SECONDS: Final = 90.0
 REQUEST_TIMEOUT_SECONDS: Final = 60.0
 
 UNAVAILABLE_MESSAGE = "Juniper indisponível no momento."
+DETACHED_MESSAGE = "Outra janela assumiu esta conversa; o resto da resposta vai aparecer lá."
 
 
 # ---------------------------------------------------------------------------------------------
@@ -306,6 +307,8 @@ class RemoteClient:
                 self._write_trace(message)
         elif isinstance(message, p.SessionDetached):
             self.detached = True
+            if self._turn is not None:  # acorda o turno em espera: o fim dele não virá para cá
+                self._turn.put_nowait(message)
         elif isinstance(message, p.ChatStarted | p.ChatToken | p.ChatEnd):
             if self._turn is not None:
                 self._turn.put_nowait(message)
@@ -426,6 +429,14 @@ class RemoteClient:
                     pieces += 1
                     chars += len(message.text)
                     on_token(message.text)
+                elif isinstance(message, p.SessionDetached):
+                    # Outra conexão assumiu a conversa no meio do turno: o resto da resposta vai
+                    # para ela (e fica salvo). Não há `chat.end` a esperar por aqui.
+                    return ChatResult(
+                        self._turn_id,
+                        "error",
+                        p.Error.from_code("bad_request", DETACHED_MESSAGE, request_id),
+                    )
                 elif isinstance(message, p.Error):
                     error = message
                     message_trace.step(
@@ -433,6 +444,11 @@ class RemoteClient:
                         f"Recebi um erro tipado do servidor: {message.code} "
                         f"({quote(message.message, 200)}).",
                     )
+                    if self._turn_id is None and message.reply_to == request_id:
+                        # Recusado antes de abrir o turno (conversa assumida por outra conexão,
+                        # `turn_in_progress`...): o servidor não manda `chat.end`. Sem isto o
+                        # cliente esperaria para sempre.
+                        return ChatResult(None, "error", error)
                 elif isinstance(message, p.ChatEnd):
                     message_trace.step(
                         "Cliente remoto · WebSocket",

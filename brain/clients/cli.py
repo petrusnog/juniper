@@ -645,7 +645,12 @@ def telegram(
             "yellow",
         )
     voice.say(console, f"Bot do Telegram no ar ({len(allowed)} usuário(s) autorizado(s)).")
-    bot.run_bot(token.get_secret_value(), allowed)
+    bot.run_bot(
+        token.get_secret_value(),
+        allowed,
+        rate_limit_per_minute=settings.telegram.rate_limit_per_minute,
+        delete_after_hours=settings.telegram.delete_after_hours,
+    )
     voice.say(console, "Bot encerrado.")
 
 

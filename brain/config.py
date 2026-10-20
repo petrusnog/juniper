@@ -311,6 +311,12 @@ class TelegramSettings(BaseModel):
     # IDs numéricos de quem pode falar com o bot. Lista vazia = ninguém (nunca "todos"). Para
     # descobrir o seu ID, mande uma mensagem ao bot e leia o log (`docker compose logs telegram`).
     allowed_user_ids: list[int] = Field(default_factory=list)
+    # Mensagens por minuto por usuário (contam as dele, não as do bot). Acima disso o bot avisa e
+    # NÃO chama o cérebro: um erro de loop não vira conta de LLM.
+    rate_limit_per_minute: int = Field(default=20, ge=1, le=600)
+    # Apagar a mensagem do usuário e a resposta do bot depois de N horas. 0 = não apaga. O
+    # Telegram só deixa o bot apagar mensagens com menos de 48 h, por isso o máximo é 48.
+    delete_after_hours: float = Field(default=0.0, ge=0.0, le=48.0)
 
 
 class PathsSettings(BaseModel):
