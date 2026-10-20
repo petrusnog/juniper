@@ -51,6 +51,9 @@ jobs:
           mkdir -p /tmp/certs
           JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs \
             docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env config --quiet
+          # o bot do Telegram é opt-in (perfil), mas o arquivo com o perfil ligado também precisa ser válido
+          JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs \
+            docker compose -f docker-compose.prod.yml --profile telegram --env-file /tmp/ci.env config --quiet
       - name: Brain e Mongo sobem e o brain fica saudável
         run: |
           export JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs JUNIPER_IMAGE=juniper-brain:ci

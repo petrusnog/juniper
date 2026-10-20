@@ -99,7 +99,7 @@ def test_dockerignore_keeps_secrets_and_clutter_out_of_the_build_context() -> No
 
 
 def test_compose_has_brain_and_mongo() -> None:
-    assert set(COMPOSE["services"]) == {"brain", "mongo"}
+    assert set(COMPOSE["services"]) == {"brain", "mongo", "telegram"}
     assert COMPOSE["name"] == "juniper-prod"  # não encosta nos volumes do compose de dev
 
 
@@ -201,7 +201,9 @@ CONFIG_DEV = ROOT / "docker" / "config.dev.yaml"
 
 
 def test_dev_has_the_same_topology_as_prod_plus_a_fake_llm() -> None:
-    assert set(DEV["services"]) == set(COMPOSE["services"]) | {"fake-llm", "fix-perms"}
+    assert set(DEV["services"]) == (
+        set(COMPOSE["services"]) - {"telegram"}  # o bot é opt-in na produção; no dev roda no host
+    ) | {"fake-llm", "fix-perms"}
     assert DEV["name"] == "juniper-dev" != COMPOSE["name"]
     assert DEV["services"]["mongo"]["image"] == COMPOSE["services"]["mongo"]["image"]
     assert (
@@ -350,3 +352,84 @@ def test_google_key_comes_from_the_read_only_certs_mount() -> None:
     assert certs.endswith(":ro")
     key = GoogleSettings().credentials_file
     assert (key.parent.name, key.name) == ("certs", "gcp-key.json")
+
+
+# --- T-096: o bot do Telegram como serviço opt-in -------------------------------------------
+
+BOT = COMPOSE["services"]["telegram"]
+
+
+def test_the_telegram_bot_is_opt_in_so_deploys_without_it_are_unchanged() -> None:
+    assert BOT["profiles"] == ["telegram"]  # só sobe com `--profile telegram`/COMPOSE_PROFILES
+    assert "profiles" not in COMPOSE["services"]["brain"]
+    assert "profiles" not in COMPOSE["services"]["mongo"]
+
+
+def test_the_bot_runs_the_same_image_as_the_brain_with_the_telegram_command() -> None:
+    assert BOT["image"] == COMPOSE["services"]["brain"]["image"]
+    assert BOT["command"] == ["telegram"]
+    assert BOT["restart"] == "unless-stopped"
+    assert BOT["depends_on"]["brain"] == {"condition": "service_healthy"}
+
+
+def test_the_bot_publishes_no_port_and_holds_no_privileges() -> None:
+    assert "ports" not in BOT
+    assert BOT["cap_drop"] == ["ALL"] and "no-new-privileges:true" in BOT["security_opt"]
+
+
+def test_the_bot_gets_least_privilege_secrets() -> None:
+    """Só o token do bot e a lista de permissão: nada de Mongo, de chaves de LLM nem do .env."""
+    env = BOT["environment"]
+    assert set(env) == {
+        "JUNIPER_CONFIG_PATH",
+        "JUNIPER_DEPLOYMENT__SERVER__HOST",
+        "JUNIPER_TELEGRAM_BOT_TOKEN",
+        "JUNIPER_TELEGRAM__ALLOWED_USER_IDS",
+    }
+    assert env["JUNIPER_TELEGRAM_BOT_TOKEN"].startswith("${")  # só referência, nunca o valor
+    mounts = BOT["volumes"]
+    assert not any(".env" in m.split(":/")[0] for m in mounts)
+    assert not any("certs" in m for m in mounts)
+    state = [m for m in mounts if mount_target(m) == "/home/juniper/.juniper/state"]
+    assert state == ["juniper-state:/home/juniper/.juniper/state:ro"]  # só LÊ o token do brain
+    assert all(m.endswith(":ro") for m in mounts)
+
+
+def test_the_bot_talks_to_the_brain_inside_the_compose_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from brain.clients import remote_cli
+
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(CONFIG_PROD))
+    monkeypatch.setenv(
+        "JUNIPER_DEPLOYMENT__SERVER__HOST", BOT["environment"]["JUNIPER_DEPLOYMENT__SERVER__HOST"]
+    )
+    monkeypatch.delenv("JUNIPER_DEPLOYMENT__MODE", raising=False)
+    loaded = Settings(_env_file=None)  # type: ignore[call-arg]
+    monkeypatch.setattr(remote_cli, "settings", loaded)
+    assert remote_cli.server_url() == "ws://brain:8765/v1/ws"  # a escuta 0.0.0.0 é do servidor
+    assert remote_cli.plaintext_warning() is None  # "brain" é um nome simples da rede privada
+    assert loaded.deployment.auth.token_file == Path("/home/juniper/.juniper/state/token")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("[]", []), ("[123456789]", [123456789]), ("[1, 2]", [1, 2])]
+)
+def test_the_allowlist_variable_is_a_json_list_and_the_default_means_nobody(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: list[int]
+) -> None:
+    default = BOT["environment"]["JUNIPER_TELEGRAM__ALLOWED_USER_IDS"]
+    assert default.endswith(":-[]}")  # sem a variável, a lista vem vazia
+    monkeypatch.setenv("JUNIPER_TELEGRAM__ALLOWED_USER_IDS", raw)
+    assert Settings(_env_file=None).telegram.allowed_user_ids == expected  # type: ignore[call-arg]
+
+
+def test_the_bot_healthcheck_uses_the_health_flag() -> None:
+    check = BOT["healthcheck"]
+    assert check["test"] == ["CMD", "python", "-m", "brain", "telegram", "--health"]
+    assert check["start_period"]  # dá tempo de conectar antes de contar falhas
+
+
+def test_ci_validates_the_compose_file_with_the_telegram_profile_on() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+    assert "--profile telegram" in workflow
