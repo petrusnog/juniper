@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot do Telegram — Livro de bolso Juniper</title>
+<meta name="description" content="O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/telegram.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Clientes / Bot do Telegram</div>
+<h1>Bot do Telegram <span class="tag a">proposto</span></h1>
+<p class="lead">O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página resume o <a href="adr-016.html">ADR-016</a>. O núcleo do bot (<code>brain/clients/telegram.py</code>, comando <code>juniper telegram</code>) está implementado; o serviço no compose de produção e o endurecimento (limite de mensagens, apagar depois de N horas) vêm nas tasks T-096 e T-097.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O bot do Telegram é um <strong>cliente</strong> da Juniper, como o <a href="cli.html">CLI</a>: leva o que você escreve ao cérebro pelo <a href="protocolo.html">protocolo</a> e mostra a resposta. Ele <strong>não</strong> é um executor: não age no seu celular. As tools (como o Google Calendar) rodam no cérebro e valem para qualquer cliente.</p>
+<pre><code class="lang-text">Seu celular ─► Telegram (nuvem) ◄── long polling ── Bot ──ws://brain:8765──► Cérebro ─► Google Calendar</code></pre>
+<ul><li>O bot <strong>busca</strong> as mensagens no Telegram (<em>long polling</em>): não abre porta pública nem usa <em>webhook</em>.</li><li>Ele fala com o cérebro pela rede interna do Docker; o <strong>celular não precisa do Tailscale</strong>.</li><li>Um cliente fino: sem lógica de agente e sem acesso ao MongoDB.</li></ul>
+<h2 id="criar">Criar o bot</h2>
+<ol><li>No Telegram, abra o <code>@BotFather</code> (o oficial tem o selo azul) e envie <code>/newbot</code>. Escolha um nome e um <em>username</em> terminado em <code>bot</code>.</li><li>O BotFather entrega o <strong>token</strong>. Ele é a senha do bot: guarde no gerenciador de senhas e <strong>nunca</strong> o coloque em código, PR, log ou conversa. Se vazar, <code>/revoke</code> no BotFather.</li><li>Desligue a entrada em grupos: <code>/mybots</code>, o bot, <strong>Bot Settings</strong>, <strong>Allow Groups?</strong>, <strong>Turn groups off</strong>.</li><li>Proteja a sua conta do Telegram com a verificação em duas etapas: quem controla a conta controla o BotFather.</li></ol>
+<h2 id="configurar">Configurar</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>O que</th><th>Onde</th><th>Exemplo</th></tr></thead><tbody><tr><td>Token do bot</td><td><code>.env</code>, <code>JUNIPER_TELEGRAM_BOT_TOKEN</code></td><td><code>123456:ABC...</code></td></tr><tr><td>Quem pode falar com o bot</td><td><code>telegram.allowed_user_ids</code> ou <code>JUNIPER_TELEGRAM__ALLOWED_USER_IDS</code></td><td><code>[123456789]</code></td></tr></tbody></table></div>
+<h3 id="descobrir-id">Descobrir o seu ID</h3>
+<p>O ID é um <strong>número</strong> (não o <em>username</em>). Não use bots de terceiros para descobri-lo. Suba o bot com a lista vazia e mande uma mensagem a ele: ninguém recebe resposta, e o log mostra uma linha como <code>Telegram: mensagem de usuário não autorizado (id=123456789)</code>. Copie o número para a lista e reinicie o bot. O <strong>texto</strong> da mensagem nunca vai para o log.</p>
+<h3 id="rodar-dev">Rodar na sua máquina (desenvolvimento)</h3>
+<p>Com o brain de pé (por exemplo, o <a href="dev-docker.html">ambiente de desenvolvimento</a>), em outro terminal:</p>
+<pre><code class="lang-bash">export JUNIPER_DEPLOYMENT__MODE=server
+export JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=&quot;$PWD/.juniper-dev/state/token&quot;
+export JUNIPER_TELEGRAM_BOT_TOKEN=&#x27;&lt;o token&gt;&#x27;
+export JUNIPER_TELEGRAM__ALLOWED_USER_IDS=&#x27;[123456789]&#x27;
+juniper telegram</code></pre>
+<p>O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém está autorizado.</p>
+<h2 id="autorizacao">Quem o bot atende</h2>
+<ul><li><strong>Só quem está na lista de permissão.</strong> Os outros não recebem resposta nenhuma; o ID vai para o log. Lista vazia significa <strong>ninguém</strong>.</li><li><strong>Só chats privados.</strong> Grupos, canais e outros bots são ignorados.</li><li><strong>O username do bot não protege nada:</strong> qualquer pessoa pode achá-lo. A proteção é a lista.</li></ul>
+<h2 id="conversa">Como a conversa funciona</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tema</th><th>Comportamento</th></tr></thead><tbody><tr><td><strong>Sessão</strong></td><td>Uma conversa contínua: ao conectar, o bot retoma a mais recente. <code>/novo</code> abre outra.</td></tr><tr><td><strong>Um turno por vez</strong></td><td>Se você escreve de novo durante uma resposta, o bot diz "Ainda estou respondendo". Não há fila.</td></tr><tr><td><strong>Resposta</strong></td><td>O Telegram não mostra texto chegando aos poucos: o bot mostra "digitando…" e manda a resposta inteira no fim, em partes de até 4.096 caracteres. Texto puro, sem formatação.</td></tr><tr><td><strong>Confirmação</strong></td><td>Como no CLI: a Juniper pergunta em palavras ("Posso criar o evento?") e o "sim" é a próxima mensagem. Sem botões.</td></tr><tr><td><strong>Erros</strong></td><td>O servidor manda uma mensagem amigável em PT-BR; o detalhe técnico fica de fora. Se o servidor cai, o bot avisa e reconecta sozinho.</td></tr><tr><td><strong>Queda no meio da resposta</strong></td><td>O turno termina no servidor; o bot recupera a resposta pelo histórico quando a conexão volta.</td></tr><tr><td><strong>Mensagens encaminhadas, áudio, foto, arquivo</strong></td><td>Recebem um aviso ("só entendo texto") e não chegam ao cérebro.</td></tr></tbody></table></div>
+<p>Comandos: <code>/ajuda</code> (e <code>/start</code>) mostra a ajuda; <code>/novo</code> começa uma conversa nova.</p>
+<h2 id="limites">O que o bot não faz</h2>
+<ul><li><strong>Só conversa.</strong> Memória (listar, buscar, exportar, apagar), perfil, <code>juniper tools</code> e o diário de mensagens <strong>não</strong> passam pelo Telegram. Assuntos sensíveis ficam no CLI e no desktop.</li><li><strong>Nunca grava o texto</strong> das mensagens em log nem em evento; só metadados (ID, tamanho, duração, resultado).</li><li><strong>Privacidade:</strong> as mensagens passam pelos servidores do Telegram e não têm criptografia ponta a ponta (os chats secretos não existem para bots). O que a Juniper guarda no seu servidor continua só seu.</li></ul>
+<h2 id="eventos">Eventos</h2>
+<p>Categoria <code>telegram</code> no <a href="observabilidade.html">eventlog</a>: <code>start</code>, <code>stop</code>, <code>message_in</code> (ID, tamanho), <code>unauthorized</code> (ID), <code>turn</code> (duração, <code>finish</code>), <code>ignored</code>, <code>error</code> (só o tipo).</p>
+<h2 id="saude">Saúde</h2>
+<p>O bot escreve um sinal de vida a cada 15 s (<code>/tmp/telegram-health</code>). <code>juniper telegram --health</code> sai com 0 se o sinal é recente, e é o que o <em>healthcheck</em> do contêiner usa.</p>
+<h2 id="tasks">Tasks</h2>
+<p>T-093 (ADR-016), T-094 (Google Calendar na VPS), T-095 (o bot), T-096 (serviço no compose e segredo), T-097 (limite de mensagens e apagar depois de N horas).</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

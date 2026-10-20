@@ -33,6 +33,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | Variável | O que é |
 |---|---|
 | `JUNIPER_DEEPINFRA_API_KEY` | Chave da DeepInfra (deepinfra.com/dash/api_keys). |
+| `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.html)). |
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
@@ -79,6 +80,14 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 |---|---|---|
 | `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
+
+## telegram {#telegram-config}
+
+O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token fica em `JUNIPER_TELEGRAM_BOT_TOKEN`, não aqui.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `telegram.allowed_user_ids` | `[]` | IDs **numéricos** do Telegram de quem pode falar com o bot. **Lista vazia = ninguém** (nunca "todos"). Pelo ambiente: `JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]`. |
 
 ## tools {#tools}
 

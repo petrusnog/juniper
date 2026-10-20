@@ -25,6 +25,7 @@ IMPORT_NAMES = {
     "python-dotenv": "dotenv",
     "google-api-python-client": "googleapiclient",
     "google-auth": "google.auth",
+    "python-telegram-bot": "telegram",
 }
 # Ferramentas de linha de comando: validadas executando `python -m <módulo> --version`.
 CLI_MODULES = {"ruff": "ruff"}

@@ -305,6 +305,14 @@ class TraceSettings(BaseModel):
     file: Path | None = None
 
 
+class TelegramSettings(BaseModel):
+    """O bot do Telegram, um cliente do protocolo (ADR-016). O token do bot fica no .env."""
+
+    # IDs numéricos de quem pode falar com o bot. Lista vazia = ninguém (nunca "todos"). Para
+    # descobrir o seu ID, mande uma mensagem ao bot e leia o log (`docker compose logs telegram`).
+    allowed_user_ids: list[int] = Field(default_factory=list)
+
+
 class PathsSettings(BaseModel):
     """Paths canônicos do runtime da Juniper.
 
@@ -369,10 +377,12 @@ class Settings(BaseSettings):
     google: GoogleSettings = Field(default_factory=GoogleSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
+    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
+    telegram_bot_token: SecretStr | None = Field(default=None, alias="JUNIPER_TELEGRAM_BOT_TOKEN")
 
     # Paths (calculados no model_post_init)
     paths: PathsSettings | None = None
