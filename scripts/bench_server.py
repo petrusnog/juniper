@@ -216,7 +216,12 @@ def bench_llm(model: str) -> dict[str, Any]:
     request = urllib.request.Request(
         DEEPINFRA_URL,
         data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            # o "Python-urllib" padrão é barrado por serviços atrás de uma CDN (HTTP 403)
+            "User-Agent": "juniper-bench/1.0",
+        },
     )
     samples: list[dict[str, float]] = []
     for _ in range(5):
@@ -227,8 +232,12 @@ def bench_llm(model: str) -> dict[str, Any]:
                 for line in response:
                     if first is None and line.startswith(b"data:") and b"[DONE]" not in line:
                         first = (time.perf_counter() - start) * 1000
+        except urllib.error.HTTPError as exc:
+            # o corpo da resposta nunca leva a chave; mostra o motivo sem expô-la
+            detail = exc.read(300).decode("utf-8", "replace").replace(key, "***")
+            return {"error": f"HTTP {exc.code}", "detail": detail}
         except urllib.error.URLError as exc:
-            return {"error": type(exc).__name__}
+            return {"error": type(exc).__name__, "detail": str(exc.reason)[:200]}
         samples.append(
             {"first_token_ms": first or 0.0, "total_ms": (time.perf_counter() - start) * 1000}
         )
