@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import ANY
 
 import pytest
 
@@ -34,6 +35,8 @@ class FakeMessenger:
         self.sent: list[tuple[int, str]] = []
         self.typing_calls = 0
         self.fail = False
+        self.deleted: list[tuple[int, int]] = []
+        self.fail_delete = False
 
     async def send_text(self, chat_id: int, text: str) -> int | None:
         if self.fail:
@@ -43,6 +46,11 @@ class FakeMessenger:
 
     async def typing(self, chat_id: int) -> None:
         self.typing_calls += 1
+
+    async def delete_message(self, chat_id: int, message_id: int) -> None:
+        if self.fail_delete:
+            raise RuntimeError("mensagem velha demais")
+        self.deleted.append((chat_id, message_id))
 
     @property
     def texts(self) -> list[str]:
@@ -493,7 +501,10 @@ async def test_the_messenger_sends_plain_text_with_no_parse_mode() -> None:
     assert await messenger.send_text(10, "*oi* [link](http://x)") == 42
     await messenger.typing(10)
     assert bot.calls == [
-        ("send_message", {"chat_id": 10, "text": "*oi* [link](http://x)"}),  # sem parse_mode
+        (
+            "send_message",
+            {"chat_id": 10, "text": "*oi* [link](http://x)", "link_preview_options": ANY},
+        ),  # sem parse_mode
         ("send_chat_action", {"chat_id": 10, "action": "typing"}),
     ]
 
@@ -542,12 +553,19 @@ def test_command_passes_the_token_and_the_allowlist_and_never_prints_the_token(
     from brain.clients.cli import app
     from brain.config import settings
 
-    seen: list[tuple[str, list[int]]] = []
-    monkeypatch.setattr(tg, "run_bot", lambda token, allowed: seen.append((token, allowed)))
+    seen: list[tuple[str, list[int], dict[str, Any]]] = []
+    monkeypatch.setattr(
+        tg, "run_bot", lambda token, allowed, **kw: seen.append((token, allowed, kw))
+    )
+    monkeypatch.setattr(settings.telegram, "rate_limit_per_minute", 7)
+    monkeypatch.setattr(settings.telegram, "delete_after_hours", 12.0)
     monkeypatch.setattr(settings, "telegram_bot_token", SecretStr("123456:ABC-fake"))
     monkeypatch.setattr(settings.telegram, "allowed_user_ids", [10, 20])
     result = CliRunner().invoke(app, ["telegram"])
-    assert result.exit_code == 0 and seen == [("123456:ABC-fake", [10, 20])]
+    assert result.exit_code == 0
+    assert seen == [
+        ("123456:ABC-fake", [10, 20], {"rate_limit_per_minute": 7, "delete_after_hours": 12.0})
+    ]
     assert "ABC-fake" not in result.output and "2 usuário(s)" in result.output
 
 
@@ -558,7 +576,7 @@ def test_command_warns_loudly_when_nobody_is_authorized(monkeypatch: pytest.Monk
     from brain.clients.cli import app
     from brain.config import settings
 
-    monkeypatch.setattr(tg, "run_bot", lambda token, allowed: None)
+    monkeypatch.setattr(tg, "run_bot", lambda token, allowed, **kw: None)
     monkeypatch.setattr(settings, "telegram_bot_token", SecretStr("123456:ABC-fake"))
     monkeypatch.setattr(settings.telegram, "allowed_user_ids", [])
     result = CliRunner().invoke(app, ["telegram"])
@@ -595,3 +613,436 @@ def test_the_default_allowlist_is_empty(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.delenv("JUNIPER_TELEGRAM__ALLOWED_USER_IDS", raising=False)
     assert Settings(_env_file=None).telegram.allowed_user_ids == []  # type: ignore[call-arg]
+
+
+# --- T-097: limite de mensagens ------------------------------------------------------------
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def test_messages_above_the_limit_are_refused_and_never_reach_the_brain(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    provider = FakeProvider([say("um"), say("dois"), say("três"), say("não deveria")])
+    messenger = FakeMessenger()
+    clock = Clock()
+    async with Scenario(provider, tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, rate_limit_per_minute=3, clock=clock)
+        for i in range(6):
+            await bridge.handle(msg(f"mensagem {i}"))
+        # as 3 primeiras foram ao cérebro; a 4ª recebeu o aviso; a 5ª e a 6ª, silêncio
+        assert messenger.texts == ["um", "dois", "três", tg.RATE_LIMITED]
+        assert len(provider.seen) == 3  # o LLM só foi chamado 3 vezes
+
+    assert messenger.texts[-1] == tg.RATE_LIMITED
+
+
+async def test_the_limit_recovers_when_the_window_passes(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    provider = FakeProvider([say("a1"), say("a2")])
+    messenger = FakeMessenger()
+    clock = Clock()
+    async with Scenario(provider, tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, rate_limit_per_minute=1, clock=clock)
+        await bridge.handle(msg("a"))
+        await bridge.handle(msg("a de novo"))  # passou do limite
+        clock.now += tg.RATE_WINDOW_SECONDS + 1
+        await bridge.handle(msg("a outra vez"))  # a janela passou: volta a valer
+    assert messenger.texts == ["a1", tg.RATE_LIMITED, "a2"]
+
+
+def test_rate_limiter_warns_once_per_window_then_drops() -> None:
+    clock = Clock()
+    limiter = tg.RateLimiter(2, window=60, clock=clock)
+    verdicts = [limiter.check(1) for _ in range(5)]
+    assert verdicts == ["allow", "allow", "warn", "drop", "drop"]
+    clock.now += 61
+    assert limiter.check(1) == "allow"
+    assert limiter.check(2) == "allow"  # outro usuário não é afetado
+
+
+async def test_a_burst_of_simultaneous_messages_runs_one_turn_and_tells_the_rest_to_wait(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    provider = GatedProvider("ok")
+    messenger = FakeMessenger()
+    async with Scenario(provider, tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger)
+        first = asyncio.create_task(bridge.handle(msg("a")))
+        await asyncio.wait_for(provider.started.wait(), 3)
+        await asyncio.gather(*(bridge.handle(msg(f"rajada {i}")) for i in range(9)))
+        assert messenger.texts == [tg.BUSY_TEXT] * 9  # nenhuma foi ao cérebro
+        provider.release.set()
+        await asyncio.wait_for(first, 3)
+    assert messenger.texts[-1] == "parcial ok"
+
+
+async def test_a_stranger_that_keeps_writing_never_gets_an_answer_and_logs_once(
+    tmp_path: Path,
+    bridges: list[tg.TelegramBridge],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    recorder = RecordingEventLog()
+    monkeypatch.setattr(tg, "event_log", recorder)
+    caplog.set_level(logging.WARNING, logger="brain")
+    messenger = FakeMessenger()
+    clock = Clock()
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, clock=clock)
+        for i in range(50):
+            await bridge.handle(msg(f"abre aí {i}", user_id=666, chat_id=666))
+        assert s.server.connections == []
+        warnings = [r for r in caplog.records if "id=666" in r.getMessage()]
+        assert len(warnings) == 1  # um aviso, não cinquenta
+        clock.now += tg.UNAUTHORIZED_LOG_INTERVAL_SECONDS + 1
+        await bridge.handle(msg("ainda aqui", user_id=666, chat_id=666))
+        assert len([r for r in caplog.records if "id=666" in r.getMessage()]) == 2
+    assert messenger.sent == []
+    assert [k["action"] for _, k in recorder.calls].count("unauthorized") == 2
+
+
+async def test_an_oversized_message_is_refused(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([say("não deveria")]), tmp_path) as s:
+        await make_bridge(bridges, s, messenger).handle(msg("x" * 5000))
+        assert s.server.connections == []
+    assert messenger.texts == [tg.TOO_LONG]
+
+
+# --- T-097: apagar depois de N horas -------------------------------------------------------
+
+
+class Sleeper:
+    """Um `sleep` que não espera: guarda os prazos pedidos."""
+
+    def __init__(self) -> None:
+        self.delays: list[float] = []
+
+    async def __call__(self, seconds: float) -> None:
+        self.delays.append(seconds)
+
+
+async def drain(bridge: tg.TelegramBridge) -> None:
+    await asyncio.gather(*bridge._deletions)
+
+
+async def test_with_delete_after_hours_the_users_message_and_the_reply_are_deleted(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    sleeper = Sleeper()
+    async with Scenario(FakeProvider([say("Resposta.")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=2.0, sleep=sleeper)
+        await bridge.handle(msg("oi", message_id=77))
+        await drain(bridge)
+    assert sleeper.delays == [2 * 3600]
+    # a mensagem do usuário (77) e a resposta do bot (a 1ª enviada, id 1 no mensageiro de teste)
+    assert messenger.deleted == [(CHAT, 77), (CHAT, 1)]
+
+
+async def test_notices_and_command_replies_are_deleted_too(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=1.0, sleep=Sleeper())
+        await bridge.handle(msg("/ajuda", message_id=5))
+        await bridge.handle(msg(None, message_id=6))  # áudio
+        await drain(bridge)
+    assert (CHAT, 5) in messenger.deleted and (CHAT, 6) in messenger.deleted
+    assert len(messenger.deleted) == 4  # 2 do usuário + 2 do bot
+
+
+async def test_with_delete_after_hours_off_nothing_is_ever_scheduled_or_deleted(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    sleeper = Sleeper()
+    async with Scenario(FakeProvider([say("Resposta.")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=0.0, sleep=sleeper)
+        await bridge.handle(msg("oi"))
+        assert bridge._deletions == set()
+    assert sleeper.delays == [] and messenger.deleted == []
+
+
+async def test_a_stranger_message_is_never_deleted_by_the_bot(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=1.0, sleep=Sleeper())
+        await bridge.handle(msg("oi", user_id=9, chat_id=9))
+        assert bridge._deletions == set()
+    assert messenger.deleted == []
+
+
+async def test_the_delay_is_capped_below_the_48_hour_api_limit(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    sleeper = Sleeper()
+    async with Scenario(FakeProvider([say("ok")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, FakeMessenger(), delete_after_hours=48.0, sleep=sleeper)
+        await bridge.handle(msg("oi"))
+        await drain(bridge)
+    assert sleeper.delays == [tg.MAX_DELETE_DELAY_HOURS * 3600]
+    assert tg.MAX_DELETE_DELAY_HOURS < 48
+
+
+async def test_a_failed_deletion_never_breaks_the_bot(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    messenger.fail_delete = True
+    async with Scenario(FakeProvider([say("a"), say("b")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=1.0, sleep=Sleeper())
+        await bridge.handle(msg("oi"))
+        await drain(bridge)  # as exclusões falharam em silêncio
+        await bridge.handle(msg("e agora?"))
+    assert messenger.texts == ["a", "b"]
+
+
+async def test_closing_the_bridge_cancels_pending_deletions_and_keeps_the_messages(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+
+    async def never(_: float) -> None:
+        await asyncio.sleep(3600)
+
+    async with Scenario(FakeProvider([say("ok")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger, delete_after_hours=1.0, sleep=never)
+        await bridge.handle(msg("oi"))
+        assert len(bridge._deletions) == 1
+        await bridge.close()
+        assert bridge._deletions == set()
+    assert messenger.deleted == []
+
+
+async def test_the_messenger_deletes_through_the_bot_api() -> None:
+    class FakeBot:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        async def delete_message(self, **kwargs: Any) -> None:
+            self.calls.append(kwargs)
+
+    bot = FakeBot()
+    await tg.PTBMessenger(bot).delete_message(10, 42)
+    assert bot.calls == [{"chat_id": 10, "message_id": 42}]
+
+
+# --- T-097: valores inválidos na configuração ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("DELETE_AFTER_HOURS", "-1"),
+        ("DELETE_AFTER_HOURS", "49"),
+        ("RATE_LIMIT_PER_MINUTE", "0"),
+        ("RATE_LIMIT_PER_MINUTE", "-5"),
+        ("RATE_LIMIT_PER_MINUTE", "100000"),
+    ],
+)
+def test_invalid_limits_are_rejected_at_load_time(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    from pydantic import ValidationError
+
+    from brain.config import Settings
+
+    monkeypatch.setenv(f"JUNIPER_TELEGRAM__{name}", value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_valid_limits_load_and_the_defaults_are_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    from brain.config import Settings
+
+    for name in ("DELETE_AFTER_HOURS", "RATE_LIMIT_PER_MINUTE"):
+        monkeypatch.delenv(f"JUNIPER_TELEGRAM__{name}", raising=False)
+    default = Settings(_env_file=None).telegram  # type: ignore[call-arg]
+    assert (default.rate_limit_per_minute, default.delete_after_hours) == (
+        20,
+        0.0,
+    )  # nada é apagado
+    monkeypatch.setenv("JUNIPER_TELEGRAM__DELETE_AFTER_HOURS", "48")
+    monkeypatch.setenv("JUNIPER_TELEGRAM__RATE_LIMIT_PER_MINUTE", "5")
+    loaded = Settings(_env_file=None).telegram  # type: ignore[call-arg]
+    assert (loaded.rate_limit_per_minute, loaded.delete_after_hours) == (5, 48.0)
+
+
+# --- outra janela assume a conversa ---------------------------------------------------------
+
+
+async def test_when_another_window_takes_the_conversation_the_bot_opens_a_new_one(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    """O CLI com `--resume` assume a conversa do bot: o bot não trava nem rouba de volta."""
+    from tests.test_chat_server import connect_client
+
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([say("Primeira."), say("Segunda.")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger)
+        await bridge.handle(msg("oi"))
+        (conn,) = s.server.connections
+        session = conn.session_id
+        taker = await connect_client(s.server, "cli", session_id=session)  # `juniper --resume`
+        await wait_until(lambda: conn.state is None)  # o bot perdeu a conversa
+        async with asyncio.timeout(5):  # antes da correção, isto travava para sempre
+            await bridge.handle(msg("e agora?"))
+        assert conn.session_id != session  # o bot abriu uma conversa nova
+        assert taker.welcome.session.id == session  # e a do terminal continua com o terminal
+    assert messenger.texts == ["Primeira.", tg.TAKEN_OVER, "Segunda."]
+
+
+async def test_a_takeover_in_the_middle_of_the_bots_turn_is_reported_and_does_not_hang(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    from tests.test_chat_server import connect_client
+
+    provider = GatedProvider("pronto")
+    messenger = FakeMessenger()
+    async with Scenario(provider, tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger)
+        running = asyncio.create_task(bridge.handle(msg("conta uma história")))
+        await asyncio.wait_for(provider.started.wait(), 3)
+        (conn,) = s.server.connections
+        await connect_client(s.server, "cli", session_id=conn.session_id)  # `juniper --resume`
+        async with asyncio.timeout(5):
+            await running
+        provider.release.set()
+    assert messenger.texts == [
+        "Outra janela assumiu esta conversa; o resto da resposta vai aparecer lá."
+    ]
+
+
+# --- achados da revisão de segurança -------------------------------------------------------
+
+
+async def test_after_slash_novo_the_clients_reconnection_keeps_the_new_conversation(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([say("Velha.")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger)
+        await bridge.handle(msg("oi"))
+        (conn,) = s.server.connections
+        old = conn.session_id
+        await bridge.handle(msg("/novo"))
+        client = bridge._users[OWNER].client
+        assert client is not None and isinstance(client, RemoteClient)
+        assert client.session_id == conn.session_id != old  # o cliente sabe qual é a conversa
+        assert client._resume is not None and client._resume.session_id == conn.session_id
+
+
+async def test_replies_are_sent_without_link_previews() -> None:
+    class FakeBot:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, Any] = {}
+
+        async def send_message(self, **kwargs: Any) -> Any:
+            self.kwargs = kwargs
+            return type("Sent", (), {"message_id": 1})()
+
+    bot = FakeBot()
+    await tg.PTBMessenger(bot).send_text(10, "veja https://exemplo.com/?d=segredo")
+    preview = bot.kwargs["link_preview_options"]
+    assert preview.is_disabled is True  # o Telegram não busca a URL sozinho
+    assert "parse_mode" not in bot.kwargs
+
+
+def test_a_rejected_token_never_reaches_the_traceback_or_the_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import SecretStr
+    from telegram.error import InvalidToken
+    from telegram.ext import Application
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app
+    from brain.config import settings
+
+    secret = "123456:ABC-token-que-o-telegram-recusou"
+
+    def rejected(self: Any, *args: Any, **kwargs: Any) -> None:
+        raise InvalidToken(f"The token `{secret}` was rejected by the server.")
+
+    monkeypatch.setattr(Application, "run_polling", rejected)
+    monkeypatch.setattr(settings, "telegram_bot_token", SecretStr(secret))
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [10])
+    result = CliRunner().invoke(app, ["telegram"])
+    assert result.exit_code == 1
+    assert "recusou o token do bot" in result.output
+    assert secret not in result.output and secret not in repr(result.exception)
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_a_telegram_outage_at_startup_also_hides_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from telegram.error import NetworkError
+    from telegram.ext import Application
+
+    def down(self: Any, *args: Any, **kwargs: Any) -> None:
+        raise NetworkError("falhou em https://api.telegram.org/bot123456:ABC/getMe")
+
+    monkeypatch.setattr(Application, "run_polling", down)
+    monkeypatch.setattr(tg, "make_client_factory", lambda: lambda _: None)  # type: ignore[arg-type,return-value]
+    with pytest.raises(tg.BotStartError) as info:
+        tg.run_bot("123456:ABC", [10])
+    assert "123456:ABC" not in str(info.value) and "NetworkError" in str(info.value)
+
+
+def test_more_than_one_authorized_id_gets_a_loud_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import SecretStr
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app
+    from brain.config import settings
+
+    monkeypatch.setattr(tg, "run_bot", lambda token, allowed, **kw: None)
+    monkeypatch.setattr(settings, "telegram_bot_token", SecretStr("123456:ABC-fake"))
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [10, 20])
+    result = CliRunner().invoke(app, ["telegram"])
+    flat = " ".join(result.output.split())  # o terminal quebra linhas no meio da frase
+    assert "Mais de um ID autorizado" in flat and "Use um único ID" in flat
+
+
+async def test_command_errors_also_hide_the_technical_detail(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    class RefusingClient(DroppingClient):
+        async def request(self, frame: dict[str, Any], timeout: float = 60.0) -> p.ServerMessage:
+            raise ServerError(
+                p.Error.from_code("internal", "Algo deu errado.\nDetalhe técnico: Traceback (x)")
+            )
+
+    messenger = FakeMessenger()
+    bridge = tg.TelegramBridge([OWNER], messenger, lambda _: RefusingClient([]))
+    await bridge.handle(msg("/novo"))
+    assert messenger.texts == ["Algo deu errado."]
+
+
+async def test_the_unauthorized_log_is_pruned_so_it_cannot_grow_without_bound(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    clock = Clock()
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, FakeMessenger(), clock=clock)
+        for uid in range(100, 150):
+            await bridge.handle(msg("oi", user_id=uid, chat_id=uid))
+        assert len(bridge._unauthorized_logged) == 50
+        clock.now += tg.UNAUTHORIZED_LOG_INTERVAL_SECONDS + 1
+        await bridge.handle(msg("oi", user_id=999, chat_id=999))
+        assert set(bridge._unauthorized_logged) == {999}  # os velhos saíram

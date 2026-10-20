@@ -87,6 +87,8 @@ O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token 
 
 | Opção | Padrão | O que faz |
 |---|---|---|
+| `telegram.rate_limit_per_minute` | `20` | Mensagens por minuto por usuário (de 1 a 600). Acima disso o bot avisa **uma vez** por janela e **não chama o cérebro**: um erro de loop não vira conta de LLM. |
+| `telegram.delete_after_hours` | `0` | Apagar a mensagem do usuário e a resposta do bot depois de N horas (de 0 a 48). `0` desliga. O Telegram só deixa o bot apagar mensagens com menos de 48 h, então o prazo efetivo é limitado a 47,5 h. O agendamento fica em memória: se o bot reiniciar, o que estava marcado **não** é apagado. |
 | `telegram.allowed_user_ids` | `[]` | IDs **numéricos** do Telegram de quem pode falar com o bot. **Lista vazia = ninguém** (nunca "todos"). Pelo ambiente: `JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]`. |
 
 ## tools {#tools}

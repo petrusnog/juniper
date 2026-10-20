@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import time
-from collections.abc import Callable
+from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -43,6 +45,11 @@ RECOVER_WAIT_SECONDS: Final = 60.0
 HEALTH_FILE: Final = Path("/tmp/telegram-health")
 HEALTH_INTERVAL_SECONDS: Final = 15.0
 HEALTH_MAX_AGE_SECONDS: Final = 60.0
+RATE_WINDOW_SECONDS: Final = 60.0
+UNAUTHORIZED_LOG_INTERVAL_SECONDS: Final = 600.0
+# O Telegram só deixa apagar mensagens com menos de 48 h: com N = 48 a do usuário (um pouco mais
+# velha que a resposta) já teria passado do prazo.
+MAX_DELETE_DELAY_HOURS: Final = 47.5
 
 HELP_TEXT: Final = (
     "Oi! Eu sou a Juniper. Escreva o que precisa, como faria no terminal.\n\n"
@@ -57,6 +64,9 @@ ONLY_TEXT: Final = "Por enquanto só entendo texto."
 NO_FORWARDS: Final = "Não aceito mensagens encaminhadas. Escreva você mesmo o que precisa."
 UNKNOWN_COMMAND: Final = "Não conheço esse comando. Use /ajuda."
 NEW_CONVERSATION: Final = "Conversa nova. Pode falar."
+TAKEN_OVER: Final = (
+    "Outra janela (o terminal ou o desktop) assumiu a nossa conversa, então abri uma conversa nova."
+)
 EMPTY_REPLY: Final = "Não tenho o que responder agora. Tenta de outro jeito?"
 UNFINISHED: Final = "Não consegui terminar essa resposta. Tenta de novo?"
 AUTH_FAILED: Final = (
@@ -64,6 +74,8 @@ AUTH_FAILED: Final = (
 )
 LOST_TEXT: Final = "A conexão com o servidor caiu no meio da resposta. Vou tentar recuperá-la."
 UNAVAILABLE_TEXT: Final = f"{UNAVAILABLE_MESSAGE} Tenta de novo daqui a pouco."
+RATE_LIMITED: Final = "Muitas mensagens em pouco tempo. Espera um minuto e tenta de novo."
+TOO_LONG: Final = "Essa mensagem é grande demais. Manda em partes menores?"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -91,9 +103,14 @@ class Messenger(Protocol):
     async def typing(self, chat_id: int) -> None:
         """Mostra "digitando…" no chat."""
 
+    async def delete_message(self, chat_id: int, message_id: int) -> None:
+        """Apaga uma mensagem do chat (só as com menos de 48 h)."""
+
 
 class BrainClient(Protocol):
     """A parte do `RemoteClient` de que o bot depende."""
+
+    detached: bool  # outra conexão (o CLI com `--resume`, o desktop) assumiu a conversa
 
     async def start(self, resume: p.Resume | None = None, wait: float = ...) -> p.Welcome: ...
     async def chat(self, text: str, on_token: Callable[[str], None]) -> ChatResult: ...
@@ -104,6 +121,11 @@ class BrainClient(Protocol):
 
 
 ClientFactory = Callable[[int], BrainClient]
+
+
+def _friendly(message: str) -> str:
+    """O texto amigável do servidor, sem o "Detalhe técnico" (que fica só no log dele)."""
+    return message.split("\nDetalhe técnico:")[0].strip()
 
 
 def split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
@@ -122,6 +144,37 @@ def split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
     if text:
         parts.append(text)
     return parts
+
+
+class RateLimiter:
+    """Janela deslizante por usuário. Na primeira recusa de uma janela avisa; depois, silêncio."""
+
+    def __init__(
+        self,
+        limit: int,
+        window: float = RATE_WINDOW_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._limit = limit
+        self._window = window
+        self._clock = clock
+        self._hits: dict[int, deque[float]] = {}
+        self._warned: set[int] = set()
+
+    def check(self, user_id: int) -> str:
+        """`"allow"`, `"warn"` (recusa e avisa) ou `"drop"` (recusa em silêncio)."""
+        now = self._clock()
+        hits = self._hits.setdefault(user_id, deque())
+        while hits and now - hits[0] >= self._window:
+            hits.popleft()
+        if len(hits) < self._limit:
+            hits.append(now)
+            self._warned.discard(user_id)
+            return "allow"
+        if user_id in self._warned:
+            return "drop"
+        self._warned.add(user_id)
+        return "warn"
 
 
 @dataclass
@@ -144,14 +197,31 @@ class TelegramBridge:
         client_factory: ClientFactory,
         *,
         typing_interval: float = TYPING_INTERVAL_SECONDS,
+        rate_limit_per_minute: int = 20,
+        delete_after_hours: float = 0.0,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._allowed = frozenset(allowed_user_ids)
         self._messenger = messenger
         self._factory = client_factory
         self._typing_interval = typing_interval
+        self._limiter = RateLimiter(rate_limit_per_minute, clock=clock)
+        self._delete_after = min(max(delete_after_hours, 0.0), MAX_DELETE_DELAY_HOURS) * 3600
+        self._clock = clock
+        self._sleep = sleep
         self._users: dict[int, _User] = {}
+        self._unauthorized_logged: dict[int, float] = {}
+        self._deletions: set[asyncio.Task[None]] = set()
+        # Os ids das mensagens do turno que está sendo tratado (cada tarefa tem o seu).
+        self._sent_ids: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar(
+            "telegram_sent_ids", default=None
+        )
 
     async def close(self) -> None:
+        for task in list(self._deletions):  # as mensagens ficam: o agendamento é só em memória
+            task.cancel()
+        await asyncio.gather(*self._deletions, return_exceptions=True)
         for user in self._users.values():
             if user.client is not None:
                 with contextlib.suppress(Exception):
@@ -174,9 +244,13 @@ class TelegramBridge:
             event_log.log("telegram", action="ignored", reason="not_private", chat=msg.chat_type)
             return
         if msg.user_id not in self._allowed:
-            # O ID (nunca o texto) vai ao log: é assim que o dono descobre o próprio ID.
-            logger.warning("Telegram: mensagem de usuário não autorizado (id=%s)", msg.user_id)
-            event_log.log("telegram", action="unauthorized", user_id=msg.user_id)
+            self._log_unauthorized(msg.user_id)
+            return
+        verdict = self._limiter.check(msg.user_id)
+        if verdict != "allow":  # excedeu o limite: nada chega ao cérebro
+            event_log.log("telegram", action="rate_limited", user_id=msg.user_id, notified=verdict)
+            if verdict == "warn":
+                await self._say(msg.chat_id, RATE_LIMITED)
             return
         event_log.log(
             "telegram",
@@ -185,14 +259,57 @@ class TelegramBridge:
             chars=len(msg.text or ""),
             forwarded=msg.forwarded,
         )
-        if msg.forwarded:
-            await self._say(msg.chat_id, NO_FORWARDS)
-        elif msg.text is None:
-            await self._say(msg.chat_id, ONLY_TEXT)
-        elif msg.text.startswith("/"):
-            await self._command(msg, msg.text)
-        else:
-            await self._turn(msg, msg.text)
+        sent: list[int] = []
+        token = self._sent_ids.set(sent)
+        try:
+            if msg.forwarded:
+                await self._say(msg.chat_id, NO_FORWARDS)
+            elif msg.text is None:
+                await self._say(msg.chat_id, ONLY_TEXT)
+            elif len(msg.text) > TELEGRAM_MESSAGE_LIMIT:
+                await self._say(msg.chat_id, TOO_LONG)
+            elif msg.text.startswith("/"):
+                await self._command(msg, msg.text)
+            else:
+                await self._turn(msg, msg.text)
+        finally:
+            self._sent_ids.reset(token)
+        self._schedule_deletion(msg.chat_id, [msg.message_id, *sent])
+
+    def _log_unauthorized(self, user_id: int) -> None:
+        """O ID (nunca o texto) vai ao log: é assim que o dono descobre o próprio ID.
+
+        No máximo uma vez a cada 10 minutos por ID: quem insiste não enche o log.
+        """
+        now = self._clock()
+        last = self._unauthorized_logged.get(user_id)
+        if last is not None and now - last < UNAUTHORIZED_LOG_INTERVAL_SECONDS:
+            return
+        self._unauthorized_logged = {  # poda: só os ainda dentro do intervalo
+            uid: at
+            for uid, at in self._unauthorized_logged.items()
+            if now - at < UNAUTHORIZED_LOG_INTERVAL_SECONDS
+        }
+        self._unauthorized_logged[user_id] = now
+        logger.warning("Telegram: mensagem de usuário não autorizado (id=%s)", user_id)
+        event_log.log("telegram", action="unauthorized", user_id=user_id)
+
+    # --- apagar depois de N horas (opcional) ---
+
+    def _schedule_deletion(self, chat_id: int, message_ids: list[int]) -> None:
+        if self._delete_after <= 0 or not message_ids:
+            return
+        task = asyncio.get_running_loop().create_task(self._delete_later(chat_id, message_ids))
+        self._deletions.add(task)
+        task.add_done_callback(self._deletions.discard)
+
+    async def _delete_later(self, chat_id: int, message_ids: list[int]) -> None:
+        await self._sleep(self._delete_after)
+        for message_id in message_ids:
+            try:
+                await self._messenger.delete_message(chat_id, message_id)
+            except Exception as exc:  # já apagada, velha demais, Telegram fora: não importa
+                event_log.log("telegram", action="error", where="delete", type=type(exc).__name__)
 
     # --- comandos ---
 
@@ -217,10 +334,10 @@ class TelegramBridge:
             try:
                 await client.request({"type": "session.new"})
             except ServerError as exc:
-                await self._say(msg.chat_id, exc.error.message)
+                await self._say(msg.chat_id, _friendly(exc.error.message))
                 return
             except RemoteError as exc:
-                await self._say(msg.chat_id, str(exc) or UNAVAILABLE_TEXT)
+                await self._say(msg.chat_id, _friendly(str(exc)) or UNAVAILABLE_TEXT)
                 return
             user.known_turns = 0
             await self._say(msg.chat_id, NEW_CONVERSATION)
@@ -235,6 +352,8 @@ class TelegramBridge:
         async with user.lock:
             client = await self._connected(user, msg)
             if client is None:
+                return
+            if not await self._reattach(client, user, msg):
                 return
             pieces: list[str] = []
             typing = asyncio.get_running_loop().create_task(self._typing_loop(msg.chat_id))
@@ -269,11 +388,26 @@ class TelegramBridge:
             )
             await self._say(msg.chat_id, reply)
 
+    async def _reattach(self, client: BrainClient, user: _User, msg: Incoming) -> bool:
+        """Se outra conexão assumiu a conversa, abre uma nova (sem roubá-la de volta)."""
+        if not getattr(client, "detached", False):
+            return True
+        try:
+            await client.request({"type": "session.new"})
+        except RemoteError as exc:
+            await self._say(msg.chat_id, _friendly(str(exc)) or UNAVAILABLE_TEXT)
+            return False
+        client.detached = False
+        user.known_turns = 0
+        event_log.log("telegram", action="reattached", user_id=msg.user_id)
+        await self._say(msg.chat_id, TAKEN_OVER)
+        return True
+
     @staticmethod
     def _reply_for(result: ChatResult, text: str) -> str:
         if result.error is not None:
             # O servidor manda o texto amigável em PT-BR; o "Detalhe técnico" fica só no log dele.
-            return result.error.message.split("\nDetalhe técnico:")[0].strip()
+            return _friendly(result.error.message)
         if result.finish == "error":
             return UNFINISHED
         return text.strip() or EMPTY_REPLY
@@ -331,12 +465,15 @@ class TelegramBridge:
             await asyncio.sleep(self._typing_interval)
 
     async def _say(self, chat_id: int, text: str) -> None:
+        sent = self._sent_ids.get()
         for part in split_message(text) or [EMPTY_REPLY]:
             try:
-                await self._messenger.send_text(chat_id, part)
+                message_id = await self._messenger.send_text(chat_id, part)
             except Exception as exc:  # o Telegram pode recusar/cair: só o tipo vai ao log
                 event_log.log("telegram", action="error", where="send", type=type(exc).__name__)
                 return
+            if sent is not None and message_id is not None:
+                sent.append(message_id)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -385,11 +522,33 @@ class PTBMessenger:
         self._bot = bot
 
     async def send_text(self, chat_id: int, text: str) -> int | None:
-        sent = await self._bot.send_message(chat_id=chat_id, text=text)
+        from telegram import LinkPreviewOptions
+
+        # Sem pré-visualização: o Telegram buscaria sozinho qualquer URL da resposta (um convite de
+        # calendário malicioso poderia pedir ao LLM uma URL com dados na query), sem clique.
+        sent = await self._bot.send_message(
+            chat_id=chat_id, text=text, link_preview_options=LinkPreviewOptions(is_disabled=True)
+        )
         return int(sent.message_id)
 
     async def typing(self, chat_id: int) -> None:
         await self._bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    async def delete_message(self, chat_id: int, message_id: int) -> None:
+        await self._bot.delete_message(chat_id=chat_id, message_id=message_id)
+
+
+class BotStartError(Exception):
+    """O bot não conseguiu subir. `str(exc)` é seguro de imprimir: nunca leva o token."""
+
+
+def _start_failure(exc: Exception) -> str:
+    if type(exc).__name__ == "InvalidToken":
+        return (
+            "O Telegram recusou o token do bot. Confira JUNIPER_TELEGRAM_BOT_TOKEN no .env "
+            "(se você revogou o token no @BotFather, use o novo)."
+        )
+    return f"Não consegui falar com o Telegram ao subir ({type(exc).__name__}). Tento de novo."
 
 
 def make_client_factory() -> ClientFactory:
@@ -409,18 +568,37 @@ def make_client_factory() -> ClientFactory:
     return factory
 
 
-def run_bot(token: str, allowed_user_ids: list[int]) -> None:
+def run_bot(
+    token: str,
+    allowed_user_ids: list[int],
+    *,
+    rate_limit_per_minute: int = 20,
+    delete_after_hours: float = 0.0,
+) -> None:
     """Sobe o bot (long polling) e só volta quando ele é parado (SIGINT/SIGTERM)."""
     from telegram import Update
+    from telegram.error import TelegramError
     from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
     factory = make_client_factory()
 
     async def post_init(app: Application) -> None:  # type: ignore[type-arg]
-        bridge = TelegramBridge(allowed_user_ids, PTBMessenger(app.bot), factory)
+        bridge = TelegramBridge(
+            allowed_user_ids,
+            PTBMessenger(app.bot),
+            factory,
+            rate_limit_per_minute=rate_limit_per_minute,
+            delete_after_hours=delete_after_hours,
+        )
         app.bot_data["bridge"] = bridge
         app.bot_data["heartbeat"] = asyncio.get_running_loop().create_task(_heartbeat())
-        event_log.log("telegram", action="start", allowed=len(allowed_user_ids))
+        event_log.log(
+            "telegram",
+            action="start",
+            allowed=len(allowed_user_ids),
+            rate_limit=rate_limit_per_minute,
+            delete_after_hours=delete_after_hours,
+        )
 
     async def post_shutdown(app: Application) -> None:  # type: ignore[type-arg]
         task = app.bot_data.get("heartbeat")
@@ -451,8 +629,13 @@ def run_bot(token: str, allowed_user_ids: list[int]) -> None:
     )
     app.add_handler(MessageHandler(filters.ALL, on_update))
     app.add_error_handler(on_error)
-    # `drop_pending_updates`: depois de uma pausa, não responder a pedidos velhos de horas atrás.
-    app.run_polling(allowed_updates=[Update.MESSAGE], drop_pending_updates=True)
+    try:
+        # `drop_pending_updates`: depois de uma pausa, não responde a pedidos velhos de horas.
+        app.run_polling(allowed_updates=[Update.MESSAGE], drop_pending_updates=True)
+    except TelegramError as exc:
+        # A mensagem da biblioteca inclui o token ("The token `...` was rejected"): só o tipo sai.
+        event_log.log("telegram", action="error", where="start", type=type(exc).__name__)
+        raise BotStartError(_start_failure(exc)) from None
 
 
 async def _heartbeat() -> None:

@@ -388,6 +388,9 @@ def test_the_bot_gets_least_privilege_secrets() -> None:
     }
     assert env["JUNIPER_TELEGRAM_BOT_TOKEN"].startswith("${")  # só referência, nunca o valor
     mounts = BOT["volumes"]
+    # Sempre o config de produção (só `deployment`): nunca o pessoal nem a variável que o troca.
+    assert "./docker/config.prod.yaml:/home/juniper/.juniper/config.yaml:ro" in mounts
+    assert not any("JUNIPER_CONFIG_FILE" in m or "BASE_CONFIG" in m for m in mounts)
     assert not any(".env" in m.split(":/")[0] for m in mounts)
     assert not any("certs" in m for m in mounts)
     state = [m for m in mounts if mount_target(m) == "/home/juniper/.juniper/state"]

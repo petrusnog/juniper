@@ -217,3 +217,74 @@ async def test_connection_dropped_mid_turn_raises_and_the_reply_is_saved_on_the_
             except ServerError:
                 await asyncio.sleep(0.05)
     assert [(h.role, h.text) for h in history][-1] == ("assistant", "parcial resposta completa")
+
+
+async def test_a_request_refused_before_the_turn_returns_instead_of_hanging(
+    tmp_path: Path,
+) -> None:
+    """Outra conexão assumiu a conversa: o servidor responde `error` e NÃO manda `chat.end`."""
+    async with Env(tmp_path, FakeProvider([say("não deveria")])) as env:
+        first = env.client(device="a")
+        welcome = await first.start()
+        taker = env.client(device="b")
+        await taker.start(p.Resume(session_id=welcome.session.id))  # assume a conversa
+        await wait_until(lambda: first.detached)
+        async with asyncio.timeout(3):  # antes da correção, isto esperava para sempre
+            result = await first.chat("alguém aí?", lambda _t: None)
+        assert result.finish == "error" and result.turn_id is None
+        assert result.error is not None and result.error.code == "bad_request"
+        assert first.connected  # a conexão continua boa
+
+
+async def test_a_takeover_in_the_middle_of_a_turn_ends_it_instead_of_hanging(
+    tmp_path: Path,
+) -> None:
+    provider = GatedProvider("pronto")
+    async with Env(tmp_path, provider) as env:
+        client = env.client()
+        await client.start()
+        running = asyncio.create_task(client.chat("primeira", lambda _t: None))
+        await asyncio.wait_for(provider.started.wait(), 3)
+        taker = env.client(device="outra")  # `juniper --resume` em outra janela
+        await taker.start(p.Resume(session_id=client.session_id))
+        async with asyncio.timeout(3):  # antes da correção, esperava para sempre
+            result = await running
+        assert result.finish == "error" and result.error is not None
+        assert result.error.message == remote.DETACHED_MESSAGE
+        provider.release.set()  # o turno termina no servidor, sem ninguém esperando por ele
+        assert client.detached and client.connected
+
+
+async def test_after_session_new_a_reconnection_never_goes_back_to_the_old_conversation(
+    tmp_path: Path,
+) -> None:
+    """`/novo` no bot: uma queda depois dele não pode voltar à conversa antiga."""
+    async with Env(tmp_path, FakeProvider([say("Velha."), say("Nova.")])) as env:
+        client = env.client()
+        old = (await client.start()).session.id
+        await client.chat("conversa velha", lambda _t: None)
+        reply = await client.request({"type": "session.new"})
+        assert isinstance(reply, p.SessionState)
+        assert client.session_id == reply.session_id != old  # o cliente sabe qual é a conversa
+        await env.restart()  # o servidor cai e volta: o cliente reconecta sozinho
+        await asyncio.wait_for(client.reconnected.wait(), 5)
+        assert client.welcome is not None
+        assert client.welcome.session.id != old  # (uma conversa vazia não é salva: abre outra)
+        assert client.welcome.session.turns == 0
+
+
+async def test_after_session_new_and_a_message_a_reconnection_resumes_the_new_one(
+    tmp_path: Path,
+) -> None:
+    async with Env(tmp_path, FakeProvider([say("Velha."), say("Nova.")])) as env:
+        client = env.client()
+        old = (await client.start()).session.id
+        await client.chat("conversa velha", lambda _t: None)
+        reply = await client.request({"type": "session.new"})
+        assert isinstance(reply, p.SessionState)
+        await client.chat("conversa nova", lambda _t: None)  # agora ela fica salva
+        await env.restart()
+        await asyncio.wait_for(client.reconnected.wait(), 5)
+        assert client.welcome is not None
+        assert client.welcome.session.id == reply.session_id != old
+        assert client.welcome.session.resumed is True and client.welcome.session.turns == 1
