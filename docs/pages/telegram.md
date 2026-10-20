@@ -82,7 +82,7 @@ Agora mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.en
 
 | Sintoma | Causa e solução |
 |---|---|
-| O contêiner reinicia sem parar | Falta `JUNIPER_TELEGRAM_BOT_TOKEN` (o log diz). Preencha o `.env` e rode `up -d telegram`. |
+| O contêiner reinicia sem parar | Falta `JUNIPER_TELEGRAM_BOT_TOKEN`, ou o Telegram **recusou o token** (o log diz qual dos dois; o token nunca aparece no log). Corrija o `.env` e rode `up -d telegram`. |
 | O bot não responde a você | O seu ID não está na lista (o log mostra `não autorizado (id=...)`), ou você escreveu num grupo. |
 | "Não consegui falar com o servidor" | O brain não está saudável: veja `ps` e `logs brain`. |
 | `unhealthy` | O laço do bot travou; `logs telegram` mostra o motivo. O Docker reinicia o contêiner. |
@@ -102,6 +102,7 @@ Agora mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.en
 | **Um turno por vez** | Se você escreve de novo durante uma resposta, o bot diz "Ainda estou respondendo". Não há fila. |
 | **Resposta** | O Telegram não mostra texto chegando aos poucos: o bot mostra "digitando…" e manda a resposta inteira no fim, em partes de até 4.096 caracteres. Texto puro, sem formatação. |
 | **Confirmação** | Como no CLI: a Juniper pergunta em palavras ("Posso criar o evento?") e o "sim" é a próxima mensagem. Sem botões. |
+| **Links** | As respostas saem **sem pré-visualização de link**: o Telegram não busca sozinho as URLs do texto (uma URL maliciosa vinda de um convite de calendário não vira um canal de vazamento sem clique). |
 | **Erros** | O servidor manda uma mensagem amigável em PT-BR; o detalhe técnico fica de fora. Se o servidor cai, o bot avisa e reconecta sozinho. |
 | **Queda no meio da resposta** | O turno termina no servidor; o bot recupera a resposta pelo histórico quando a conexão volta. |
 | **Mensagens encaminhadas, áudio, foto, arquivo** | Recebem um aviso ("só entendo texto") e não chegam ao cérebro. |
@@ -123,7 +124,7 @@ Detalhes do apagar: só vale para mensagens com menos de 48 h (por isso o prazo 
 
 No servidor, uma conversa fica ligada a **uma conexão por vez** ([Protocolo](protocolo.html#sessoes)). Se você abrir o terminal com `juniper --resume` (ou o desktop) enquanto conversa pelo Telegram, a janela nova **assume** a conversa. O bot percebe: se estava no meio de uma resposta, avisa que "outra janela assumiu" e o resto aparece lá; na mensagem seguinte abre uma **conversa nova**, sem roubar a conversa de volta.
 
-Com **mais de um ID** na lista, todos compartilham a conversa mais recente (o servidor é de um usuário só). Use um único ID.
+Com **mais de um ID** na lista, todos compartilham a conversa mais recente e leem o histórico uns dos outros (o servidor é de um usuário só). O comando avisa em voz alta. Use um único ID.
 
 ## O que o bot não faz {#limites}
 

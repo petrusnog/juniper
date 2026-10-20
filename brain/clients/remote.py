@@ -379,6 +379,11 @@ class RemoteClient:
             self._pending.pop(request_id, None)
         if isinstance(reply, p.Error):
             raise ServerError(reply)
+        if isinstance(reply, p.SessionState):
+            # `session.new`/`session.resume`: é essa a conversa a retomar numa reconexão. Senão uma
+            # queda depois de `/novo` voltaria à conversa antiga (e roubaria a de outra janela).
+            self.session_id = reply.session_id
+            self._resume = p.Resume(session_id=reply.session_id)
         return reply
 
     # --- chat ---

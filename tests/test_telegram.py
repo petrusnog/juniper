@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import ANY
 
 import pytest
 
@@ -500,7 +501,10 @@ async def test_the_messenger_sends_plain_text_with_no_parse_mode() -> None:
     assert await messenger.send_text(10, "*oi* [link](http://x)") == 42
     await messenger.typing(10)
     assert bot.calls == [
-        ("send_message", {"chat_id": 10, "text": "*oi* [link](http://x)"}),  # sem parse_mode
+        (
+            "send_message",
+            {"chat_id": 10, "text": "*oi* [link](http://x)", "link_preview_options": ANY},
+        ),  # sem parse_mode
         ("send_chat_action", {"chat_id": 10, "action": "typing"}),
     ]
 
@@ -921,3 +925,124 @@ async def test_a_takeover_in_the_middle_of_the_bots_turn_is_reported_and_does_no
     assert messenger.texts == [
         "Outra janela assumiu esta conversa; o resto da resposta vai aparecer lá."
     ]
+
+
+# --- achados da revisão de segurança -------------------------------------------------------
+
+
+async def test_after_slash_novo_the_clients_reconnection_keeps_the_new_conversation(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    messenger = FakeMessenger()
+    async with Scenario(FakeProvider([say("Velha.")]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, messenger)
+        await bridge.handle(msg("oi"))
+        (conn,) = s.server.connections
+        old = conn.session_id
+        await bridge.handle(msg("/novo"))
+        client = bridge._users[OWNER].client
+        assert client is not None and isinstance(client, RemoteClient)
+        assert client.session_id == conn.session_id != old  # o cliente sabe qual é a conversa
+        assert client._resume is not None and client._resume.session_id == conn.session_id
+
+
+async def test_replies_are_sent_without_link_previews() -> None:
+    class FakeBot:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, Any] = {}
+
+        async def send_message(self, **kwargs: Any) -> Any:
+            self.kwargs = kwargs
+            return type("Sent", (), {"message_id": 1})()
+
+    bot = FakeBot()
+    await tg.PTBMessenger(bot).send_text(10, "veja https://exemplo.com/?d=segredo")
+    preview = bot.kwargs["link_preview_options"]
+    assert preview.is_disabled is True  # o Telegram não busca a URL sozinho
+    assert "parse_mode" not in bot.kwargs
+
+
+def test_a_rejected_token_never_reaches_the_traceback_or_the_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import SecretStr
+    from telegram.error import InvalidToken
+    from telegram.ext import Application
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app
+    from brain.config import settings
+
+    secret = "123456:ABC-token-que-o-telegram-recusou"
+
+    def rejected(self: Any, *args: Any, **kwargs: Any) -> None:
+        raise InvalidToken(f"The token `{secret}` was rejected by the server.")
+
+    monkeypatch.setattr(Application, "run_polling", rejected)
+    monkeypatch.setattr(settings, "telegram_bot_token", SecretStr(secret))
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [10])
+    result = CliRunner().invoke(app, ["telegram"])
+    assert result.exit_code == 1
+    assert "recusou o token do bot" in result.output
+    assert secret not in result.output and secret not in repr(result.exception)
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_a_telegram_outage_at_startup_also_hides_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from telegram.error import NetworkError
+    from telegram.ext import Application
+
+    def down(self: Any, *args: Any, **kwargs: Any) -> None:
+        raise NetworkError("falhou em https://api.telegram.org/bot123456:ABC/getMe")
+
+    monkeypatch.setattr(Application, "run_polling", down)
+    monkeypatch.setattr(tg, "make_client_factory", lambda: lambda _: None)  # type: ignore[arg-type,return-value]
+    with pytest.raises(tg.BotStartError) as info:
+        tg.run_bot("123456:ABC", [10])
+    assert "123456:ABC" not in str(info.value) and "NetworkError" in str(info.value)
+
+
+def test_more_than_one_authorized_id_gets_a_loud_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import SecretStr
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app
+    from brain.config import settings
+
+    monkeypatch.setattr(tg, "run_bot", lambda token, allowed, **kw: None)
+    monkeypatch.setattr(settings, "telegram_bot_token", SecretStr("123456:ABC-fake"))
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [10, 20])
+    result = CliRunner().invoke(app, ["telegram"])
+    flat = " ".join(result.output.split())  # o terminal quebra linhas no meio da frase
+    assert "Mais de um ID autorizado" in flat and "Use um único ID" in flat
+
+
+async def test_command_errors_also_hide_the_technical_detail(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    class RefusingClient(DroppingClient):
+        async def request(self, frame: dict[str, Any], timeout: float = 60.0) -> p.ServerMessage:
+            raise ServerError(
+                p.Error.from_code("internal", "Algo deu errado.\nDetalhe técnico: Traceback (x)")
+            )
+
+    messenger = FakeMessenger()
+    bridge = tg.TelegramBridge([OWNER], messenger, lambda _: RefusingClient([]))
+    await bridge.handle(msg("/novo"))
+    assert messenger.texts == ["Algo deu errado."]
+
+
+async def test_the_unauthorized_log_is_pruned_so_it_cannot_grow_without_bound(
+    tmp_path: Path, bridges: list[tg.TelegramBridge]
+) -> None:
+    clock = Clock()
+    async with Scenario(FakeProvider([]), tmp_path) as s:
+        bridge = make_bridge(bridges, s, FakeMessenger(), clock=clock)
+        for uid in range(100, 150):
+            await bridge.handle(msg("oi", user_id=uid, chat_id=uid))
+        assert len(bridge._unauthorized_logged) == 50
+        clock.now += tg.UNAUTHORIZED_LOG_INTERVAL_SECONDS + 1
+        await bridge.handle(msg("oi", user_id=999, chat_id=999))
+        assert set(bridge._unauthorized_logged) == {999}  # os velhos saíram

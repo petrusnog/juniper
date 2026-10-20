@@ -92,7 +92,8 @@ services:
       JUNIPER_TELEGRAM_BOT_TOKEN: ${JUNIPER_TELEGRAM_BOT_TOKEN:-}
       JUNIPER_TELEGRAM__ALLOWED_USER_IDS: ${JUNIPER_TELEGRAM__ALLOWED_USER_IDS:-[]}
     volumes:
-      - ${JUNIPER_CONFIG_FILE:-./docker/config.prod.yaml}:/home/juniper/.juniper/config.yaml:ro
+      # Sempre o de produção (só `deployment`): nunca o seu config pessoal, que o bot não precisa ver.
+      - ./docker/config.prod.yaml:/home/juniper/.juniper/config.yaml:ro
       - juniper-state:/home/juniper/.juniper/state:ro      # só para ler o token dos clientes
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

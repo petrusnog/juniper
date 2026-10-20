@@ -83,6 +83,7 @@ app = typer.Typer(
     name="juniper",
     help="Juniper — agente autônomo de automação e conversação.",
     cls=JuniperGroup,
+    pretty_exceptions_show_locals=False,  # um traceback nunca deve imprimir variáveis (tokens)
 )
 
 _EXIT = {"/sair", "/exit"}
@@ -644,14 +645,29 @@ def telegram(
             "ninguém. Mande uma mensagem a ele e leia o seu ID no log.",
             "yellow",
         )
+    if len(allowed) > 1:
+        voice.say(
+            console,
+            "Mais de um ID autorizado: todos compartilham a conversa mais recente do servidor "
+            "(ele é de um usuário só) e leem o histórico uns dos outros. Use um único ID.",
+            "yellow",
+        )
     voice.say(console, f"Bot do Telegram no ar ({len(allowed)} usuário(s) autorizado(s)).")
+    try:
+        _run_bot(bot, token.get_secret_value(), allowed)
+    except bot.BotStartError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    voice.say(console, "Bot encerrado.")
+
+
+def _run_bot(bot: Any, token: str, allowed: list[int]) -> None:
     bot.run_bot(
-        token.get_secret_value(),
+        token,
         allowed,
         rate_limit_per_minute=settings.telegram.rate_limit_per_minute,
         delete_after_hours=settings.telegram.delete_after_hours,
     )
-    voice.say(console, "Bot encerrado.")
 
 
 memory_app = typer.Typer(help="Memória de longo prazo.", no_args_is_help=True)

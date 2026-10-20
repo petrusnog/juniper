@@ -123,6 +123,11 @@ class BrainClient(Protocol):
 ClientFactory = Callable[[int], BrainClient]
 
 
+def _friendly(message: str) -> str:
+    """O texto amigável do servidor, sem o "Detalhe técnico" (que fica só no log dele)."""
+    return message.split("\nDetalhe técnico:")[0].strip()
+
+
 def split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
     """Divide em partes de até `limit` caracteres, de preferência em parágrafo, linha ou espaço."""
     text = text.strip()
@@ -280,6 +285,11 @@ class TelegramBridge:
         last = self._unauthorized_logged.get(user_id)
         if last is not None and now - last < UNAUTHORIZED_LOG_INTERVAL_SECONDS:
             return
+        self._unauthorized_logged = {  # poda: só os ainda dentro do intervalo
+            uid: at
+            for uid, at in self._unauthorized_logged.items()
+            if now - at < UNAUTHORIZED_LOG_INTERVAL_SECONDS
+        }
         self._unauthorized_logged[user_id] = now
         logger.warning("Telegram: mensagem de usuário não autorizado (id=%s)", user_id)
         event_log.log("telegram", action="unauthorized", user_id=user_id)
@@ -324,10 +334,10 @@ class TelegramBridge:
             try:
                 await client.request({"type": "session.new"})
             except ServerError as exc:
-                await self._say(msg.chat_id, exc.error.message)
+                await self._say(msg.chat_id, _friendly(exc.error.message))
                 return
             except RemoteError as exc:
-                await self._say(msg.chat_id, str(exc) or UNAVAILABLE_TEXT)
+                await self._say(msg.chat_id, _friendly(str(exc)) or UNAVAILABLE_TEXT)
                 return
             user.known_turns = 0
             await self._say(msg.chat_id, NEW_CONVERSATION)
@@ -385,7 +395,7 @@ class TelegramBridge:
         try:
             await client.request({"type": "session.new"})
         except RemoteError as exc:
-            await self._say(msg.chat_id, str(exc) or UNAVAILABLE_TEXT)
+            await self._say(msg.chat_id, _friendly(str(exc)) or UNAVAILABLE_TEXT)
             return False
         client.detached = False
         user.known_turns = 0
@@ -397,7 +407,7 @@ class TelegramBridge:
     def _reply_for(result: ChatResult, text: str) -> str:
         if result.error is not None:
             # O servidor manda o texto amigável em PT-BR; o "Detalhe técnico" fica só no log dele.
-            return result.error.message.split("\nDetalhe técnico:")[0].strip()
+            return _friendly(result.error.message)
         if result.finish == "error":
             return UNFINISHED
         return text.strip() or EMPTY_REPLY
@@ -512,7 +522,13 @@ class PTBMessenger:
         self._bot = bot
 
     async def send_text(self, chat_id: int, text: str) -> int | None:
-        sent = await self._bot.send_message(chat_id=chat_id, text=text)
+        from telegram import LinkPreviewOptions
+
+        # Sem pré-visualização: o Telegram buscaria sozinho qualquer URL da resposta (um convite de
+        # calendário malicioso poderia pedir ao LLM uma URL com dados na query), sem clique.
+        sent = await self._bot.send_message(
+            chat_id=chat_id, text=text, link_preview_options=LinkPreviewOptions(is_disabled=True)
+        )
         return int(sent.message_id)
 
     async def typing(self, chat_id: int) -> None:
@@ -520,6 +536,19 @@ class PTBMessenger:
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         await self._bot.delete_message(chat_id=chat_id, message_id=message_id)
+
+
+class BotStartError(Exception):
+    """O bot não conseguiu subir. `str(exc)` é seguro de imprimir: nunca leva o token."""
+
+
+def _start_failure(exc: Exception) -> str:
+    if type(exc).__name__ == "InvalidToken":
+        return (
+            "O Telegram recusou o token do bot. Confira JUNIPER_TELEGRAM_BOT_TOKEN no .env "
+            "(se você revogou o token no @BotFather, use o novo)."
+        )
+    return f"Não consegui falar com o Telegram ao subir ({type(exc).__name__}). Tento de novo."
 
 
 def make_client_factory() -> ClientFactory:
@@ -548,6 +577,7 @@ def run_bot(
 ) -> None:
     """Sobe o bot (long polling) e só volta quando ele é parado (SIGINT/SIGTERM)."""
     from telegram import Update
+    from telegram.error import TelegramError
     from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
     factory = make_client_factory()
@@ -599,8 +629,13 @@ def run_bot(
     )
     app.add_handler(MessageHandler(filters.ALL, on_update))
     app.add_error_handler(on_error)
-    # `drop_pending_updates`: depois de uma pausa, não responder a pedidos velhos de horas atrás.
-    app.run_polling(allowed_updates=[Update.MESSAGE], drop_pending_updates=True)
+    try:
+        # `drop_pending_updates`: depois de uma pausa, não responde a pedidos velhos de horas.
+        app.run_polling(allowed_updates=[Update.MESSAGE], drop_pending_updates=True)
+    except TelegramError as exc:
+        # A mensagem da biblioteca inclui o token ("The token `...` was rejected"): só o tipo sai.
+        event_log.log("telegram", action="error", where="start", type=type(exc).__name__)
+        raise BotStartError(_start_failure(exc)) from None
 
 
 async def _heartbeat() -> None:

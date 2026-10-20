@@ -253,3 +253,38 @@ async def test_a_takeover_in_the_middle_of_a_turn_ends_it_instead_of_hanging(
         assert result.error.message == remote.DETACHED_MESSAGE
         provider.release.set()  # o turno termina no servidor, sem ninguém esperando por ele
         assert client.detached and client.connected
+
+
+async def test_after_session_new_a_reconnection_never_goes_back_to_the_old_conversation(
+    tmp_path: Path,
+) -> None:
+    """`/novo` no bot: uma queda depois dele não pode voltar à conversa antiga."""
+    async with Env(tmp_path, FakeProvider([say("Velha."), say("Nova.")])) as env:
+        client = env.client()
+        old = (await client.start()).session.id
+        await client.chat("conversa velha", lambda _t: None)
+        reply = await client.request({"type": "session.new"})
+        assert isinstance(reply, p.SessionState)
+        assert client.session_id == reply.session_id != old  # o cliente sabe qual é a conversa
+        await env.restart()  # o servidor cai e volta: o cliente reconecta sozinho
+        await asyncio.wait_for(client.reconnected.wait(), 5)
+        assert client.welcome is not None
+        assert client.welcome.session.id != old  # (uma conversa vazia não é salva: abre outra)
+        assert client.welcome.session.turns == 0
+
+
+async def test_after_session_new_and_a_message_a_reconnection_resumes_the_new_one(
+    tmp_path: Path,
+) -> None:
+    async with Env(tmp_path, FakeProvider([say("Velha."), say("Nova.")])) as env:
+        client = env.client()
+        old = (await client.start()).session.id
+        await client.chat("conversa velha", lambda _t: None)
+        reply = await client.request({"type": "session.new"})
+        assert isinstance(reply, p.SessionState)
+        await client.chat("conversa nova", lambda _t: None)  # agora ela fica salva
+        await env.restart()
+        await asyncio.wait_for(client.reconnected.wait(), 5)
+        assert client.welcome is not None
+        assert client.welcome.session.id == reply.session_id != old
+        assert client.welcome.session.resumed is True and client.welcome.session.turns == 1
