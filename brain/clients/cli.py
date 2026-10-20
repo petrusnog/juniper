@@ -616,6 +616,39 @@ def serve() -> None:
     voice.say(console, "Servidor encerrado.")
 
 
+@app.command()
+def telegram(
+    health: Annotated[
+        bool,
+        typer.Option("--health", help="Sai com 0 se o bot está vivo (healthcheck do contêiner)."),
+    ] = False,
+) -> None:
+    """Sobe o bot do Telegram, um cliente do brain remoto (ADR-016)."""
+    from brain.clients import telegram as bot
+
+    if health:
+        raise typer.Exit(0 if bot.is_healthy() else 1)
+    token = settings.telegram_bot_token
+    if token is None or not token.get_secret_value().strip():
+        voice.say(
+            console,
+            "Falta JUNIPER_TELEGRAM_BOT_TOKEN no .env (o token que o @BotFather deu).",
+            "red",
+        )
+        raise typer.Exit(1)
+    allowed = settings.telegram.allowed_user_ids
+    if not allowed:
+        voice.say(
+            console,
+            "Ninguém está autorizado (telegram.allowed_user_ids vazio): o bot não responde a "
+            "ninguém. Mande uma mensagem a ele e leia o seu ID no log.",
+            "yellow",
+        )
+    voice.say(console, f"Bot do Telegram no ar ({len(allowed)} usuário(s) autorizado(s)).")
+    bot.run_bot(token.get_secret_value(), allowed)
+    voice.say(console, "Bot encerrado.")
+
+
 memory_app = typer.Typer(help="Memória de longo prazo.", no_args_is_help=True)
 app.add_typer(memory_app, name="memory")
 

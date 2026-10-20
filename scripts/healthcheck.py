@@ -244,8 +244,11 @@ async def collect(live: bool, full: bool) -> list[Check]:
     add("Fundação", "testes de config", lambda: _pytest("tests/test_config.py"))
     add("T-011 · Contrato", "contrato abstrato", check_contract)
     add("T-011 · Contrato", "testes do contrato", lambda: _pytest("tests/test_llm_base.py"))
-    add("T-012 · Ollama", "testes (servidor falso)",
-        lambda: _pytest("tests/test_ollama_provider.py"))
+    add(
+        "T-012 · Ollama",
+        "testes (servidor falso)",
+        lambda: _pytest("tests/test_ollama_provider.py"),
+    )
     add("T-013 · Groq", "testes (SDK falso)", lambda: _pytest("tests/test_groq_provider.py"))
     add("T-013 · Groq", "chave configurada", check_groq_key)
     add("DeepInfra", "testes (HTTP falso)", lambda: _pytest("tests/test_deepinfra_provider.py"))
