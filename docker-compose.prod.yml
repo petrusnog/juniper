@@ -10,6 +10,8 @@
 #   JUNIPER_IMAGE        imagem do brain (padrão: juniper-brain:local, construída aqui)
 #   TAILSCALE_IP         endereço onde publicar a porta (padrão: 127.0.0.1; na VPS, o IP Tailscale)
 #   JUNIPER_CONFIG_FILE  config do brain (padrão: docker/config.prod.yaml)
+#   COMPOSE_PROFILES=telegram  liga o bot do Telegram (também: `--profile telegram`); veja abaixo
+#   JUNIPER_TELEGRAM_BOT_TOKEN / JUNIPER_TELEGRAM__ALLOWED_USER_IDS   o token do bot e quem pode falar com ele
 #   JUNIPER_BASE_CONFIG_FILE  seu config pessoal, só completa o que o de produção não define
 #                        (padrão: docker/config.base.yaml, vazio)
 #   JUNIPER_ENV_FILE     .env com as chaves de LLM (padrão: .env)
@@ -63,6 +65,43 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # O bot do Telegram (T-096, ADR-016): um CLIENTE do brain, na mesma imagem. Opt-in: só sobe com
+  # `--profile telegram` (ou COMPOSE_PROFILES=telegram no .env). Menor privilégio: não monta o .env
+  # (não recebe a senha do Mongo nem as chaves de LLM), não publica porta e só lê o token do brain.
+  telegram:
+    profiles: ["telegram"]
+    image: ${JUNIPER_IMAGE:-juniper-brain:local}
+    container_name: juniper-telegram
+    restart: unless-stopped
+    init: true
+    command: ["telegram"]
+    depends_on:
+      brain:
+        condition: service_healthy
+    environment:
+      JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
+      # Cliente: fala com o brain pelo nome do serviço, na rede do compose (não pela escuta 0.0.0.0).
+      JUNIPER_DEPLOYMENT__SERVER__HOST: brain
+      # Vazio = o bot recusa subir (sem token) ou não atende ninguém (sem lista de permissão).
+      JUNIPER_TELEGRAM_BOT_TOKEN: ${JUNIPER_TELEGRAM_BOT_TOKEN:-}
+      JUNIPER_TELEGRAM__ALLOWED_USER_IDS: ${JUNIPER_TELEGRAM__ALLOWED_USER_IDS:-[]}
+    volumes:
+      - ${JUNIPER_CONFIG_FILE:-./docker/config.prod.yaml}:/home/juniper/.juniper/config.yaml:ro
+      - juniper-state:/home/juniper/.juniper/state:ro      # só para ler o token dos clientes
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "brain", "telegram", "--health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
     logging:
       driver: json-file
       options:

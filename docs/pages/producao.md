@@ -33,6 +33,7 @@ O cérebro roda numa **VPS** sempre ligada e os clientes (CLI remoto, app deskto
 | Serviço | Imagem | Notas |
 |---|---|---|
 | `brain` | `ghcr.io/petrusnog/juniper:<sha>` | Python 3.12, usuário sem privilégio, `juniper serve`, reinício automático, *healthcheck* em `GET /health`. |
+| `telegram` | a mesma imagem do brain | **Opt-in** (`--profile telegram`). O bot do Telegram, um cliente do brain: não publica porta, não recebe o `.env`, só lê o token dos clientes ([Telegram](telegram.html#vps)). |
 | `mongo` | `mongo:7` | Só na rede interna do compose (sem porta publicada), volume nomeado `juniper-mongo-data`, usuário e senha do `.env`. |
 
 A porta `8765` do brain é publicada **apenas no endereço Tailscale** da VPS, nunca em `0.0.0.0`. O `.env` e a chave do Google são montados do servidor (somente leitura); **segredos nunca entram na imagem**. O modelo de embeddings fica no volume `juniper-models` (baixa uma vez). O modo é `deployment.mode: server` ([Configuração](configuracao.html#deployment)).
