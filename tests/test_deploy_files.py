@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 import yaml
 
-from brain.config import Settings
+from brain.config import GoogleSettings, Settings
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -141,8 +141,8 @@ def test_named_volumes_hold_the_state() -> None:
 
 def test_secrets_are_mounted_read_only_and_never_written_into_the_compose_file() -> None:
     mounts = COMPOSE["services"]["brain"]["volumes"]
-    for needle in (".env", "certs", "config"):
-        (mount,) = (m for m in mounts if needle in m.split(":/")[0])
+    for target in (".env", "certs", "config.yaml", "config.base.yaml"):
+        (mount,) = (m for m in mounts if mount_target(m).endswith("/.juniper/" + target))
         assert mount.endswith(":ro"), mount
     text = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
     for service in COMPOSE["services"].values():
@@ -289,3 +289,64 @@ def test_dev_fixes_the_owner_of_the_state_folders_before_the_brain_starts() -> N
     state_mounts = {m for m in DEV["services"]["brain"]["volumes"] if ".juniper-dev/" in m}
     for mount in state_mounts:  # as mesmas pastas do brain
         assert mount.split(":")[0] in " ".join(fix["volumes"])
+
+
+# --- T-094: camada de configuração pessoal no servidor --------------------------------------
+
+BASE_CONFIG = ROOT / "docker" / "config.base.yaml"
+
+
+def test_prod_brain_gets_the_personal_config_as_a_read_only_base_layer() -> None:
+    brain = COMPOSE["services"]["brain"]
+    target = "/home/juniper/.juniper/config.base.yaml"
+    assert brain["environment"]["JUNIPER_BASE_CONFIG_PATH"] == target
+    (mount,) = (m for m in brain["volumes"] if mount_target(m) == target)
+    # O padrão é um arquivo versionado: sem ele o Docker criaria uma PASTA (e root) no lugar.
+    assert mount.startswith("${JUNIPER_BASE_CONFIG_FILE:-./docker/config.base.yaml}:")
+    assert mount.endswith(":ro") and BASE_CONFIG.is_file()
+
+
+def test_the_default_base_layer_is_an_empty_mapping_and_adds_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert yaml.safe_load(BASE_CONFIG.read_text(encoding="utf-8")) == {}
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(CONFIG_PROD))
+    monkeypatch.setenv("JUNIPER_BASE_CONFIG_PATH", str(BASE_CONFIG))
+    for var in ("JUNIPER_DEPLOYMENT__MODE", "JUNIPER_MEMORY__SESSION__STORE"):
+        monkeypatch.delenv(var, raising=False)
+    loaded = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert loaded.deployment.mode == "server" and loaded.google.calendar_id is None
+
+
+def test_personal_config_completes_production_but_never_overrides_the_infrastructure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    personal = tmp_path / "config.yaml"
+    personal.write_text(
+        "deployment:\n  mode: local\n  server:\n    host: 127.0.0.1\n"
+        "memory:\n  session:\n    store: file\n"
+        "llm:\n  priority: [ollama]\n"
+        "google:\n  calendar_id: juniper@group.calendar.google.com\n"
+        "  manage_calendar_ids: [eu@exemplo.com]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("JUNIPER_CONFIG_PATH", str(CONFIG_PROD))
+    monkeypatch.setenv("JUNIPER_BASE_CONFIG_PATH", str(personal))
+    for var in ("JUNIPER_DEPLOYMENT__MODE", "JUNIPER_MEMORY__SESSION__STORE"):
+        monkeypatch.delenv(var, raising=False)
+    loaded = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert loaded.deployment.mode == "server"  # a produção manda
+    assert loaded.deployment.server.host == "0.0.0.0"
+    assert loaded.memory.session.store == "mongo"
+    assert loaded.llm.priority == ["deepinfra", "groq"]
+    assert loaded.google.calendar_id == "juniper@group.calendar.google.com"  # o pessoal completa
+    assert loaded.google.manage_calendar_ids == ["eu@exemplo.com"]
+
+
+def test_google_key_comes_from_the_read_only_certs_mount() -> None:
+    """A chave da conta de serviço fica em ~/.juniper/certs, onde o Settings a procura."""
+    mounts = COMPOSE["services"]["brain"]["volumes"]
+    (certs,) = (m for m in mounts if mount_target(m) == "/home/juniper/.juniper/certs")
+    assert certs.endswith(":ro")
+    key = GoogleSettings().credentials_file
+    assert (key.parent.name, key.name) == ("certs", "gcp-key.json")

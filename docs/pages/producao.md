@@ -81,6 +81,39 @@ python scripts/smoke_server.py --token-file /tmp/token --resume "do que falávam
 - **Os dados ficam nos volumes** (`juniper-mongo-data`, `juniper-state`, `juniper-logs`, `juniper-models`): reiniciar ou reconstruir o brain não perde conversas nem memórias. `down -v` apaga tudo.
 - O projeto se chama `juniper-prod`, então não mexe no banco do `docker-compose.yml` de desenvolvimento.
 
+## Agenda do Google na VPS {#google-vps}
+
+As tools do Google Calendar rodam **no cérebro**, então qualquer cliente (CLI, Telegram, desktop) as usa. Na VPS faltam dois arquivos seus, que **nunca** vão para o repositório nem para a imagem: a **chave da conta de serviço** ([Google Calendar](google-calendar.html)) e a **configuração pessoal** com os IDs das agendas.
+
+O compose monta o seu `config.yaml` como uma **camada base**: ele só completa o que o `config.prod.yaml` não define. O que a produção define (`deployment`, `memory`, `llm.priority`) sempre vence, mesmo que o seu arquivo diga outra coisa.
+
+No seu computador (WSL), com o IP da VPS no Tailscale:
+
+```bash
+scp ~/.juniper/certs/gcp-key.json root@100.x.y.z:~/juniper/certs/gcp-key.json
+scp ~/.juniper/config.yaml root@100.x.y.z:~/juniper/config.yaml
+```
+
+Na VPS, dentro de `~/juniper`:
+
+```bash
+# o contêiner roda como o uid 10001: sem isto ele não consegue LER os arquivos (mesmo com modo 600)
+chown 10001:10001 certs/gcp-key.json config.yaml
+chmod 600 certs/gcp-key.json config.yaml
+echo "JUNIPER_BASE_CONFIG_FILE=./config.yaml" >> .env
+docker compose -f docker-compose.prod.yml up -d      # recria o brain com a nova camada
+docker compose -f docker-compose.prod.yml logs --tail=20 brain
+```
+
+Teste pelo CLI remoto (no seu computador): `juniper "o que tenho amanhã na agenda?"`.
+
+| Sintoma | Causa e solução |
+|---|---|
+| `Permission denied` ao ler a chave ou o `.env` | O dono do arquivo não é o uid 10001. Rode o `chown 10001:10001` acima. |
+| A Juniper diz que não tem agenda configurada | O `config.yaml` não chegou: confira `JUNIPER_BASE_CONFIG_FILE` no `.env` e se o arquivo é um **arquivo** (se o Docker criou uma pasta, apague-a e copie de novo). |
+| Erro de acesso à agenda | A agenda não está compartilhada com a conta de serviço (veja [Google Calendar](google-calendar.html)). |
+| Horário errado nos eventos | `agent.timezone` vem do `config.prod.yaml` (`America/Sao_Paulo`). |
+
 ## Teste de capacidade (T-081) {#capacidade}
 
 Antes de fixar a VPS, a T-081 mede se a Juniper cabe nela e quão rápida ela fica. O alvo é o menor tamanho que roda brain, MongoDB e o modelo de embeddings com folga. O script é o `scripts/bench_server.py` (só biblioteca padrão) e roda **na VPS**.
