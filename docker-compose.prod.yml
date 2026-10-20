@@ -10,6 +10,8 @@
 #   JUNIPER_IMAGE        imagem do brain (padrão: juniper-brain:local, construída aqui)
 #   TAILSCALE_IP         endereço onde publicar a porta (padrão: 127.0.0.1; na VPS, o IP Tailscale)
 #   JUNIPER_CONFIG_FILE  config do brain (padrão: docker/config.prod.yaml)
+#   JUNIPER_BASE_CONFIG_FILE  seu config pessoal, só completa o que o de produção não define
+#                        (padrão: docker/config.base.yaml, vazio)
 #   JUNIPER_ENV_FILE     .env com as chaves de LLM (padrão: .env)
 #   JUNIPER_CERTS_DIR    pasta com a chave do Google (padrão: certs)
 #
@@ -38,9 +40,13 @@ services:
     environment:
       # A senha do Mongo e as chaves de LLM vêm do .env montado abaixo, não daqui.
       JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
+      # O seu config pessoal (agendas do Google etc.) entra como camada base: só completa o que o
+      # config.prod.yaml não define. O padrão é um arquivo vazio versionado (T-094).
+      JUNIPER_BASE_CONFIG_PATH: /home/juniper/.juniper/config.base.yaml
     volumes:
       # Segredos e configuração: montados do servidor, só leitura. Nada disso está na imagem.
       - ${JUNIPER_CONFIG_FILE:-./docker/config.prod.yaml}:/home/juniper/.juniper/config.yaml:ro
+      - ${JUNIPER_BASE_CONFIG_FILE:-./docker/config.base.yaml}:/home/juniper/.juniper/config.base.yaml:ro
       - ${JUNIPER_ENV_FILE:-./.env}:/home/juniper/.juniper/.env:ro
       - ${JUNIPER_CERTS_DIR:-./certs}:/home/juniper/.juniper/certs:ro
       # Estado do brain.

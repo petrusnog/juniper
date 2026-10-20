@@ -1,0 +1,8 @@
+# Camada de configuração PESSOAL do servidor: o que o config.prod.yaml não define (agendas do Google,
+# persona etc.). Este arquivo vazio é o padrão do docker-compose.prod.yml, para o Docker não criar
+# uma pasta no lugar quando você ainda não tem um config pessoal.
+#
+# Para usar o seu: copie o config.yaml pessoal para a VPS (fora do git, ele tem IDs de agendas) e
+# aponte JUNIPER_BASE_CONFIG_FILE=./config.yaml no .env do servidor. O que o config.prod.yaml define
+# (deployment, memory, llm.priority) sempre vence o que estiver no seu arquivo.
+{}
