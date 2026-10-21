@@ -15,12 +15,14 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import google_auth_httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from brain.config import settings
 from brain.core import clock
+from brain.httplog import LoggedHttp
 from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import register_tool
 
@@ -279,7 +281,9 @@ def get_client() -> CalendarClient:
             )
         except (ValueError, OSError):
             raise CalendarError("chave do Google ilegível ou inválida") from None
-        service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+        # Same credentials, but every request goes through the wire log (brain/httplog.py).
+        http = google_auth_httplib2.AuthorizedHttp(creds, http=LoggedHttp("google_calendar"))
+        service = build("calendar", "v3", http=http, cache_discovery=False)
         _client = CalendarClient(
             service,
             cfg.calendar_id,

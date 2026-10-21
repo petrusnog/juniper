@@ -143,7 +143,7 @@ Serve a documentação localmente; abra `http://localhost:47831` no navegador (a
 
 ## Limitações conhecidas {#limitacoes}
 
-- Resposta em texto puro: não há renderização de Markdown (a persona já evita Markdown fora de código).
+- Resposta em texto puro: não há renderização de Markdown (a persona fala em frases corridas, sem Markdown nem listas, e só usa blocos de código quando você pede código).
 - Ctrl+C encerra o programa mesmo no meio de uma resposta.
 - Se uma confirmação expirar, a pergunta antiga continua na tela até você digitar algo.
 - `input()` não pode ser cancelado: a thread de leitura é reaproveitada, e é *daemon*, então nunca impede o programa de fechar.

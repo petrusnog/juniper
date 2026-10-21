@@ -82,6 +82,7 @@ async def test_agent_logs_llm_and_tool_events() -> None:
     events = read_events(event_log.directory)
     kinds = [e["event"] for e in events]
     assert kinds == [
+        "turn_start",
         "llm_request",
         "llm_response",
         "tool_call",
@@ -89,9 +90,9 @@ async def test_agent_logs_llm_and_tool_events() -> None:
         "llm_response",
         "timing",
     ]
-    response = events[1]
+    response = events[2]
     assert response["tool_calls"] == ["echo"] and response["latency_ms"] >= 0
-    tool = events[2]
+    tool = events[3]
     assert tool["name"] == "echo" and tool["tier"] == "read" and tool["decision"] == "auto"
     assert tool["success"] is True and tool["args"] == {"text": "oi"}
 

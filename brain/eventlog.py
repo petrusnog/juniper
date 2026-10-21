@@ -13,6 +13,7 @@ import json
 import os
 import re
 import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,11 +22,21 @@ from zoneinfo import ZoneInfo
 from brain.config import settings
 
 REDACTED = "***"
+# The conversation the current task is serving; stamped on every event so one file, shared by all
+# the sessions of the day, can still be filtered per conversation (`juniper logs --session`).
+_current_session: ContextVar[str] = ContextVar("juniper_log_session", default="")
+
+
+def bind_session(session_id: str) -> None:
+    """Tag the events logged from this task (and the ones it spawns) with ``session_id``."""
+    _current_session.set(session_id)
+
+
 # Longest string value kept verbatim; the rest is cut so one huge tool output cannot flood the log.
 MAX_VALUE_CHARS = 2000
 
 _SECRET_KEY = re.compile(
-    r"(api[_-]?key|(?<!first_)token(?!s)|secret|password|passwd|authorization|private[_-]?key)",
+    r"(api[_-]?key|(?<!first_)token(?!s)|secret|password|passwd|authorization|private[_-]?key|assertion)",
     re.I,
 )
 _SECRET_VALUE = re.compile(
@@ -35,22 +46,22 @@ _SECRET_VALUE = re.compile(
 )
 
 
-def redact(value: Any, _key: str = "") -> Any:
-    """Return a JSON-safe copy of ``value`` with secrets masked and long strings cut."""
+def redact(value: Any, _key: str = "", limit: int = MAX_VALUE_CHARS) -> Any:
+    """A JSON-safe copy of ``value``: secrets masked, strings cut at ``limit`` characters."""
     if _key and _SECRET_KEY.search(_key):
         return REDACTED
     if isinstance(value, dict):
-        return {str(k): redact(v, str(k)) for k, v in value.items()}
+        return {str(k): redact(v, str(k), limit) for k, v in value.items()}
     if isinstance(value, list | tuple | set):
-        return [redact(v) for v in value]
+        return [redact(v, limit=limit) for v in value]
     if isinstance(value, str):
         text = _mask_known_key(_SECRET_VALUE.sub(REDACTED, value))
-        if len(text) > MAX_VALUE_CHARS:
-            text = f"{text[:MAX_VALUE_CHARS]}…[+{len(text) - MAX_VALUE_CHARS} chars]"
+        if len(text) > limit:
+            text = f"{text[:limit]}…[+{len(text) - limit} chars]"
         return text
     if value is None or isinstance(value, bool | int | float):
         return value
-    return redact(str(value))
+    return redact(str(value), limit=limit)
 
 
 def _mask_known_key(text: str) -> str:
@@ -95,17 +106,21 @@ class EventLog:
     def path_for(self, moment: datetime) -> Path:
         return self.directory / f"{moment:%Y-%m-%d}.jsonl"
 
-    def log(self, event: str, **fields: Any) -> None:
+    def log(self, event: str, *, limit: int = MAX_VALUE_CHARS, **fields: Any) -> None:
+        """Append one event. ``limit`` is the string cut (raised for events that carry bodies)."""
         if not self.enabled:
             return
         try:
             now = datetime.now(ZoneInfo(settings.agent.timezone))
-            record = {
+            record: dict[str, Any] = {
                 "ts": now.isoformat(timespec="milliseconds"),
                 "run": self.run_id,
                 "event": event,
             }
-            record.update(redact(fields))
+            session = _current_session.get()
+            if session:
+                record["session"] = session
+            record.update(redact(fields, limit=limit))
             _narrate(event, record)
             line = json.dumps(record, ensure_ascii=False, default=str)
             self.directory.mkdir(parents=True, exist_ok=True)

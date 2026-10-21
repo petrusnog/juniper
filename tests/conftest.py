@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from brain.config import settings
-from brain.eventlog import event_log
+from brain.eventlog import bind_session, event_log
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +18,7 @@ def _isolated_event_log(tmp_path: Path):  # type: ignore[no-untyped-def]
     event_log.enabled = True
     yield
     event_log.directory = previous
+    bind_session("")
 
 
 @pytest.fixture(autouse=True)

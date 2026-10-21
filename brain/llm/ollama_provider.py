@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 import httpx
 
 from brain.config import settings
+from brain.httplog import logged_transport
 from brain.llm.base import LLMProvider
 from brain.llm.errors import LLMError, LLMTimeoutError, LLMUnavailableError
 from brain.llm.types import LLMResponse, Message, StreamChunk, TokenUsage, ToolCall
@@ -34,7 +35,7 @@ class OllamaProvider(LLMProvider):
         self._client = httpx.AsyncClient(
             base_url=(url or cfg.url).rstrip("/"),
             timeout=timeout or cfg.timeout,
-            transport=transport,
+            transport=logged_transport("ollama", transport),
         )
 
     async def aclose(self) -> None:

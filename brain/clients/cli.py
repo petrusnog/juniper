@@ -35,6 +35,7 @@ from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.resume import previous_session
 from brain.core.session import Session
+from brain.eventlog import event_log
 from brain.llm.errors import LLMAuthError, LLMError, LLMRateLimitError
 from brain.llm.friendly import PROVIDER_PT, friendly_error
 from brain.llm.router import PROVIDERS, LLMRouter
@@ -668,6 +669,139 @@ def _run_bot(bot: Any, token: str, allowed: list[int]) -> None:
         rate_limit_per_minute=settings.telegram.rate_limit_per_minute,
         delete_after_hours=settings.telegram.delete_after_hours,
     )
+
+
+logs_app = typer.Typer(
+    help="O log técnico: tudo que a Juniper fez por baixo dos panos.", invoke_without_command=True
+)
+app.add_typer(logs_app, name="logs")
+
+
+@logs_app.callback()
+def logs_show(
+    ctx: typer.Context,
+    lines: Annotated[
+        int, typer.Option("--lines", "-n", help="Quantos eventos mostrar (0 = todos).")
+    ] = 100,
+    follow: Annotated[
+        bool, typer.Option("--follow", "-f", help="Acompanha ao vivo, como `tail -f`.")
+    ] = False,
+    day: Annotated[
+        Optional[str], typer.Option("--date", help="Um dia específico (AAAA-MM-DD).")  # noqa: UP045
+    ] = None,
+    days: Annotated[
+        int, typer.Option("--days", help="Quantos dias para trás (contando hoje).")
+    ] = 1,
+    session: Annotated[
+        Optional[str], typer.Option("--session", "-s", help="Só uma conversa (um pedaço do id).")  # noqa: UP045
+    ] = None,
+    run: Annotated[
+        Optional[str], typer.Option("--run", help="Só uma execução do processo.")  # noqa: UP045
+    ] = None,
+    event: Annotated[
+        Optional[list[str]],  # noqa: UP045
+        typer.Option("--event", "-e", help="Só estes eventos (nome ou prefixo, ex.: http)."),
+    ] = None,
+    errors: Annotated[
+        bool,
+        typer.Option("--errors", help="Só falhas: erros, failover, HTTP 4xx/5xx, tool com erro."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Mostra tudo de cada evento (cabeçalhos e corpos)."),
+    ] = False,
+    raw: Annotated[bool, typer.Option("--json", help="Imprime as linhas JSON cruas.")] = False,
+) -> None:
+    """Mostra o log técnico de hoje (requisições aos provedores, agenda, tools, erros).
+
+    Cada sessão do dia está no mesmo arquivo; `--session` isola uma conversa. O log vive onde o
+    cérebro roda: na VPS use `docker compose exec brain juniper logs`.
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    from datetime import date as date_type
+
+    from rich.markup import escape
+
+    from brain import logview
+    from brain.logfiles import today_local
+
+    directory = event_log.directory
+    try:
+        chosen = (
+            {date_type.fromisoformat(day)}
+            if day
+            else logview.days_back(today_local(), max(1, days))
+        )
+    except ValueError:
+        voice.say(console, "Data inválida: use AAAA-MM-DD.", "red")
+        raise typer.Exit(2) from None
+    predicate = lambda r: logview.matches(  # noqa: E731
+        r, session=session, run=run, events=event or (), errors_only=errors
+    )
+
+    def show(record: dict[str, Any]) -> None:
+        if raw:
+            print(json.dumps(record, ensure_ascii=False))
+            return
+        sess = str(record.get("session", ""))[-6:] or "------"
+        line = f"{logview.clock(record)}  {sess}  {record.get('event', '?'):<14} "
+        text = escape(line + logview.summary(record))
+        console.print(f"[{logview.style(record)}]{text}[/]" if logview.style(record) else text)
+        if verbose:
+            console.print(escape(logview.details(record)), style="dim")
+
+    for record in logview.select(directory, chosen, predicate, lines):
+        show(record)
+    if follow:
+        console.print("[dim]Acompanhando... (Ctrl+C para sair)[/]")
+        try:
+            for record in logview.follow(directory, predicate, today=today_local):
+                show(record)
+        except KeyboardInterrupt:
+            pass
+
+
+@logs_app.command("ls")
+def logs_list() -> None:
+    """Lista os arquivos de log e o tamanho de cada um."""
+    from brain.logfiles import daily_files
+
+    files = daily_files(event_log.directory)
+    if not files:
+        voice.say(console, f"Nenhum log em {event_log.directory}.")
+        return
+    for _, path in files:
+        console.print(f"{path.name:<24} {path.stat().st_size / 1024:>10.1f} KB")
+
+
+@logs_app.command("rotate")
+def logs_rotate(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Só mostra o que seria feito.")
+    ] = False,
+) -> None:
+    """Compacta os logs de dias anteriores e apaga os mais velhos que `logging.retention_days`.
+
+    O servidor já faz isso sozinho todo dia (`logging.rotate_at`); use este comando no modo local
+    ou num cron do sistema (`10 0 * * * juniper logs rotate`). É seguro rodar mais de uma vez.
+    """
+    from brain.logfiles import rotate, run_rotation, today_local
+
+    cfg = settings.logging
+    if dry_run:
+        report = rotate(event_log.directory, today_local(), cfg.retention_days, dry_run=True)
+    else:
+        report = run_rotation()
+    verb = "Compactaria" if dry_run else "Compactei"
+    voice.say(console, f"{verb}: {', '.join(report.compressed) or 'nada'}.")
+    voice.say(
+        console, f"{'Apagaria' if dry_run else 'Apaguei'}: {', '.join(report.deleted) or 'nada'}."
+    )
+    for problem in report.errors:
+        voice.say(console, f"Falhou: {problem}", "red")
+    if report.errors:
+        raise typer.Exit(1)
 
 
 memory_app = typer.Typer(help="Memória de longo prazo.", no_args_is_help=True)

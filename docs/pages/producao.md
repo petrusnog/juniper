@@ -216,6 +216,22 @@ PR mergeado no master
 - **Rollback automático** para o SHA anterior; **manual** para um SHA específico (`JUNIPER_IMAGE=...:<sha> docker compose up -d`).
 - **O banco não é tocado:** o deploy nunca apaga volumes, e mudanças de esquema precisam ser compatíveis para trás (o rollback usa os dados como estão).
 - **Conexões abertas:** ao reiniciar, o brain fecha as conexões com o código `1012` e os clientes reconectam sozinhos ([Protocolo](protocolo.html#reconexao)).
+- **Como é feito:** o workflow `.github/workflows/deploy.yml` constrói e publica a imagem; quem faz o deploy na VPS é o `scripts/deploy.sh <sha>` (versionado, testado com `git` e `docker` falsos em `tests/test_deploy_script.py`). Ele serve também para rodar à mão: `cd ~/juniper && ./scripts/deploy.sh <sha-completo>`.
+- **Backup antes de trocar:** se o Mongo está de pé, o script faz um `mongodump` em `~/juniper/backups/` (`600`, só os 5 últimos ficam). Se o dump falhar, o deploy é **cancelado** antes de mexer em qualquer coisa. No primeiro deploy, sem Mongo rodando, não há o que copiar.
+- **A imagem fica no `.env`:** o script grava `JUNIPER_IMAGE=ghcr.io/petrusnog/juniper:<sha>` no `.env` da VPS, então um `docker compose up -d` manual depois usa a mesma imagem. O valor anterior é o destino do rollback.
+
+### Primeiro deploy {#primeiro-deploy}
+
+O `workflow_run` só vale para workflows que já estão no `master`, e o CI chama um script que precisa estar na VPS. Por isso a primeira vez é manual:
+
+1. Mergeie no `master` a PR que traz o `deploy.yml` e o `scripts/deploy.sh`.
+2. Na VPS, como `deploy`: `cd ~/juniper && git pull origin master` (traz o script).
+3. No GitHub: **Actions → Deploy → Run workflow**, na branch `master`.
+4. O pacote do GHCR nasce **privado**: o primeiro `pull` na VPS falha com `unauthorized`. Em *Packages → juniper → Package settings → Change visibility → Public* (a imagem não tem segredos) e rode o workflow de novo.
+5. Confira na VPS: `docker compose -f docker-compose.prod.yml ps` (brain `healthy`) e `grep JUNIPER_IMAGE .env` (o SHA novo).
+6. Em *Settings → Branches*, exija o check `pytest` no `master`: com deploy automático, um merge com teste vermelho iria direto para a produção.
+
+A partir daí, cada merge no `master` faz o deploy sozinho (a aba *Actions* mostra o andamento).
 
 ### Segredos {#segredos}
 
@@ -234,7 +250,7 @@ PR mergeado no master
 
 ## Observabilidade {#observabilidade-producao}
 
-`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html)) ficam num volume, com rotação e limite de tamanho. Alertas ativos ficam fora da Sprint 3.
+`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html#log-tecnico)) ficam num volume, um arquivo por dia com todas as sessões, incluindo as requisições HTTP aos provedores e à agenda. O próprio servidor compacta os de ontem e apaga os com mais de 3 dias, todo dia às 00:10 ([rotação](observabilidade.html#rotacao)). Para ver: `docker compose -f docker-compose.prod.yml exec brain juniper logs -f`. Alertas ativos ficam fora da Sprint 3.
 
 ## Riscos aceitos {#riscos}
 

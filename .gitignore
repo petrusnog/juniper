@@ -53,3 +53,6 @@ sessions/
 # Estado do ambiente docker de desenvolvimento (token, logs)
 .juniper-dev/
 
+
+# Dumps do Mongo feitos pelo scripts/deploy.sh na VPS
+backups/

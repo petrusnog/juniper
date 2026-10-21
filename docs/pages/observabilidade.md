@@ -2,9 +2,9 @@
 title: Observabilidade
 group: Núcleo
 order: 6
-description: O log estruturado (JSONL), os eventos, a redação de segredos e a medição de tempo por etapa.
+description: O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
 status: pronta
-tags: log eventlog timing jsonl show_timing eventos latência jq
+tags: log eventlog timing jsonl show_timing eventos latência jq logs http wire rotação gzip retention cron sessão
 ---
 
 ## Visão geral {#visao-geral}
@@ -21,12 +21,17 @@ Tudo que a Juniper faz fica registrado: cada chamada ao LLM, cada tool, cada tro
 tail -f ~/.juniper/logs/$(date +%F).jsonl | jq .     # acompanhar ao vivo
 ```
 
-Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma execução do CLI) e `event`, mais os campos do evento.
+Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma execução do processo), `session` (o id da conversa, quando o evento nasce dentro de um turno) e `event`, mais os campos do evento. **Todas as sessões do dia ficam no mesmo arquivo**; `juniper logs --session` isola uma.
 
 ### Eventos {#eventos}
 
 | Evento | Quando | Campos principais |
 |---|---|---|
+| `turn_start` | Começo de cada turno do agente | `input_chars` (o texto não é gravado aqui) |
+| `http_request` | Antes de cada requisição HTTP a um provedor ou integração | `req`, `service`, `method`, `url`, `headers`, `body` |
+| `http_response` | Quando a resposta termina (em stream, depois do último pedaço) | `req`, `service`, `status`, `ttfb_ms`, `total_ms`, `body_bytes`, `headers`, `body` |
+| `http_error` | A requisição falhou antes de haver resposta (rede, timeout) | `req`, `service`, `total_ms`, `type`, `message` |
+| `log_rotation` | A faxina diária dos arquivos de log | `compressed`, `deleted`, `kept`, `errors` |
 | `llm_request` | Antes de cada chamada ao LLM | `messages`, `tools` (quantidades) |
 | `llm_response` | Quando a resposta termina | `provider`, `latency_ms`, `usage`, `finish_reason`, `tool_calls` (nomes) |
 | `tool_call` | Depois de cada tool pedida | `name`, `tier`, `args`, `decision`, `success`, `output`/`error`, `duration_ms` |
@@ -65,7 +70,56 @@ O que **você** digita não é gravado (só quantidades), mas a saída das tools
 - O log fica em `brain/eventlog.py`, **fora** de `core/`: router, dispatcher e agente o usam sem depender uns dos outros.
 - **Logar nunca derruba a Juniper:** disco cheio ou pasta sem permissão pulam o evento.
 - Os testes nunca escrevem no log real (`tests/conftest.py`).
-- Não há rotação nem limpeza hoje: apagar os arquivos antigos é manual (em produção isso muda; veja [Produção](producao.html)). O `juniper.log` do shell é outro arquivo, com o texto simples dos comandos legados.
+- Os arquivos antigos são compactados e apagados todo dia ([Rotação diária](#rotacao)). O `juniper.log` do shell é outro arquivo, com o texto simples dos comandos legados.
+
+## Log técnico: o que ela fez por baixo dos panos {#log-tecnico kind=conceito file=brain/httplog.py}
+
+Além dos eventos de alto nível, o log guarda **a conversa de rede** do cérebro: cada requisição e cada resposta HTTP aos provedores de LLM (DeepInfra, Groq, Ollama) e à agenda do Google, com método, URL, cabeçalhos, status, tempos e **o corpo inteiro** (até o limite). É onde você vê o JSON exato que foi para o modelo, o que voltou (inclusive o stream) e o que a API da agenda respondeu.
+
+```bash
+juniper logs                         # os últimos 100 eventos de hoje
+juniper logs -f                      # acompanha ao vivo
+juniper logs -e http -v              # só a rede, com cabeçalhos e corpos
+juniper logs --errors --days 3       # só falhas dos últimos 3 dias
+juniper logs -s a1b2c3              # uma conversa (um pedaço do id; a tela mostra os 6 últimos)
+juniper logs --json | jq .           # as linhas cruas
+juniper logs ls                      # os arquivos de log e o tamanho de cada um
+```
+
+| Opção | O que faz |
+|---|---|
+| `-n`, `--lines` | Quantos eventos mostrar (padrão 100; `0` = todos). |
+| `-f`, `--follow` | Mostra os últimos e segue o arquivo de hoje, como `tail -f`. |
+| `--date AAAA-MM-DD`, `--days N` | Um dia específico, ou os últimos N dias (contando hoje). |
+| `-s`, `--session` | Só uma conversa (basta um pedaço do id; a coluna da esquerda mostra os 6 últimos caracteres). |
+| `--run` | Só uma execução do processo. |
+| `-e`, `--event` | Só estes eventos, por nome ou prefixo (`http`, `tool_call`); repetível. |
+| `--errors` | Só falhas: `error`, `failover`, `http_error`, HTTP 4xx/5xx e tool com erro. |
+| `-v`, `--verbose` | Imprime tudo de cada evento, em JSON indentado. |
+| `--json` | Imprime as linhas JSON cruas, para `jq`. |
+
+Uma linha da rede tem esta cara: `→ POST https://api.deepinfra.com/... [deepinfra] req=a1b2c3d4` na ida e `← 200 [deepinfra] req=a1b2c3d4  812ms (1º byte 400ms)  5120B` na volta; o `req` liga as duas.
+
+- **Onde o log mora.** Onde o cérebro roda. No modo `local` é `~/.juniper/logs`; na VPS, dentro do contêiner: `docker compose -f docker-compose.prod.yml exec brain juniper logs -f`. O cliente é fino ([ADR-012](adr-012.html)): ele não lê o log do servidor.
+- **Segredos.** Valem as mesmas regras de [segredos no log](#segredos): `Authorization`, chaves de API, tokens e a *assertion* do login do Google saem como `***`. O corpo não: ele **é** o que você conversou, por isso o arquivo é `600` e os logs somem em poucos dias.
+- **Tamanho.** Corpos acima de `logging.wire_max_chars` são cortados com a contagem do que sobrou. Um stream é gravado depois do último pedaço, sem atrasar a resposta.
+- **Desligar.** `logging.wire: false` para de gravar `http_*` (o resto do log continua). Veja [Configuração](configuracao.html).
+- **Fora do alcance.** O MongoDB (consultas da memória) e o que as tools fazem em memória não aparecem como HTTP; as tools têm o próprio evento `tool_call`.
+
+## Rotação diária {#rotacao kind=conceito file=brain/logfiles.py}
+
+O arquivo muda a cada dia (`YYYY-MM-DD.jsonl`, como um `access.log` do Apache). Uma tarefa diária, no estilo de um cron, faz a faxina:
+
+| Idade do arquivo | O que acontece |
+|---|---|
+| Hoje | Nada: é o arquivo em uso. |
+| De 1 a `retention_days` dias (padrão 3) | Compactado em `YYYY-MM-DD.jsonl.gz` (continua legível por `juniper logs`). |
+| Mais velho que `retention_days` | Apagado. |
+
+- **Quem dispara.** O servidor (`juniper serve`) roda a faxina todo dia às `logging.rotate_at` (padrão `00:10`, no fuso do agente) e **também uma vez ao subir**, para recuperar um dia em que ficou fora do ar. Cada execução grava um evento `log_rotation`.
+- **Modo local ou cron do sistema.** `juniper logs rotate` faz a mesma coisa à mão (`--dry-run` só mostra o plano). É seguro rodar várias vezes. Para agendar fora do servidor: `10 0 * * * juniper logs rotate`.
+- **Segurança da compactação.** O `.gz` é escrito num arquivo temporário e só então substitui; o original só é apagado depois. Uma queda no meio não perde dados.
+- **Só mexe nos arquivos do log de eventos** (nome `AAAA-MM-DD.jsonl[.gz]`); `message.log` e outros arquivos da pasta ficam como estão.
 
 ## O diário das mensagens (message.log) {#message-log kind=módulo file=brain/trace.py}
 
