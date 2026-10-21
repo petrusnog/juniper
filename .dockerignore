@@ -40,3 +40,4 @@ docker-compose*.yml
 Dockerfile
 .dockerignore
 .juniper-dev/
+backups/
