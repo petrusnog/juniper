@@ -100,7 +100,7 @@ juniper logs ls                      # os arquivos de log e o tamanho de cada um
 
 Uma linha da rede tem esta cara: `→ POST https://api.deepinfra.com/... [deepinfra] req=a1b2c3d4` na ida e `← 200 [deepinfra] req=a1b2c3d4  812ms (1º byte 400ms)  5120B` na volta; o `req` liga as duas.
 
-- **Onde o log mora.** Onde o cérebro roda. No modo `local` é `~/.juniper/logs`; na VPS, dentro do contêiner: `docker compose -f docker-compose.prod.yml exec brain juniper logs -f`. O cliente é fino ([ADR-012](adr-012.html)): ele não lê o log do servidor.
+- **Onde o log mora.** Onde o cérebro roda. No modo `local` é `~/.juniper/logs`; na VPS, dentro do contêiner: `docker compose -f docker-compose.prod.yml exec brain python -m brain logs -f` (o executável `juniper` não existe lá; veja o atalho em [Produção](producao.html#usar-na-vps)). O cliente é fino ([ADR-012](adr-012.html)): ele não lê o log do servidor.
 - **Segredos.** Valem as mesmas regras de [segredos no log](#segredos): `Authorization`, chaves de API, tokens e a *assertion* do login do Google saem como `***`. O corpo não: ele **é** o que você conversou, por isso o arquivo é `600` e os logs somem em poucos dias.
 - **Tamanho.** Corpos acima de `logging.wire_max_chars` são cortados com a contagem do que sobrou. Um stream é gravado depois do último pedaço, sem atrasar a resposta.
 - **Desligar.** `logging.wire: false` para de gravar `http_*` (o resto do log continua). Veja [Configuração](configuracao.html).

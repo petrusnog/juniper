@@ -715,7 +715,7 @@ def logs_show(
     """Mostra o log técnico de hoje (requisições aos provedores, agenda, tools, erros).
 
     Cada sessão do dia está no mesmo arquivo; `--session` isola uma conversa. O log vive onde o
-    cérebro roda: na VPS use `docker compose exec brain juniper logs`.
+    cérebro roda: na VPS use `docker compose exec brain python -m brain logs`.
     """
     if ctx.invoked_subcommand is not None:
         return

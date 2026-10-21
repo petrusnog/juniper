@@ -135,7 +135,10 @@ async def test_direct_answer_streams_tokens() -> None:
     tokens: list[str] = []
     out = await agent.run("oi", on_token=tokens.append)
     assert out == "Oi, tudo bem?"
-    assert tokens == ["Oi, ", "tudo bem?"]
+    assert (
+        "".join(tokens) == "Oi, tudo bem?"
+    )  # a space may travel with the next chunk (core/style.py)
+    assert tokens[0].startswith("Oi,") and len(tokens) == 2
     first = provider.seen[0]
     assert first[0] == Message("system", "persona")
     assert first[1].role == "user" and first[1].content and first[1].content.endswith("] oi")
@@ -853,3 +856,15 @@ async def test_tools_without_subjects_are_never_approved_by_context() -> None:
     await agent.run("renomeia")
     await agent.run("sim")
     assert ran == [] and dispatcher.pending is not None
+
+
+async def test_dashes_the_model_writes_never_reach_the_client_or_the_history() -> None:
+    agent, _, _ = make_agent([(("Petrus ", "— tem dentista ", "amanhã —", " das 10h"), ())])
+    shown: list[str] = []
+
+    reply = await agent.run("e amanhã?", on_token=shown.append)
+
+    assert reply == "Petrus, tem dentista amanhã, das 10h"
+    assert "".join(shown) == reply
+    assert agent.session.history[-1].content == reply
+    assert not any(d in reply for d in "–—―")
