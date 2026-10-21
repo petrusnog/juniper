@@ -152,7 +152,7 @@ Por que OAuth e não uma chave de autenticação comum: a chave comum expira em 
 2. Escopos: **Keys → Auth Keys → Write** e **Devices → Core → Write** (a [documentação do Tailscale para runners do GitHub](https://tailscale.com/kb/1586/secure-github-runners) pede os dois; o primeiro cria a chave, o segundo deixa o nó entrar). Nenhum outro.
 3. Etiqueta: `tag:ci`. O cliente só consegue criar chaves para nós com essa etiqueta.
 4. Copie o *Client ID* e o *Client secret* (o secret só aparece uma vez).
-5. No GitHub: **Settings → Secrets and variables → Actions** do repositório, crie `TS_OAUTH_CLIENT_ID` e `TS_OAUTH_SECRET`.
+5. No GitHub: **Settings → Secrets and variables → Actions → Secrets → New repository secret**, crie `TS_OAUTH_CLIENT_ID` e `TS_OAUTH_SECRET`. Use **repository secret**, não *environment secret*: o workflow de deploy não declara `environment:`, e um segredo de environment não chega a um job que não o declara.
 
 No workflow (T-084) o passo fica assim; fixe a versão da ação (de preferência por SHA):
 
@@ -179,7 +179,7 @@ echo "<conteúdo de juniper-ci.pub>" >> ~/.ssh/authorized_keys
 ssh-keyscan -t ed25519 juniper-brain
 ```
 
-No GitHub, crie estes segredos e **apague** os arquivos locais `juniper-ci` e `juniper-ci.pub` depois:
+No GitHub, crie estes segredos (também como *repository secrets*) e **apague** os arquivos locais `juniper-ci` e `juniper-ci.pub` depois:
 
 | Segredo | Valor |
 |---|---|
