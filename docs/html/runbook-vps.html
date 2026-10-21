@@ -27,9 +27,12 @@
 # Usuário de deploy. O uid 10001 é de propósito: é o mesmo uid do usuário `juniper` dentro do contêiner,
 # então os arquivos montados (.env, chave do Google) ficam em 600 e legíveis pelos DOIS (veja &quot;Diretórios&quot;).
 adduser --disabled-password --gecos &quot;&quot; --uid 10001 deploy
+getent group docker &gt;/dev/null &amp;&amp; usermod -aG docker deploy   # se o Docker já está instalado; senão, a seção &quot;Docker e Tailscale&quot; faz isso
+
 install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-cp ~/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys     # COPIE, não mova: o do root fica até o teste abaixo
 chown deploy:deploy /home/deploy/.ssh/authorized_keys &amp;&amp; chmod 600 /home/deploy/.ssh/authorized_keys</code></pre>
+<ul><li><strong><code>adduser</code> reclamou do uid?</strong> O 10001 pode estar em uso: <code>getent passwd 10001</code> mostra por quem. O uid importa porque os arquivos montados no contêiner (<code>.env</code>, chave do Google) precisam ser legíveis por ele; veja "Diretórios e permissões".</li><li><strong>Testar o <code>deploy</code>, antes de fechar o root.</strong> Do seu computador, em <strong>outro terminal</strong>: <code>ssh deploy@&lt;IP-PUBLICO&gt;</code>. Já dentro, <code>docker ps</code> (prova o grupo <code>docker</code>; se o Docker ainda não foi instalado, só vale depois dessa seção) e, com o Tailscale instalado, <code>tailscale ip -4</code>.</li><li><strong>Já criou algo como root?</strong> Se clonou o repositório ou criou <code>.env</code>, <code>certs/</code> ou <code>config.yaml</code> em <code>/root</code>, refaça como <code>deploy</code> em <code>/home/deploy/juniper</code>. O runbook assume essa pasta, e o <code>chmod 600</code> só vale com o dono certo.</li></ul>
 <p>Só chave, sem senha e sem root remoto. O arquivo se chama <code>00-</code>: o <code>sshd</code> vale o <strong>primeiro</strong> valor que lê, e imagens de nuvem trazem um <code>50-cloud-init.conf</code> com <code>PasswordAuthentication yes</code>.</p>
 <pre><code class="lang-bash">cat &gt; /etc/ssh/sshd_config.d/00-juniper.conf &lt;&lt;&#x27;EOF&#x27;
 PasswordAuthentication no
@@ -38,7 +41,7 @@ PermitRootLogin no
 EOF
 sshd -t &amp;&amp; systemctl restart ssh
 sshd -T | grep -Ei &#x27;passwordauthentication|permitrootlogin|kbdinteractive&#x27;   # tudo `no`</code></pre>
-<p>Em <strong>outro terminal</strong>: <code>ssh deploy@&lt;IP-PUBLICO&gt;</code> (deve entrar) e <code>ssh root@&lt;IP-PUBLICO&gt;</code> (deve ser recusado). Só então feche a sessão de root. O <code>deploy</code> ganha <code>sudo</code> com senha própria, ou com <code>NOPASSWD</code> restrito, conforme você preferir; <strong>o deploy automático não precisa de <code>sudo</code></strong>, só do grupo <code>docker</code>.</p>
+<p>Em <strong>outro terminal</strong>: <code>ssh deploy@&lt;IP-PUBLICO&gt;</code> (deve entrar) e <code>ssh root@&lt;IP-PUBLICO&gt;</code> (deve ser recusado). Só então feche a sessão de root e, com o <code>deploy</code> funcionando, o <code>authorized_keys</code> do root pode ser apagado. O <code>deploy</code> ganha <code>sudo</code> com senha própria, ou com <code>NOPASSWD</code> restrito, conforme você preferir; <strong>o deploy automático não precisa de <code>sudo</code></strong>, só do grupo <code>docker</code>.</p>
 <h2 id="sistema">Sistema: atualizações, NTP e swap</h2>
 <pre><code class="lang-bash">sudo apt -y install unattended-upgrades
 sudo dpkg-reconfigure -plow unattended-upgrades                  # responda &quot;Sim&quot;

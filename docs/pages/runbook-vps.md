@@ -37,10 +37,16 @@ apt update && apt -y upgrade
 # Usuário de deploy. O uid 10001 é de propósito: é o mesmo uid do usuário `juniper` dentro do contêiner,
 # então os arquivos montados (.env, chave do Google) ficam em 600 e legíveis pelos DOIS (veja "Diretórios").
 adduser --disabled-password --gecos "" --uid 10001 deploy
+getent group docker >/dev/null && usermod -aG docker deploy   # se o Docker já está instalado; senão, a seção "Docker e Tailscale" faz isso
+
 install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-cp ~/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys     # COPIE, não mova: o do root fica até o teste abaixo
 chown deploy:deploy /home/deploy/.ssh/authorized_keys && chmod 600 /home/deploy/.ssh/authorized_keys
 ```
+
+- **`adduser` reclamou do uid?** O 10001 pode estar em uso: `getent passwd 10001` mostra por quem. O uid importa porque os arquivos montados no contêiner (`.env`, chave do Google) precisam ser legíveis por ele; veja "Diretórios e permissões".
+- **Testar o `deploy`, antes de fechar o root.** Do seu computador, em **outro terminal**: `ssh deploy@<IP-PUBLICO>`. Já dentro, `docker ps` (prova o grupo `docker`; se o Docker ainda não foi instalado, só vale depois dessa seção) e, com o Tailscale instalado, `tailscale ip -4`.
+- **Já criou algo como root?** Se clonou o repositório ou criou `.env`, `certs/` ou `config.yaml` em `/root`, refaça como `deploy` em `/home/deploy/juniper`. O runbook assume essa pasta, e o `chmod 600` só vale com o dono certo.
 
 Só chave, sem senha e sem root remoto. O arquivo se chama `00-`: o `sshd` vale o **primeiro** valor que lê, e imagens de nuvem trazem um `50-cloud-init.conf` com `PasswordAuthentication yes`.
 
@@ -54,7 +60,7 @@ sshd -t && systemctl restart ssh
 sshd -T | grep -Ei 'passwordauthentication|permitrootlogin|kbdinteractive'   # tudo `no`
 ```
 
-Em **outro terminal**: `ssh deploy@<IP-PUBLICO>` (deve entrar) e `ssh root@<IP-PUBLICO>` (deve ser recusado). Só então feche a sessão de root. O `deploy` ganha `sudo` com senha própria, ou com `NOPASSWD` restrito, conforme você preferir; **o deploy automático não precisa de `sudo`**, só do grupo `docker`.
+Em **outro terminal**: `ssh deploy@<IP-PUBLICO>` (deve entrar) e `ssh root@<IP-PUBLICO>` (deve ser recusado). Só então feche a sessão de root e, com o `deploy` funcionando, o `authorized_keys` do root pode ser apagado. O `deploy` ganha `sudo` com senha própria, ou com `NOPASSWD` restrito, conforme você preferir; **o deploy automático não precisa de `sudo`**, só do grupo `docker`.
 
 ## Sistema: atualizações, NTP e swap {#sistema}
 
