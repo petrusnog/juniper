@@ -25,7 +25,7 @@ Meta: uma VPS **sem nenhuma porta da Juniper aberta para a internet**. Tudo pass
 | [Subir](#subir) | `brain` e `mongo` saudáveis, porta 8765 só no IP Tailscale |
 | [Varredura](#varredura) | Prova de que nenhuma porta pública responde |
 
-Convenções: `<IP-PUBLICO>` é o IP da VPS no painel do Contabo; `deploy` é o usuário sem privilégio; `100.x.y.z` é o IP da VPS no Tailscale; `juniper-brain` é o nome dela na tailnet.
+Convenções: `<IP-PUBLICO>` é o IP da VPS no painel do Contabo; `deploy` é o usuário sem privilégio; `100.x.y.z` é o IP da VPS no Tailscale; `juniper-brain` é o nome que damos a ela na tailnet (se o nó ainda se chama `vmi...`, o nome padrão do Contabo, veja [Renomear o nó](#renomear-no)). O CI usa **o IP**, não o nome.
 
 ## Usuário de deploy e SSH {#usuario}
 
@@ -99,6 +99,16 @@ sudo systemctl edit docker      # adicione:
 # Wants=tailscaled.service
 ```
 
+### Renomear o nó {#renomear-no}
+
+Se a VPS entrou na tailnet com o nome padrão do Contabo (algo como `vmi3674940`), todos os comandos deste texto que usam `juniper-brain` (`ssh deploy@juniper-brain`, `curl http://juniper-brain:8765/health`, `scp`) falham com *Temporary failure in name resolution*. Renomeie, sem mudar o IP:
+
+```bash
+sudo tailscale set --hostname=juniper-brain
+```
+
+Ou, sem renomear, troque `juniper-brain` pelo nome que o painel mostra (aba *Machines*) ou pelo IP `100.x.y.z`.
+
 ## ACL do Tailscale {#acl}
 
 No painel de administração (**Access controls**), a política precisa dos donos das etiquetas e de uma regra que deixe só clientes e CI alcançarem a VPS. Mescle com a sua política atual, em vez de substituí-la.
@@ -168,25 +178,37 @@ No workflow (T-084) o passo fica assim; fixe a versão da ação (de preferênci
 
 Uma chave só para o CI, separada da sua chave pessoal, para poder revogá-la sem mexer no seu acesso.
 
+A chave pode ser gerada **na VPS, como `deploy`** (o que o runbook assume) ou no seu computador. Na VPS, entre como `deploy` (`su - deploy`): feito como `root`, o `authorized_keys` iria para `/root/.ssh` e o `deploy` recusaria o CI.
+
 ```bash
-# no seu computador
-ssh-keygen -t ed25519 -f ./juniper-ci -N "" -C "juniper-ci"
+# na VPS, como deploy
+ssh-keygen -t ed25519 -f ~/juniper-ci -N "" -C "juniper-ci"
+cat ~/juniper-ci.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 
-# na VPS, como deploy: autoriza a chave PÚBLICA
-echo "<conteúdo de juniper-ci.pub>" >> ~/.ssh/authorized_keys
-
-# a identidade da VPS, para o CI não aceitar um servidor falso (rode com o Tailscale ligado)
-ssh-keyscan -t ed25519 juniper-brain
+cat ~/juniper-ci          # copie TUDO (com as linhas BEGIN e END) para o segredo DEPLOY_SSH_KEY
+clear
+shred -u ~/juniper-ci ~/juniper-ci.pub    # a privada só pode existir no GitHub
 ```
 
-No GitHub, crie estes segredos (também como *repository secrets*) e **apague** os arquivos locais `juniper-ci` e `juniper-ci.pub` depois:
+Cole a chave no segredo com uma linha em branco no final (sem ela, o `ssh` pode recusar com *invalid format*). Se preferir gerar no seu computador, rode o `ssh-keygen` lá, copie só o `.pub` para o `authorized_keys` da VPS e apague os arquivos locais depois.
+
+A identidade da VPS (para o CI não aceitar um servidor falso) é lida do próprio servidor, **usando o IP**, que é o que o CI vai usar para conectar:
+
+```bash
+# na VPS (qualquer usuário)
+echo "$(tailscale ip -4) $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+```
+
+O `ssh` só confia numa linha do `known_hosts` se ela começar pelo **mesmo texto** que usou para conectar: por isso o `DEPLOY_HOST` e o início dessa linha são o mesmo IP.
+
+No GitHub, crie estes segredos (também como *repository secrets*):
 
 | Segredo | Valor |
 |---|---|
 | `DEPLOY_SSH_KEY` | conteúdo de `juniper-ci` (a chave **privada**) |
-| `DEPLOY_HOST` | `juniper-brain` (o nome na tailnet) |
+| `DEPLOY_HOST` | o IP Tailscale da VPS (`tailscale ip -4`, algo como `100.x.y.z`). O IP é mais robusto que o nome: não depende de MagicDNS dentro do runner |
 | `DEPLOY_USER` | `deploy` |
-| `DEPLOY_KNOWN_HOSTS` | a linha que o `ssh-keyscan` imprimiu |
+| `DEPLOY_KNOWN_HOSTS` | a linha `100.x.y.z ssh-ed25519 AAAA...` impressa pelo `echo` acima |
 
 **Girar as credenciais:** gere um novo cliente OAuth (ou nova chave SSH), atualize o segredo no GitHub, rode um deploy manual (`workflow_dispatch`) e só então revogue o antigo (no Tailscale: **Settings → Trust credentials**, revogue a credencial antiga; na VPS: remova a linha de `~/.ssh/authorized_keys`).
 
@@ -305,6 +327,7 @@ Repita a varredura **depois de cada mudança** no compose, no `ufw` ou na ACL, e
 | A porta 8765 não responde pela tailnet | `TAILSCALE_IP` errado ou vazio no `.env`; o Docker subiu antes do `tailscaled` (veja o `After=` acima); a ACL não inclui o seu dispositivo. |
 | Erro `cannot assign requested address` ao subir o brain | O Docker tentou publicar no IP Tailscale antes de a interface existir. `sudo systemctl restart docker` e suba de novo. |
 | `Permission denied` ao ler `.env` ou `gcp-key.json` | O dono não é o uid 10001. `sudo chown 10001:10001 <arquivo>`. |
+| `Temporary failure in name resolution` ao usar `juniper-brain` | O nó ainda tem o nome padrão do Contabo (`vmi...`). Veja [Renomear o nó](#renomear-no) ou use o IP. Para o `known_hosts`, use o `echo` da seção da chave SSH, que não depende de nome. |
 | O CI não entra na tailnet | Escopo ou etiqueta do cliente OAuth errados (faltando *Devices → Core → Write*, por exemplo), ou `tag:ci` ausente no `tagOwners`. |
 | Docker não acha o arquivo e criou uma **pasta** | O arquivo montado não existia na hora do `up`. Apague a pasta e copie o arquivo de novo. |
 
