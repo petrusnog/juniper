@@ -63,11 +63,17 @@ jobs:
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Os segredos saem mascarados no log, então a causa tem de ser dita aqui, sem imprimi-los.
+          if ! ssh-keygen -F "$DEPLOY_HOST" -f ~/.ssh/known_hosts > /dev/null; then
+            echo "::error::DEPLOY_KNOWN_HOSTS não tem uma linha que comece pelo mesmo texto de DEPLOY_HOST (use o mesmo IP nos dois; a linha é: IP ssh-ed25519 AAAA...)"
+            exit 1
+          fi
       - name: Deploy na VPS
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
