@@ -249,7 +249,7 @@ PR mergeado no master
 |---|---|
 | T-080 | `Dockerfile` do brain e compose de produção |
 | T-081 | Teste de capacidade e latência; fixa o tipo da VPS |
-| T-082 | Provisionamento, hardening, Tailscale e runbook |
+| T-082 | Provisionamento, hardening, Tailscale e [runbook](runbook-vps.html) |
 | T-083 | Backup e restauração do Mongo |
 | T-084 | `deploy.yml` com rollback |
 | T-085 | Saúde e logs em produção |
