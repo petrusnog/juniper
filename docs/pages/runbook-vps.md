@@ -148,8 +148,8 @@ O runner do GitHub Actions entra na tailnet como um nó **temporário** (`tag:ci
 
 Por que OAuth e não uma chave de autenticação comum: a chave comum expira em até 90 dias e precisa ser trocada à mão; o cliente OAuth não expira e o runner gera uma chave efêmera a cada execução.
 
-1. Painel do Tailscale → **Settings → OAuth clients → Generate OAuth client**.
-2. Escopo: **Auth Keys → Write**. Nenhum outro (o menor escopo possível).
+1. Painel do Tailscale → **Settings → Trust credentials → Credential → OAuth** (nas versões antigas do painel o menu se chamava *OAuth clients*; o rótulo do botão também varia entre *Credential* e *+ Credential*).
+2. Escopos: **Keys → Auth Keys → Write** e **Devices → Core → Write** (a [documentação do Tailscale para runners do GitHub](https://tailscale.com/kb/1586/secure-github-runners) pede os dois; o primeiro cria a chave, o segundo deixa o nó entrar). Nenhum outro.
 3. Etiqueta: `tag:ci`. O cliente só consegue criar chaves para nós com essa etiqueta.
 4. Copie o *Client ID* e o *Client secret* (o secret só aparece uma vez).
 5. No GitHub: **Settings → Secrets and variables → Actions** do repositório, crie `TS_OAUTH_CLIENT_ID` e `TS_OAUTH_SECRET`.
@@ -188,7 +188,7 @@ No GitHub, crie estes segredos e **apague** os arquivos locais `juniper-ci` e `j
 | `DEPLOY_USER` | `deploy` |
 | `DEPLOY_KNOWN_HOSTS` | a linha que o `ssh-keyscan` imprimiu |
 
-**Girar as credenciais:** gere um novo cliente OAuth (ou nova chave SSH), atualize o segredo no GitHub, rode um deploy manual (`workflow_dispatch`) e só então revogue o antigo (no Tailscale: **Settings → OAuth clients → Revoke**; na VPS: remova a linha de `~/.ssh/authorized_keys`).
+**Girar as credenciais:** gere um novo cliente OAuth (ou nova chave SSH), atualize o segredo no GitHub, rode um deploy manual (`workflow_dispatch`) e só então revogue o antigo (no Tailscale: **Settings → Trust credentials**, revogue a credencial antiga; na VPS: remova a linha de `~/.ssh/authorized_keys`).
 
 ## Diretórios e permissões {#diretorios}
 
@@ -305,7 +305,7 @@ Repita a varredura **depois de cada mudança** no compose, no `ufw` ou na ACL, e
 | A porta 8765 não responde pela tailnet | `TAILSCALE_IP` errado ou vazio no `.env`; o Docker subiu antes do `tailscaled` (veja o `After=` acima); a ACL não inclui o seu dispositivo. |
 | Erro `cannot assign requested address` ao subir o brain | O Docker tentou publicar no IP Tailscale antes de a interface existir. `sudo systemctl restart docker` e suba de novo. |
 | `Permission denied` ao ler `.env` ou `gcp-key.json` | O dono não é o uid 10001. `sudo chown 10001:10001 <arquivo>`. |
-| O CI não entra na tailnet | Escopo ou etiqueta do cliente OAuth errados, ou `tag:ci` ausente no `tagOwners`. |
+| O CI não entra na tailnet | Escopo ou etiqueta do cliente OAuth errados (faltando *Devices → Core → Write*, por exemplo), ou `tag:ci` ausente no `tagOwners`. |
 | Docker não acha o arquivo e criou uma **pasta** | O arquivo montado não existia na hora do `up`. Apague a pasta e copie o arquivo de novo. |
 
 ## Recomeçar do zero {#recriar}
