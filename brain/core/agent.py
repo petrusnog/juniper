@@ -17,7 +17,7 @@ from brain.config import settings
 from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
 from brain.core.session import Session, Turn
-from brain.eventlog import event_log
+from brain.eventlog import bind_session, event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
 from brain.memory.retrieval import RecalledContext
@@ -94,6 +94,8 @@ class Agent:
         If the LLM fails, the session is rolled back to before this turn and the error
         propagates, so a retry does not see half a turn.
         """
+        bind_session(self.session.id)
+        event_log.log("turn_start", input_chars=len(user_input))
         checkpoint = self.session.checkpoint()
         self._executed_until = None
         self._stages = Stages()

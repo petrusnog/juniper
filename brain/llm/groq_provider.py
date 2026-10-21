@@ -8,8 +8,10 @@ from collections.abc import AsyncIterator
 from typing import Any, ClassVar
 
 import groq
+import httpx
 
 from brain.config import settings
+from brain.httplog import logged_transport
 from brain.llm.base import LLMProvider
 from brain.llm.errors import (
     LLMAuthError,
@@ -61,7 +63,12 @@ class GroqProvider(LLMProvider):
                 )
             # max_retries=0: retrying/failover is the router's job (T-015), not the SDK's.
             self._client = groq.AsyncGroq(
-                api_key=self._api_key, timeout=self._timeout, max_retries=0
+                api_key=self._api_key,
+                timeout=self._timeout,
+                max_retries=0,
+                http_client=httpx.AsyncClient(
+                    transport=logged_transport("groq"), timeout=self._timeout
+                ),
             )
         return self._client
 

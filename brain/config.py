@@ -305,6 +305,33 @@ class TraceSettings(BaseModel):
     file: Path | None = None
 
 
+class LoggingSettings(BaseModel):
+    """O log técnico: o que a Juniper fez por baixo dos panos, e quanto tempo ele fica no disco."""
+
+    # Grava no log cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google
+    # (método, URL, status, tempo, corpo). O corpo traz o que você disse e o que voltou: por isso
+    # o arquivo é 600 e os logs somem depois de `retention_days`. Segredos são sempre mascarados.
+    wire: bool = True
+    # Maior corpo (em caracteres) gravado por requisição/resposta; o resto é cortado com a contagem.
+    wire_max_chars: int = Field(default=20000, ge=500, le=1_000_000)
+    # Logs de dias anteriores a hoje são compactados (.gz); os com mais de `retention_days` dias
+    # são apagados. Hoje + `retention_days` dias anteriores ficam no disco.
+    retention_days: int = Field(default=3, ge=1, le=365)
+    # Hora diária (HH:MM, no fuso do agente) em que o servidor compacta e apaga logs antigos.
+    rotate_at: str = "00:10"
+
+    @field_validator("rotate_at")
+    @classmethod
+    def _validate_rotate_at(cls, v: str) -> str:
+        try:
+            hour, minute = (int(part) for part in v.split(":"))
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise ValueError
+        except ValueError:
+            raise ValueError(f"logging.rotate_at inválido: {v!r} (use HH:MM, ex.: 00:10)") from None
+        return f"{hour:02d}:{minute:02d}"
+
+
 class TelegramSettings(BaseModel):
     """O bot do Telegram, um cliente do protocolo (ADR-016). O token do bot fica no .env."""
 
@@ -383,6 +410,7 @@ class Settings(BaseSettings):
     google: GoogleSettings = Field(default_factory=GoogleSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     # Segredos (sempre via env)

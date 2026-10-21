@@ -234,7 +234,7 @@ PR mergeado no master
 
 ## Observabilidade {#observabilidade-producao}
 
-`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html)) ficam num volume, com rotação e limite de tamanho. Alertas ativos ficam fora da Sprint 3.
+`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html#log-tecnico)) ficam num volume, um arquivo por dia com todas as sessões, incluindo as requisições HTTP aos provedores e à agenda. O próprio servidor compacta os de ontem e apaga os com mais de 3 dias, todo dia às 00:10 ([rotação](observabilidade.html#rotacao)). Para ver: `docker compose -f docker-compose.prod.yml exec brain juniper logs -f`. Alertas ativos ficam fora da Sprint 3.
 
 ## Riscos aceitos {#riscos}
 

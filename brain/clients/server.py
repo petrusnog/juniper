@@ -38,6 +38,8 @@ from brain.clients import protocol as p
 from brain.config import settings
 from brain.core.session import new_session_id
 from brain.eventlog import event_log
+from brain.logfiles import run_rotation
+from brain.scheduler import run_daily
 
 logger = logging.getLogger(__name__)
 
@@ -453,9 +455,14 @@ async def run_server(server: BrainServer) -> None:
     loop.add_signal_handler(signal.SIGTERM, request_stop, p.CLOSE_SERVICE_RESTART)
     loop.add_signal_handler(signal.SIGINT, request_stop, p.CLOSE_GOING_AWAY)
     await server.start()
+    # Daily housekeeping, cron-style: gzip yesterday's log and delete the expired ones.
+    cron = loop.create_task(run_daily("log_rotation", settings.logging.rotate_at, run_rotation))
     try:
         code = await stop
     finally:
+        cron.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cron
         loop.remove_signal_handler(signal.SIGTERM)
         loop.remove_signal_handler(signal.SIGINT)
     await server.stop(code, "servidor reiniciando" if code == p.CLOSE_SERVICE_RESTART else "saindo")

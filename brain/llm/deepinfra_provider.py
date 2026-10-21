@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 import httpx
 
 from brain.config import settings
+from brain.httplog import logged_transport
 from brain.llm.base import LLMProvider
 from brain.llm.errors import (
     LLMAuthError,
@@ -56,7 +57,7 @@ class DeepInfraProvider(LLMProvider):
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=timeout or cfg.timeout,
-            transport=transport,
+            transport=logged_transport("deepinfra", transport),
         )
 
     async def aclose(self) -> None:
