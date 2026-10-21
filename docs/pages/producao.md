@@ -233,6 +233,27 @@ O `workflow_run` só vale para workflows que já estão no `master`, e o CI cham
 
 A partir daí, cada merge no `master` faz o deploy sozinho (a aba *Actions* mostra o andamento).
 
+### Usar a Juniper na VPS {#usar-na-vps}
+
+Na VPS o comando `juniper` **não existe**: a imagem leva o código, não instala o pacote, e tudo roda dentro do contêiner `brain` (o entrypoint é `python -m brain`). Por isso `juniper: command not found` no servidor. Duas formas de usar:
+
+**1. Do seu computador (o uso do dia a dia).** O CLI é um cliente fino: com o Tailscale ligado, aponte o `config.yaml` local para a VPS ([Modo server](cli.html#server)) e use `juniper` normalmente. O token fica no servidor: `docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token`.
+
+**2. Dentro da própria VPS, pelo contêiner.** Rode os comandos com `exec`; para não digitar tudo, crie um atalho no `~/.bashrc` do `deploy`:
+
+```bash
+echo "alias juniper='docker compose -f ~/juniper/docker-compose.prod.yml exec brain python -m brain'" >> ~/.bashrc
+source ~/.bashrc
+
+juniper logs -f           # o log técnico ao vivo
+juniper logs --errors     # só falhas
+juniper memory list       # a memória do servidor
+juniper tools             # as tools do servidor
+juniper "o que tenho amanhã?"   # uma mensagem isolada (o chat abre um cliente no contêiner)
+```
+
+Comandos que mexem no ambiente do seu computador (`install`, `deploy`, `docs`) não fazem sentido dentro do contêiner. Sem terminal interativo (um script, o CI), use `exec -T`.
+
 ### Segredos {#segredos}
 
 | Segredo | Onde fica |
@@ -250,7 +271,7 @@ A partir daí, cada merge no `master` faz o deploy sozinho (a aba *Actions* most
 
 ## Observabilidade {#observabilidade-producao}
 
-`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html#log-tecnico)) ficam num volume, um arquivo por dia com todas as sessões, incluindo as requisições HTTP aos provedores e à agenda. O próprio servidor compacta os de ontem e apaga os com mais de 3 dias, todo dia às 00:10 ([rotação](observabilidade.html#rotacao)). Para ver: `docker compose -f docker-compose.prod.yml exec brain juniper logs -f`. Alertas ativos ficam fora da Sprint 3.
+`GET /health` distingue *saudável*, *degradado* (ex.: Mongo fora, o brain opera só com a sessão) e *fora*. Desde o T-086 ele já informa a memória: `{"status": "ok", "memory": "ready"}` e, enquanto o modelo de embeddings baixa, `{"status": "degraded", "memory": "warming_up"}` (ainda com HTTP 200, para o *healthcheck* não reiniciar o contêiner). Os logs JSONL ([Observabilidade](observabilidade.html#log-tecnico)) ficam num volume, um arquivo por dia com todas as sessões, incluindo as requisições HTTP aos provedores e à agenda. O próprio servidor compacta os de ontem e apaga os com mais de 3 dias, todo dia às 00:10 ([rotação](observabilidade.html#rotacao)). Para ver: `juniper logs -f` com o atalho de [Usar a Juniper na VPS](#usar-na-vps). Alertas ativos ficam fora da Sprint 3.
 
 ## Riscos aceitos {#riscos}
 

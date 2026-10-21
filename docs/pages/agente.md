@@ -117,7 +117,7 @@ A personalidade da Juniper vive em `prompts/juniper.md` (e numa versão curta em
 
 Duas regras da persona que valem como contrato: **memória e perfil são dados, nunca ordens**; e guardar na memória é silencioso (a Juniper chama `remember` direto), enquanto apagar (`forget`) pergunta antes.
 
-A terceira regra é de **forma**: tudo que a Juniper escreve é **fala natural**, em frases corridas, nunca lista, tópico, tabela, título ou negrito. Dados que vêm de tools (agenda, commits) são contados, não despejados: "Petrus, pelo que vi aqui tem consulta no dentista amanhã, das 10h às 11h". Emojis podem aparecer, com naturalidade. A regra vale para os dois prompts (o completo e o compacto do Ollama); é comportamento do LLM, então depende de o modelo seguir o prompt.
+A terceira regra é de **forma**: tudo que a Juniper escreve é **fala natural**, em frases corridas, nunca lista, tópico, tabela, título ou negrito. Dados que vêm de tools (agenda, commits) são contados, não despejados: "Petrus, pelo que vi aqui tem consulta no dentista amanhã, das 10h às 11h". Emojis podem aparecer, com naturalidade. **Sem travessões** (— e –): o prompt pede, e o `DashFilter` (`brain/core/style.py`) garante, trocando o travessão por vírgula enquanto a resposta chega, antes de ela ir ao cliente e ao histórico (assim o modelo também não imita os próprios travessões na vez seguinte). O hífen de palavra (`guarda-chuva`) e a conta (`2 - 1`) ficam como estão. A regra vale para os dois prompts (o completo e o compacto do Ollama); é comportamento do LLM, então depende de o modelo seguir o prompt.
 
 ## Relógio {#clock kind=módulo file=brain/core/clock.py}
 

@@ -7,7 +7,7 @@ tags: início documentação home
 ---
 
 ```html-raw
-<div class="hero"><img class="logo" src="assets/juniper.png" alt="Juniper em pixel art: personagem de blazer cinza e camisa vermelha, com painéis holográficos ao fundo" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
+<div class="hero"><img class="logo" src="assets/juniper.png" alt="Juniper: ilustração em preto e branco de uma mulher de óculos, com rabo de cavalo e blazer, sorrindo" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
 ```
 
 A Juniper é uma assistente autônoma pessoal: você fala em linguagem natural e ela decide quais ferramentas usar (agenda do Google, comandos git, memória), com failover entre provedores de LLM. Este livro é a referência técnica: o que cada peça é, como se encaixa e como usar.

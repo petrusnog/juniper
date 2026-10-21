@@ -17,6 +17,7 @@ from brain.config import settings
 from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
 from brain.core.session import Session, Turn
+from brain.core.style import DashFilter
 from brain.eventlog import bind_session, event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
@@ -260,17 +261,24 @@ class Agent:
         started = time.monotonic()
         first_token = True
         self._llm_calls += 1
+        dashes = DashFilter()  # the persona forbids dashes; this makes it hold (core/style.py)
         async for chunk in self._provider.stream(messages, tools=schemas):
             if first_token and (chunk.delta or chunk.tool_calls):
                 first_token = False
                 self._stages.add("llm_first_token", (time.monotonic() - started) * 1000)
             if chunk.delta:
-                text.append(chunk.delta)
-                if on_token is not None:
-                    await _emit(on_token, chunk.delta)
+                spoken = dashes.feed(chunk.delta)
+                if spoken:
+                    text.append(spoken)
+                    if on_token is not None:
+                        await _emit(on_token, spoken)
             calls.extend(chunk.tool_calls)
             usage = chunk.usage or usage
             finish_reason = chunk.finish_reason or finish_reason
+        if rest := dashes.flush():
+            text.append(rest)
+            if on_token is not None:
+                await _emit(on_token, rest)
         self._stages.add("llm", (time.monotonic() - started) * 1000)
         event_log.log(
             "llm_response",

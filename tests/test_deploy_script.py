@@ -218,5 +218,6 @@ def test_ssh_checks_the_server_identity_and_secrets_never_go_into_the_command_li
     run_steps = [s["run"] for s in WORKFLOW["jobs"]["deploy"]["steps"] if "run" in s]
     joined = "\n".join(run_steps)
     assert "StrictHostKeyChecking=yes" in joined
+    assert "ssh-keygen -F" in joined  # falha cedo, dizendo que known_hosts e DEPLOY_HOST divergem
     assert "secrets." not in joined  # os segredos entram por `env:`, não colados no script
     assert "set -x" not in joined
