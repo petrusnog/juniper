@@ -204,7 +204,7 @@ class BeliefReflectionPhase:
             return
 
         counters = await self._critic(ctx, proposals, digest)
-        names = await _user_names(ctx)
+        names = await user_names_of(ctx)
         for index, proposal in enumerate(proposals):
             await self._apply(
                 ctx, book, proposal, digest, shown, names, counters.get(index, []), tally
@@ -320,7 +320,7 @@ def _proposals(raw: str) -> list[dict[str, Any]]:
     return [p for p in items if isinstance(p, dict)][:MAX_PROPOSALS]
 
 
-async def _user_names(ctx: PhaseContext) -> list[str]:
+async def user_names_of(ctx: PhaseContext) -> list[str]:
     """The user's name(s): the profile's, plus the default the guards know, so a belief can be
     checked to be about him even before a profile exists."""
     names = ["Petrus"]

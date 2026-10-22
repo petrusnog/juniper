@@ -92,6 +92,9 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto a passada noturna pode mexer num peso por mês (por item). O Petrus não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
 | `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.interests.max_seeds_per_night` | `3` | Temas novos que a noite pode semear a partir do que o Petrus escreveu (só o tema, nunca a opinião dele). |
+| `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
+| `memory.v2.interests.study_gap_days` | `3` | Intervalo mínimo para estudar o mesmo tema de novo (a posição muda devagar). |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
 | `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |

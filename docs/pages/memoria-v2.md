@@ -218,3 +218,15 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 | `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
 
 **Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), a passada noturna escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](adr-017.html)).
+
+## Interesses próprios {#interesses kind=módulo file=brain/memory/v2/interests.py}
+
+A Juniper desenvolve interesses por conta própria. O Petrus pode dizer "odeio os Beatles"; ela guarda o **tema** (a semente) e, à noite, "estuda" e conclui sozinha o que acha. Duas fases, depois do afeto: `interests` (semente, exposição e esmaecimento) e `study` (estudo).
+
+- **A opinião dele não entra na conta dela.** A fase de sementes lê só as falas do Petrus e guarda apenas o tema genérico (`check_interest`: nada de dado pessoal, endereço, segredo ou pergunta; cita a fala em que apareceu). A opinião dele continua sendo um fato sobre ele. O prompt do estudo **nunca** contém as palavras dele: só o tema e quem ela é (traços e preocupações). Um teste roda a mesma noite com "odeio" e com "amo" e confere que o prompt e a posição são idênticos.
+- **A posição vem da personalidade dela e muda devagar.** O modelo avançado devolve o `appeal` (de -1 a 1: o quanto alguém com o jeito e as preocupações dela gostaria do que leu); o código o transforma em evidência a favor (`alpha`) ou contra (`beta`) do gosto, como numa crença. Só há posição com evidência acumulada (`n ≥ 1`); `like` a partir de 0,65, `dislike` até 0,35, `mixed` no meio, com inércia (manter uma posição custa menos que assumi-la), então uma noite contrária não vira tudo. Estudo morno (|appeal| < 0,15) não conta. Ambivalência é permitida.
+- **Exposição e esquecimento:** voltar ao tema aumenta a `intensity` (uma vez por dia); sem contato ela cai pela metade a cada `half_life_days` (45), contada uma vez por intervalo.
+- **Limites:** até `max_seeds_per_night` (3) temas novos e `max_per_night` (2) estudados por noite, os mais fortes primeiro, e o mesmo tema só volta a ser estudado depois de `study_gap_days` (3).
+- **Honestidade:** o gosto é de **segunda mão** (`experience = reading`): o estudo diz "li", nunca "ouvi" ou "vi". Um estudo que afirma ter vivido (`vivencia`) não é guardado. O diário registra "Li sobre X... Hoje, gosto de X.".
+- **Sem web e sem ferramentas:** o estudo é uma chamada ao modelo avançado sobre conhecimento geral. Os módulos de interesses não importam tools nem código de rede (um teste confere). Dar internet a ela exige um ADR próprio.
+- **Comandos:** `juniper memory interests` lista tema, intensidade, posição, quando foi estudado e as razões; `interests forget <id>` apaga um.

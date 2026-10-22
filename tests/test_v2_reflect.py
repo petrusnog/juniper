@@ -593,7 +593,8 @@ async def test_a_dry_run_proposes_without_writing() -> None:
 
 
 def test_the_reflection_follows_the_observation_in_the_default_night() -> None:
-    assert [p.name for p in default_phases()] == ["observe", "reflect", "affect", "persona"]
+    names = [p.name for p in default_phases()]
+    assert names[:2] == ["observe", "reflect"]
 
 
 async def test_the_full_night_turns_lines_into_a_candidate_and_advances_the_watermark() -> None:

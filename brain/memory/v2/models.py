@@ -254,6 +254,7 @@ class Interest:
     experience: str = "reading"  # second-hand taste: she read about it, she did not live it
     exposures: int = 0
     last_studied_at: datetime | None = None
+    faded_at: datetime | None = None  # the last time the lack of contact was accounted for
     embedding: list[float] = field(default_factory=list)
     embedding_model: str = ""
     created_at: datetime = field(default_factory=utcnow)
@@ -280,6 +281,7 @@ class Interest:
             "experience": self.experience,
             "exposures": self.exposures,
             "last_studied_at": self.last_studied_at,
+            "faded_at": self.faded_at,
             "embedding": [float(x) for x in self.embedding],
             "embedding_model": self.embedding_model,
             "created_at": self.created_at,
@@ -302,6 +304,7 @@ class Interest:
                 experience=doc.get("experience", "reading"),
                 exposures=int(doc.get("exposures", 0)),
                 last_studied_at=_opt_dt(doc.get("last_studied_at")),
+                faded_at=_opt_dt(doc.get("faded_at")),
                 embedding=_vector(doc),
                 embedding_model=doc.get("embedding_model", ""),
                 created_at=as_dt(doc["created_at"]),
