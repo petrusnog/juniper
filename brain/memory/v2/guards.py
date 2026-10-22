@@ -224,6 +224,25 @@ def check_concern_change(
     return None
 
 
+MAX_MARKED_CHARS = 140
+
+
+def check_marked(text: object) -> Rejection | None:
+    """Whether a "what marked me lately" line may be kept: short, no question, no secrets."""
+    if not isinstance(text, str) or not _normalize(text):
+        return Rejection("vazia", "sem texto")
+    clean = _normalize(text)
+    if len(clean) > MAX_MARKED_CHARS:
+        return Rejection("longa", f"maior que {MAX_MARKED_CHARS} caracteres")
+    if clean.endswith("?"):
+        return Rejection("pergunta", "é uma pergunta")
+    if _NO_WEB.search(clean):
+        return Rejection("web", "endereço ou e-mail não é uma lembrança")
+    if _CLINICAL.search(_plain(clean)):
+        return Rejection("clinico", "parece um rótulo clínico")
+    return _content(clean)
+
+
 # --- the material the night may read ----------------------------------------------------------
 
 OMITTED = "(respondeu usando ferramentas; o texto da resposta fica de fora)"
@@ -282,6 +301,7 @@ __all__ = [
     "check_affect",
     "check_belief",
     "check_concern_change",
+    "check_marked",
     "check_interest",
     "check_trait_change",
     "reasons",

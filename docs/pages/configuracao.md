@@ -101,6 +101,10 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.max_per_night` | `5` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
 | `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
+| `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
+| `memory.v2.persona.step_factor` | `0.05` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
+| `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
 | `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
 | `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.html#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |

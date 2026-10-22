@@ -213,7 +213,8 @@ async def test_a_failed_model_call_leaves_the_night_to_retry() -> None:
 
 
 def test_the_affect_phase_comes_after_the_beliefs_in_the_default_night() -> None:
-    assert [p.name for p in default_phases()][-1] == "affect"
+    names = [p.name for p in default_phases()]
+    assert names.index("affect") > names.index("reflect")
 
 
 async def test_a_dry_run_shows_the_feeling_and_writes_nothing() -> None:
