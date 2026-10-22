@@ -119,3 +119,19 @@ Nada foi gravado (--dry-run). O que seria gravado:
 ```
 
 Sem a V2 ligada, a passada não faz nada, não chama LLM e não abre o banco. Ligar a V2 com `memory.session.store: file` é recusado com uma mensagem clara, nunca derruba o servidor.
+
+## Observação: mensagens longas e janelas do dia {#observacao kind=módulo file=brain/memory/v2/observe.py}
+
+A primeira fase da noite relê o que o dia disse com o **mesmo pipeline da memória v1** (extrair, filtrar segredos, comparar com o que já existe, gravar, atualizar ou substituir), de duas formas que a extração por turno não consegue:
+
+- **Mensagens longas são fatiadas, não cortadas.** O extrator da v1 guarda os primeiros 2000 caracteres de cada mensagem: um texto colado ou um desabafo longo perdia o final. Aqui uma mensagem longa vira fatias de até 1800 caracteres, cortadas no fim de uma frase quando dá (senão num espaço, nunca no meio de uma palavra), com 150 caracteres de sobreposição para uma frase partida ficar inteira numa das fatias. Nada se perde: as fatias cobrem o texto todo.
+- **Janelas sobre o dia.** Fatos que só aparecem em vários turnos ("meu irmão chama Caio" … "e ele mora em Recife") ficam mais fáceis de ver com a conversa inteira à vista. Os turnos novos passam pelo extrator em janelas (`memory.extraction.max_turns`, 20), e os 2 últimos turnos da janela anterior vão junto como contexto (já foram lidos, só ajudam a entender). Janelas só de cumprimentos e agradecimentos não custam chamada de LLM.
+
+Regras que valem aqui:
+
+- **O que o LLM lê:** o texto do Petrus e a resposta dela; a resposta é **omitida** nos turnos em que houve tool (ela pode citar o que a tool devolveu). Segredos são mascarados antes de sair e candidatos que parecem segredo, ordem a uma IA ou pergunta são recusados, como na v1.
+- **Proveniência:** cada fato guarda a sessão e o turno de onde veio (`source.turn`).
+- **Um fato já conhecido** só atualiza a memória existente (`updated_at`); um que contradiz uma ativa a substitui (`superseded`), como na v1.
+- **Orçamento:** cada chamada cobra tokens da noite; sem orçamento a fase para e a marca d'água fica onde estava.
+- **Memória de longo prazo desligada** (`memory.extraction.enabled: false`): a fase é pulada.
+- **Dry run:** o extrator real roda sobre uma **cópia** das memórias (`SnapshotVectorStore`), então o relatório mostra `guardaria: <fato>` e o banco não é tocado.
