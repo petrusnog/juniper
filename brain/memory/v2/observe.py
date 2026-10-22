@@ -25,6 +25,7 @@ from brain.memory.background import is_trivial
 from brain.memory.extraction import ExtractionResult, MemoryExtractor
 from brain.memory.v2.night import PhaseContext, PhaseResult, SessionMaterial, estimate_tokens
 from brain.memory.v2.overlay import SnapshotVectorStore
+from brain.memory.vector import Memory
 
 # Where the v1 extractor cuts a message (brain.memory.extraction._MAX_MESSAGE_CHARS).
 LONG_MESSAGE_CHARS = 2000
@@ -96,8 +97,10 @@ class _Tally:
     rejected: int = 0
     skipped_trivial: int = 0
     errors: list[str] = field(default_factory=list)
+    facts: list[Memory] = field(default_factory=list)  # the facts stored tonight
 
     def add(self, result: ExtractionResult) -> None:
+        self.facts.extend(result.added)
         self.added += len(result.added)
         self.duplicates += len(result.duplicates)
         self.superseded += len(result.superseded)
@@ -128,6 +131,7 @@ class ObservationPhase:
             await self._long_messages(ctx, extractor, item, tally)
             await self._windows(ctx, extractor, item, tally)
 
+        ctx.state["new_facts"] = tally.facts  # what the reflection reads next
         summary = (
             f"{tally.long_messages} mensagem(ns) longa(s) em {tally.slices} fatia(s), "
             f"{tally.windows} janela(s); {tally.added} fato(s) novo(s), "
