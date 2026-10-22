@@ -96,7 +96,7 @@ Exemplo: você digita *"amanhã quero uma ida ao dentista, às 16h"*.
 | Configuração | `brain/config.py` | [Configuração](configuracao.html) |
 | Logs e tempos | `brain/eventlog.py`, `brain/timing.py` | [Observabilidade](observabilidade.html) |
 | Comandos legados | `shell/` | [Comandos git](git.html) |
-| Persona | `prompts/juniper.md` | [Agente](agente.html#persona) |
+| Persona | `prompts/persona.core.md` | [Agente](agente.html#persona) |
 
 ## Roadmap {#roadmap}
 

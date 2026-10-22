@@ -16,7 +16,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 | Memória persistente | Lembra conversas, preferências e contexto de longo prazo |
 | Voz natural | STT/TTS |
 | Age no mundo real | Abre apps, envia mensagens, controla casa, executa tarefas |
-| Personalidade própria | Sarcástica, técnica, vibrante (persona em `prompts/juniper.md`) |
+| Personalidade própria | Sarcástica, técnica, vibrante (persona em `prompts/persona.core.md`) |
 | Plugável | Novas capacidades = novas *tools*, sem tocar no core |
 
 ---
@@ -118,7 +118,7 @@ Regras: tool sem classificação = **WRITE**. `run_shell` aceita **um único bin
 │   ├── tools/   base.py · registry.py · system.py · web.py · juniper_cmds.py* (· shell.py stub)
 │   └── memory/  session.py · vector.py   (Sprint 3)
 ├── shell/       juniper.sh · commands/{gitgrep,deployfeature,help,version}.sh · core/{dispatcher,loader}.sh
-├── prompts/juniper.md            # persona
+├── prompts/persona.core.md            # persona
 ├── docs/        JUNIPER.md (este) · decisions/ADR-*.md
 ├── scripts/     dev.sh · uninstall.sh
 └── tests/       test_config.py
@@ -315,7 +315,7 @@ Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.e
 **Aceite:** subprocess mockado; entrada com metacaracteres rejeitada.
 
 ### T-030 — Agent loop + Dispatcher + Session
-- `Session`: lista de `Message`, system prompt carregado de `prompts/juniper.md` (+ data/hora no timezone configurado).
+- `Session`: lista de `Message`, system prompt carregado de `prompts/persona.core.md` (+ data/hora no timezone configurado).
 - `Dispatcher`: dado `ToolCall` → busca no registry → checa tier → pede confirmação via **callback injetado** (o core não faz `input()`; o cliente fornece `confirm(tool, args, tier) -> bool` com timeout `confirmation_timeout`) → executa → retorna `Message(role="tool")`. FORBIDDEN nunca executa; tool desconhecida / argumentos inválidos → `ToolResult(success=False)` devolvido ao LLM (não levanta).
 - `Agent.run(user_input)`: loop até o LLM responder sem `tool_calls` ou atingir `max_iterations` (então responde avisando o limite). Suporta streaming de tokens para o cliente via callback/iterator.
 **Aceite:** testes com `FakeProvider` roteirizado: resposta direta; 1 tool call; encadeadas; limite de iterações; confirmação negada; tool FORBIDDEN.

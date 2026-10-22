@@ -69,7 +69,7 @@ async for c in router.stream(msgs):
 print(router.last_provider)           # &quot;deepinfra&quot;, &quot;groq&quot; ou &quot;ollama&quot;
 await router.aclose()</code></pre>
 <h3 id="prompt-compacto">Prompt compacto</h3>
-<p>Um Ollama em CPU levaria mais de um minuto para ler o prompt completo (persona + todas as tools, ~2.200 tokens) antes do primeiro token. Para providers com <code>compact_prompt = True</code>, o router envia uma persona curta (<code>prompts/juniper.compact.md</code>) e schemas de tool enxutos (descrições de até 100 caracteres, parâmetros até 60). Nomes, tipos, <code>required</code> e <code>enum</code> não mudam, então o tool calling continua funcionando. DeepInfra e Groq recebem o prompt completo.</p>
+<p>Um Ollama em CPU levaria mais de um minuto para ler o prompt completo (persona + todas as tools, ~2.200 tokens) antes do primeiro token. Para providers com <code>compact_prompt = True</code>, o router envia uma persona curta (<code>prompts/persona.core.compact.md</code>) e schemas de tool enxutos (descrições de até 100 caracteres, parâmetros até 60). Nomes, tipos, <code>required</code> e <code>enum</code> não mudam, então o tool calling continua funcionando. DeepInfra e Groq recebem o prompt completo.</p>
 <h2 id="configuracao">Configuração</h2>
 <pre><code class="lang-yaml">llm:
   priority: [deepinfra, groq, ollama]   # só estes três; a ordem é a do failover

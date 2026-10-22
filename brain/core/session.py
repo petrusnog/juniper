@@ -18,10 +18,10 @@ from pathlib import Path
 
 from brain.config import settings
 from brain.core import clock
+from brain.core.persona import CORE_PATH, load_core
 from brain.llm.types import Message
 
-PERSONA_PATH = Path(__file__).resolve().parents[2] / "prompts" / "juniper.md"
-_FALLBACK_PERSONA = "Você é a Juniper."
+PERSONA_PATH = CORE_PATH  # the fixed core (brain/core/persona.py); living blocks come after it
 
 # Rough size of a token in characters (Portuguese + code). Good enough to budget a prompt
 # without depending on a tokenizer.
@@ -43,7 +43,7 @@ class Turn:
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else _FALLBACK_PERSONA
+    return load_core(path)
 
 
 def estimate_tokens(message: Message) -> int:

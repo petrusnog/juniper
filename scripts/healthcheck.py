@@ -92,9 +92,9 @@ def check_config() -> tuple[str, str]:
 
 
 def check_persona() -> tuple[str, str]:
-    p = ROOT / "prompts" / "juniper.md"
+    p = ROOT / "prompts" / "persona.core.md"
     if not p.exists():
-        return FAIL, "prompts/juniper.md não existe"
+        return FAIL, "prompts/persona.core.md não existe"
     return OK, f"{len(p.read_text(encoding='utf-8'))} caracteres"
 
 
@@ -240,7 +240,7 @@ async def collect(live: bool, full: bool) -> list[Check]:
 
     console.print("[dim]Rodando verificações offline…[/dim]")
     add("Fundação", "config.yaml carrega", check_config)
-    add("Fundação", "persona (prompts/juniper.md)", check_persona)
+    add("Fundação", "persona (prompts/persona.core.md)", check_persona)
     add("Fundação", "testes de config", lambda: _pytest("tests/test_config.py"))
     add("T-011 · Contrato", "contrato abstrato", check_contract)
     add("T-011 · Contrato", "testes do contrato", lambda: _pytest("tests/test_llm_base.py"))
