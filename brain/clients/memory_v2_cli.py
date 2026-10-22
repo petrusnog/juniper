@@ -25,6 +25,7 @@ from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.context import state_lines
 from brain.memory.v2.models import Belief
+from brain.memory.v2.persona import PersonaBook, PersonaError, drift, persona_lines
 from brain.memory.v2.store import V2Data
 
 HYPOTHESIS_NOTE = "Lembre: são hipóteses minhas, não fatos. Posso estar errada."
@@ -52,8 +53,8 @@ def _provenance(belief: Belief) -> str:
     )
 
 
-def install(memory_app: typer.Typer, console: Console) -> None:
-    """Register the commands on ``juniper memory``."""
+def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None:
+    """Register the commands on ``juniper memory`` and ``juniper persona``."""
     beliefs_app = typer.Typer(
         help="O que eu acho de você (hipóteses, não fatos).", invoke_without_command=True
     )
@@ -298,6 +299,101 @@ def install(memory_app: typer.Typer, console: Console) -> None:
         finally:
             data.close()
         voice.say(console, f"Pronto, esqueci {removed} sentimento(s).")
+
+    persona_app = typer.Typer(
+        help="A minha personalidade viva: ver, conferir o histórico e voltar atrás.",
+        no_args_is_help=True,
+    )
+    app.add_typer(persona_app, name="persona")
+
+    @persona_app.command("show")
+    def persona_show() -> None:
+        """Mostra os traços, o que me marcou ultimamente, a versão e a deriva."""
+        data = _open(console)
+        try:
+            book = PersonaBook(data)
+            state = book.ensure()
+            warning = book.drift_warning(state)
+        finally:
+            data.close()
+        table = Table(header_style="bold")
+        for column in ("Traço", "Agora", "Ponto de partida", "Faixa"):
+            table.add_column(column)
+        for name, t in sorted(state.traits.items()):
+            table.add_row(name, f"{t.value:.2f}", f"{t.baseline:.2f}", f"{t.min:.2f} a {t.max:.2f}")
+        console.print(table)
+        console.print(
+            f"[dim]versão {state.version} · atualizada em {_local(state.updated_at)}[/dim]"
+        )
+        console.print(f"[dim]deriva (distância média ao jeito de sempre): {drift(state):.2f}[/dim]")
+        for line in state.recent:
+            console.print(f"  - {line}")
+        if warning is not None:
+            voice.say(
+                console,
+                f"Atenção: a deriva ({warning:.2f}) passou do limite. Se não for o que você "
+                "quer, `juniper persona revert` volta a uma versão anterior.",
+                "yellow",
+            )
+        said = " ".join(persona_lines(state)) or "o meu jeito de sempre."
+        voice.say(console, f"Do jeito que eu me descrevo agora: {said}")
+
+    @persona_app.command("history")
+    def persona_history() -> None:
+        """Lista as versões da personalidade e o evento que causou cada mudança."""
+        data = _open(console)
+        try:
+            book = PersonaBook(data)
+            current = book.ensure()
+            versions = book.history()
+        finally:
+            data.close()
+        table = Table(header_style="bold")
+        for column in ("Versão", "Quando", "Trocada por", "Eventos que a causaram"):
+            table.add_column(column, overflow="fold")
+        table.add_row(
+            f"{current.version} (atual)",
+            _local(current.updated_at),
+            "",
+            ", ".join(current.changed_by),
+        )
+        for v in reversed(versions):
+            table.add_row(
+                str(v.state.version), _local(v.at), v.reason, ", ".join(v.state.changed_by)
+            )
+        console.print(table)
+        voice.say(console, "Para voltar a uma versão: juniper persona revert --to <versão>.")
+
+    @persona_app.command("revert")
+    def persona_revert(
+        to: Annotated[
+            Optional[int],  # noqa: UP045
+            typer.Option("--to", min=1, help="Versão para onde voltar (padrão: a anterior)."),
+        ] = None,
+        yes: Annotated[bool, typer.Option("--yes", "-y", help="Não pergunta antes.")] = False,
+    ) -> None:
+        """Volta a uma versão anterior como uma versão nova (o histórico não é apagado)."""
+        data = _open(console)
+        try:
+            book = PersonaBook(data)
+            current = book.ensure()
+            target = current.version - 1 if to is None else to
+            if not yes and not typer.confirm(
+                f"Voltar a personalidade da versão {current.version} para a {target}?",
+                default=False,
+            ):
+                voice.say(console, "Ok, não mudei nada.")
+                return
+            try:
+                new = book.revert(to)
+            except PersonaError as exc:
+                voice.say(console, str(exc), "red")
+                raise typer.Exit(1) from None
+        finally:
+            data.close()
+        voice.say(
+            console, f"Voltei ao jeito da versão {target}. Agora estou na versão {new.version}."
+        )
 
     @memory_app.command("journal")
     def journal(

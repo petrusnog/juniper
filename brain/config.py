@@ -458,6 +458,8 @@ class V2PersonaSettings(BaseModel):
     step_factor: float = Field(default=0.05, ge=0.0, le=1.0)
     # Meia-vida do retorno ao baseline: uma fase passa.
     baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
+    # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
+    drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
     # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
     traits: list[TraitDefault] = Field(default_factory=lambda: list(DEFAULT_TRAITS))
 

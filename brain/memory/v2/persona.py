@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from brain.config import V2PersonaSettings, settings
 from brain.eventlog import event_log
 from brain.memory.v2.guards import STEP_EPSILON, Rejection, check_marked, check_trait_change
-from brain.memory.v2.models import PersonaState, Trait, utcnow
+from brain.memory.v2.models import PersonaState, PersonaVersion, Trait, utcnow
 
 if TYPE_CHECKING:
     from brain.memory.v2.store import V2Data
@@ -89,6 +89,17 @@ def default_state(config: V2PersonaSettings, now: datetime) -> PersonaState:
     )
 
 
+class PersonaError(ValueError):
+    """A persona operation that cannot be done (unknown version, lost race). Fit for the user."""
+
+
+def drift(state: PersonaState | None) -> float:
+    """How far she is from her usual self: the mean distance of the traits to their baselines."""
+    if state is None or not state.traits:
+        return 0.0
+    return sum(abs(t.value - t.baseline) for t in state.traits.values()) / len(state.traits)
+
+
 class PersonaBook:
     def __init__(
         self,
@@ -113,6 +124,40 @@ class PersonaBook:
             if not self.data.persona.save(state, None, "versão inicial"):
                 state = self.current() or state  # another process wrote it first
         return state
+
+    def history(self) -> list[PersonaVersion]:
+        """Past versions, oldest first (the current one is in ``current``)."""
+        return sorted(self.data.persona.history.list(), key=lambda v: v.state.version)
+
+    def drift_warning(self, state: PersonaState | None = None) -> float | None:
+        """The drift, if it is past the configured limit; otherwise ``None``."""
+        value = drift(state if state is not None else self.current())
+        return value if value >= self.config.drift_warning else None
+
+    def revert(self, to: int | None = None) -> PersonaState:
+        """Go back to an earlier version as a *new* version (the history is never erased).
+
+        ``to`` defaults to the version just before the current one. Raises ``PersonaError``.
+        """
+        state = self.ensure()
+        target_number = state.version - 1 if to is None else to
+        if target_number == state.version:
+            raise PersonaError(f"Já estou na versão {target_number}.")
+        target = next((v for v in self.history() if v.state.version == target_number), None)
+        if target is None:
+            known = ", ".join(str(v.state.version) for v in self.history()) or "nenhuma"
+            raise PersonaError(f"Não existe a versão {target_number}. Versões guardadas: {known}.")
+        new = PersonaState(
+            traits={n: Trait(**vars(t)) for n, t in target.state.traits.items()},
+            recent=list(target.state.recent),
+            version=state.version + 1,
+            changed_by=[f"revert:v{target_number}"],
+            updated_at=self.clock(),
+        )
+        if not self.data.persona.save(new, state.version, f"revert para a versão {target_number}"):
+            raise PersonaError("A personalidade mudou enquanto eu voltava. Tente de novo.")
+        event_log.log("persona_reverted", to=target_number, version=new.version)
+        return new
 
     # --- the night ----------------------------------------------------------------------------
 
@@ -235,11 +280,10 @@ def _degree(shift: float) -> str:
     return "um pouco mais" if shift > 0 else "um pouco menos"
 
 
-def render_persona(state: PersonaState | None) -> str | None:
-    """The ``<personalidade>`` block for ``state``, from a fixed template (``None`` if she is her
-    usual self and nothing marked her lately). Same state, same text."""
+def persona_lines(state: PersonaState | None) -> list[str]:
+    """The sentences that describe how she is compared to her usual self (may be none)."""
     if state is None:
-        return None
+        return []
     parts: list[str] = []
     for name in sorted(state.traits):
         trait = state.traits[name]
@@ -253,6 +297,13 @@ def render_persona(state: PersonaState | None) -> str | None:
         lines.append("Seu jeito anda " + ", ".join(parts) + ".")
     if state.recent:
         lines.append("O que te marcou ultimamente: " + "; ".join(state.recent[:MAX_RECENT]) + ".")
+    return lines
+
+
+def render_persona(state: PersonaState | None) -> str | None:
+    """The ``<personalidade>`` block for ``state``, from a fixed template (``None`` if she is her
+    usual self and nothing marked her lately). Same state, same text."""
+    lines = persona_lines(state)
     if not lines:
         return None
     return f"{PERSONA_HEADER}\n{PERSONA_OPEN}\n" + "\n".join(lines) + f"\n{PERSONA_CLOSE}"

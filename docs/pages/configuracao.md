@@ -104,6 +104,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
 | `memory.v2.persona.step_factor` | `0.05` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
 | `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
+| `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
 | `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
 | `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
