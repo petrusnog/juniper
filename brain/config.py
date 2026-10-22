@@ -352,7 +352,7 @@ class V2AffectSettings(BaseModel):
     """Sentimentos (ADR-017, seção 7). O Petrus pode ajustar ou desligar."""
 
     enabled: bool = True
-    # Escala o registro e a expressão dos sentimentos: 1 = normal, 0 = nada é registrado nem mostrado.
+    # Escala o registro e a expressão dos sentimentos (1 = normal; 0 = nada é registrado).
     intensity: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
