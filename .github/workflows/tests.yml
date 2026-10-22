@@ -28,5 +28,7 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Instala dependências
         run: pip install -e ".[dev]"
+      - name: Instala o age (os testes do backup criptografam de verdade)
+        run: sudo apt-get install -y -q age
       - name: Testes (sem integração)
         run: pytest -m "not integration"
