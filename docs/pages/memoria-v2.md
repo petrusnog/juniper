@@ -68,3 +68,23 @@ A Juniper acompanha quando as próprias opiniões se mostram certas ou erradas, 
 ### BeliefBook {#beliefbook kind=classe file=brain/memory/v2/beliefs.py}
 
 O único lugar que cria, reforça, confirma, nega, revisa e aposenta crenças. O LLM pode *propor* (a reflexão noturna), mas todo número e toda mudança de status vêm de `confidence.py`. `create` junta o palpite a uma crença viva quase igual (similaridade 0,9 ou mais) em vez de duplicá-la; `review_all` aplica o decaimento, forma as que merecem e aposenta as erradas ou apagadas pelo tempo; `search` acha as crenças mantidas por significado.
+
+## Guardas de conteúdo {#guardas kind=módulo file=brain/memory/v2/guards.py}
+
+O LLM **propõe**; o código **dispõe**. Toda proposta da passada noturna passa por aqui antes de virar dado, e a recusa guarda só o **motivo** (um código curto), nunca o texto recusado.
+
+| Regra | Como é garantida |
+|---|---|
+| **Só sobre o Petrus e as decisões dele** | `about` é `user` ou `decision`; o texto precisa se referir ao Petrus (o nome do perfil, "o usuário", "ele", "você") e **nenhum outro nome próprio** pode vir antes. "Acho que a Júlia é manipuladora" é recusada; "acho que o Petrus se afasta da Júlia quando está cansado" passa. |
+| **Nada clínico** | Diagnósticos e rótulos (depressão, TDAH, transtorno, bipolar, burnout, narcisista...) são recusados; comportamento observável ("fica ansioso antes de apresentações") passa. |
+| **Primeira pessoa** | A crença começa na voz dela ("acho que", "percebo que", "me parece que", "pelo que vi"). |
+| **Sem segredos, ordens a uma IA, documentos, perguntas** | Os mesmos filtros da memória v1; até 400 caracteres. |
+| **Interesses** | Um tema curto e geral: sem dado pessoal, sem endereço ou e-mail, sem o nome do Petrus. |
+| **Sentimentos** | Rótulo curto, valência de -1 a 1, intensidade de 0 a 1 e **causa referenciável** (`fact:`, `belief:`, `concern:`...). |
+| **Traços da personalidade** | Só traços que existem, dentro da faixa e no passo máximo por noite. |
+
+Os guardas são heurísticas: erram para o lado de **recusar** (um falso positivo custa uma hipótese; um falso negativo custaria uma opinião indevida).
+
+### O material da noite {#material}
+
+A passada noturna só lê o que o Petrus **escreveu** e as respostas dela, nunca a saída de uma tool (a transcrição não a guarda). E mais: se **houve tool no turno**, a resposta dela é **omitida** do material, porque pode citar o que a tool devolveu (o título de um evento da agenda, uma mensagem de commit). Assim, um texto plantado num título de evento não chega às camadas subjetivas. Segredos são mascarados e cada linha leva uma etiqueta `[t<turno>]`, que é a referência que as crenças citam como evidência.

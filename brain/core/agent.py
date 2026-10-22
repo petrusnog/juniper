@@ -72,6 +72,7 @@ class Agent:
         self._memory_message: Message | None = None
         self._profile_message: Message | None = None
         self._executed_until: int | None = None
+        self._used_tools = False
         self._turns: list[Turn] = []
         # Where the time of the last turn went (T-062): total ms and ms per stage.
         self.last_timing: tuple[int, dict[str, int]] | None = None
@@ -99,6 +100,7 @@ class Agent:
         event_log.log("turn_start", input_chars=len(user_input))
         checkpoint = self.session.checkpoint()
         self._executed_until = None
+        self._used_tools = False
         self._stages = Stages()
         self._recall_timings = {}
         self._llm_calls = 0
@@ -114,7 +116,9 @@ class Agent:
             self._log_timing()
             raise
         self.session.turns_total += 1
-        self._turns.append(Turn(user_input, reply, index=self.session.turns_total - 1))
+        self._turns.append(
+            Turn(user_input, reply, index=self.session.turns_total - 1, used_tools=self._used_tools)
+        )
         with self._stages.stage("persist"):
             self._persist()
         message_trace.step(
@@ -193,6 +197,7 @@ class Agent:
             session.add(message)
             if not message.tool_calls:
                 return await self._ensure_question(message, on_token)
+            self._used_tools = True
             # One assistant message = one batch, approved (or not) as a whole.
             # The "sim" only vouches for the FIRST reaction to it, never for what the LLM decides
             # after reading new tool output (which could contain text planted by a third party).
@@ -240,6 +245,7 @@ class Agent:
 
     async def _execute_approved(self, pending: PendingBatch) -> None:
         """The user said yes to what was proposed: run it and report it as a tool turn."""
+        self._used_tools = True
         with self._stages.stage("tools"):
             outcomes = await self._dispatcher.execute_pending(pending)
         calls = tuple(ToolCall(f"{call.id}_ok", call.name, call.arguments) for call, _ in outcomes)
