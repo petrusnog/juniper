@@ -158,6 +158,8 @@ docker compose -f docker-compose.prod.yml ps               # brain e mongo &quot
 docker compose -f docker-compose.prod.yml logs --tail=20 brain</code></pre>
 <p>Do seu computador, com o Tailscale ligado:</p>
 <pre><code class="lang-bash">curl -s http://juniper-brain:8765/health        # {&quot;status&quot;: &quot;ok&quot;, ...}</code></pre>
+<h2 id="backup-memoria">Backup da memória</h2>
+<p>Com a Juniper de pé, configure o backup da memória (repositório privado no GitHub, chave <code>age</code> e cron) pelo passo a passo de <a href="backup.html">Backup da memória</a>. Sem isso, se a VPS se perder, a Juniper perde tudo o que sabe.</p>
 <h2 id="varredura">Varredura de portas</h2>
 <p>A prova de que a VPS <strong>não tem nenhuma porta da Juniper aberta na internet</strong>. A regra de ouro: a varredura tem de partir de <strong>fora da tailnet</strong>, senão você está testando a rede privada, não a pública.</p>
 <p><strong>1. De fora (o teste que vale).</strong> Use uma máquina que não esteja no Tailscale: o seu computador com o Tailscale <strong>desligado</strong>, o celular em 4G/5G (Wi-Fi desligado) ou outra VPS descartável.</p>

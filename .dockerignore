@@ -41,3 +41,4 @@ Dockerfile
 .dockerignore
 .juniper-dev/
 backups/
+backup.env

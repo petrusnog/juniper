@@ -2,7 +2,7 @@
 # Deploy na VPS (ADR-013, seção 5). Chamado pelo CI por SSH: scripts/deploy.sh <sha-completo>
 #
 #   1. atualiza os arquivos do repositório para o commit (o .env, o config.yaml e certs/ ficam)
-#   2. faz um mongodump de segurança (se o Mongo estiver de pé)
+#   2. faz o backup da memória (scripts/backup_memory.sh) se o Mongo estiver de pé
 #   3. troca JUNIPER_IMAGE no .env para a imagem do SHA, puxa e recria os serviços
 #   4. espera o brain ficar "healthy"; se não ficar, volta para a imagem anterior
 #
@@ -18,7 +18,6 @@ cd "$(dirname "$0")/.."
 REPO_IMAGE="${JUNIPER_REPO_IMAGE:-ghcr.io/petrusnog/juniper}"
 IMAGE="$REPO_IMAGE:$SHA"
 COMPOSE=(docker compose -f docker-compose.prod.yml)
-KEEP_BACKUPS=5
 HEALTH_TRIES="${HEALTH_TRIES:-18}"        # x HEALTH_INTERVAL = 90 s
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 
@@ -45,24 +44,16 @@ wait_healthy() {
 }
 
 backup_mongo() {
-  if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx mongo; then
-    echo "mongo não está rodando: sem backup (primeiro deploy?)"
-    return 0
-  fi
-  install -d -m 700 backups
-  local out="backups/mongo-$(date +%Y%m%d-%H%M%S).archive.gz"
-  if ! "${COMPOSE[@]}" exec -T mongo sh -c \
-    'mongodump --quiet --archive --gzip -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
-    > "$out"; then
-    rm -f "$out"
-    echo "backup do Mongo falhou: deploy cancelado (nada foi alterado)" >&2
-    return 1
-  fi
-  chmod 600 "$out"
-  echo "backup: $out ($(du -h "$out" | cut -f1))"
-  # mantém só os últimos KEEP_BACKUPS
-  # shellcheck disable=SC2012
-  ls -1t backups/mongo-*.archive.gz | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm --
+  # O backup da memória (dump criptografado, cópia local e push para o repositório privado) vive em
+  # scripts/backup_memory.sh. Falha no dump cancela o deploy; falha só no push (GitHub fora do ar)
+  # não: a cópia local existe e vai junto no próximo backup.
+  local code=0
+  ./scripts/backup_memory.sh pre-deploy || code=$?
+  case "$code" in
+    0) ;;
+    4) echo "AVISO: o backup ficou só na VPS (o push falhou); o deploy segue" >&2 ;;
+    *) echo "backup da memória falhou: deploy cancelado (nada foi alterado)" >&2; return 1 ;;
+  esac
 }
 
 # Tudo dentro de uma função: o `git reset` abaixo troca este arquivo, e o bash não deve ler o resto

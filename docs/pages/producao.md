@@ -265,9 +265,10 @@ Comandos que mexem no ambiente do seu computador (`install`, `deploy`, `docs`) n
 
 ## Dados: backup e restauração {#backup}
 
-- `mongodump` diário no servidor, comprimido, com retenção de 7 diários e 4 semanais *(a confirmar)*.
-- **Cópia fora do servidor** (um bucket barato com `rclone`, ou outro destino a definir) e **backup sob demanda antes de cada deploy**.
-- **Restauração testada de verdade** num Mongo vazio, conferindo com `juniper memory list`: um backup que nunca foi restaurado não conta.
+O banco `juniper` é copiado com `mongodump`, **criptografado com `age`** e versionado como **um único arquivo** num repositório git **privado** do GitHub (um commit por backup), antes de cada deploy e todo dia por um cron. A chave que decifra fica com você, fora da VPS. Passo a passo, restauração, o que fica de fora e os limites: [Backup da memória](backup.html).
+
+- **Cópia local sempre:** as 5 últimas em `backups/local/` (`600`); sem criptografia configurada, nada vai ao GitHub.
+- **Restauração testada de verdade:** o CI faz uma ida e volta (backup, apagar o dado, restaurar, conferir) com Mongo e `age` reais. Faça também uma vez na prática: um backup que nunca foi restaurado não conta.
 
 ## Observabilidade {#observabilidade-producao}
 
