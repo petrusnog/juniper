@@ -8,7 +8,6 @@ clear message, never a crash of the server.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from brain.config import settings
@@ -16,7 +15,11 @@ from brain.memory.errors import MemoryUnavailableError
 
 if TYPE_CHECKING:
     from brain.core.session import Turn
+    from brain.llm.base import LLMProvider
+    from brain.memory.embeddings import EmbeddingProvider
+    from brain.memory.v2.context import V2Context
     from brain.memory.v2.store import V2Data
+    from brain.memory.v2.transcripts import TranscriptWriter
 
 NEEDS_MONGO = (
     "A Memória V2 guarda tudo no MongoDB. Use memory.session.store: mongo no config.yaml "
@@ -47,17 +50,47 @@ def require_v2() -> None:
         raise MemoryUnavailableError(reason)
 
 
-def open_transcript_sink() -> tuple[Callable[[str, Turn], None], V2Data] | None:
-    """The ``turn_sink`` that keeps the durable transcript, and the data it writes to.
+class V2Runtime:
+    """What a chat needs from the V2: the transcript sink, the opinions context and the database.
 
-    ``None`` when the V2 is off or cannot run. The caller closes the data when it is done.
+    The caller closes it when the chat ends.
+    """
+
+    def __init__(self, data: V2Data, context: V2Context, writer: TranscriptWriter) -> None:
+        self.data = data
+        self.context = context
+        self._writer = writer
+
+    def sink(self, session_id: str, turn: Turn) -> None:
+        """The ``turn_sink``: tells the context what she asked, then keeps the transcript."""
+        self.context.after_turn(session_id, turn)
+        self._writer.write(session_id, turn)
+
+    def close(self) -> None:
+        self.data.close()
+
+
+def open_v2_runtime(
+    embedder: EmbeddingProvider | None = None, judge: LLMProvider | None = None
+) -> V2Runtime | None:
+    """The V2 for a chat, or ``None`` when it is off or cannot run (the chat goes on without it).
+
+    ``embedder`` is the v1 memory's, to share the loaded model; ``judge`` reads long answers to a
+    verification question.
     """
     if not v2_enabled():
         return None
+    from brain.memory.embeddings import open_embedding_provider
+    from brain.memory.v2.context import V2Context
     from brain.memory.v2.transcripts import TranscriptWriter
 
     data = open_v2_data()
-    return TranscriptWriter(data).write, data
+    try:
+        context = V2Context(data, embedder or open_embedding_provider(), judge=judge)
+    except Exception:
+        data.close()
+        raise
+    return V2Runtime(data, context, TranscriptWriter(data))
 
 
 def open_v2_data() -> V2Data:

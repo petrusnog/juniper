@@ -146,3 +146,13 @@ A segunda fase da noite usa o modelo avançado (`llm.reflection`) para **propor*
 - **Validação em código:** evidência que não existe no resumo do dia é recusada (`sem_evidencia`); o texto passa pelas guardas (`check_belief`: sobre o Petrus, sem terceiros, sem rótulo clínico, sem segredo); no máximo `memory.v2.beliefs.max_new_per_night` crenças novas por noite (`limite_noite`). Afirmação explícita do Petrus vale como evidência `explicit` (peso 3).
 - **Decaimento:** depois de aplicar as propostas, `review_all` revisa todas as crenças (meia-vida, formação, aposentadoria) e a metacognição conta o acerto ou erro do tema.
 - **Relatório:** o resumo traz contagens e os motivos de recusa (só códigos, nunca o texto). No `--dry-run` aparece `proporia (acho que): ...` e nada é gravado.
+
+## Opiniões na conversa {#conversa kind=módulo file=brain/memory/v2/context.py}
+
+Com a V2 ligada, a conversa ganha um bloco `<opinioes>` logo antes da mensagem do Petrus, depois das memórias da v1. Ele não é salvo no histórico e, sem V2 (ou sem nada relevante), o prompt é idêntico ao de antes.
+
+- **O que entra:** até 3 crenças *mantidas* (nunca candidatas ou aposentadas) próximas da mensagem em significado, cada uma com a faixa em palavras ("acho que", "talvez", "tenho bastante certeza"), dentro de `memory.v2.max_tokens`. O texto é limpo: ninguém consegue escrever os delimitadores do bloco.
+- **É dado, não ordem:** o cabeçalho diz que são hipóteses dela, que podem estar erradas, e o núcleo da persona manda falar delas como hipótese, discordar só quando a evidência apoia e só mudar de opinião diante de argumento novo. Confirmação de tools e tiers não mudam com o bloco.
+- **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa** e nunca quando a mensagem sugere que o Petrus está mal (`wellbeing.seems_down`). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
+- **Feedback na hora:** a mensagem seguinte responde à pergunta. "Sim"/"não" simples (`consent.interpret_reply`) confirmam ou negam com peso 4; respostas longas passam por um julgamento do LLM barato que só devolve sim, não ou incerto, e **o código aplica os pesos**. Resposta ambígua, juiz fora do ar ou outra conversa não gravam nada. A pergunta pendente vive só na memória do processo: não sobrevive a reinício.
+- **Falhas:** erro ao ler as crenças devolve o contexto da v1 sem derrubar o turno; enquanto o modelo de embeddings aquece, não há opiniões e ninguém espera.
