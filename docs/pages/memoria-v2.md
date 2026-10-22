@@ -156,3 +156,17 @@ Com a V2 ligada, a conversa ganha um bloco `<opinioes>` logo antes da mensagem d
 - **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa** e nunca quando a mensagem sugere que o Petrus está mal (`wellbeing.seems_down`). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
 - **Feedback na hora:** a mensagem seguinte responde à pergunta. "Sim"/"não" simples (`consent.interpret_reply`) confirmam ou negam com peso 4; respostas longas passam por um julgamento do LLM barato que só devolve sim, não ou incerto, e **o código aplica os pesos**. Resposta ambígua, juiz fora do ar ou outra conversa não gravam nada. A pergunta pendente vive só na memória do processo: não sobrevive a reinício.
 - **Falhas:** erro ao ler as crenças devolve o contexto da v1 sem derrubar o turno; enquanto o modelo de embeddings aquece, não há opiniões e ninguém espera.
+
+## Ver, auditar e apagar {#comandos kind=comandos file=brain/clients/memory_v2_cli.py}
+
+Tudo o que a Juniper concluiu é visível e apagável. Os comandos são administrativos, como `memory reindex`: leem o banco do processo onde rodam (na VPS, pelo atalho do contêiner) e não mudam o protocolo. Sem a V2 ligada eles dizem isso em vez de falhar.
+
+| Comando | O que faz |
+|---|---|
+| `juniper memory beliefs [--all] [--min-confidence X]` | Lista as crenças com a faixa em palavras, a confiança, a firmeza (`n`) e a origem (quantas evidências, em quantas conversas). `--all` inclui candidatas e aposentadas. |
+| `juniper memory beliefs show <id>` | Uma crença com as evidências a favor e contra (conversa, turno, data; nunca o texto da fala). |
+| `juniper memory beliefs forget <id> [--yes]` | Apaga a crença, pedindo confirmação. Os fatos que a sustentaram **não** são apagados. |
+| `juniper memory journal [--days N]` | O diário das noites e dos estudos, dos últimos N dias (7 por padrão). |
+| `juniper memory export [--vectors] [-o arquivo]` | Perfil, fatos e, com a V2 ligada, a chave `v2` com crenças, interesses, preocupações, sentimentos, personalidade (atual e histórico), calibração e diário. Sem vetores, a menos que peça. A transcrição bruta não faz parte da exportação. |
+
+**Cascata ao esquecer um fato.** `memory forget` (comando ou tool) apaga o fato e solta, de cada crença, a evidência que veio da mesma fala (ou que apontava para o fato), tirando o peso que ela tinha somado. A crença que fica sem nenhuma evidência a favor é **aposentada**, a menos que o Petrus tenha confirmado ela mesmo; a que ainda tem outras evidências continua, mais fraca. Se a cascata falhar, o fato continua esquecido e o erro vai para o log.

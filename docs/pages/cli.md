@@ -122,7 +122,14 @@ juniper memory profile                         # ver
 juniper memory profile set "..." --name "..." --birth-date AAAA-MM-DD --nationality "..."
 juniper memory profile forget [--yes]
 juniper memory reindex [--force]
+juniper memory beliefs [--all] [--min-confidence X]   # Memória V2
+juniper memory beliefs show <id>
+juniper memory beliefs forget <id> [--yes]
+juniper memory journal [--days N]
+juniper memory dream [--dry-run]
 ```
+
+Os comandos `beliefs`, `journal` e `dream` são da [Memória V2](memoria-v2.html): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
 
 | Comando | O que faz |
 |---|---|

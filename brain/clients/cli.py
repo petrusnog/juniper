@@ -50,7 +50,7 @@ from brain.memory.longterm import (
 )
 from brain.memory.profile import ProfileError, render
 from brain.memory.stores import close_session_store, open_session_store
-from brain.memory.v2 import open_v2_runtime
+from brain.memory.v2 import open_v2_runtime, v2_enabled
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
@@ -1029,13 +1029,31 @@ def memory_export(
         raise typer.Exit(1) from None
     finally:
         memory.close()
-    text = json.dumps({"profile": profile_export, "memories": rows}, ensure_ascii=False, indent=2)
+    payload: dict[str, Any] = {"profile": profile_export, "memories": rows}
+    if v2_enabled():  # the layers above the facts (ADR-017): all of them, vectors only on request
+        from brain.memory.v2 import open_v2_data
+        from brain.memory.v2.export import export_v2
+
+        try:
+            data = open_v2_data()
+            try:
+                payload["v2"] = export_v2(data, vectors)
+            finally:
+                data.close()
+        except MemoryUnavailableError as exc:
+            voice.say(console, str(exc), "red")
+            raise typer.Exit(1) from None
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     if output is None:
         typer.echo(text)
         return
     output.write_text(text + "\n", encoding="utf-8")
     voice.say(console, f"Perfil e {len(rows)} memória(s) exportados para {output}.")
 
+
+from brain.clients import memory_v2_cli  # noqa: E402
+
+memory_v2_cli.install(memory_app, console)
 
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
