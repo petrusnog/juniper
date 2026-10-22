@@ -409,6 +409,15 @@ class V2AffectSettings(BaseModel):
     enabled: bool = True
     # Escala o registro e a expressão dos sentimentos (1 = normal; 0 = nada é registrado).
     intensity: float = Field(default=1.0, ge=0.0, le=1.0)
+    # Decaimento (pontos de partida a calibrar): a emoção passa em horas, o humor (média móvel)
+    # em dias e a mágoa em semanas, mas sempre passa.
+    emotion_half_life_hours: float = Field(default=6.0, ge=0.1, le=720.0)
+    mood_half_life_days: float = Field(default=3.0, ge=0.1, le=365.0)
+    grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
+    # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
+    grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Sentimentos novos por noite.
+    max_per_night: int = Field(default=5, ge=0, le=50)
 
 
 class V2PersonaSettings(BaseModel):

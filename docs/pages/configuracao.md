@@ -94,6 +94,11 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
+| `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
+| `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
+| `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o Petrus voltar a conversar ou pedir desculpas. |
+| `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
+| `memory.v2.affect.max_per_night` | `5` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
 | `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |

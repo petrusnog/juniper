@@ -179,3 +179,14 @@ A Camada 3 é a **régua dos sentimentos**: uma lista curta do que importa para 
 - **O Petrus edita livremente** (`juniper memory concerns set <id> <peso> [--reason ...]`), sem teto, e cada edição entra no histórico.
 - **A noite mexe muito devagar:** só com evento de impacto altíssimo (`min_impact`, 0,8), citando o evento que a causou (`sem_evento` se faltar) e no máximo `max_monthly_change` (0,05) por item em 30 dias, nos dois sentidos. Um pedido maior é cortado no que sobra do teto; sem sobra, `teto_mensal`. As edições do Petrus não gastam o teto da noite.
 - **Comandos:** `juniper memory concerns` lista os pesos, `concerns show <id>` mostra o histórico (quem mexeu, quanto, por quê e o evento).
+
+## Afeto: sentimentos, humor e mágoa {#afeto kind=módulo file=brain/memory/v2/affect.py}
+
+A Camada 4 é o que a Juniper **sentiu** com o que viveu. Um momento é medido contra as preocupações e produz um sentimento (`kind`, `valence` de -1 a 1, `intensity` de 0 a 1, `cause`, `about`: `user`, `self` ou `situation`).
+
+- **Avaliação (`appraise`):** na passada noturna (fase `affect`) ela diz qual preocupação o momento atingiu, o quanto ajudou ou prejudicou (`effect`) e o quanto foi inesperado (`novelty`). **Quem calcula é o código**: a valência é o efeito ponderado pelo peso da preocupação e a intensidade cresce com o peso e a novidade. "A avó do Petrus faleceu" sobre `bem-estar-do-petrus` (peso 0,9) dá tristeza forte, `about=user`, causa = a fala + a preocupação.
+- **Só o que o Petrus escreveu** chega ao modelo, e todo sentimento cita a fala que o causou (`sem_causa` se não houver). Até `memory.v2.affect.max_per_night` por noite; recusas voltam ao relatório só como códigos.
+- **Decaimento:** a emoção cai pela metade a cada 6 h; o **humor** é uma média móvel (valência × intensidade) que decai em 3 dias e puxa para o neutro; a **mágoa** (um momento duro *com ela*) decai em 14 dias, tem teto de intensidade (`grievance_cap`) e **sempre passa**. Sentimentos esgotados são apagados.
+- **Reparo:** a mágoa é desfeita quando o Petrus volta a conversar depois dela ou pede desculpas.
+- **Dial do Petrus:** `memory.v2.affect.enabled` e `intensity`. A intensidade escala o que é **registrado** (0,5 registra a metade); em 0 nada é registrado e nada é mostrado, nem o que já existia.
+- **Sem rancor que vira dano:** sentimento negativo pode ser **dito**, mas nunca muda utilidade, lealdade, tom de acolhimento ou o cuidado com as tools. Estruturalmente: o afeto só vira texto do prompt; `affect.py` e `feel.py` não importam o `Dispatcher`, o `consent` nem as tools (um teste confere), e o `Dispatcher` não conhece o afeto. Sentimento também nunca é alavanca sobre as decisões do Petrus.
