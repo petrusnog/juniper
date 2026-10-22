@@ -258,6 +258,8 @@ class MemoryExtractor:
         transcript = build_transcript(turns, self.config.max_turns, context)
         if not transcript:
             return result
+        # Provenance: the last NEW turn analyzed (the first `context` ones were already read).
+        turn = max((t.index for t in turns[context:] if t.index is not None), default=None)
         self._stages = Stages()
         try:
             candidates, proposal = await self._analyze(transcript, result)
@@ -275,7 +277,7 @@ class MemoryExtractor:
                 if any(_same(text, s) for s in seen):
                     continue
                 seen.append(text)
-                await self._reconcile(text, str(kind), session_id, result)
+                await self._reconcile(text, str(kind), session_id, result, turn=turn)
         except LLMError as exc:
             result.error = f"não consegui falar com o LLM para guardar memórias: {exc}"
         except MemoryUnavailableError as exc:
@@ -401,6 +403,7 @@ class MemoryExtractor:
         session_id: str | None,
         result: ExtractionResult,
         source_kind: str = "extracted",
+        turn: int | None = None,
     ) -> None:
         started = time.perf_counter()
         vector = await asyncio.to_thread(self.embedder.embed, text, "passage")
@@ -428,6 +431,7 @@ class MemoryExtractor:
             embedding_model=self.embedder.model_id,
             session_id=session_id,
             source_kind=source_kind,
+            turn=turn,
         )
         with self._stages.stage("write"):
             await asyncio.to_thread(self.store.add, memory)

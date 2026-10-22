@@ -113,7 +113,8 @@ class Agent:
                 self._persist()
             self._log_timing()
             raise
-        self._turns.append(Turn(user_input, reply))
+        self.session.turns_total += 1
+        self._turns.append(Turn(user_input, reply, index=self.session.turns_total - 1))
         with self._stages.stage("persist"):
             self._persist()
         message_trace.step(

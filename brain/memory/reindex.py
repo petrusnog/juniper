@@ -16,7 +16,7 @@ from typing import Any
 from brain.memory.embeddings import EmbeddingProvider
 from brain.memory.vector import MEMORIES_COLLECTION
 
-__all__ = ["MEMORIES_COLLECTION", "ReindexResult", "reindex_memories"]
+__all__ = ["MEMORIES_COLLECTION", "ReindexResult", "reindex_memories", "reindex_v2"]
 
 
 @dataclass(frozen=True)
@@ -62,3 +62,41 @@ def reindex_memories(
         if progress is not None:
             progress(done, len(todo))
     return ReindexResult(total=len(docs), reindexed=done, skipped=len(docs) - len(todo))
+
+
+# V2 collections that carry an embedding, and the field the vector is made from.
+V2_EMBEDDED: tuple[tuple[str, str], ...] = (("beliefs", "statement"), ("interests", "topic"))
+
+
+def reindex_v2(
+    docs: Any,
+    provider: EmbeddingProvider,
+    *,
+    force: bool = False,
+    batch_size: int = 16,
+    progress: Callable[[int, int], None] | None = None,
+) -> ReindexResult:
+    """``reindex_memories`` for the V2 layers (beliefs and interests), over a ``DocStore``."""
+    total = reindexed = 0
+    for collection, text_field in V2_EMBEDDED:
+        found = docs.find(collection)
+        total += len(found)
+        todo = [d for d in found if force or d.get("embedding_model") != provider.model_id]
+        todo = [d for d in todo if isinstance(d.get(text_field), str) and d[text_field].strip()]
+        for start in range(0, len(todo), batch_size):
+            chunk = todo[start : start + batch_size]
+            vectors = provider.embed_batch([d[text_field] for d in chunk], "passage")
+            for doc, vector in zip(chunk, vectors, strict=True):
+                docs.update(
+                    collection,
+                    doc["_id"],
+                    {
+                        "embedding": [float(x) for x in vector],
+                        "embedding_model": provider.model_id,
+                        "updated_at": datetime.now(UTC),
+                    },
+                )
+            reindexed += len(chunk)
+            if progress is not None:
+                progress(reindexed, len(todo))
+    return ReindexResult(total=total, reindexed=reindexed, skipped=total - reindexed)

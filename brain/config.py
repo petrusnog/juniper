@@ -63,9 +63,30 @@ class LLMOllamaSettings(BaseModel):
         return v.rstrip("/")
 
 
+class LLMReflectionSettings(BaseModel):
+    """O modelo da reflexão e do estudo da passada noturna (ADR-017, seção 11).
+
+    Vazio = o mesmo do chat. A reflexão roda uma vez por dia, então um modelo mais capaz custa
+    pouco no total; o modelo barato continua conversando.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, v: str | None) -> str | None:
+        if v is not None and v not in {"deepinfra", "groq", "ollama"}:
+            raise ValueError(
+                f"llm.reflection.provider desconhecido: {v!r} (use deepinfra, groq ou ollama)"
+            )
+        return v
+
+
 class LLMSettings(BaseModel):
     """Configuração agregada dos providers de LLM."""
 
+    reflection: LLMReflectionSettings = Field(default_factory=LLMReflectionSettings)
     priority: list[str] = Field(default_factory=lambda: ["deepinfra", "groq", "ollama"])
     deepinfra: LLMDeepInfraSettings = Field(default_factory=LLMDeepInfraSettings)
     groq: LLMGroqSettings = Field(default_factory=LLMGroqSettings)
@@ -283,6 +304,81 @@ class ProfileSettings(BaseModel):
     max_chars: int = Field(default=500, ge=100, le=2000)
 
 
+def _hhmm(value: str, name: str) -> str:
+    try:
+        hour, minute = (int(part) for part in value.split(":"))
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"{name} inválido: {value!r} (use HH:MM, ex.: 03:00)") from None
+    return f"{hour:02d}:{minute:02d}"
+
+
+class V2NightSettings(BaseModel):
+    """A passada noturna, o "inconsciente" (ADR-017, seção 9)."""
+
+    # Hora diária (HH:MM, fuso do agente) em que o servidor roda a passada.
+    at: str = "03:00"
+    # Orçamento da noite: tokens estimados de LLM e minutos. Estourou, a fase termina e o resto
+    # fica para a noite seguinte.
+    max_tokens: int = Field(default=60_000, ge=1_000, le=5_000_000)
+    max_minutes: int = Field(default=20, ge=1, le=240)
+
+    @field_validator("at")
+    @classmethod
+    def _validate_at(cls, v: str) -> str:
+        return _hhmm(v, "memory.v2.night.at")
+
+
+class V2BeliefSettings(BaseModel):
+    """Crenças: como a confiança se forma e decai (ADR-017, seção 5.1). Pontos de partida."""
+
+    # Sem reforço, alpha e beta encolhem na direção do a priori com esta meia-vida.
+    half_life_days: float = Field(default=60.0, ge=1.0, le=3650.0)
+    # Evidência mínima (n = alpha + beta - 2, de dias ou sessões diferentes) para uma crença valer.
+    min_evidence: int = Field(default=2, ge=1, le=20)
+    # Teto de crenças novas por noite.
+    max_new_per_night: int = Field(default=5, ge=0, le=50)
+
+
+class V2InterestSettings(BaseModel):
+    """Interesses próprios da Juniper (ADR-017, seção 5.6)."""
+
+    # Temas estudados por noite (sem web: usa o conhecimento do modelo avançado).
+    max_per_night: int = Field(default=2, ge=0, le=10)
+
+
+class V2AffectSettings(BaseModel):
+    """Sentimentos (ADR-017, seção 7). O Petrus pode ajustar ou desligar."""
+
+    enabled: bool = True
+    # Escala o registro e a expressão dos sentimentos: 1 = normal, 0 = nada é registrado nem mostrado.
+    intensity: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class V2PersonaSettings(BaseModel):
+    """Personalidade viva (ADR-017, seção 8)."""
+
+    # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
+    evolves: bool = True
+    # Passo máximo de um traço por noite.
+    max_step: float = Field(default=0.03, ge=0.0, le=0.2)
+
+
+class MemoryV2Settings(BaseModel):
+    """Memória V2: do fato à personalidade viva (ADR-017)."""
+
+    # Liga a V2 inteira. Exige `memory.session.store: mongo`. Desligada, nada muda em relação à v1.
+    enabled: bool = False
+    # Teto (estimado) do bloco da V2 no prompt da conversa.
+    max_tokens: int = Field(default=600, ge=100, le=8000)
+    night: V2NightSettings = Field(default_factory=V2NightSettings)
+    beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
+    interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
+    affect: V2AffectSettings = Field(default_factory=V2AffectSettings)
+    persona: V2PersonaSettings = Field(default_factory=V2PersonaSettings)
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
@@ -292,6 +388,7 @@ class MemorySettings(BaseModel):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
+    v2: MemoryV2Settings = Field(default_factory=MemoryV2Settings)
 
 
 class TraceSettings(BaseModel):
