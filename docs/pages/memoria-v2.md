@@ -88,3 +88,34 @@ Os guardas são heurísticas: erram para o lado de **recusar** (um falso positiv
 ### O material da noite {#material}
 
 A passada noturna só lê o que o Petrus **escreveu** e as respostas dela, nunca a saída de uma tool (a transcrição não a guarda). E mais: se **houve tool no turno**, a resposta dela é **omitida** do material, porque pode citar o que a tool devolveu (o título de um evento da agenda, uma mensagem de commit). Assim, um texto plantado num título de evento não chega às camadas subjetivas. Segredos são mascarados e cada linha leva uma etiqueta `[t<turno>]`, que é a referência que as crenças citam como evidência.
+
+## A passada noturna {#passada-noturna kind=módulo file=brain/memory/v2/night.py}
+
+O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. Na VPS, pelo atalho do contêiner ([Usar a Juniper na VPS](producao.html#usar-na-vps)).
+
+```text
+coleta  →  fases (observar, refletir, sentir, personalidade, estudar)  →  aplicação pelo código  →  diário
+```
+
+| Peça | Como funciona |
+|---|---|
+| **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), deixadas em paz enquanto **ativas** (último turno há menos de 30 minutos). Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
+| **Transcrição** | O `Agent` entrega cada turno terminado a um *sink* (`TranscriptWriter`): o texto do Petrus, a resposta dela e se **houve tool** no turno. Nunca a saída de tool. Se a gravação falhar, a conversa segue (só vai para o log). |
+| **Fases** | Objetos com `run(ctx)` (`brain/memory/v2/night.py`). Cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
+| **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
+| **Orçamento** | `memory.v2.night.max_tokens` e `max_minutes`. Estourou, a fase termina com o estado `budget` e o resto fica para a noite seguinte. |
+| **Dois modelos** | O barato (o do chat) para a observação; `llm.reflection` (provider e modelo) para refletir e estudar, e sem ele usa o do chat. Um modelo de raciocínio pode devolver o "pensamento" antes da resposta: ele é removido antes de qualquer JSON ser lido. |
+| **Registro** | Cada execução grava um `dream_run` (fases, tokens, erros), uma entrada no **diário** (`journal`) e um evento `dream` no [log técnico](observabilidade.html#log-tecnico). |
+
+### Dry run {#dry-run}
+
+`juniper memory dream --dry-run` roda as **fases de verdade** sobre uma camada de sobreposição: tudo que elas escreveriam fica nela, e o banco não é tocado (nem a marca d'água, nem o registro da execução, nem o diário). O relatório mostra o que cada fase propôs e **o que seria gravado**, por coleção. É o instrumento para ganhar confiança antes de ligar a V2 de vez.
+
+```text
+Li 2 conversa(s), 9 turno(s) novo(s).
+- observe [done]: 3 fatos
+Nada foi gravado (--dry-run). O que seria gravado:
+    memories: 3 added
+```
+
+Sem a V2 ligada, a passada não faz nada, não chama LLM e não abre o banco. Ligar a V2 com `memory.session.store: file` é recusado com uma mensagem clara, nunca derruba o servidor.

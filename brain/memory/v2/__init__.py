@@ -8,12 +8,14 @@ clear message, never a crash of the server.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 
 if TYPE_CHECKING:
+    from brain.core.session import Turn
     from brain.memory.v2.store import V2Data
 
 NEEDS_MONGO = (
@@ -43,6 +45,19 @@ def require_v2() -> None:
     reason = v2_unavailable_reason()
     if reason is not None:
         raise MemoryUnavailableError(reason)
+
+
+def open_transcript_sink() -> tuple[Callable[[str, Turn], None], V2Data] | None:
+    """The ``turn_sink`` that keeps the durable transcript, and the data it writes to.
+
+    ``None`` when the V2 is off or cannot run. The caller closes the data when it is done.
+    """
+    if not v2_enabled():
+        return None
+    from brain.memory.v2.transcripts import TranscriptWriter
+
+    data = open_v2_data()
+    return TranscriptWriter(data).write, data
 
 
 def open_v2_data() -> V2Data:
