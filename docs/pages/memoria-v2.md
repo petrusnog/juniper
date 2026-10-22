@@ -153,7 +153,7 @@ Com a V2 ligada, a conversa ganha um bloco `<opinioes>` logo antes da mensagem d
 
 - **O que entra:** até 3 crenças *mantidas* (nunca candidatas ou aposentadas) próximas da mensagem em significado, cada uma com a faixa em palavras ("acho que", "talvez", "tenho bastante certeza"), dentro de `memory.v2.max_tokens`. O texto é limpo: ninguém consegue escrever os delimitadores do bloco.
 - **É dado, não ordem:** o cabeçalho diz que são hipóteses dela, que podem estar erradas, e o núcleo da persona manda falar delas como hipótese, discordar só quando a evidência apoia e só mudar de opinião diante de argumento novo. Confirmação de tools e tiers não mudam com o bloco.
-- **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa** e nunca quando a mensagem sugere que o Petrus está mal (`wellbeing.seems_down`). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
+- **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa** e nunca quando a mensagem sugere que o Petrus está mal (`distress.seems_down`). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
 - **Feedback na hora:** a mensagem seguinte responde à pergunta. "Sim"/"não" simples (`consent.interpret_reply`) confirmam ou negam com peso 4; respostas longas passam por um julgamento do LLM barato que só devolve sim, não ou incerto, e **o código aplica os pesos**. Resposta ambígua, juiz fora do ar ou outra conversa não gravam nada. A pergunta pendente vive só na memória do processo: não sobrevive a reinício.
 - **Falhas:** erro ao ler as crenças devolve o contexto da v1 sem derrubar o turno; enquanto o modelo de embeddings aquece, não há opiniões e ninguém espera.
 
@@ -190,3 +190,11 @@ A Camada 4 é o que a Juniper **sentiu** com o que viveu. Um momento é medido c
 - **Reparo:** a mágoa é desfeita quando o Petrus volta a conversar depois dela ou pede desculpas.
 - **Dial do Petrus:** `memory.v2.affect.enabled` e `intensity`. A intensidade escala o que é **registrado** (0,5 registra a metade); em 0 nada é registrado e nada é mostrado, nem o que já existia.
 - **Sem rancor que vira dano:** sentimento negativo pode ser **dito**, mas nunca muda utilidade, lealdade, tom de acolhimento ou o cuidado com as tools. Estruturalmente: o afeto só vira texto do prompt; `affect.py` e `feel.py` não importam o `Dispatcher`, o `consent` nem as tools (um teste confere), e o `Dispatcher` não conhece o afeto. Sentimento também nunca é alavanca sobre as decisões do Petrus.
+
+## Estado afetivo na conversa {#estado kind=módulo file=brain/memory/v2/distress.py}
+
+O afeto chega à conversa só como **texto**, no bloco `<estado>` (de 1 a 2 linhas: o humor de hoje e o que mais pesou), logo depois das opiniões. É dado, não ordem: o cabeçalho pede para deixar escapar só um pedaço, quando couber, e nunca usar isso para influenciar o que o Petrus decide nem para prendê-lo na conversa. Sem sentimentos, ou com `memory.v2.affect.enabled: false` ou `intensity: 0`, o bloco some e o prompt é idêntico ao de antes.
+
+**Acolher antes de se expressar.** Regras determinísticas (`distress.seems_down`: luto, perda, tristeza, cansaço, frustração, desabafo) olham a mensagem e a anterior. Detectado o sofrimento, o prompt ganha a instrução de **acolher primeiro, sem falar de si**, e o `<estado>` **não** aparece (nem a pergunta de verificação, nem os interesses). O modo dura esta mensagem e as 2 seguintes da mesma conversa. O detector é barato de propósito e só serve para *segurar* coisas: um falso positivo custa uma fala a menos; um falso negativo é coberto pela regra do núcleo ("acolher vem primeiro"). Exemplo: "minha avó faleceu" → acolhimento, sem a crise existencial dela; a reflexão dela sobre a morte só mais tarde e na proporção do momento.
+
+`juniper memory affect` mostra o estado de agora e os sentimentos recentes (valência, intensidade registrada e atual, causa); `memory affect clear` apaga todos.

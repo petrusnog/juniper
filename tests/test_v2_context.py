@@ -26,7 +26,7 @@ from brain.memory.v2.context import (
 )
 from brain.memory.v2.models import Belief, Evidence
 from brain.memory.v2.store import InMemoryDocStore, V2Data
-from brain.memory.v2.wellbeing import seems_down
+from brain.memory.v2.distress import seems_down
 from tests.test_agent import FakeProvider, call, make_registry, say
 from tests.test_extraction import FakeEmbedder
 
