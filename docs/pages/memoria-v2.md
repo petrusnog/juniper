@@ -3,11 +3,11 @@ title: Memória V2
 group: Memória
 order: 4
 description: A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com a passada noturna.
-status: proposto
+status: pronta
 tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento metacognição inconsciente passada noturna camadas personalidade sentimentos interesses adr-017
 ---
 
-> **Nota:** esta página acompanha a [ADR-017](adr-017.html), que é a fonte de verdade. A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.html). As camadas vão sendo entregues em tasks; cada seção abaixo diz o que já está pronto.
+> **Nota:** esta página acompanha a [ADR-017](adr-017.html), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.html): o prompt, a extração e os comandos são os de antes.
 
 ## Visão geral {#visao-geral}
 
@@ -21,6 +21,8 @@ A memória v1 guarda **fatos**. A V2 acrescenta camadas em que cada uma é uma *
 4. AFETO           sentimentos e humor
 5. PERSONALIDADE   traços e narrativa recente (viva)
 ```
+
+O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, um interesse quando o assunto toca) e só atualiza na hora os fatos e a resposta a uma pergunta de verificação; **à noite** a [passada noturna](memoria-v2.html#passada-noturna) relê o que o Petrus escreveu, propõe, o código valida e aplica, e ela acorda um pouco diferente. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
 
 Tudo mora no **MongoDB** (o mesmo banco da v1), em coleções por camada; só o núcleo é arquivo (`prompts/persona.core.md`). A V2 exige `memory.session.store: mongo`: com arquivos, ligar `memory.v2.enabled` é recusado com uma mensagem clara. O código está em `brain/memory/v2/`.
 
@@ -238,3 +240,19 @@ O mundo próprio dela decide o que ela percebe (o *Umwelt*), nos dois sentidos.
 **O que ela nota (filtro de atenção).** Os interesses mais fortes (`intensity ≥ 0,25`) e os **temas** das crenças mantidas mais firmes (firmeza × confiança; nunca o texto do julgamento) viram uma lista de **no máximo 3 tópicos**, que entra no prompt da extração em segundo plano da memória v1 (`extract_system(attention=...)`): um fato durável que toque um deles, mesmo dito de passagem, ganha um olhar mais cuidadoso. O teto de 3 evita a bolha (o viés dela decidindo o que ela vê e se reforçando). A lista **não muda** o que pode ser guardado: o filtro de segredos, os limites e todas as regras do prompt continuam; sem tópicos, o prompt é **exatamente** o de antes. Uma falha ao ler a lista nunca atrapalha a extração. O servidor abre uma só conexão para isso e a solta com a memória.
 
 **Quando ela deixa escapar um interesse (dosagem).** Na conversa, o bloco `<interesse>` só aparece quando a mensagem **toca o tema** (similaridade ≥ 0,5), com **no máximo um por resposta**, e no máximo **uma vez a cada 6 mensagens** da conversa, no jeito de quem "só deixa escapar pedaços". Só entram temas em que ela já tem posição (`like`, `dislike` ou `mixed`) e que não esmaeceram. Ele chega como dado, com a posição dela, uma razão e a ressalva de que o gosto é de segunda mão: ela leu a respeito, não ouviu, viu nem viveu. **Nunca** no turno em que o Petrus parece estar mal (a regra de acolher primeiro tem prioridade), e respeita o teto de tokens do bloco da V2.
+
+## Configuração {#configuracao}
+
+Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.
+
+- **Ligar:** `memory.v2.enabled: true` com `memory.session.store: mongo`. Rode antes `juniper memory dream --dry-run` para ver o que ela concluiria sem gravar nada, e só então deixe a passada rodar sozinha (`memory.v2.night.at`, 03:00, depois do backup das 02:30).
+- **Modelos:** o barato (o da conversa) lê, extrai e julga respostas curtas; o avançado (`llm.reflection`) reflete, estuda e propõe. O código decide: nada que o LLM proponha altera uma camada além dos limites.
+- **Controles do Petrus:** `affect.enabled` e `affect.intensity` (de 0 a 1), `persona.evolves`, as listas de traços e de preocupações, os tetos por noite e o orçamento da noite (`night.max_tokens`, `night.max_minutes`).
+
+## Privacidade e limites {#privacidade}
+
+- **Só o que o Petrus escreveu alimenta as camadas subjetivas.** Saída de tool, título de evento da agenda e (no futuro) páginas da web nunca viram opinião, sentimento nem personalidade. A resposta dela é omitida do material nos turnos em que houve tool.
+- **Guardas de conteúdo por código:** só sobre o Petrus e as decisões dele (nunca julgamento de terceiros), sem rótulo clínico, em primeira pessoa, sem segredos, ordens, documentos ou perguntas. Segredos são mascarados antes de qualquer chamada de LLM e os motivos de recusa vão ao log só como códigos.
+- **Tudo é visível, reversível e apagável:** `memory beliefs|concerns|affect|interests|journal`, `persona show|history|revert`, `memory forget` (com cascata) e `memory export`. A memória inteira tem [backup criptografado](backup.html).
+- **O que ela é:** uma IA, e diz que sim quando perguntam com sinceridade. Sobre estar viva, cogita sem afirmar nem negar. O gosto dela é de segunda mão: ela leu, não ouviu nem viveu.
+- **Limites conhecidos:** a V2 exige MongoDB; a pergunta de verificação pendente não sobrevive a um reinício; o detector de sofrimento é por regras e erra para o lado de acolher; a posição em interesses vem do conhecimento do modelo, sem web; um único Petrus (não há multiusuário); e a qualidade das opiniões depende do modelo avançado e de uso real para calibrar.
