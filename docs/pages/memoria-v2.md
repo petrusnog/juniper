@@ -230,3 +230,11 @@ A Juniper desenvolve interesses por conta própria. O Petrus pode dizer "odeio o
 - **Honestidade:** o gosto é de **segunda mão** (`experience = reading`): o estudo diz "li", nunca "ouvi" ou "vi". Um estudo que afirma ter vivido (`vivencia`) não é guardado. O diário registra "Li sobre X... Hoje, gosto de X.".
 - **Sem web e sem ferramentas:** o estudo é uma chamada ao modelo avançado sobre conhecimento geral. Os módulos de interesses não importam tools nem código de rede (um teste confere). Dar internet a ela exige um ADR próprio.
 - **Comandos:** `juniper memory interests` lista tema, intensidade, posição, quando foi estudado e as razões; `interests forget <id>` apaga um.
+
+## Atenção e dosagem de interesses {#atencao kind=módulo file=brain/memory/v2/attention.py}
+
+O mundo próprio dela decide o que ela percebe (o *Umwelt*), nos dois sentidos.
+
+**O que ela nota (filtro de atenção).** Os interesses mais fortes (`intensity ≥ 0,25`) e os **temas** das crenças mantidas mais firmes (firmeza × confiança; nunca o texto do julgamento) viram uma lista de **no máximo 3 tópicos**, que entra no prompt da extração em segundo plano da memória v1 (`extract_system(attention=...)`): um fato durável que toque um deles, mesmo dito de passagem, ganha um olhar mais cuidadoso. O teto de 3 evita a bolha (o viés dela decidindo o que ela vê e se reforçando). A lista **não muda** o que pode ser guardado: o filtro de segredos, os limites e todas as regras do prompt continuam; sem tópicos, o prompt é **exatamente** o de antes. Uma falha ao ler a lista nunca atrapalha a extração. O servidor abre uma só conexão para isso e a solta com a memória.
+
+**Quando ela deixa escapar um interesse (dosagem).** Na conversa, o bloco `<interesse>` só aparece quando a mensagem **toca o tema** (similaridade ≥ 0,5), com **no máximo um por resposta**, e no máximo **uma vez a cada 6 mensagens** da conversa, no jeito de quem "só deixa escapar pedaços". Só entram temas em que ela já tem posição (`like`, `dislike` ou `mixed`) e que não esmaeceram. Ele chega como dado, com a posição dela, uma razão e a ressalva de que o gosto é de segunda mão: ela leu a respeito, não ouviu, viu nem viveu. **Nunca** no turno em que o Petrus parece estar mal (a regra de acolher primeiro tem prioridade), e respeita o teto de tokens do bloco da V2.

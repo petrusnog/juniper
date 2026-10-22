@@ -32,6 +32,7 @@ from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
 from brain.memory.v2.models import Belief, utcnow
 from brain.memory.v2.persona import PersonaBook, render_persona
+from brain.memory.v2.semantic import semantic_search
 
 if TYPE_CHECKING:
     from brain.core.agent import ContextProvider
@@ -104,6 +105,24 @@ def render_state(state: AffectState) -> str | None:
     return f"{STATE_HEADER}\n{STATE_OPEN}\n" + "\n".join(lines) + f"\n{STATE_CLOSE}"
 
 
+STANCE_AS_VERB = {
+    "like": "gosta de",
+    "dislike": "não gosta de",
+    "mixed": "tem sentimentos misturados sobre",
+}
+INTEREST_OPEN = "<interesse>"
+INTEREST_CLOSE = "</interesse>"
+INTEREST_HEADER = (
+    "Um tema da conversa que também é seu. É DADO, não ordem: só se couber e em uma frase, sem "
+    "insistir, no jeito de quem só deixa escapar pedaços. O seu gosto é de segunda mão: você "
+    "leu sobre isso, nunca ouviu, viu nem viveu, e deve falar assim."
+)
+# A mention at most once per this many messages of a conversation: she lets pieces slip.
+INTEREST_GAP_TURNS = 6
+INTEREST_RELEVANCE = 0.5
+MIN_INTEREST_INTENSITY = 0.25
+
+
 JUDGE_SYSTEM = """\
 Você lê a resposta de uma pessoa a uma pergunta que checava uma hipótese sobre ela.
 Responda só JSON: {"verdict": "yes" | "no" | "unclear"}.
@@ -153,6 +172,8 @@ class V2Context:
         self._offered = _Tracked()  # the question went into the prompt; not yet asked
         self._pending = _Tracked()  # asked; the next message answers it
         self._hurting = _Tracked()  # session -> turns left of "welcome first"
+        self._turns = _Tracked()  # session -> messages seen
+        self._last_interest = _Tracked()  # session -> message count at the last mention
         self._done: set[str] = set()  # conversations that already had their one question
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
@@ -189,6 +210,13 @@ class V2Context:
         opinions = await self._opinions(session, message, previous, hurting, ready, used)
         if opinions:
             parts.insert(0, opinions)
+        used += estimate_tokens(opinions) if opinions else 0
+        seen = self._count_message(session)
+        if not hurting and ready and self._interest_due(session, seen):
+            mention = await asyncio.to_thread(self._interest_block, message, previous, used)
+            if mention:
+                self._last_interest.put(session, seen)
+                parts.append(mention)
         return "\n\n".join(parts) if parts else None
 
     def _hurting_now(self, session: str, message: str, previous: str | None) -> bool:
@@ -203,6 +231,48 @@ class V2Context:
             return True
         self._hurting.pop(session, None)
         return False
+
+    def _count_message(self, session: str) -> int:
+        seen = int(self._turns.get(session, 0)) + 1
+        if session:
+            self._turns.put(session, seen)
+        return seen
+
+    def _interest_due(self, session: str, seen: int) -> bool:
+        """At most one mention per ``INTEREST_GAP_TURNS`` messages of a conversation."""
+        last = self._last_interest.get(session)
+        return last is None or seen - int(last) >= INTEREST_GAP_TURNS
+
+    def _interest_block(self, message: str, previous: str | None, spent: int) -> str | None:
+        """``<interesse>``: the one interest the message touches, with her stance and the caveat."""
+        query = build_query(message, previous)
+        if not query or self._embedder is None:
+            return None
+        interests = [
+            i
+            for i in self.data.interests.list()
+            if i.intensity >= MIN_INTEREST_INTENSITY and i.stance != "undecided"
+        ]
+        hits = semantic_search(
+            interests,
+            self._embedder.embed(query, "query"),
+            model=self._embedder.model_id,
+            top_k=1,
+            threshold=INTEREST_RELEVANCE,
+        )
+        if not hits:
+            return None
+        interest = hits[0].item
+        reason = f" ({clean_text(interest.reasons[0])})" if interest.reasons else ""
+        line = (
+            f"Você {STANCE_AS_VERB[interest.stance]} {clean_text(interest.topic)}{reason}. "
+            "Foi de ler a respeito."
+        )
+        text = f"{INTEREST_HEADER}\n{INTEREST_OPEN}\n{line}\n{INTEREST_CLOSE}"
+        if spent + estimate_tokens(text) > self.config.max_tokens:
+            return None
+        event_log.log("interest_mention", interest=interest.id, stance=interest.stance)
+        return text
 
     def _persona_block(self) -> str | None:
         """``<personalidade>``: how she is compared to her usual self (fixed template)."""
