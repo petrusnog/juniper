@@ -170,3 +170,12 @@ Tudo o que a Juniper concluiu é visível e apagável. Os comandos são administ
 | `juniper memory export [--vectors] [-o arquivo]` | Perfil, fatos e, com a V2 ligada, a chave `v2` com crenças, interesses, preocupações, sentimentos, personalidade (atual e histórico), calibração e diário. Sem vetores, a menos que peça. A transcrição bruta não faz parte da exportação. |
 
 **Cascata ao esquecer um fato.** `memory forget` (comando ou tool) apaga o fato e solta, de cada crença, a evidência que veio da mesma fala (ou que apontava para o fato), tirando o peso que ela tinha somado. A crença que fica sem nenhuma evidência a favor é **aposentada**, a menos que o Petrus tenha confirmado ela mesmo; a que ainda tem outras evidências continua, mais fraca. Se a cascata falhar, o fato continua esquecido e o erro vai para o log.
+
+## Preocupações e valores {#preocupacoes kind=módulo file=brain/memory/v2/concerns.py}
+
+A Camada 3 é a **régua dos sentimentos**: uma lista curta do que importa para a Juniper, cada item com um peso de 0 a 1. O ponto de partida (bem-estar do Petrus, honestidade, curiosidade, capricho com o que faz, autonomia do Petrus) vem de `memory.v2.concerns.defaults`, é carregado no banco na primeira vez e depois só muda por registro.
+
+- **Valor, não probabilidade:** um peso é uma escolha. Nenhuma preocupação guarda confiança, alfa/beta ou porcentagem. Os valores *do Petrus* entram como fatos que ele disse ou crenças que ele confirmou, nunca como estimativa dela.
+- **O Petrus edita livremente** (`juniper memory concerns set <id> <peso> [--reason ...]`), sem teto, e cada edição entra no histórico.
+- **A noite mexe muito devagar:** só com evento de impacto altíssimo (`min_impact`, 0,8), citando o evento que a causou (`sem_evento` se faltar) e no máximo `max_monthly_change` (0,05) por item em 30 dias, nos dois sentidos. Um pedido maior é cortado no que sobra do teto; sem sobra, `teto_mensal`. As edições do Petrus não gastam o teto da noite.
+- **Comandos:** `juniper memory concerns` lista os pesos, `concerns show <id>` mostra o histórico (quem mexeu, quanto, por quê e o evento).

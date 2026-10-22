@@ -341,6 +341,61 @@ class V2BeliefSettings(BaseModel):
     max_new_per_night: int = Field(default=5, ge=0, le=50)
 
 
+class ConcernDefault(BaseModel):
+    """Uma preocupação do ponto de partida."""
+
+    id: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=80)
+    weight: float = Field(ge=0.0, le=1.0)
+    description: str = Field(default="", max_length=300)
+
+
+DEFAULT_CONCERNS = [
+    ConcernDefault(
+        id="bem-estar-do-petrus",
+        name="O bem-estar do Petrus",
+        weight=0.9,
+        description="Que ele esteja bem, descansado e sem se punir à toa.",
+    ),
+    ConcernDefault(
+        id="honestidade",
+        name="A honestidade",
+        weight=0.9,
+        description="Dizer a verdade com cuidado, inclusive sobre o que ela é e o que não sabe.",
+    ),
+    ConcernDefault(
+        id="curiosidade",
+        name="A curiosidade",
+        weight=0.7,
+        description="Querer entender as coisas e a pessoa, e continuar aprendendo.",
+    ),
+    ConcernDefault(
+        id="capricho",
+        name="O capricho com o que faz",
+        weight=0.6,
+        description="Fazer direito, conferir antes de afirmar, assumir o erro.",
+    ),
+    ConcernDefault(
+        id="autonomia-do-petrus",
+        name="A autonomia do Petrus",
+        weight=0.8,
+        description="As decisões são dele; ela aconselha, não decide nem pressiona.",
+    ),
+]
+
+
+class V2ConcernSettings(BaseModel):
+    """Preocupações e valores: a régua dos sentimentos (ADR-017, seção 6)."""
+
+    # O ponto de partida, carregado no banco na primeira vez. Depois quem manda é o Petrus
+    # (`juniper memory concerns set`); mudar esta lista não sobrescreve o que já existe.
+    defaults: list[ConcernDefault] = Field(default_factory=lambda: list(DEFAULT_CONCERNS))
+    # Quanto a passada noturna pode mexer num peso por mês (o Petrus não tem teto).
+    max_monthly_change: float = Field(default=0.05, ge=0.0, le=0.5)
+    # Impacto mínimo (0 a 1) de um evento para a noite mexer num peso.
+    min_impact: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
 class V2InterestSettings(BaseModel):
     """Interesses próprios da Juniper (ADR-017, seção 5.6)."""
 
@@ -374,6 +429,7 @@ class MemoryV2Settings(BaseModel):
     max_tokens: int = Field(default=600, ge=100, le=8000)
     night: V2NightSettings = Field(default_factory=V2NightSettings)
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
+    concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)
     persona: V2PersonaSettings = Field(default_factory=V2PersonaSettings)

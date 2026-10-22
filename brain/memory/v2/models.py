@@ -384,6 +384,8 @@ class ConcernChange:
     delta: float
     reason: str
     event_ref: str | None = None
+    # Who moved it: "petrus" (free) or "night" (capped per month).
+    source: str = "night"
 
     def to_doc(self) -> dict[str, Any]:
         return {
@@ -391,13 +393,18 @@ class ConcernChange:
             "delta": self.delta,
             "reason": self.reason,
             "event_ref": self.event_ref,
+            "source": self.source,
         }
 
     @classmethod
     def from_doc(cls, doc: Mapping[str, Any]) -> ConcernChange:
         try:
             return cls(
-                as_dt(doc["at"]), float(doc["delta"]), str(doc["reason"]), doc.get("event_ref")
+                as_dt(doc["at"]),
+                float(doc["delta"]),
+                str(doc["reason"]),
+                doc.get("event_ref"),
+                str(doc.get("source", "night")),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise V2DataError(f"mudança de preocupação inválida: {exc}") from exc
