@@ -23,6 +23,7 @@ JOURNAL = "journal"
 DREAM_RUNS = "dream_runs"
 DREAM_WATERMARKS = "dream_watermarks"
 TRANSCRIPT_TURNS = "transcript_turns"
+CALIBRATION = "calibration"
 PERSONA_ID = "current"
 
 BELIEF_ABOUT = ("user", "decision")
@@ -157,6 +158,10 @@ class Belief:
     evidence_against: list[Evidence] = field(default_factory=list)
     alpha: float = 1.0
     beta: float = 1.0
+    # The weak prior it started from (more skeptical on topics she tends to get wrong), so the
+    # accumulated evidence is what came on top of it.
+    prior_alpha: float = 1.0
+    prior_beta: float = 1.0
     status: str = "candidate"
     origin: str = "night"
     user_confirmed: str | None = None
@@ -169,7 +174,7 @@ class Belief:
     @property
     def n(self) -> float:
         """Accumulated evidence: how much has been seen beyond the weak prior."""
-        return self.alpha + self.beta - 2.0
+        return self.alpha + self.beta - self.prior_alpha - self.prior_beta
 
     def validate(self) -> None:
         _text(self.statement, "statement")
@@ -178,8 +183,8 @@ class Belief:
         _choice(self.origin, BELIEF_ORIGINS, "origin")
         if self.user_confirmed is not None:
             _choice(self.user_confirmed, USER_CONFIRMATIONS, "user_confirmed")
-        if self.alpha <= 0 or self.beta <= 0:
-            raise V2DataError("alpha e beta precisam ser positivos")
+        if min(self.alpha, self.beta, self.prior_alpha, self.prior_beta) <= 0:
+            raise V2DataError("alpha, beta e os a priori precisam ser positivos")
 
     def to_doc(self) -> dict[str, Any]:
         self.validate()
@@ -192,6 +197,8 @@ class Belief:
             "evidence_against": [e.to_doc() for e in self.evidence_against],
             "alpha": self.alpha,
             "beta": self.beta,
+            "prior_alpha": self.prior_alpha,
+            "prior_beta": self.prior_beta,
             "n": self.n,
             "status": self.status,
             "origin": self.origin,
@@ -215,6 +222,8 @@ class Belief:
                 evidence_against=_evidence_list(doc.get("evidence_against")),
                 alpha=float(doc.get("alpha", 1.0)),
                 beta=float(doc.get("beta", 1.0)),
+                prior_alpha=float(doc.get("prior_alpha", 1.0)),
+                prior_beta=float(doc.get("prior_beta", 1.0)),
                 status=doc.get("status", "candidate"),
                 origin=doc.get("origin", "night"),
                 user_confirmed=doc.get("user_confirmed"),
@@ -591,6 +600,42 @@ class TranscriptTurn:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise V2DataError(f"turno da transcrição corrompido ({doc.get('_id')}): {exc}") from exc
+
+
+# --- metacognition ----------------------------------------------------------------------------
+
+
+@dataclass
+class Calibration:
+    """How right her opinions have turned out on one topic (``_id`` is the topic)."""
+
+    topic: str
+    hits: float = 0.0
+    misses: float = 0.0
+    updated_at: datetime = field(default_factory=utcnow)
+
+    def to_doc(self) -> dict[str, Any]:
+        _text(self.topic, "topic")
+        if self.hits < 0 or self.misses < 0:
+            raise V2DataError("hits e misses não podem ser negativos")
+        return {
+            "_id": self.topic,
+            "hits": self.hits,
+            "misses": self.misses,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_doc(cls, doc: Mapping[str, Any]) -> Calibration:
+        try:
+            return cls(
+                str(doc["_id"]),
+                float(doc.get("hits", 0.0)),
+                float(doc.get("misses", 0.0)),
+                as_dt(doc.get("updated_at", utcnow())),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise V2DataError(f"calibração corrompida: {exc}") from exc
 
 
 # --- the night --------------------------------------------------------------------------------
