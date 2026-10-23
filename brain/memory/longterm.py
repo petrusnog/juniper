@@ -38,6 +38,8 @@ class LongTermMemory:
         self.profiles = profiles
         # Called with what ``forget`` removed, to let the V2 beliefs that leaned on it let go.
         self.after_forget: Callable[[list[Memory]], None] | None = None
+        # Things to release with the memory (the V2 handle of the attention source).
+        self.closers: list[Callable[[], None]] = []
 
     async def extract(
         self, turns: list[Turn], session_id: str | None = None, context: int = 0
@@ -153,6 +155,11 @@ class LongTermMemory:
         return callable(downloaded) and not downloaded() and self.store.count() > 0
 
     def close(self) -> None:
+        for release in self.closers:
+            try:
+                release()
+            except Exception as exc:  # noqa: BLE001  (closing must not fail on a side handle)
+                event_log.log("error", where="memory.close", type=type(exc).__name__)
         close = getattr(self.store, "close", None)
         if callable(close):
             close()
@@ -190,6 +197,13 @@ def _with_v2_cascade(memory: LongTermMemory) -> LongTermMemory:
 
     if v2_enabled():
         memory.after_forget = _cascade_to_beliefs
+        extractor = memory.extractor
+        if extractor is not None:  # the Umwelt sharpens what the extraction notices
+            from brain.memory.v2.attention import AttentionSource
+
+            source = AttentionSource()
+            extractor.attention = source
+            memory.closers.append(source.close)
     return memory
 
 
