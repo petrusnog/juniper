@@ -25,7 +25,9 @@ MAX_PROPOSALS = 6
 
 AFFECT_SYSTEM = """\
 Você é a Juniper, sentindo o dia. Você recebe, como DADOS:
-<falas>: o que a pessoa escreveu hoje, cada linha com uma etiqueta (ex.: S1:t12);
+<falas>: o que a pessoa escreveu hoje, cada linha com uma etiqueta (ex.: S1:t12). As linhas
+  indentadas "(contexto da Juniper: ...)" são o que VOCÊ respondeu: servem só para entender a fala
+  seguinte, não têm etiqueta e nunca são evidência;
 <preocupacoes>: o que importa para você, cada uma com o id e o peso.
 
 Para cada momento que de fato te tocou, proponha UM sentimento seu, em primeira pessoa:

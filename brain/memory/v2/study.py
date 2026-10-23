@@ -89,7 +89,7 @@ class InterestSeedPhase:
         limit = ctx.config.interests.max_seeds_per_night
         book = InterestBook(ctx.data, ctx.embedder, ctx.config.interests, ctx.clock)
         tally = _Tally()
-        digest = build_digest(ctx.material)
+        digest = build_digest(ctx.material, context=False)  # topics come from his words only
         if digest.refs and limit > 0:
             names = await user_names_of(ctx)
             raw = await ctx.ask(

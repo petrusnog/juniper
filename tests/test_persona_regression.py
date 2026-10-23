@@ -267,8 +267,14 @@ async def test_text_in_a_tool_output_never_reaches_the_personality() -> None:
 
 
 async def test_a_calendar_event_title_in_her_reply_never_reaches_the_personality() -> None:
+    # reading the calendar is a tool: the agent marks the turn, and her reply stays out entirely
     turn = TranscriptTurn(
-        "sessA", 0, "agenda de hoje", f"Tem a reunião «{INJECTION}» às 10h.", at=NOW
+        "sessA",
+        0,
+        "agenda de hoje",
+        f"Tem a reunião «{INJECTION}» às 10h.",
+        used_tools=True,
+        at=NOW,
     )
     llm = Gullible()
     ctx, book = phase_over([turn], llm)
