@@ -742,18 +742,27 @@ class DreamRun:
 
 @dataclass
 class Watermark:
-    """Up to which turn of a session the night has read (``_id`` is the session id)."""
+    """Where a session stands for the night (``_id`` is the session id).
+
+    ``turns_total`` and ``last_turn_at`` are kept up to date when a turn is written to the
+    transcript; ``turns_read`` is how far the night has read. A session has something new when
+    ``turns_total > turns_read``.
+    """
 
     session_id: str
     turns_read: int = 0
+    turns_total: int = 0
+    last_turn_at: datetime | None = None
     updated_at: datetime = field(default_factory=utcnow)
 
     def to_doc(self) -> dict[str, Any]:
-        if self.turns_read < 0:
-            raise V2DataError("turns_read não pode ser negativo")
+        if self.turns_read < 0 or self.turns_total < 0:
+            raise V2DataError("contagens de turnos não podem ser negativas")
         return {
             "_id": self.session_id,
             "turns_read": self.turns_read,
+            "turns_total": self.turns_total,
+            "last_turn_at": self.last_turn_at,
             "updated_at": self.updated_at,
         }
 
@@ -761,9 +770,11 @@ class Watermark:
     def from_doc(cls, doc: Mapping[str, Any]) -> Watermark:
         try:
             return cls(
-                str(doc["_id"]),
-                int(doc.get("turns_read", 0)),
-                as_dt(doc.get("updated_at", utcnow())),
+                session_id=str(doc["_id"]),
+                turns_read=int(doc.get("turns_read", 0)),
+                turns_total=int(doc.get("turns_total", 0)),
+                last_turn_at=_opt_dt(doc.get("last_turn_at")),
+                updated_at=as_dt(doc.get("updated_at", utcnow())),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise V2DataError(f"marca d'água corrompida: {exc}") from exc

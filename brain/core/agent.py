@@ -6,12 +6,13 @@ Transport-agnostic (never imports ``brain.clients``). The client supplies the op
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 from brain.config import settings
 from brain.core.consent import interpret_reply
@@ -61,6 +62,7 @@ class Agent:
         max_iterations: int | None = None,
         store: SessionStore | None = None,
         memory: ContextProvider | None = None,
+        turn_sink: Callable[[str, Turn], Any] | None = None,
     ) -> None:
         self._provider = provider
         self._dispatcher = dispatcher
@@ -69,6 +71,8 @@ class Agent:
         self._max_iterations = max_iterations or settings.agent.max_iterations
         self._store = store
         self._memory = memory
+        # Called with (session id, finished turn) after each turn: the durable transcript (V2).
+        self._turn_sink = turn_sink
         self._memory_message: Message | None = None
         self._profile_message: Message | None = None
         self._executed_until: int | None = None
@@ -121,6 +125,7 @@ class Agent:
         )
         with self._stages.stage("persist"):
             self._persist()
+            await self._sink(self._turns[-1])
         message_trace.step(
             "Agente",
             f"A resposta final ficou pronta ({len(reply)} caracteres) e a conversa foi salva"
@@ -146,6 +151,15 @@ class Agent:
             llm_calls=self._llm_calls,
             recall_ms=self._recall_timings,
         )
+
+    async def _sink(self, turn: Turn) -> None:
+        """Hand the turn to the sink; a problem is logged, never allowed to end the chat."""
+        if self._turn_sink is None:
+            return
+        try:
+            await asyncio.to_thread(self._turn_sink, self.session.id, turn)
+        except Exception as exc:  # noqa: BLE001
+            event_log.log("error", where="turn_sink", type=type(exc).__name__, message=str(exc))
 
     def _persist(self) -> None:
         """Save the conversation; a disk problem is logged, never allowed to end the chat."""

@@ -50,6 +50,7 @@ from brain.memory.longterm import (
 )
 from brain.memory.profile import ProfileError, render
 from brain.memory.stores import close_session_store, open_session_store
+from brain.memory.v2 import open_transcript_sink
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
@@ -423,8 +424,18 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     background: BackgroundExtractor | None = None
     if background_mode and memory is not None:
         background = BackgroundExtractor(memory, lambda: agent.session.id)
+    transcript = None
+    try:
+        transcript = open_transcript_sink()
+    except MemoryUnavailableError as exc:  # the chat still works; only the V2 transcript is lost
+        printer.say(str(exc), "yellow")
     agent = Agent(
-        router, Dispatcher(conversational=True), session=session, store=store, memory=memory
+        router,
+        Dispatcher(conversational=True),
+        session=session,
+        store=store,
+        memory=memory,
+        turn_sink=transcript[0] if transcript else None,
     )
     if note is not None:
         printer.say(note)
@@ -439,6 +450,8 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         return code
     finally:
         memory_tools.bind(None)
+        if transcript is not None:
+            transcript[1].close()
         if memory is not None:
             memory.close()
         if memory_llm is not router:
@@ -851,6 +864,29 @@ def memory_reindex(
             f"Memória V2: {v2_result.reindexed} item(ns) reindexado(s) (crenças e interesses), "
             f"{v2_result.skipped} já estavam em dia (de {v2_result.total}).",
         )
+
+
+@memory_app.command("dream")
+def memory_dream(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Roda a passada sem gravar nada e mostra o que gravaria."),
+    ] = False,
+) -> None:
+    """Roda a passada noturna agora (o "inconsciente" da Memória V2, ADR-017).
+
+    Lê as conversas com novidade, reflete e atualiza as camadas. O servidor já a roda sozinho
+    todo dia em `memory.v2.night.at`; use este comando para testar ou para recuperar uma noite.
+    É administrativo: acessa o banco do processo onde roda (na VPS, pelo atalho do contêiner).
+    """
+    from brain.memory.v2.service import run_night
+
+    try:
+        report = asyncio.run(run_night(dry_run=dry_run))
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    voice.say(console, report.text())
 
 
 def _command_memory() -> LongTermMemory:
