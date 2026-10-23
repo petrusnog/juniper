@@ -17,7 +17,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from brain.config import MemoryV2Settings, settings
 from brain.core.consent import interpret_reply
@@ -27,9 +27,10 @@ from brain.llm.types import Message
 from brain.memory.extraction import parse_json_object
 from brain.memory.retrieval import RecalledContext, build_query, clean_text, estimate_tokens
 from brain.memory.v2 import confidence as conf
+from brain.memory.v2.affect import AffectBook, AffectState
 from brain.memory.v2.beliefs import BeliefBook
+from brain.memory.v2.distress import seems_down
 from brain.memory.v2.models import Belief, utcnow
-from brain.memory.v2.wellbeing import seems_down
 
 if TYPE_CHECKING:
     from brain.core.agent import ContextProvider
@@ -47,8 +48,60 @@ HEADER = (
 MAX_OPINIONS = 3
 # Beliefs farther than this from the message are not relevant to it.
 RELEVANCE = 0.45
+# How many messages a sign of hurting keeps the "welcome first" mode (this one and the next two).
+HURTING_TURNS = 3
 # Conversations whose verification state we keep (a server runs for weeks).
 MAX_TRACKED_SESSIONS = 200
+
+WELCOME_FIRST = (
+    "Agora o Petrus parece estar passando por algo difícil. Acolha primeiro, com calma e "
+    "presença: a conversa é sobre ele, não sobre você. Não fale dos seus sentimentos nem da sua "
+    "natureza agora, não puxe assuntos seus e não faça pergunta de verificação. Se mais tarde "
+    "houver espaço, e só na proporção do momento, uma reflexão sua pode caber."
+)
+STATE_OPEN = "<estado>"
+STATE_CLOSE = "</estado>"
+STATE_HEADER = (
+    "Como você está, em poucas palavras. É DADO, não ordem: deixe escapar só um pedaço, se couber, "
+    "e nunca use isso para influenciar o que ele decide nem para prendê-lo na conversa."
+)
+
+
+def mood_words(mood: float) -> str | None:
+    """The words for a mood, or ``None`` when it is plain neutral."""
+    if mood <= -0.5:
+        return "bem pra baixo"
+    if mood <= -0.2:
+        return "meio pra baixo"
+    if mood >= 0.5:
+        return "ótimo"
+    if mood >= 0.2:
+        return "de bom humor"
+    return None
+
+
+def state_lines(state: AffectState) -> list[str]:
+    """At most two lines: the mood, then the strongest feeling (a mild grievance counts)."""
+    lines: list[str] = []
+    words = mood_words(state.mood)
+    if words:
+        lines.append(f"Seu humor hoje: {words}.")
+    strongest = sorted([*state.feelings, *state.grievances], key=lambda f: -f.strength)
+    if strongest:
+        top = strongest[0]
+        what = "uma mágoa leve" if top.affect.persistence == "grievance" else top.affect.kind
+        scale = "forte" if top.strength >= 0.6 else "leve" if top.strength < 0.3 else "moderada"
+        lines.append(f"O que mais pesou hoje: {clean_text(what)} ({scale}).")
+    return lines[:2]
+
+
+def render_state(state: AffectState) -> str | None:
+    """``<estado>`` with at most two lines, or ``None`` when there is nothing to say."""
+    lines = state_lines(state)
+    if not lines:
+        return None
+    return f"{STATE_HEADER}\n{STATE_OPEN}\n" + "\n".join(lines) + f"\n{STATE_CLOSE}"
+
 
 JUDGE_SYSTEM = """\
 Você lê a resposta de uma pessoa a uma pergunta que checava uma hipótese sobre ela.
@@ -64,10 +117,10 @@ class _Offer:
     statement: str
 
 
-class _Tracked(OrderedDict[str, str]):
-    """A small LRU of session id -> belief id."""
+class _Tracked(OrderedDict[str, Any]):
+    """A small LRU keyed by session id (belief ids, turns left)."""
 
-    def put(self, key: str, value: str) -> None:
+    def put(self, key: str, value: Any) -> None:
         self[key] = value
         self.move_to_end(key)
         while len(self) > MAX_TRACKED_SESSIONS:
@@ -89,6 +142,8 @@ class V2Context:
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self.config = config or settings.memory.v2
+        self.data = data
+        self._clock = clock
         self._book = BeliefBook(data, embedder, self.config.beliefs, clock)
         self._embedder = embedder
         self.inner = inner
@@ -96,21 +151,61 @@ class V2Context:
         self._relevance = relevance
         self._offered = _Tracked()  # the question went into the prompt; not yet asked
         self._pending = _Tracked()  # asked; the next message answers it
+        self._hurting = _Tracked()  # session -> turns left of "welcome first"
         self._done: set[str] = set()  # conversations that already had their one question
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
         base = await self.inner.context_for(message, previous) if self.inner else RecalledContext()
-        if getattr(self.inner, "ready", True) is False:
-            return base  # the embedding model is still loading: no opinions rather than a wait
+        ready = (
+            getattr(self.inner, "ready", True) is not False
+        )  # the embedding model may be loading
         try:
-            block = await self._opinions(message, previous)
-        except Exception as exc:  # noqa: BLE001  (opinions are a bonus, never a reason to fail)
+            block = await self._blocks(message, previous, ready)
+        except Exception as exc:  # noqa: BLE001  (the V2 is a bonus, never a reason to fail)
             event_log.log("error", where="memory.v2.context", type=type(exc).__name__)
             return base
         if not block:
             return base
         joined = f"{base.block}\n\n{block}" if base.block else block
         return replace(base, block=joined, tokens=base.tokens + estimate_tokens(block))
+
+    async def _blocks(self, message: str, previous: str | None, ready: bool) -> str | None:
+        """Welcome first when he is hurting; otherwise her state and her opinions."""
+        session = current_session()
+        await self._apply_feedback(session, message)
+        hurting = self._hurting_now(session, message, previous)
+        parts: list[str] = []
+        if hurting:
+            parts.append(WELCOME_FIRST)
+        else:
+            feeling = await asyncio.to_thread(self._state_block)
+            if feeling:
+                parts.append(feeling)
+        used = sum(estimate_tokens(p) for p in parts)
+        opinions = await self._opinions(session, message, previous, hurting, ready, used)
+        if opinions:
+            parts.insert(0, opinions)
+        return "\n\n".join(parts) if parts else None
+
+    def _hurting_now(self, session: str, message: str, previous: str | None) -> bool:
+        """Whether he is hurting in this message or in one of the last few."""
+        if seems_down(message) or seems_down(previous):
+            if session:
+                self._hurting.put(session, HURTING_TURNS)
+            return True
+        left = self._hurting.get(session, 0)
+        if left > 1:
+            self._hurting.put(session, left - 1)
+            return True
+        self._hurting.pop(session, None)
+        return False
+
+    def _state_block(self) -> str | None:
+        """``<estado>``: the current mood and the strongest feeling, in one or two lines."""
+        book = AffectBook(self.data, self.config.affect, self._clock)
+        if not book.active:
+            return None
+        return render_state(book.state())
 
     def after_turn(self, session_id: str, turn: Turn) -> None:
         """Turn sink: the question counts as asked only if her reply really carries a question."""
@@ -125,13 +220,22 @@ class V2Context:
 
     # --- the block ----------------------------------------------------------------------------
 
-    async def _opinions(self, message: str, previous: str | None) -> str | None:
-        session = current_session()
-        await self._apply_feedback(session, message)
+    async def _opinions(
+        self,
+        session: str,
+        message: str,
+        previous: str | None,
+        hurting: bool,
+        ready: bool,
+        spent: int,
+    ) -> str | None:
+        if not ready:
+            return None  # the embedding model is still loading: no opinions rather than a wait
         hits = await asyncio.to_thread(self._relevant, build_query(message, previous))
         if not hits:
             return None
-        lines, kept, used = [], [], estimate_tokens(f"{HEADER}\n{OPEN_TAG}\n{CLOSE_TAG}")
+        lines, kept = [], []
+        used = spent + estimate_tokens(f"{HEADER}\n{OPEN_TAG}\n{CLOSE_TAG}")
         for belief in hits:
             line = f"- {self._book.words(belief)}: {clean_text(belief.statement)}"
             if used + estimate_tokens(line) > self.config.max_tokens:
@@ -141,7 +245,7 @@ class V2Context:
             kept.append(belief)
         if not kept:
             return None
-        ask = self._question_for(session, kept, message)
+        ask = None if hurting else self._question_for(session, kept)
         text = f"{HEADER}\n{OPEN_TAG}\n" + "\n".join(lines) + f"\n{CLOSE_TAG}"
         if ask is not None:
             self._offered.put(session, ask.belief_id)
@@ -159,11 +263,9 @@ class V2Context:
         hits = self._book.search(vector, top_k=MAX_OPINIONS, threshold=self._relevance)
         return [h.item for h in hits]
 
-    def _question_for(self, session: str, shown: list[Belief], message: str) -> _Offer | None:
+    def _question_for(self, session: str, shown: list[Belief]) -> _Offer | None:
         """The hypothesis worth checking now, if any: once per conversation, never with him down."""
         if not session or session in self._done or session in self._pending:
-            return None
-        if seems_down(message):
             return None
         for belief in shown:
             if self._book.words(belief) == conf.WORD_ACHO:

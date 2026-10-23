@@ -20,8 +20,10 @@ from brain.clients import voice
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2 import open_v2_data, require_v2
+from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
+from brain.memory.v2.context import state_lines
 from brain.memory.v2.models import Belief
 from brain.memory.v2.store import V2Data
 
@@ -233,6 +235,69 @@ def install(memory_app: typer.Typer, console: Console) -> None:
         finally:
             data.close()
         voice.say(console, f"Anotado: {concern.name} agora pesa {concern.weight:.2f}.")
+
+    affect_app = typer.Typer(
+        help="Como eu estou: humor, sentimentos e mágoas.", invoke_without_command=True
+    )
+    memory_app.add_typer(affect_app, name="affect")
+
+    @affect_app.callback()
+    def affect(ctx: typer.Context) -> None:
+        """Mostra o estado afetivo de agora e os sentimentos recentes. Subcomando: clear."""
+        if ctx.invoked_subcommand is not None:
+            return
+        data = _open(console)
+        try:
+            book = AffectBook(data)
+            state = book.state()
+            rows = sorted(data.affects.list(), key=lambda a: a.occurred_at, reverse=True)
+            strengths = {a.id: book.strength(a) for a in rows}
+            active = book.active
+        finally:
+            data.close()
+        if not active:
+            voice.say(
+                console, "Os sentimentos estão desligados (memory.v2.affect.enabled / intensity)."
+            )
+            return
+        voice.say(console, "Agora: " + (" ".join(state_lines(state)) or "tudo calmo."))
+        if not rows:
+            return
+        table = Table(header_style="bold")
+        for column in ("Quando", "Sentimento", "Valência", "Registrada", "Agora", "Sobre", "Causa"):
+            table.add_column(column, overflow="fold")
+        for a in rows[:20]:
+            now = "desfeita" if a.resolved_at else f"{strengths[a.id]:.2f}"
+            kind = f"{a.kind} (mágoa)" if a.persistence == "grievance" else a.kind
+            table.add_row(
+                _local(a.occurred_at),
+                kind,
+                f"{a.valence:+.2f}",
+                f"{a.intensity:.2f}",
+                now,
+                a.about,
+                ", ".join(a.cause),
+            )
+        console.print(table)
+
+    @affect_app.command("clear")
+    def affect_clear(
+        yes: Annotated[
+            bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")
+        ] = False,
+    ) -> None:
+        """Apaga todos os sentimentos guardados (o humor volta ao neutro)."""
+        if not yes and not typer.confirm(
+            "Apagar todos os meus sentimentos guardados?", default=False
+        ):
+            voice.say(console, "Ok, não apaguei nada.")
+            return
+        data = _open(console)
+        try:
+            removed = AffectBook(data).forget_all()
+        finally:
+            data.close()
+        voice.say(console, f"Pronto, esqueci {removed} sentimento(s).")
 
     @memory_app.command("journal")
     def journal(
