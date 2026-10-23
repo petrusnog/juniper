@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memória V2 — Livro de bolso Juniper</title>
+<meta name="description" content="A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com a passada noturna.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/memoria-v2.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Memória / Memória V2</div>
+<h1>Memória V2 <span class="tag a">proposto</span></h1>
+<p class="lead">A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com a passada noturna.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página acompanha a <a href="adr-017.html">ADR-017</a>, que é a fonte de verdade. A Memória V2 vem <strong>desligada</strong> (<code>memory.v2.enabled: false</code>); desligada, nada muda em relação à <a href="memoria-longo-prazo.html">memória de longo prazo</a>. As camadas vão sendo entregues em tasks; cada seção abaixo diz o que já está pronto.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>A memória v1 guarda <strong>fatos</strong>. A V2 acrescenta camadas em que cada uma é uma <strong>leitura da anterior</strong>, e a personalidade deixa de ser um texto fixo.</p>
+<pre><code class="lang-text">0. NÚCLEO (fixo)   regras de tools, confirmação, segurança, formato, honestidade
+1. MUNDO           fatos que ela identificou (a memória v1)
+2. UMWELT          interpretações: crenças, hipóteses, opiniões e interesses
+3. PREOCUPAÇÕES    o que importa para ela (a régua dos sentimentos)
+4. AFETO           sentimentos e humor
+5. PERSONALIDADE   traços e narrativa recente (viva)</code></pre>
+<p>Tudo mora no <strong>MongoDB</strong> (o mesmo banco da v1), em coleções por camada; só o núcleo é arquivo (<code>prompts/persona.core.md</code>). A V2 exige <code>memory.session.store: mongo</code>: com arquivos, ligar <code>memory.v2.enabled</code> é recusado com uma mensagem clara. O código está em <code>brain/memory/v2/</code>.</p>
+<h2 id="base">Base de dados</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Coleção</th><th>O que guarda</th></tr></thead><tbody><tr><td><code>memories</code></td><td>Os fatos (a v1). Cada um agora cita a sessão e o turno de origem (<code>source.turn</code>).</td></tr><tr><td><code>beliefs</code></td><td>Crenças com <code>alpha</code>, <code>beta</code>, evidências e status.</td></tr><tr><td><code>interests</code>, <code>affects</code>, <code>concerns</code></td><td>Interesses, sentimentos e preocupações.</td></tr><tr><td><code>persona_state</code>, <code>persona_history</code></td><td>A personalidade atual (um documento versionado) e as versões anteriores.</td></tr><tr><td><code>journal</code>, <code>dream_runs</code>, <code>dream_watermarks</code></td><td>O diário, as execuções da passada noturna e até onde cada sessão foi lida.</td></tr><tr><td><code>transcript_turns</code></td><td>A <strong>transcrição completa</strong> de cada turno (o que o Petrus escreveu e a resposta dela). A sessão salva é <em>compactada</em> (só os últimos turnos), então a passada noturna precisa desta. Nunca tem saída de tool.</td></tr><tr><td><code>calibration</code></td><td>Quanto as opiniões dela acertaram em cada tema.</td></tr></tbody></table></div>
+<p>O armazenamento é uma interface (<code>DocStore</code>) com duas implementações, MongoDB e memória, que passam nos mesmos testes. O MongoDB do compose é um nó único e não tem transações entre documentos: as operações são <strong>idempotentes e retomáveis</strong>, e a personalidade usa versão otimista. Um documento corrompido é ignorado ao listar, sem esconder os bons. <code>juniper memory reindex</code> refaz também os vetores de crenças e interesses.</p>
+<h2 id="crencas">Crenças e confiança</h2>
+<p>Uma <strong>crença</strong> é uma hipótese em primeira pessoa sobre o Petrus ou sobre uma decisão dele ("acho que o Petrus se cobra bem mais do que cobraria de outra pessoa; vi isso em 3 conversas"). A confiança <strong>sai de contagens, nunca de um número que o LLM inventa</strong>: um modelo que diz "80% de certeza" produz um número bonito e não calibrado.</p>
+<p>Cada crença nasce com um a priori fraco (<code>alpha = beta = 1</code>, "não sei") e cada evidência soma um peso ao lado que apoia, conforme a <strong>fonte</strong>:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Evidência</th><th>Peso</th><th>Lado</th></tr></thead><tbody><tr><td>Observação indireta num turno (ela inferiu)</td><td>1</td><td>a favor (<code>alpha</code>)</td></tr><tr><td>Observação contrária</td><td>1</td><td>contra (<code>beta</code>)</td></tr><tr><td>O Petrus disse explicitamente</td><td>3</td><td>a favor</td></tr><tr><td>O Petrus <strong>confirmou</strong> a hipótese quando ela perguntou</td><td>4</td><td>a favor</td></tr><tr><td>O Petrus <strong>negou</strong></td><td>4</td><td>contra</td></tr></tbody></table></div>
+<ul><li><strong>Confiança</strong> = <code>alpha / (alpha + beta)</code>; <strong>firmeza</strong> <code>n</code> = a evidência acumulada além do a priori.</li><li><strong>Decaimento:</strong> <code>alpha</code> e <code>beta</code> encolhem na direção do a priori com meia-vida de 60 dias (<code>memory.v2.beliefs.half_life_days</code>). Sem reforço, a crença volta à <strong>incerteza</strong>, não ao erro.</li><li><strong>Formação:</strong> uma observação isolada é um palpite, não uma crença. A hipótese (<code>candidate</code>) vira <code>active</code> com pelo menos <code>min_evidence</code> (2) de evidência a favor vinda de <strong>sessões ou dias diferentes</strong>, ou com uma afirmação explícita ou confirmação do Petrus.</li><li><strong>Em palavras</strong> (é o que o Petrus lê e o que vai ao prompt; o número fica por baixo): "talvez" até 0,45; "acho que" de 0,45 a 0,70; "tenho bastante certeza" acima de 0,70 <strong>e</strong> <code>n &gt;= 6</code>. Com pouca evidência nunca passa de "acho que".</li><li><strong><code>retired</code></strong> (final): o Petrus negou; ou a confiança caiu abaixo de 0,25 com <code>n &gt;= 4</code> (ela estava errada); ou a crença desbotou (<code>n &lt; 0,25</code>) sem confirmação.</li><li>A <strong>mesma referência</strong> (sessão, turno) conta <strong>uma vez</strong>: reexecutar a passada noturna não infla nada. As referências guardadas são no máximo 50 por lado; os pesos continuam nas contagens.</li></ul>
+<p>Os valores são um primeiro palpite, ajustáveis em <code>memory.v2.beliefs.*</code>.</p>
+<h3 id="metacognicao">Metacognição</h3>
+<p>A Juniper acompanha quando as próprias opiniões se mostram certas ou erradas, por tema: confirmar é um acerto; uma crença que ela <strong>mantinha</strong> e foi negada ou refutada é um erro (um mero palpite descartado, e uma crença que só desbotou, não contam). Num tema em que ela erra muito, uma crença nova <strong>começa mais cética</strong> (o a priori pende para o lado "errada"); um bom histórico não faz crença nova começar mais confiante. É humildade na conta, não só no tom.</p>
+<h3 id="beliefbook">BeliefBook</h3>
+<p>O único lugar que cria, reforça, confirma, nega, revisa e aposenta crenças. O LLM pode <em>propor</em> (a reflexão noturna), mas todo número e toda mudança de status vêm de <code>confidence.py</code>. <code>create</code> junta o palpite a uma crença viva quase igual (similaridade 0,9 ou mais) em vez de duplicá-la; <code>review_all</code> aplica o decaimento, forma as que merecem e aposenta as erradas ou apagadas pelo tempo; <code>search</code> acha as crenças mantidas por significado.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
