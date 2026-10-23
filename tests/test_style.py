@@ -60,6 +60,6 @@ def test_one_character_at_a_time_gives_the_same_result() -> None:
 
 
 def test_both_personas_forbid_the_dash() -> None:
-    for name in ("juniper.md", "juniper.compact.md"):
+    for name in ("persona.core.md", "persona.core.compact.md"):
         text = (PROMPTS / name).read_text(encoding="utf-8")
         assert "Nunca use travessão" in text, name

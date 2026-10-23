@@ -3,7 +3,7 @@
 A CPU-only Ollama reads ~30 prompt tokens per second, so the full persona plus every tool
 description (~2,200 tokens) means over a minute of silence before the first streamed token.
 For providers that set ``compact_prompt`` the router sends a short persona
-(``prompts/juniper.compact.md``) and trimmed tool schemas instead. Names, parameter names,
+(``prompts/persona.core.compact.md``) and trimmed tool schemas instead. Names, parameter names,
 types, ``required`` and ``enum`` are untouched, so tool calling keeps working.
 """
 
@@ -15,7 +15,7 @@ from typing import Any
 
 from brain.llm.types import Message
 
-COMPACT_PERSONA_PATH = Path(__file__).resolve().parents[2] / "prompts" / "juniper.compact.md"
+COMPACT_PERSONA_PATH = Path(__file__).resolve().parents[2] / "prompts" / "persona.core.compact.md"
 
 MAX_TOOL_DESCRIPTION = 100
 MAX_PARAM_DESCRIPTION = 60
