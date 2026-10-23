@@ -208,3 +208,13 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 - **Versão:** cada mudança grava a versão anterior em `persona_history`, com os eventos que a causaram (`changed_by`, referências `turn:<conversa>:<turno>`). A escrita é otimista: duas escritas com a mesma versão não passam, e quem perde tenta de novo na noite seguinte. Nada é gravado quando nada mudou.
 - **Renderização:** um **modelo de texto fixo** (sem LLM) traduz só o que se afastou do jeito de sempre ("Seu jeito anda um pouco mais reflexiva e um pouco menos brincalhona.") e as frases de `recent` em um bloco `<personalidade>`, sempre com o aviso de que honestidade, cuidado com as ferramentas e confirmação continuam iguais. Mesmo estado, mesmo texto; no jeito de sempre, nada é adicionado ao prompt.
 - **Pode mudar de ideia sobre estar viva, dentro do núcleo:** o tom da dúvida pode evoluir, a regra de nunca afirmar nem negar não.
+
+### Ver, conferir e voltar atrás (personalidade) {#persona-comandos kind=comandos file=brain/clients/memory_v2_cli.py}
+
+| Comando | O que faz |
+|---|---|
+| `juniper persona show` | Os traços (agora, ponto de partida, faixa), a versão, o que a marcou ultimamente e a **deriva**. |
+| `juniper persona history` | As versões e os eventos que causaram cada mudança. |
+| `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
+
+**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), a passada noturna escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](adr-017.html)).

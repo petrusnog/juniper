@@ -15,6 +15,7 @@ from brain.eventlog import event_log
 from brain.memory.extraction import parse_json_object
 from brain.memory.v2.concerns import ConcernBook
 from brain.memory.v2.guards import Rejection, reasons
+from brain.memory.v2.models import JournalEntry
 from brain.memory.v2.night import PhaseContext, PhaseResult
 from brain.memory.v2.persona import Move, PersonaBook
 from brain.memory.v2.reflect import MAX_NOTES, build_digest
@@ -73,6 +74,9 @@ class PersonaPhase:
             for name, delta in report.changed.items()
         )
         notes.extend(f"anotaria: {line}" for line in report.marked)
+        warned = self._warn_drift(ctx, book)
+        if warned is not None:
+            notes.append(f"aviso: a deriva da personalidade está em {warned:.2f}")
         counts = Counter(r.code for r in rejections)
         summary = (
             f"{len(moves)} proposta(s) de mudança: {len(report.changed)} traço(s) mexeram,"
@@ -80,6 +84,7 @@ class PersonaPhase:
             f" {sum(counts.values())} recusada(s)"
             + (f" ({', '.join(f'{c}×{n}' for c, n in sorted(counts.items()))})" if counts else "")
             + (f"; versão {report.version}" if report.wrote else "; nada a gravar")
+            + (f"; deriva {warned:.2f} acima do limite" if warned is not None else "")
             + ("; conflito de versão, fica para a próxima noite" if report.conflict else "")
         )
         return PhaseResult(
@@ -89,6 +94,27 @@ class PersonaPhase:
             changed=len(report.changed) + report.relaxed,
             notes=notes[:MAX_NOTES],
         )
+
+    def _warn_drift(self, ctx: PhaseContext, book: PersonaBook) -> float | None:
+        """A diary warning (once a day) when she has drifted far from her usual self."""
+        value = book.drift_warning()
+        if value is None:
+            return None
+        day = ctx.clock().date().isoformat()
+        entries = ctx.data.journal.list({"kind": "persona", "day": day})
+        if not any(e.data.get("warning") == "drift" for e in entries):
+            ctx.data.journal.save(
+                JournalEntry(
+                    "persona",
+                    "Aviso: minha personalidade se afastou do meu jeito de sempre "
+                    f"(deriva {value:.2f}). Veja com `juniper persona show`; dá para voltar "
+                    "com `juniper persona revert`.",
+                    day=day,
+                    data={"warning": "drift", "drift": round(value, 4)},
+                    at=ctx.clock(),
+                )
+            )
+        return value
 
     async def _propose(
         self, ctx: PhaseContext, book: PersonaBook, digest: Any, rejections: list[Rejection]

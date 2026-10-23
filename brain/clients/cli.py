@@ -1053,7 +1053,7 @@ def memory_export(
 
 from brain.clients import memory_v2_cli  # noqa: E402
 
-memory_v2_cli.install(memory_app, console)
+memory_v2_cli.install(app, memory_app, console)
 
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
