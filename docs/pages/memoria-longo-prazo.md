@@ -288,3 +288,11 @@ Os comandos `juniper memory list|search|forget|export|profile|reindex` estão em
 pytest -m "not integration"     # CI: LLM, banco e embedding simulados
 pytest -m integration           # com o modelo real (baixa ~120 MB) e o MongoDB local
 ```
+
+## Esquecer um fato e as crenças
+
+Com a [Memória V2](memoria-v2.html) ligada, `forget` (comando ou tool) também solta das crenças a evidência que veio do fato esquecido; a crença que fica sem sustentação é aposentada. Apagar uma crença, ao contrário, nunca apaga fatos.
+
+## A V2 em cima dos fatos
+
+A [Memória V2](memoria-v2.html) (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (`source.turn`), a passada noturna reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.

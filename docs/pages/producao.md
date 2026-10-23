@@ -263,6 +263,10 @@ Comandos que mexem no ambiente do seu computador (`install`, `deploy`, `docs`) n
 | Token dos clientes | `~/.juniper/token` no servidor; cofre do sistema no cliente |
 | Chave SSH de deploy, credenciais OAuth do Tailscale | GitHub Secrets (`DEPLOY_SSH_KEY`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`) |
 
+## A passada noturna da Memória V2 {#passada-noturna}
+
+Com `memory.v2.enabled: true`, o servidor roda todo dia, em `memory.v2.night.at` (03:00 no fuso do agente), a passada noturna da [Memória V2](memoria-v2.html): ela lê as conversas novas, reflete e atualiza as camadas, dentro de um orçamento de tokens e de minutos. Roda depois do backup das 02:30, então uma noite ruim sempre tem a cópia da véspera. Falha em uma fase não derruba o servidor nem a conversa, e a noite seguinte recomeça de onde parou. Para testar sem gravar: `juniper memory dream --dry-run` no contêiner. Os comandos de auditoria (`memory beliefs`, `persona show`...) também rodam ali.
+
 ## Dados: backup e restauração {#backup}
 
 O banco `juniper` é copiado com `mongodump`, **criptografado com `age`** e versionado como **um único arquivo** num repositório git **privado** do GitHub (um commit por backup), antes de cada deploy e todo dia por um cron. A chave que decifra fica com você, fora da VPS. Passo a passo, restauração, o que fica de fora e os limites: [Backup da memória](backup.html).

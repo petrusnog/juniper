@@ -146,6 +146,10 @@ juniper memory profile forget [--yes]     # apaga só o perfil</code></pre>
 <h2 id="testes">Testes</h2>
 <pre><code class="lang-bash">pytest -m &quot;not integration&quot;     # CI: LLM, banco e embedding simulados
 pytest -m integration           # com o modelo real (baixa ~120 MB) e o MongoDB local</code></pre>
+<h2 id="esquecer-um-fato-e-as-crencas">Esquecer um fato e as crenças</h2>
+<p>Com a <a href="memoria-v2.html">Memória V2</a> ligada, <code>forget</code> (comando ou tool) também solta das crenças a evidência que veio do fato esquecido; a crença que fica sem sustentação é aposentada. Apagar uma crença, ao contrário, nunca apaga fatos.</p>
+<h2 id="a-v2-em-cima-dos-fatos">A V2 em cima dos fatos</h2>
+<p>A <a href="memoria-v2.html">Memória V2</a> (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (<code>source.turn</code>), a passada noturna reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

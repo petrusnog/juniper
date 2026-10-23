@@ -58,6 +58,8 @@ class Memory:
     superseded_by: str | None = None
     source_kind: str = "extracted"
     session_id: str | None = None
+    # Provenance (ADR-017): the last turn of the conversation that was being analyzed (0-based).
+    turn: int | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -187,7 +189,11 @@ def memory_to_doc(memory: Memory) -> dict[str, Any]:
         "superseded_by": memory.superseded_by,
         "embedding": [float(x) for x in memory.embedding],
         "embedding_model": memory.embedding_model,
-        "source": {"kind": memory.source_kind, "session_id": memory.session_id},
+        "source": {
+            "kind": memory.source_kind,
+            "session_id": memory.session_id,
+            "turn": memory.turn,
+        },
         "created_at": memory.created_at,
         "updated_at": memory.updated_at,
     }
@@ -207,6 +213,7 @@ def memory_from_doc(doc: Mapping[str, Any]) -> Memory:
             embedding_model=doc["embedding_model"],
             source_kind=source.get("kind", "extracted"),
             session_id=source.get("session_id"),
+            turn=source.get("turn"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

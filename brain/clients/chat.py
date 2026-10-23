@@ -15,19 +15,19 @@ import contextlib
 import logging
 import re
 import secrets
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
 from brain.clients.server import Connection
 from brain.config import settings
-from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent
+from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent, ContextProvider
 from brain.core.dispatcher import Dispatcher
 from brain.core.resume import NO_PREVIOUS_NOTE, resume_note
-from brain.core.session import Session
+from brain.core.session import Session, Turn
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.errors import LLMError
@@ -40,6 +40,9 @@ from brain.memory.session import SessionStore, SessionStoreError
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 from brain.trace import message_trace, quote
+
+if TYPE_CHECKING:
+    from brain.memory.v2.context import V2Context
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +138,19 @@ class ChatHandler:
         turn_timeout: float = TURN_TIMEOUT_SECONDS,
         commands_memory: LongTermMemory | None = None,
         executors: ExecutorHub | None = None,
+        turn_sink: Callable[[str, Turn], Any] | None = None,
+        v2_context: V2Context | None = None,
     ) -> None:
         self._store = store
         self._provider = provider
         self._memory = memory
+        self._turn_sink = turn_sink
         self._warming = WarmingMemory(memory) if memory is not None else None
+        # Her opinions come after the recalled facts; the same provider serves every conversation.
+        self._recall: ContextProvider | None = self._warming
+        if v2_context is not None:
+            v2_context.inner = self._warming
+            self._recall = v2_context
         self._background = background_extraction and memory is not None
         base = tool_registry or default_registry
         self.executors = executors or ExecutorHub(base)
@@ -263,7 +274,8 @@ class ChatHandler:
             session=session,
             tool_registry=self._registry,
             store=self._store,
-            memory=self._warming,
+            memory=self._recall,
+            turn_sink=self._turn_sink,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -604,6 +616,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         open_memory_for_commands,
     )
     from brain.memory.stores import close_session_store, open_session_store
+    from brain.memory.v2 import open_v2_runtime
     from brain.tools import memory as memory_tools
     from brain.tools.registry import registry
 
@@ -630,8 +643,16 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         raise
     assert router is not None and memory_llm is not None
     memory_tools.bind(memory)
+    # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
+    v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
     handler = ChatHandler(
-        store, router, memory, background_extraction=background, commands_memory=commands
+        store,
+        router,
+        memory,
+        background_extraction=background,
+        commands_memory=commands,
+        turn_sink=v2.sink if v2 else None,
+        v2_context=v2.context if v2 else None,
     )
     warm_up = asyncio.get_running_loop().create_task(handler.warm_up())
     try:
@@ -640,6 +661,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         warm_up.cancel()
         await asyncio.gather(warm_up, return_exceptions=True)
         await handler.shutdown()
+        if v2 is not None:
+            v2.close()
         memory_tools.bind(None)
         if memory is not None:
             memory.close()

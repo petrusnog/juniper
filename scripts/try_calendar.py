@@ -31,7 +31,7 @@ from brain.llm.types import Message, TokenUsage
 from brain.tools.base import Tier, ToolResult
 from brain.tools.registry import registry
 
-PERSONA = Path(__file__).resolve().parent.parent / "prompts" / "juniper.md"
+PERSONA = Path(__file__).resolve().parent.parent / "prompts" / "persona.core.md"
 MAX_TURNS = 8  # user turns kept in the history
 
 RULES = """

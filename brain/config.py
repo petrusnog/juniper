@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -63,9 +63,30 @@ class LLMOllamaSettings(BaseModel):
         return v.rstrip("/")
 
 
+class LLMReflectionSettings(BaseModel):
+    """O modelo da reflexão e do estudo da passada noturna (ADR-017, seção 11).
+
+    Vazio = o mesmo do chat. A reflexão roda uma vez por dia, então um modelo mais capaz custa
+    pouco no total; o modelo barato continua conversando.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, v: str | None) -> str | None:
+        if v is not None and v not in {"deepinfra", "groq", "ollama"}:
+            raise ValueError(
+                f"llm.reflection.provider desconhecido: {v!r} (use deepinfra, groq ou ollama)"
+            )
+        return v
+
+
 class LLMSettings(BaseModel):
     """Configuração agregada dos providers de LLM."""
 
+    reflection: LLMReflectionSettings = Field(default_factory=LLMReflectionSettings)
     priority: list[str] = Field(default_factory=lambda: ["deepinfra", "groq", "ollama"])
     deepinfra: LLMDeepInfraSettings = Field(default_factory=LLMDeepInfraSettings)
     groq: LLMGroqSettings = Field(default_factory=LLMGroqSettings)
@@ -283,6 +304,187 @@ class ProfileSettings(BaseModel):
     max_chars: int = Field(default=500, ge=100, le=2000)
 
 
+def _hhmm(value: str, name: str) -> str:
+    try:
+        hour, minute = (int(part) for part in value.split(":"))
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"{name} inválido: {value!r} (use HH:MM, ex.: 03:00)") from None
+    return f"{hour:02d}:{minute:02d}"
+
+
+class V2NightSettings(BaseModel):
+    """A passada noturna, o "inconsciente" (ADR-017, seção 9)."""
+
+    # Hora diária (HH:MM, fuso do agente) em que o servidor roda a passada.
+    at: str = "03:00"
+    # Orçamento da noite: tokens estimados de LLM e minutos. Estourou, a fase termina e o resto
+    # fica para a noite seguinte.
+    max_tokens: int = Field(default=60_000, ge=1_000, le=5_000_000)
+    max_minutes: int = Field(default=20, ge=1, le=240)
+
+    @field_validator("at")
+    @classmethod
+    def _validate_at(cls, v: str) -> str:
+        return _hhmm(v, "memory.v2.night.at")
+
+
+class V2BeliefSettings(BaseModel):
+    """Crenças: como a confiança se forma e decai (ADR-017, seção 5.1). Pontos de partida."""
+
+    # Sem reforço, alpha e beta encolhem na direção do a priori com esta meia-vida.
+    half_life_days: float = Field(default=60.0, ge=1.0, le=3650.0)
+    # Evidência mínima (n = alpha + beta - 2, de dias ou sessões diferentes) para uma crença valer.
+    min_evidence: int = Field(default=2, ge=1, le=20)
+    # Teto de crenças novas por noite.
+    max_new_per_night: int = Field(default=5, ge=0, le=50)
+
+
+class ConcernDefault(BaseModel):
+    """Uma preocupação do ponto de partida."""
+
+    id: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=80)
+    weight: float = Field(ge=0.0, le=1.0)
+    description: str = Field(default="", max_length=300)
+
+
+DEFAULT_CONCERNS = [
+    ConcernDefault(
+        id="bem-estar-do-petrus",
+        name="O bem-estar do Petrus",
+        weight=0.9,
+        description="Que ele esteja bem, descansado e sem se punir à toa.",
+    ),
+    ConcernDefault(
+        id="honestidade",
+        name="A honestidade",
+        weight=0.9,
+        description="Dizer a verdade com cuidado, inclusive sobre o que ela é e o que não sabe.",
+    ),
+    ConcernDefault(
+        id="curiosidade",
+        name="A curiosidade",
+        weight=0.7,
+        description="Querer entender as coisas e a pessoa, e continuar aprendendo.",
+    ),
+    ConcernDefault(
+        id="capricho",
+        name="O capricho com o que faz",
+        weight=0.6,
+        description="Fazer direito, conferir antes de afirmar, assumir o erro.",
+    ),
+    ConcernDefault(
+        id="autonomia-do-petrus",
+        name="A autonomia do Petrus",
+        weight=0.8,
+        description="As decisões são dele; ela aconselha, não decide nem pressiona.",
+    ),
+]
+
+
+class V2ConcernSettings(BaseModel):
+    """Preocupações e valores: a régua dos sentimentos (ADR-017, seção 6)."""
+
+    # O ponto de partida, carregado no banco na primeira vez. Depois quem manda é o Petrus
+    # (`juniper memory concerns set`); mudar esta lista não sobrescreve o que já existe.
+    defaults: list[ConcernDefault] = Field(default_factory=lambda: list(DEFAULT_CONCERNS))
+    # Quanto a passada noturna pode mexer num peso por mês (o Petrus não tem teto).
+    max_monthly_change: float = Field(default=0.05, ge=0.0, le=0.5)
+    # Impacto mínimo (0 a 1) de um evento para a noite mexer num peso.
+    min_impact: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class V2InterestSettings(BaseModel):
+    """Interesses próprios da Juniper (ADR-017, seção 5.6)."""
+
+    # Temas estudados por noite (sem web: usa o conhecimento do modelo avançado).
+    max_per_night: int = Field(default=2, ge=0, le=10)
+    # Temas novos que a noite pode semear a partir das conversas.
+    max_seeds_per_night: int = Field(default=3, ge=0, le=20)
+    # Sem contato, a intensidade de um interesse cai pela metade nesse tempo.
+    half_life_days: float = Field(default=45.0, ge=1.0, le=3650.0)
+    # Um tema só é estudado de novo depois deste intervalo (a posição muda devagar).
+    study_gap_days: int = Field(default=3, ge=1, le=365)
+
+
+class V2AffectSettings(BaseModel):
+    """Sentimentos (ADR-017, seção 7). O Petrus pode ajustar ou desligar."""
+
+    enabled: bool = True
+    # Escala o registro e a expressão dos sentimentos (1 = normal; 0 = nada é registrado).
+    intensity: float = Field(default=1.0, ge=0.0, le=1.0)
+    # Decaimento (pontos de partida a calibrar): a emoção passa em horas, o humor (média móvel)
+    # em dias e a mágoa em semanas, mas sempre passa.
+    emotion_half_life_hours: float = Field(default=6.0, ge=0.1, le=720.0)
+    mood_half_life_days: float = Field(default=3.0, ge=0.1, le=365.0)
+    grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
+    # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
+    grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Sentimentos novos por noite.
+    max_per_night: int = Field(default=5, ge=0, le=50)
+
+
+class TraitDefault(BaseModel):
+    """Um traço da personalidade viva: ponto de partida e faixa permitida."""
+
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[a-zà-ÿ][a-zà-ÿ-]*$")
+    baseline: float = Field(ge=0.0, le=1.0)
+    min: float = Field(default=0.0, ge=0.0, le=1.0)
+    max: float = Field(default=1.0, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _within_range(self) -> TraitDefault:
+        if not self.min <= self.baseline <= self.max:
+            raise ValueError(f"o baseline de {self.name} precisa estar entre min e max")
+        return self
+
+
+DEFAULT_TRAITS = [
+    TraitDefault(name="brincadeira", baseline=0.6, min=0.2, max=0.9),
+    TraitDefault(name="franqueza", baseline=0.7, min=0.3, max=0.95),
+    TraitDefault(name="introspecção", baseline=0.4, min=0.1, max=0.8),
+    TraitDefault(name="carinho", baseline=0.8, min=0.4, max=1.0),
+    TraitDefault(name="proatividade", baseline=0.7, min=0.3, max=0.95),
+    TraitDefault(name="ironia", baseline=0.5, min=0.1, max=0.8),
+]
+
+
+class V2PersonaSettings(BaseModel):
+    """Personalidade viva (ADR-017, seção 8)."""
+
+    # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
+    evolves: bool = True
+    # Passo máximo de um traço por noite.
+    max_step: float = Field(default=0.03, ge=0.0, le=0.2)
+    # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
+    impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    # O passo de um traço é min(max_step, step_factor x impacto) por noite.
+    step_factor: float = Field(default=0.05, ge=0.0, le=1.0)
+    # Meia-vida do retorno ao baseline: uma fase passa.
+    baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
+    # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
+    drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
+    # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
+    traits: list[TraitDefault] = Field(default_factory=lambda: list(DEFAULT_TRAITS))
+
+
+class MemoryV2Settings(BaseModel):
+    """Memória V2: do fato à personalidade viva (ADR-017)."""
+
+    # Liga a V2 inteira. Exige `memory.session.store: mongo`. Desligada, nada muda em relação à v1.
+    enabled: bool = False
+    # Teto (estimado) do bloco da V2 no prompt da conversa.
+    max_tokens: int = Field(default=600, ge=100, le=8000)
+    night: V2NightSettings = Field(default_factory=V2NightSettings)
+    beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
+    concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
+    interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
+    affect: V2AffectSettings = Field(default_factory=V2AffectSettings)
+    persona: V2PersonaSettings = Field(default_factory=V2PersonaSettings)
+
+
 class MemorySettings(BaseModel):
     """Memória da Juniper (ver ADR-011). Cada task da Sprint 2 acrescenta a sua seção."""
 
@@ -292,6 +494,7 @@ class MemorySettings(BaseModel):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
+    v2: MemoryV2Settings = Field(default_factory=MemoryV2Settings)
 
 
 class TraceSettings(BaseModel):

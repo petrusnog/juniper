@@ -122,7 +122,14 @@ juniper memory profile                         # ver
 juniper memory profile set "..." --name "..." --birth-date AAAA-MM-DD --nationality "..."
 juniper memory profile forget [--yes]
 juniper memory reindex [--force]
+juniper memory beliefs [--all] [--min-confidence X]   # Memória V2
+juniper memory beliefs show <id>
+juniper memory beliefs forget <id> [--yes]
+juniper memory journal [--days N]
+juniper memory dream [--dry-run]
 ```
+
+A personalidade viva tem os seus: `juniper persona show` (traços, versão, deriva), `persona history` e `persona revert [--to N] [--yes]` (volta a uma versão anterior como uma versão nova). Os comandos `beliefs`, `concerns`, `affect`, `journal` e `dream` são da [Memória V2](memoria-v2.html): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
 
 | Comando | O que faz |
 |---|---|

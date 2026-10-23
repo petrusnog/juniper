@@ -14,7 +14,7 @@ from brain.llm.errors import LLMError
 from brain.llm.ollama_provider import OllamaProvider
 from brain.llm.types import Message
 
-PERSONA = Path(__file__).resolve().parent.parent / "prompts" / "juniper.md"
+PERSONA = Path(__file__).resolve().parent.parent / "prompts" / "persona.core.md"
 
 
 async def main() -> None:

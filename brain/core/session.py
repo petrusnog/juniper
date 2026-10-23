@@ -18,10 +18,10 @@ from pathlib import Path
 
 from brain.config import settings
 from brain.core import clock
+from brain.core.persona import CORE_PATH, load_core
 from brain.llm.types import Message
 
-PERSONA_PATH = Path(__file__).resolve().parents[2] / "prompts" / "juniper.md"
-_FALLBACK_PERSONA = "Você é a Juniper."
+PERSONA_PATH = CORE_PATH  # the fixed core (brain/core/persona.py); living blocks come after it
 
 # Rough size of a token in characters (Portuguese + code). Good enough to budget a prompt
 # without depending on a tokenizer.
@@ -40,10 +40,16 @@ class Turn:
 
     user: str
     assistant: str = ""
+    # 0-based position of this turn in the whole conversation (``Session.turns_total``), the
+    # provenance that facts and beliefs cite. ``None`` when the caller does not track it.
+    index: int | None = None
+    # True when tools ran during the turn: her reply may then carry what the tools returned
+    # (an event title, a commit message), which must never feed the subjective layers.
+    used_tools: bool = False
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else _FALLBACK_PERSONA
+    return load_core(path)
 
 
 def estimate_tokens(message: Message) -> int:
@@ -80,6 +86,9 @@ class Session:
         self.id = session_id or new_session_id()
         self.created_at = self.updated_at = _timestamp()
         self.history: list[Message] = []
+        # Turns finished in this conversation since it began. Unlike ``history`` it is never
+        # compacted, so a turn number keeps meaning the same thing across resumes.
+        self.turns_total = 0
 
     def messages(self) -> list[Message]:
         """System prompt followed by the history, ready for the LLM."""

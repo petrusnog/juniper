@@ -8,6 +8,7 @@ to catch up after a day it was down.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -27,7 +28,10 @@ def seconds_until(hhmm: str, now: datetime) -> float:
 
 
 async def run_daily(name: str, hhmm: str, job: Callable[[], Any], *, catch_up: bool = True) -> None:
-    """Run ``job`` (in a thread) at start if ``catch_up``, then every day at ``hhmm``, forever."""
+    """Run ``job`` at start if ``catch_up``, then every day at ``hhmm``, forever.
+
+    A plain function runs in a thread; a coroutine function is awaited in the event loop.
+    """
     if catch_up:
         await _run(name, job)
     while True:
@@ -38,6 +42,9 @@ async def run_daily(name: str, hhmm: str, job: Callable[[], Any], *, catch_up: b
 
 async def _run(name: str, job: Callable[[], Any]) -> None:
     try:
-        await asyncio.to_thread(job)
+        if inspect.iscoroutinefunction(job):
+            await job()
+        else:
+            await asyncio.to_thread(job)
     except Exception as exc:  # noqa: BLE001  (a failed housekeeping run must not stop the server)
         event_log.log("error", where=f"scheduler.{name}", type=type(exc).__name__, message=str(exc))

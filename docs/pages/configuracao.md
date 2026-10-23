@@ -80,6 +80,37 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 |---|---|---|
 | `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
+| `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](adr-017.html)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
+| `memory.v2.max_tokens` | `600` | Teto (estimado) do bloco da V2 no prompt da conversa. |
+| `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) da passada noturna, o "inconsciente". |
+| `memory.v2.night.max_tokens` | `60000` | Orçamento de tokens de LLM por noite; estourou, o resto fica para a noite seguinte. |
+| `memory.v2.night.max_minutes` | `20` | Orçamento de minutos por noite. |
+| `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
+| `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
+| `memory.v2.beliefs.max_new_per_night` | `5` | Teto de crenças novas por noite. |
+| `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do Petrus, honestidade, curiosidade, capricho e autonomia do Petrus. É carregado no banco na primeira vez; depois quem manda é o Petrus (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
+| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto a passada noturna pode mexer num peso por mês (por item). O Petrus não tem teto. |
+| `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
+| `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.interests.max_seeds_per_night` | `3` | Temas novos que a noite pode semear a partir do que o Petrus escreveu (só o tema, nunca a opinião dele). |
+| `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
+| `memory.v2.interests.study_gap_days` | `3` | Intervalo mínimo para estudar o mesmo tema de novo (a posição muda devagar). |
+| `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
+| `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
+| `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
+| `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
+| `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o Petrus voltar a conversar ou pedir desculpas. |
+| `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
+| `memory.v2.affect.max_per_night` | `5` | Sentimentos novos por noite. |
+| `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
+| `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
+| `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
+| `memory.v2.persona.step_factor` | `0.05` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
+| `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
+| `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
+| `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
+| `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
 | `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.html#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |
 | `logging.wire_max_chars` | `20000` | Maior corpo gravado por requisição ou resposta; o resto é cortado, com a contagem do que sobrou. |
 | `logging.retention_days` | `3` | Quantos dias anteriores a hoje os logs ficam no disco. Os de dias anteriores a hoje são compactados (`.gz`); os mais velhos que isto são apagados. |
