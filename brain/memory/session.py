@@ -107,6 +107,7 @@ def session_to_dict(session: Session) -> dict[str, Any]:
         "created_at": session.created_at,
         "updated_at": session.updated_at,
         "history": [message_to_dict(m) for m in session.history],
+        "turns_total": session.turns_total,
     }
 
 
@@ -117,6 +118,10 @@ def session_from_dict(data: dict[str, Any]) -> Session:
     session.created_at = str(data["created_at"])
     session.updated_at = str(data["updated_at"])
     session.history = [message_from_dict(m) for m in data["history"]]
+    # Older saves have no counter: the user messages still in the history are the best guess.
+    session.turns_total = int(
+        data.get("turns_total", sum(1 for m in session.history if m.role == "user"))
+    )
     return session
 
 

@@ -40,6 +40,9 @@ class Turn:
 
     user: str
     assistant: str = ""
+    # 0-based position of this turn in the whole conversation (``Session.turns_total``), the
+    # provenance that facts and beliefs cite. ``None`` when the caller does not track it.
+    index: int | None = None
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:
@@ -80,6 +83,9 @@ class Session:
         self.id = session_id or new_session_id()
         self.created_at = self.updated_at = _timestamp()
         self.history: list[Message] = []
+        # Turns finished in this conversation since it began. Unlike ``history`` it is never
+        # compacted, so a turn number keeps meaning the same thing across resumes.
+        self.turns_total = 0
 
     def messages(self) -> list[Message]:
         """System prompt followed by the history, ready for the LLM."""

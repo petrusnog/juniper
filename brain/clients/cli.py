@@ -829,6 +829,12 @@ def memory_reindex(
             result = reindex_memories(
                 connection.collection(MEMORIES_COLLECTION), provider, force=force
             )
+        v2_result = None
+        if settings.memory.v2.enabled:  # the V2 layers carry embeddings too (ADR-017)
+            from brain.memory.reindex import reindex_v2
+            from brain.memory.v2.store import MongoDocStore
+
+            v2_result = reindex_v2(MongoDocStore(connection), provider, force=force)
     except MemoryUnavailableError as exc:
         voice.say(console, str(exc), "red")
         raise typer.Exit(1) from None
@@ -839,6 +845,12 @@ def memory_reindex(
         f"Pronto: {result.reindexed} memória(s) reindexada(s), {result.skipped} já estavam "
         f"em dia (de {result.total}).",
     )
+    if v2_result is not None:
+        voice.say(
+            console,
+            f"Memória V2: {v2_result.reindexed} item(ns) reindexado(s) (crenças e interesses), "
+            f"{v2_result.skipped} já estavam em dia (de {v2_result.total}).",
+        )
 
 
 def _command_memory() -> LongTermMemory:

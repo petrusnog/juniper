@@ -153,7 +153,7 @@ def test_document_matches_the_adr_and_round_trips() -> None:
     m = mem("O projeto X usa Laravel 11.", [0.5, 0.5], type="project", session_id="s1")
     doc = memory_to_doc(m)
     assert doc["_id"] == m.id and doc["status"] == "active" and doc["superseded_by"] is None
-    assert doc["source"] == {"kind": "extracted", "session_id": "s1"}
+    assert doc["source"] == {"kind": "extracted", "session_id": "s1", "turn": None}
     assert doc["embedding_model"] == MODEL
     assert memory_from_doc(doc) == m
 

@@ -80,6 +80,21 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 |---|---|---|
 | `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
+| `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](adr-017.html)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
+| `memory.v2.max_tokens` | `600` | Teto (estimado) do bloco da V2 no prompt da conversa. |
+| `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) da passada noturna, o "inconsciente". |
+| `memory.v2.night.max_tokens` | `60000` | Orçamento de tokens de LLM por noite; estourou, o resto fica para a noite seguinte. |
+| `memory.v2.night.max_minutes` | `20` | Orçamento de minutos por noite. |
+| `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
+| `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
+| `memory.v2.beliefs.max_new_per_night` | `5` | Teto de crenças novas por noite. |
+| `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
+| `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
+| `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
+| `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
+| `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
+| `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
 | `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.html#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |
 | `logging.wire_max_chars` | `20000` | Maior corpo gravado por requisição ou resposta; o resto é cortado, com a contagem do que sobrou. |
 | `logging.retention_days` | `3` | Quantos dias anteriores a hoje os logs ficam no disco. Os de dias anteriores a hoje são compactados (`.gz`); os mais velhos que isto são apagados. |

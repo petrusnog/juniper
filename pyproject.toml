@@ -30,6 +30,7 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
+    "mongomock>=4.1",
     "ruff>=0.5",
     "mypy>=1.10",
 ]
