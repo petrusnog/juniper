@@ -21,6 +21,7 @@ from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2 import open_v2_data, require_v2
 from brain.memory.v2.beliefs import HELD, BeliefBook
+from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.models import Belief
 from brain.memory.v2.store import V2Data
 
@@ -158,6 +159,80 @@ def install(memory_app: typer.Typer, console: Console) -> None:
         finally:
             data.close()
         voice.say(console, "Esqueci essa opinião. Os fatos que você me contou continuam guardados.")
+
+    concerns_app = typer.Typer(
+        help="O que importa para mim (a régua dos meus sentimentos).", invoke_without_command=True
+    )
+    memory_app.add_typer(concerns_app, name="concerns")
+
+    @concerns_app.callback()
+    def concerns(ctx: typer.Context) -> None:
+        """Lista as preocupações e os pesos (de 0 a 1). Subcomandos: show, set."""
+        if ctx.invoked_subcommand is not None:
+            return
+        data = _open(console)
+        try:
+            rows = ConcernBook(data).ensure_defaults()
+        finally:
+            data.close()
+        table = Table(header_style="bold")
+        for column in ("Id", "Peso", "Ponto de partida", "O que é"):
+            table.add_column(column, overflow="fold")
+        for c in rows:
+            table.add_row(c.id, f"{c.weight:.2f}", f"{c.baseline_weight:.2f}", c.name)
+        console.print(table)
+        voice.say(
+            console,
+            "Isso é o que importa para mim, uma escolha e não uma estimativa. Você muda um peso "
+            "com `juniper memory concerns set <id> <0 a 1>`; sozinha eu só mexo muito devagar.",
+        )
+
+    @concerns_app.command("show")
+    def concerns_show(
+        concern_id: Annotated[str, typer.Argument(help="Id da preocupação.")],
+    ) -> None:
+        """Mostra uma preocupação e o histórico de mudanças, com o evento de cada uma."""
+        data = _open(console)
+        try:
+            book = ConcernBook(data)
+            book.ensure_defaults()
+            concern = book.get(concern_id.strip())
+        finally:
+            data.close()
+        if concern is None:
+            voice.say(console, f"Não conheço a preocupação {concern_id}.", "red")
+            raise typer.Exit(1)
+        voice.say(console, f"{concern.name}: peso {concern.weight:.2f}")
+        console.print(f"[dim]{concern.description}[/dim]")
+        console.print(f"[dim]ponto de partida {concern.baseline_weight:.2f}[/dim]")
+        if not concern.history:
+            console.print("Nunca mudou.")
+        for c in concern.history:
+            who = "você" if c.source == "petrus" else "passada noturna"
+            event = f" · evento {c.event_ref}" if c.event_ref else ""
+            console.print(f"  - {_local(c.at)} · {c.delta:+.2f} · {who} · {c.reason}{event}")
+
+    @concerns_app.command("set")
+    def concerns_set(
+        concern_id: Annotated[str, typer.Argument(help="Id da preocupação.")],
+        weight: Annotated[float, typer.Argument(help="Novo peso, de 0 a 1.")],
+        reason: Annotated[
+            str, typer.Option("--reason", "-r", help="Por que mudou (fica no histórico).")
+        ] = "",
+    ) -> None:
+        """Muda o peso de uma preocupação. Você pode mexer livremente; fica registrado."""
+        data = _open(console)
+        try:
+            book = ConcernBook(data)
+            book.ensure_defaults()
+            try:
+                concern = book.set_weight(concern_id.strip(), weight, reason)
+            except ConcernError as exc:
+                voice.say(console, str(exc), "red")
+                raise typer.Exit(1) from None
+        finally:
+            data.close()
+        voice.say(console, f"Anotado: {concern.name} agora pesa {concern.weight:.2f}.")
 
     @memory_app.command("journal")
     def journal(

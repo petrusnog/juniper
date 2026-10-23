@@ -24,7 +24,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from brain.memory.secretfilter import find_document, find_order, find_secret, mask_secrets
-from brain.memory.v2.models import AFFECT_ABOUT, BELIEF_ABOUT, Trait, TranscriptTurn
+from brain.memory.v2.models import AFFECT_ABOUT, BELIEF_ABOUT, Concern, Trait, TranscriptTurn
 
 MAX_BELIEF_CHARS = 400
 MAX_INTEREST_CHARS = 60
@@ -201,6 +201,29 @@ def check_trait_change(
     return None
 
 
+def check_concern_change(
+    concern: Concern | None,
+    delta: object,
+    impact: object,
+    event_ref: object,
+    *,
+    min_impact: float,
+) -> Rejection | None:
+    """Whether the night may move a concern at all (how far is the book's cap, not this guard)."""
+    if concern is None:
+        return Rejection("preocupacao_desconhecida", "preocupação que não existe")
+    try:
+        float(delta)  # type: ignore[arg-type]
+        strength = float(impact)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return Rejection("numero", "delta e impacto precisam ser números")
+    if not isinstance(event_ref, str) or not event_ref.strip():
+        return Rejection("sem_evento", "toda mudança cita o evento que a causou")
+    if strength + STEP_EPSILON < min_impact:
+        return Rejection("sem_impacto", "só um evento de impacto altíssimo mexe numa preocupação")
+    return None
+
+
 # --- the material the night may read ----------------------------------------------------------
 
 OMITTED = "(respondeu usando ferramentas; o texto da resposta fica de fora)"
@@ -258,6 +281,7 @@ __all__ = [
     "build_night_material",
     "check_affect",
     "check_belief",
+    "check_concern_change",
     "check_interest",
     "check_trait_change",
     "reasons",

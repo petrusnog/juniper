@@ -88,6 +88,9 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
 | `memory.v2.beliefs.max_new_per_night` | `5` | Teto de crenças novas por noite. |
+| `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do Petrus, honestidade, curiosidade, capricho e autonomia do Petrus. É carregado no banco na primeira vez; depois quem manda é o Petrus (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
+| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto a passada noturna pode mexer num peso por mês (por item). O Petrus não tem teto. |
+| `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
 | `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
