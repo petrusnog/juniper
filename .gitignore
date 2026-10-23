@@ -56,3 +56,4 @@ sessions/
 
 # Dumps do Mongo feitos pelo scripts/deploy.sh na VPS
 backups/
+backup.env

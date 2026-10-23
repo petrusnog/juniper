@@ -13,6 +13,9 @@ on:
       - requirements.txt
       - brain/**
       - prompts/**
+      - scripts/backup_memory.sh
+      - scripts/restore_memory.sh
+      - scripts/deploy.sh
       - .github/workflows/docker.yml
   push:
     branches: [master]
@@ -59,6 +62,31 @@ jobs:
           export JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs JUNIPER_IMAGE=juniper-brain:ci
           docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env up -d --wait --wait-timeout 120
           curl -fsS http://127.0.0.1:8765/health
+      - name: Backup e restauração da memória (ida e volta, com Mongo e age de verdade)
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -q age
+          export JUNIPER_ENV_FILE=/tmp/ci.env JUNIPER_CERTS_DIR=/tmp/certs JUNIPER_IMAGE=juniper-brain:ci
+          export COMPOSE_EXTRA="--env-file /tmp/ci.env"
+          mongo=(docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env exec -T mongo \
+            mongosh --quiet -u ci -p ci --authenticationDatabase admin --eval)
+          "${mongo[@]}" 'db.getSiblingDB("juniper").probe.insertOne({_id: "p", v: 42})'
+          age-keygen -o /tmp/backup.key
+          git init -q --bare -b main /tmp/backup-remote.git
+          printf 'BACKUP_REMOTE=/tmp/backup-remote.git\nBACKUP_AGE_RECIPIENT=%s\n' \
+            "$(age-keygen -y /tmp/backup.key)" > backup.env
+          ./scripts/backup_memory.sh ci
+          subject="$(git -C /tmp/backup-remote.git log -1 --format=%s main)"
+          case "$subject" in "backup (ci) "*) ;; *) echo "commit inesperado: $subject"; exit 1 ;; esac
+          # o que vai ao repositório é criptografado, nunca o dump em claro
+          git -C /tmp/backup-remote.git show main:juniper-memory.archive.gz.age > /tmp/stored.age
+          case "$(head -c 20 /tmp/stored.age)" in age-encryption.org*) ;; *) echo "não é um arquivo age"; exit 1 ;; esac
+          # apaga o dado, restaura e confere
+          "${mongo[@]}" 'db.getSiblingDB("juniper").probe.drop()'
+          ./scripts/restore_memory.sh --identity /tmp/backup.key --yes
+          docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env up -d --wait --wait-timeout 120
+          test "$("${mongo[@]}" 'db.getSiblingDB("juniper").probe.countDocuments({v: 42})')" = "1"
+          rm -f backup.env
       - name: Logs em caso de falha
         if: failure()
         run: docker compose -f docker-compose.prod.yml --env-file /tmp/ci.env logs --no-color

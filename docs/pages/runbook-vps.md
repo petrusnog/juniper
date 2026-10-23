@@ -272,6 +272,10 @@ Do seu computador, com o Tailscale ligado:
 curl -s http://juniper-brain:8765/health        # {"status": "ok", ...}
 ```
 
+## Backup da memória {#backup-memoria}
+
+Com a Juniper de pé, configure o backup da memória (repositório privado no GitHub, chave `age` e cron) pelo passo a passo de [Backup da memória](backup.html). Sem isso, se a VPS se perder, a Juniper perde tudo o que sabe.
+
 ## Varredura de portas {#varredura}
 
 A prova de que a VPS **não tem nenhuma porta da Juniper aberta na internet**. A regra de ouro: a varredura tem de partir de **fora da tailnet**, senão você está testando a rede privada, não a pública.

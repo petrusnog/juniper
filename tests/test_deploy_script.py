@@ -18,6 +18,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "deploy.sh"
+BACKUP_SCRIPT = ROOT / "scripts" / "backup_memory.sh"
 WORKFLOW: dict[Any, Any] = yaml.safe_load(
     (ROOT / ".github/workflows/deploy.yml").read_text("utf-8")
 )
@@ -45,6 +46,7 @@ def box(tmp_path: Path) -> Path:
     work = tmp_path / "juniper"
     (work / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPT, work / "scripts" / "deploy.sh")
+    shutil.copy(BACKUP_SCRIPT, work / "scripts" / "backup_memory.sh")
     (work / "docker-compose.prod.yml").write_text("services: {}\n")
     (work / ".env").write_text("JUNIPER_IMAGE=ghcr.io/x/juniper:old\nSEGREDO=1\n")
     (work / ".env").chmod(0o600)
@@ -52,7 +54,10 @@ def box(tmp_path: Path) -> Path:
     bin_dir.mkdir()
     for name, body in {
         "docker": FAKE_DOCKER,
-        "git": '#!/usr/bin/env bash\necho "git $*" >> "$FAKE_LOG"\n',
+        "git": (
+            '#!/usr/bin/env bash\necho "git $*" >> "$FAKE_LOG"\n'
+            '[ "$1" = clone ] && exit 128\nexit 0\n'
+        ),
         "flock": "#!/usr/bin/env bash\nexit 0\n",
     }.items():
         (bin_dir / name).write_text(body)
@@ -131,38 +136,45 @@ def test_an_unhealthy_brain_rolls_back_to_the_previous_image_and_fails(box: Path
     assert calls(box).count("up -d") == 2  # o novo e o de volta
 
 
-def test_the_mongo_is_dumped_before_the_swap_and_old_dumps_are_pruned(box: Path) -> None:
-    backups = box / "backups"
-    backups.mkdir()
-    for n in range(7):
-        old = backups / f"mongo-2026010{n}-000000.archive.gz"
-        old.write_text("x")
-        os.utime(old, (n + 1, n + 1))
-
+def test_the_memory_is_backed_up_before_the_swap(box: Path) -> None:
     result = run(box, GOOD, MONGO_UP="1")
 
     assert result.returncode == 0, result.stderr
-    dumps = sorted(backups.glob("mongo-*.archive.gz"))
-    assert len(dumps) == 5
-    fresh = max(dumps, key=lambda p: p.stat().st_mtime)
-    assert fresh.read_text().strip() == "fake-dump" and stat.S_IMODE(fresh.stat().st_mode) == 0o600
+    (copy,) = (box / "backups" / "local").glob("memory-*")
+    assert copy.read_text().strip() == "fake-dump" and stat.S_IMODE(copy.stat().st_mode) == 0o600
     log = calls(box)
     assert log.index("exec -T mongo") < log.index("pull brain")
+
+
+def test_a_backup_that_only_fails_to_push_does_not_block_the_deploy(box: Path) -> None:
+    # remoto inexistente + texto puro permitido: o clone falha (código 4), a cópia local fica
+    result = run(
+        box,
+        GOOD,
+        MONGO_UP="1",
+        BACKUP_REMOTE=str(box.parent / "nao-existe.git"),
+        BACKUP_ALLOW_PLAINTEXT="1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "o backup ficou só na VPS" in result.stderr
+    assert image_in_env(box).endswith(GOOD)
+    assert list((box / "backups" / "local").glob("memory-*"))
 
 
 def test_a_failed_backup_cancels_the_deploy_without_changing_the_image(box: Path) -> None:
     result = run(box, GOOD, MONGO_UP="1", DUMP_FAILS="1")
 
     assert result.returncode == 1
-    assert "backup do Mongo falhou" in result.stderr
+    assert "backup da memória falhou" in result.stderr
     assert image_in_env(box).endswith(":old")
     assert "pull brain" not in calls(box)
-    assert not list((box / "backups").glob("*.archive.gz"))
+    assert not list((box / "backups" / "local").glob("memory-*"))
 
 
 def test_without_a_running_mongo_there_is_no_backup_and_the_deploy_goes_on(box: Path) -> None:
     result = run(box, GOOD)
-    assert result.returncode == 0 and "sem backup" in result.stdout
+    assert result.returncode == 0 and "nada a copiar" in result.stdout
 
 
 # --- workflow ---------------------------------------------------------------------------------

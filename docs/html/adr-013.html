@@ -72,6 +72,12 @@
 <h2 id="roadmap-impactado">Roadmap impactado</h2>
 <div class="tablewrap"><table class="tbl"><thead><tr><th>Task</th><th>O que entrega</th></tr></thead><tbody><tr><td>T-080</td><td><code>Dockerfile</code> do brain e o compose de produção.</td></tr><tr><td>T-081</td><td>Teste de capacidade e latência; fixa o tipo da VPS.</td></tr><tr><td>T-082</td><td>Provisionamento da VPS, hardening, Tailscale, runbook.</td></tr><tr><td>T-083</td><td>Backup e restauração do Mongo.</td></tr><tr><td>T-084</td><td><code>deploy.yml</code> com rollback.</td></tr><tr><td>T-085</td><td>Saúde e logs em produção.</td></tr></tbody></table></div>
 <hr>
+<h2 id="adendo-backup-da-memoria-git-privado-e-criptografado">Adendo (backup da memória): git privado e criptografado</h2>
+<p>Substitui, onde divergir, a seção 8 (<code>mongodump</code> diário com retenção de 7 diários e 4 semanais e <code>rclone</code> para um bucket).</p>
+<p><strong>Decisão.</strong> O <code>mongodump</code> do banco <code>juniper</code> é <strong>criptografado com <code>age</code></strong> (chave pública na VPS, chave privada fora dela) e gravado como <strong>um único arquivo</strong> (<code>juniper-memory.archive.gz.age</code>) num repositório git <strong>privado</strong> (<code>backups/repo</code>, com remoto no GitHub), um commit por backup. Roda antes de cada deploy (<code>scripts/deploy.sh</code>) e por um cron diário na VPS. O destino é o GitHub porque o Petrus já o usa e o histórico do git dá o versionamento (voltar a qualquer dia) sem infraestrutura nova.</p>
+<p><strong>Sem criptografia, nada vai ao GitHub</strong> (só a cópia local, as 5 últimas). Falha no dump cancela o deploy; falha só no push não cancela. A restauração (<code>scripts/restore_memory.sh</code>) exige <code>--yes</code> e a chave privada, e o CI faz uma ida e volta com Mongo e <code>age</code> reais.</p>
+<p><strong>Riscos aceitos.</strong> Perder a chave privada torna os backups ilegíveis; o histórico cresce (arquivos cifrados não comprimem a diferença entre versões); a chave de deploy tem escrita no repositório de backup, mitigada por proteger <code>main</code> contra force push e exclusão. Detalhes e passo a passo: <a href="backup.html">Backup da memória</a>.</p>
+<hr>
 <h2 id="referencias">Referências</h2>
 <ul><li>ADR-003 — Configuração</li><li>ADR-007 — Arquitetura de deployment</li><li>ADR-009 — DeepInfra como provider principal</li><li>ADR-011 — Arquitetura de memória</li><li>ADR-012 — Protocolo cliente ↔ brain</li></ul>
 <hr>

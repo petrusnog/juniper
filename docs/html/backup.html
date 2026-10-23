@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backup da memória — Livro de bolso Juniper</title>
+<meta name="description" content="Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/backup.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Backup da memória</div>
+<h1>Backup da memória <span class="tag v">guia</span></h1>
+<p class="lead">Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.</p>
+<div class="callout info"><p><strong>Nota:</strong> o código está em <code>scripts/backup_memory.sh</code> e <code>scripts/restore_memory.sh</code>. A configuração (repositório privado, chaves e cron) é feita <strong>uma vez</strong> na VPS; sem ela o backup se limita a uma cópia local, que some junto com o servidor.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Tudo que a Juniper sabe (conversas, memórias, perfil) está no <strong>MongoDB</strong> da VPS. Se o servidor se perder, ela teria uma amnésia total. O backup copia o banco <code>juniper</code>, <strong>criptografa</strong> e guarda <strong>um único arquivo</strong> (<code>juniper-memory.archive.gz.age</code>) num repositório git privado: cada backup é um commit, então a memória fica <strong>versionada</strong> e dá para voltar a qualquer dia.</p>
+<pre><code class="lang-text"> VPS (Mongo) ── mongodump ──► age (chave PÚBLICA) ──► backups/repo/juniper-memory.archive.gz.age
+                                                         │  git commit + push
+                                                         ▼
+                                       github.com/&lt;você&gt;/juniper-memory   (PRIVADO)</code></pre>
+<ul><li><strong>Quando roda:</strong> antes de cada deploy (<code>scripts/deploy.sh</code>) e todo dia por um cron da VPS (<a href="#agendar">Agendar</a>).</li><li><strong>Onde fica o repositório:</strong> dentro da pasta do projeto, em <code>~/juniper/backups/repo/</code>, mas é um repositório <strong>separado</strong> (o git do projeto o ignora). O repositório do projeto é público; o de backup nunca pode ser.</li><li><strong>Criptografia:</strong> com a chave pública do <code>age</code>, a VPS só consegue <strong>cifrar</strong>. A chave privada, que decifra, fica com você, fora do servidor: quem invadir a VPS ou o GitHub vê só bytes ilegíveis.</li><li><strong>Sem criptografia, nada vai ao GitHub.</strong> Sem <code>BACKUP_AGE_RECIPIENT</code>, o arquivo fica só numa cópia local (<code>backups/local/</code>, as 5 últimas, permissão <code>600</code>). Mandar em claro exige pedir: <code>BACKUP_ALLOW_PLAINTEXT=1</code>.</li></ul>
+<h2 id="configurar">Configurar (uma vez)</h2>
+<h3 id="repo">1. O repositório privado</h3>
+<p>No GitHub, crie <code>juniper-memory</code> como <strong>Private</strong>, vazio (sem README). Em <em>Settings → Branches</em>, proteja <code>main</code> bloqueando <strong>force push</strong> e <strong>exclusão</strong>: assim, mesmo uma VPS comprometida não consegue apagar o histórico dos backups.</p>
+<h3 id="age">2. A chave de criptografia</h3>
+<p>No <strong>seu computador</strong> (não na VPS):</p>
+<pre><code class="lang-bash">sudo apt install age            # ou: brew install age
+age-keygen -o juniper-backup.key
+# a saída mostra: Public key: age1...   (é essa linha que vai para a VPS)</code></pre>
+<blockquote><p><strong>Guarde o arquivo <code>juniper-backup.key</code> num gerenciador de senhas e numa cópia offline. Sem ele os backups não abrem, para ninguém, nunca.</strong> Perder a chave é o mesmo que não ter backup. Ela nunca vai para a VPS nem para o repositório.</p></blockquote>
+<h3 id="deploy-key">3. A chave de deploy do repositório de backup</h3>
+<p>Na VPS, <strong>como <code>deploy</code></strong>, uma chave só para esse repositório (separada da chave do CI):</p>
+<pre><code class="lang-bash">ssh-keygen -t ed25519 -f ~/.ssh/juniper_backup -N &quot;&quot; -C &quot;juniper-backup&quot;
+cat ~/.ssh/juniper_backup.pub          # copie
+cat &gt;&gt; ~/.ssh/config &lt;&lt;&#x27;EOC&#x27;
+Host github-juniper-memory
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/juniper_backup
+  IdentitiesOnly yes
+EOC
+chmod 600 ~/.ssh/config
+ssh-keyscan -t ed25519 github.com &gt;&gt; ~/.ssh/known_hosts</code></pre>
+<p>No GitHub: repositório <code>juniper-memory</code> → <em>Settings → Deploy keys → Add deploy key</em>, cole a chave pública e marque <strong>Allow write access</strong>. Compare a impressão digital de <code>ssh-keygen -lf ~/.ssh/known_hosts</code> com a que o GitHub publica na <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints" target="_blank" rel="noopener">documentação de chaves SSH</a>.</p>
+<h3 id="backup-env">4. O <code>backup.env</code> na VPS</h3>
+<pre><code class="lang-bash">sudo apt install age
+cd ~/juniper
+cat &gt; backup.env &lt;&lt;&#x27;EOE&#x27;
+BACKUP_REMOTE=git@github-juniper-memory:SEU-USUARIO/juniper-memory.git
+BACKUP_AGE_RECIPIENT=age1...cole-a-chave-publica...
+EOE
+chmod 600 backup.env</code></pre>
+<p>O <code>backup.env</code> fica fora do git do projeto e fora da imagem Docker. Só <code>CHAVE=valor</code>: o script o carrega como shell.</p>
+<h3 id="primeiro">5. Primeiro backup</h3>
+<pre><code class="lang-bash">cd ~/juniper &amp;&amp; ./scripts/backup_memory.sh manual
+git -C backups/repo log --oneline        # um commit &quot;backup (manual) ...&quot;</code></pre>
+<p>No GitHub, o repositório <code>juniper-memory</code> deve mostrar o arquivo <code>juniper-memory.archive.gz.age</code> (ilegível, como deve ser).</p>
+<h3 id="agendar">6. Agendar</h3>
+<p>O <code>deploy.sh</code> já faz backup antes de cada deploy. Para o diário, <code>crontab -e</code> como <code>deploy</code>:</p>
+<pre><code class="lang-cron">PATH=/usr/local/bin:/usr/bin:/bin
+30 2 * * * cd $HOME/juniper &amp;&amp; ./scripts/backup_memory.sh daily &gt;&gt; $HOME/juniper/backups/backup.log 2&gt;&amp;1</code></pre>
+<p>Às 02:30 no relógio da VPS (confira com <code>date</code>: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes de uma eventual passada noturna da <a href="adr-017.html">Memória V2</a>, prevista para as 03:00. Confira no dia seguinte: <code>tail ~/juniper/backups/backup.log</code> e o último commit no GitHub.</p>
+<h2 id="saida">Códigos de saída</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Código</th><th>Significa</th><th>No deploy</th></tr></thead><tbody><tr><td>0</td><td>Backup feito (ou nada a copiar porque o Mongo não está rodando).</td><td>segue</td></tr><tr><td>1</td><td>O dump ou a criptografia falhou.</td><td><strong>cancela</strong></td></tr><tr><td>4</td><td>A cópia local existe, mas o push para o GitHub falhou.</td><td>segue, com aviso; o commit vai no próximo backup</td></tr></tbody></table></div>
+<p>Sempre que o push falha, a cópia local (<code>backups/local/</code>) está lá. Sem <code>BACKUP_REMOTE</code> ou sem <code>BACKUP_AGE_RECIPIENT</code>, o script avisa em voz alta e fica só na cópia local.</p>
+<h2 id="restaurar">Restaurar</h2>
+<blockquote><p><strong>Restaurar substitui o banco <code>juniper</code></strong> pelo que está no backup. Por isso o script exige <code>--yes</code>, e a Juniper (o <code>brain</code>) é parada durante o processo.</p></blockquote>
+<p>Com a VPS de pé e o repositório de backup em <code>~/juniper/backups/repo</code> (numa VPS nova: <code>git clone git@github-juniper-memory:SEU-USUARIO/juniper-memory.git ~/juniper/backups/repo</code>, depois de refazer a chave de deploy):</p>
+<pre><code class="lang-bash">cd ~/juniper
+# traga a chave privada por um canal seu, use e apague (nunca deixe na VPS):
+scp seu-pc:juniper-backup.key /dev/shm/juniper-backup.key
+./scripts/restore_memory.sh --identity /dev/shm/juniper-backup.key --yes
+shred -u /dev/shm/juniper-backup.key
+juniper memory list                      # confira</code></pre>
+<ul><li><strong>Uma versão específica:</strong> <code>--commit &lt;sha&gt;</code> (veja <code>git -C backups/repo log</code>). Sem isso, restaura o mais recente.</li><li><strong>Sem <code>--yes</code> nada é feito</strong>; sem <code>--identity</code> (e o backup criptografado) o script recusa.</li></ul>
+<h3 id="testar">Teste a restauração</h3>
+<p>Um backup que nunca foi restaurado não conta. O CI faz uma <strong>ida e volta</strong> a cada mudança nesses scripts (grava um dado, faz o backup, apaga o dado, restaura e confere com Mongo e <code>age</code> de verdade). Faça também uma vez na prática, num Mongo de teste ou no ambiente de desenvolvimento, antes de precisar.</p>
+<h2 id="fora">O que o backup não leva</h2>
+<ul><li><strong>Segredos:</strong> <code>.env</code>, chave do Google e o <code>backup.env</code>. Ficam só na VPS (e no seu gerenciador de senhas); refaça-os num servidor novo pelo <a href="runbook-vps.html">runbook</a>.</li><li><strong>O token dos clientes</strong> (<code>juniper-state</code>): é recriado no primeiro boot, e os clientes precisam do novo.</li><li><strong>Logs</strong> e o <strong>modelo de embeddings</strong> (<code>juniper-logs</code>, <code>juniper-models</code>): o modelo baixa de novo e os logs vivem só 3 dias.</li><li>Só o banco <code>juniper</code>: os usuários do Mongo vêm do <code>.env</code>.</li></ul>
+<h2 id="limites">Privacidade e limites</h2>
+<ul><li><strong>O que o GitHub vê:</strong> bytes cifrados e os metadados dos commits (data, motivo, a imagem em uso). Nada do conteúdo.</li><li><strong>Se a chave privada vazar,</strong> todo o histórico de backups fica legível: o repositório precisa continuar privado, e a chave privada guardada como senha.</li><li><strong>O histórico cresce.</strong> Cada backup é um arquivo novo e cifrado (o git não consegue comprimir a diferença entre versões), então o tamanho do repositório é, em ordem de grandeza, o do banco vezes o número de backups. Para uma memória pessoal pequena isso dura anos; se passar de algumas centenas de MB, o procedimento é recomeçar o histórico (um repositório novo com o último backup) e arquivar o antigo.</li><li><strong>Retenção:</strong> o próprio histórico do git. Nada é apagado automaticamente.</li><li><strong>A chave de deploy tem escrita no repositório de backup,</strong> então uma VPS comprometida pode enviar lixo, mas, com a proteção de <code>main</code> (force push e exclusão bloqueados), não consegue apagar o que já existe.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
