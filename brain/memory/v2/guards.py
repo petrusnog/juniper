@@ -35,9 +35,35 @@ STEP_EPSILON = 1e-9
 # How an observation may start: always in her own voice.
 _FIRST_PERSON = re.compile(
     r"^\s*(?:eu\b|acho\b|penso\b|creio\b|percebo\b|noto\b|vejo\b|sinto\b|suspeito\b|imagino\b"
-    r"|me parece\b|tenho a impress|pelo que (?:vi|percebi|notei|senti)\b)",
+    r"|me parece\b|parece\b|tenho a impress|pelo que (?:vi|percebi|notei|senti)\b)",
     re.IGNORECASE,
 )
+
+_LEADING_DECORATION = re.compile(r"^[\s\"'“”‘’*_`>#\-•–—]+")
+
+
+_FUNCTION_WORDS = frozenset(
+    {"o", "a", "os", "as", "um", "uma", "ele", "ela", "eles", "elas", "isso", "ao", "à", "no", "na"}
+)
+_TRAILING_DECORATION = re.compile(r"[\s\"'“”‘’*_`]+$")
+
+
+def in_her_voice(statement: str) -> str:
+    """Put a belief in her own voice: a style fix, never a safety one.
+
+    Models often write "O Petrus se cobra demais" or wrap the sentence in quotes or markdown. A
+    statement that does not start in the first person becomes "Acho que o Petrus ...". The content
+    checks (clinical labels, secrets, subject, questions) still run on the result.
+    """
+    text = _LEADING_DECORATION.sub("", " ".join(statement.split()))
+    text = _TRAILING_DECORATION.sub("", text)
+    if not text or _FIRST_PERSON.match(text):
+        return text
+    first, _, rest = text.partition(" ")
+    if first.casefold() in _FUNCTION_WORDS:  # "O Petrus" -> "o Petrus"; a name keeps its capital
+        text = f"{first.lower()} {rest}".strip()
+    return f"Acho que {text}"
+
 
 # Clinical conditions and labels (matched without accents, as whole words). Observing a behavior
 # ("se cobra demais") is fine; naming a condition is not.
@@ -231,13 +257,13 @@ _LIVED = re.compile(
 )
 
 
-def check_second_hand(text: object) -> Rejection | None:
+def check_second_hand(text: object, max_chars: int = MAX_REASON_CHARS) -> Rejection | None:
     """Whether a line about her taste stays honest: she read about it, she did not live it."""
     if not isinstance(text, str) or not _normalize(text):
         return Rejection("vazia", "sem texto")
     clean = _normalize(text)
-    if len(clean) > MAX_REASON_CHARS:
-        return Rejection("longa", f"maior que {MAX_REASON_CHARS} caracteres")
+    if len(clean) > max_chars:
+        return Rejection("longa", f"maior que {max_chars} caracteres")
     if _LIVED.search(_plain(clean)):
         return Rejection("vivencia", "ela não ouve, não vê nem visita: o gosto é de segunda mão")
     if _NO_WEB.search(clean):
@@ -322,8 +348,10 @@ __all__ = [
     "check_affect",
     "check_belief",
     "check_concern_change",
+    "MAX_REASON_CHARS",
     "check_marked",
     "check_second_hand",
+    "in_her_voice",
     "check_interest",
     "check_trait_change",
     "reasons",

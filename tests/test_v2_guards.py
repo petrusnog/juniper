@@ -278,3 +278,30 @@ async def test_the_agent_marks_turns_that_ran_tools() -> None:
     await plain.run("oi")
     (quiet,) = plain.drain_turns()
     assert quiet.used_tools is False
+
+
+# --- in_her_voice -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        ("Acho que o Petrus adia tudo.", "Acho que o Petrus adia tudo."),
+        ("Percebo que ele se cobra.", "Percebo que ele se cobra."),
+        ("O Petrus adia tudo.", "Acho que o Petrus adia tudo."),
+        ('  "O Petrus adia tudo."  ', "Acho que o Petrus adia tudo."),
+        ("**Petrus adia tudo.**", "Acho que Petrus adia tudo."),
+        ("- Ele adia tudo.", "Acho que ele adia tudo."),
+        ("Parece que ele adia tudo.", "Parece que ele adia tudo."),
+        ("A Júlia adia tudo.", "Acho que a Júlia adia tudo."),
+        ("", ""),
+    ],
+)
+def test_in_her_voice(written: str, expected: str) -> None:
+    from brain.memory.v2.guards import in_her_voice
+
+    assert in_her_voice(written) == expected
+
+
+def test_a_strict_guard_still_demands_the_first_person_when_called_directly() -> None:
+    assert check_belief("O Petrus adia tudo.", "user").code == "primeira_pessoa"  # type: ignore[union-attr]

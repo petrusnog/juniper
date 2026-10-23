@@ -364,7 +364,6 @@ async def test_at_most_twelve_proposals_are_considered() -> None:
         (new("Acho que a Júlia trata o Petrus com injustiça.", ["S1:t4"]), "terceiro"),
         (new("Acho que o chefe dele é injusto.", ["S1:t4"]), "sem_referencia"),
         (new("Acho que o Petrus tem depressão.", ["S1:t4"]), "clinico"),
-        (new("O Petrus se cobra demais.", ["S1:t4"]), "primeira_pessoa"),
         (new("Acho que o Petrus guarda sk-live-abcdef1234567890abcd aí.", ["S1:t4"]), "segredo"),
         (new("Acho que o Petrus se cobra demais?", ["S1:t4"]), "pergunta"),
         (new(about="terceiro"), "assunto"),
@@ -719,3 +718,50 @@ async def test_a_night_whose_reflection_failed_reads_the_lines_again_tomorrow() 
         and data.beliefs.count() == 1
         and data.watermarks.get("sessA").turns_read == 6
     )  # type: ignore[union-attr]
+
+
+# --- the voice: a style fix, never a safety one ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "O Petrus se cobra bem mais do que cobraria de outra pessoa.",
+        '"O Petrus se cobra bem mais do que cobraria de outra pessoa."',
+        "**O Petrus se cobra bem mais do que cobraria de outra pessoa.**",
+        "- O Petrus se cobra bem mais do que cobraria de outra pessoa.",
+        "Petrus se cobra bem mais do que cobraria de outra pessoa.",
+        "Parece que o Petrus se cobra bem mais do que cobraria de outra pessoa.",
+        '"Acho que o Petrus se cobra bem mais do que cobraria de outra pessoa."',
+    ],
+)
+async def test_a_belief_written_in_third_person_or_decorated_is_put_in_her_voice(
+    written: str,
+) -> None:
+    ctx = ctx_for(Reflector({"proposals": [new(written)]}), DAY)
+
+    result = await reflect(ctx)
+
+    (belief,) = ctx.data.beliefs.list()
+    assert "0 recusada(s)" in result.summary, result.summary
+    first_person = belief.statement.lower().startswith(("acho", "parece"))
+    assert first_person and not belief.statement.startswith(('"', "*", "-"))
+    assert belief.statement.endswith("outra pessoa.")
+
+
+@pytest.mark.parametrize(
+    ("written", "code"),
+    [
+        ("O Petrus tem depressão.", "clinico"),
+        ("A Júlia trata o Petrus com injustiça.", "terceiro"),
+        ("O Petrus guarda sk-live-abcdef1234567890abcd aí.", "segredo"),
+        ("O Petrus se cobra demais?", "pergunta"),
+        ("O chefe dele é injusto.", "sem_referencia"),
+    ],
+)
+async def test_the_safety_checks_still_run_after_the_voice_is_fixed(
+    written: str, code: str
+) -> None:
+    ctx = ctx_for(Reflector({"proposals": [new(written)]}), DAY)
+    result = await reflect(ctx)
+    assert ctx.data.beliefs.count() == 0 and f"{code}×1" in result.summary, result.summary
