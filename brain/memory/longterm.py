@@ -8,10 +8,12 @@ retrieval (T-057) and the ``remember``/``recall``/``forget`` tools (T-058) on th
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 from brain.config import settings
 from brain.core.session import Turn
+from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.memory.embeddings import EmbeddingProvider, open_embedding_provider
 from brain.memory.errors import MemoryUnavailableError
@@ -34,6 +36,8 @@ class LongTermMemory:
         self.embedder = embedder
         self.extractor = extractor
         self.profiles = profiles
+        # Called with what ``forget`` removed, to let the V2 beliefs that leaned on it let go.
+        self.after_forget: Callable[[list[Memory]], None] | None = None
 
     async def extract(
         self, turns: list[Turn], session_id: str | None = None, context: int = 0
@@ -84,6 +88,11 @@ class LongTermMemory:
         removed += [m for m in memories if m.id not in known]  # asked for, though not listed
         for m in removed:
             await asyncio.to_thread(self.store.delete, m.id)
+        if self.after_forget is not None and removed:
+            try:
+                await asyncio.to_thread(self.after_forget, removed)
+            except Exception as exc:  # noqa: BLE001  (the fact is gone; the cascade is best effort)
+                event_log.log("error", where="memory.forget.cascade", type=type(exc).__name__)
         return removed
 
     def export(self, include_vectors: bool = False) -> list[dict[str, Any]]:
@@ -169,9 +178,30 @@ def open_long_term_memory(llm: LLMProvider) -> LongTermMemory | None:
     store = MongoVectorStore()
     embedder = open_embedding_provider()
     profiles = MongoProfileStore(store.connection)
-    return LongTermMemory(
+    memory = LongTermMemory(
         store, embedder, MemoryExtractor(llm, embedder, store, profiles=profiles), profiles
     )
+    return _with_v2_cascade(memory)
+
+
+def _with_v2_cascade(memory: LongTermMemory) -> LongTermMemory:
+    """With the Memória V2 on, forgetting a fact also lets go of the beliefs that leaned on it."""
+    from brain.memory.v2 import v2_enabled
+
+    if v2_enabled():
+        memory.after_forget = _cascade_to_beliefs
+    return memory
+
+
+def _cascade_to_beliefs(removed: list[Memory]) -> None:
+    from brain.memory.v2 import open_v2_data
+    from brain.memory.v2.cascade import forget_fact_evidence
+
+    data = open_v2_data()
+    try:
+        forget_fact_evidence(data, removed)
+    finally:
+        data.close()
 
 
 def open_memory_for_commands() -> LongTermMemory:
@@ -191,6 +221,7 @@ def open_memory_for_commands() -> LongTermMemory:
     except MemoryUnavailableError:
         store.close()
         raise
-    return LongTermMemory(
+    memory = LongTermMemory(
         store, open_embedding_provider(), None, MongoProfileStore(store.connection)
     )
+    return _with_v2_cascade(memory)
