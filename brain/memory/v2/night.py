@@ -226,10 +226,11 @@ class Phase(Protocol):
 
 def default_phases() -> list[Phase]:
     """The phases of a real night, in order (each task of the V2 adds its own)."""
+    from brain.memory.v2.feel import AffectPhase
     from brain.memory.v2.observe import ObservationPhase
     from brain.memory.v2.reflect import BeliefReflectionPhase
 
-    return [ObservationPhase(), BeliefReflectionPhase()]
+    return [ObservationPhase(), BeliefReflectionPhase(), AffectPhase()]
 
 
 # --- the run ----------------------------------------------------------------------------------

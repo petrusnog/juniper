@@ -81,7 +81,7 @@ Se nada contradiz nada, responda {"counter": []}.\
 
 
 @dataclass
-class _Digest:
+class Digest:
     """Tonight's lines of the user, with the label each one can be cited by."""
 
     text: str = ""
@@ -101,9 +101,9 @@ class _Digest:
         return found
 
 
-def build_digest(material: list[SessionMaterial]) -> _Digest:
+def build_digest(material: list[SessionMaterial]) -> Digest:
     """The user's lines as ``S<n>:t<turn> text``: only what he wrote, secrets masked, capped."""
-    digest = _Digest()
+    digest = Digest()
     lines: list[str] = []
     used = 0
     for number, item in enumerate(material, start=1):
@@ -186,7 +186,7 @@ class BeliefReflectionPhase:
     # --- one night's reflection ---------------------------------------------------------------
 
     async def _reflect(
-        self, ctx: PhaseContext, book: BeliefBook, digest: _Digest, tally: _Tally
+        self, ctx: PhaseContext, book: BeliefBook, digest: Digest, tally: _Tally
     ) -> None:
         beliefs_text, shown = _beliefs_block(book)
         facts: list[Memory] = ctx.state.get("new_facts", [])
@@ -211,7 +211,7 @@ class BeliefReflectionPhase:
             )
 
     async def _critic(
-        self, ctx: PhaseContext, proposals: list[dict[str, Any]], digest: _Digest
+        self, ctx: PhaseContext, proposals: list[dict[str, Any]], digest: Digest
     ) -> dict[int, list[tuple[str, int, Any]]]:
         """The critic step: what in the day's lines contradicts each hypothesis."""
         listing = "\n".join(f"{i}: {_hypothesis(p)}" for i, p in enumerate(proposals))
@@ -228,7 +228,7 @@ class BeliefReflectionPhase:
         ctx: PhaseContext,
         book: BeliefBook,
         proposal: dict[str, Any],
-        digest: _Digest,
+        digest: Digest,
         shown: dict[str, Belief],
         names: list[str],
         counter: list[tuple[str, int, Any]],
