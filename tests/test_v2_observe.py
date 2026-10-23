@@ -438,7 +438,7 @@ def test_the_snapshot_store_isolates_writes_and_still_answers_searches() -> None
 
 def test_the_observation_is_the_first_default_phase() -> None:
     phases = default_phases()
-    assert [p.name for p in phases] == ["observe"] and phases[0].consumes_material is True
+    assert [p.name for p in phases][0] == "observe" and phases[0].consumes_material is True
 
 
 async def test_the_night_reads_long_messages_and_advances_the_watermark() -> None:
@@ -449,7 +449,11 @@ async def test_the_night_reads_long_messages_and_advances_the_watermark() -> Non
     data.watermarks.save(Watermark("s1", 0, 1, NOW - timedelta(hours=3)))
     memory, store = build(ScriptLLM(fact_when("FATOFINAL")))
     night = NightRunner(
-        data, config=MemoryV2Settings(enabled=True), memory=memory, clock=lambda: NOW
+        data,
+        config=MemoryV2Settings(enabled=True),
+        phases=[ObservationPhase()],
+        memory=memory,
+        clock=lambda: NOW,
     )
 
     report = await night.run()
@@ -467,7 +471,11 @@ async def test_the_night_dry_run_reports_what_it_would_store_without_storing() -
     data.watermarks.save(Watermark("s1", 0, 1, NOW - timedelta(hours=3)))
     memory, store = build(ScriptLLM(fact_when("FATOFINAL")))
     night = NightRunner(
-        data, config=MemoryV2Settings(enabled=True), memory=memory, clock=lambda: NOW
+        data,
+        config=MemoryV2Settings(enabled=True),
+        phases=[ObservationPhase()],
+        memory=memory,
+        clock=lambda: NOW,
     )
 
     report = await night.run(dry_run=True)
@@ -485,6 +493,8 @@ async def test_an_out_of_budget_night_keeps_the_watermark_back() -> None:
     memory, _ = build(ScriptLLM(fact_when("FATOFINAL")))
     tiny = MemoryV2Settings(enabled=True, night=V2NightSettings(max_tokens=1_000, max_minutes=5))
 
-    report = await NightRunner(data, config=tiny, memory=memory, clock=lambda: NOW).run()
+    report = await NightRunner(
+        data, config=tiny, phases=[ObservationPhase()], memory=memory, clock=lambda: NOW
+    ).run()
 
     assert report.results[0].status == "budget" and data.watermarks.get("s1").turns_read == 0  # type: ignore[union-attr]

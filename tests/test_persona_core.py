@@ -68,7 +68,9 @@ def test_the_prompts_only_mention_dashes_to_forbid_them() -> None:
     for text in (CORE, COMPACT):
         for line in text.splitlines():
             if any(d in line for d in DASHES):
-                assert "travessão" in line, line  # the only place a dash may appear is the rule itself
+                assert "travessão" in line, (
+                    line
+                )  # the only place a dash may appear is the rule itself
 
 
 def test_the_compact_core_keeps_the_essentials_and_is_much_shorter() -> None:

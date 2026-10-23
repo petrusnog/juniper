@@ -135,3 +135,14 @@ Regras que valem aqui:
 - **Orçamento:** cada chamada cobra tokens da noite; sem orçamento a fase para e a marca d'água fica onde estava.
 - **Memória de longo prazo desligada** (`memory.extraction.enabled: false`): a fase é pulada.
 - **Dry run:** o extrator real roda sobre uma **cópia** das memórias (`SnapshotVectorStore`), então o relatório mostra `guardaria: <fato>` e o banco não é tocado.
+
+## Reflexão de crenças {#reflexao kind=módulo file=brain/memory/v2/reflect.py}
+
+A segunda fase da noite usa o modelo avançado (`llm.reflection`) para **propor** crenças; o código valida e aplica. O modelo não decide confiança nem grava nada.
+
+- **O que ele lê:** só as falas do Petrus do dia, rotuladas `S<n>:t<turno>` (segredos mascarados, 300 caracteres por fala, 8000 no total), os fatos novos da observação e as crenças atuais com seus ids.
+- **O que propõe (até 12):** `new` (crença nova), `reinforce` ou `weaken` (sobre uma crença existente; `retire` vale como `weaken`). Toda proposta cita as falas que a sustentam.
+- **Passo crítico:** uma segunda chamada recebe as hipóteses e aponta, por índice, falas do dia que as contradizem. Essas falas entram como contra-evidência; a mesma fala nunca sustenta e refuta ao mesmo tempo.
+- **Validação em código:** evidência que não existe no resumo do dia é recusada (`sem_evidencia`); o texto passa pelas guardas (`check_belief`: sobre o Petrus, sem terceiros, sem rótulo clínico, sem segredo); no máximo `memory.v2.beliefs.max_new_per_night` crenças novas por noite (`limite_noite`). Afirmação explícita do Petrus vale como evidência `explicit` (peso 3).
+- **Decaimento:** depois de aplicar as propostas, `review_all` revisa todas as crenças (meia-vida, formação, aposentadoria) e a metacognição conta o acerto ou erro do tema.
+- **Relatório:** o resumo traz contagens e os motivos de recusa (só códigos, nunca o texto). No `--dry-run` aparece `proporia (acho que): ...` e nada é gravado.
