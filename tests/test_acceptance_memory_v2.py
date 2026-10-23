@@ -434,7 +434,7 @@ PRINCIPLES: dict[int, tuple[str, ...]] = {
         "tests/test_persona_regression.py::test_tools_tiers_and_confirmation_are_the_same_in_any_personality_state",
     ),
     5: (  # only what the Petrus wrote feeds the subjective layers
-        "tests/test_v2_reflect.py::test_assistant_text_and_tool_output_never_enter_the_digest",
+        "tests/test_v2_reflect.py::test_a_reply_after_tools_never_enters_the_digest",
         "tests/test_persona_regression.py::test_text_in_a_tool_output_never_reaches_the_personality",
     ),
     6: (  # slow, bounded change

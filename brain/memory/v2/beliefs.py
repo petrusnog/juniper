@@ -116,6 +116,10 @@ class BeliefBook:
             self._outcome(belief.topic, hit=True)
         return belief
 
+    def note_hit(self, topic: str) -> None:
+        """Count a hit for ``topic``: she proposed something and the user agreed."""
+        self._outcome(topic, hit=True)
+
     def deny(
         self, belief_id: str, session_id: str | None = None, turn: int | None = None
     ) -> Belief | None:
