@@ -401,6 +401,12 @@ class V2InterestSettings(BaseModel):
 
     # Temas estudados por noite (sem web: usa o conhecimento do modelo avançado).
     max_per_night: int = Field(default=2, ge=0, le=10)
+    # Temas novos que a noite pode semear a partir das conversas.
+    max_seeds_per_night: int = Field(default=3, ge=0, le=20)
+    # Sem contato, a intensidade de um interesse cai pela metade nesse tempo.
+    half_life_days: float = Field(default=45.0, ge=1.0, le=3650.0)
+    # Um tema só é estudado de novo depois deste intervalo (a posição muda devagar).
+    study_gap_days: int = Field(default=3, ge=1, le=365)
 
 
 class V2AffectSettings(BaseModel):

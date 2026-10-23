@@ -224,6 +224,27 @@ def check_concern_change(
     return None
 
 
+MAX_REASON_CHARS = 160
+_LIVED = re.compile(
+    r"\b(ouvi|escutei|assisti|toquei|cantei|provei|visitei|fui (a|ao|na|no)"
+    r"|vi (o|a|os|as) (show|filme|jogo|disco|banda))\b"
+)
+
+
+def check_second_hand(text: object) -> Rejection | None:
+    """Whether a line about her taste stays honest: she read about it, she did not live it."""
+    if not isinstance(text, str) or not _normalize(text):
+        return Rejection("vazia", "sem texto")
+    clean = _normalize(text)
+    if len(clean) > MAX_REASON_CHARS:
+        return Rejection("longa", f"maior que {MAX_REASON_CHARS} caracteres")
+    if _LIVED.search(_plain(clean)):
+        return Rejection("vivencia", "ela não ouve, não vê nem visita: o gosto é de segunda mão")
+    if _NO_WEB.search(clean):
+        return Rejection("web", "endereço ou e-mail não é uma razão")
+    return _content(clean)
+
+
 MAX_MARKED_CHARS = 140
 
 
@@ -302,6 +323,7 @@ __all__ = [
     "check_belief",
     "check_concern_change",
     "check_marked",
+    "check_second_hand",
     "check_interest",
     "check_trait_change",
     "reasons",

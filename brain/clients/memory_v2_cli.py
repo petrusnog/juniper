@@ -24,6 +24,7 @@ from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.context import state_lines
+from brain.memory.v2.interests import STANCE_WORDS, InterestBook
 from brain.memory.v2.models import Belief
 from brain.memory.v2.persona import PersonaBook, PersonaError, drift, persona_lines
 from brain.memory.v2.store import V2Data
@@ -394,6 +395,66 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         voice.say(
             console, f"Voltei ao jeito da versão {target}. Agora estou na versão {new.version}."
         )
+
+    interests_app = typer.Typer(
+        help="Os meus interesses e o que eu acho deles.", invoke_without_command=True
+    )
+    memory_app.add_typer(interests_app, name="interests")
+
+    @interests_app.callback()
+    def interests(ctx: typer.Context) -> None:
+        """Lista os temas que me interessam, com a posição e as razões. Subcomando: forget."""
+        if ctx.invoked_subcommand is not None:
+            return
+        data = _open(console)
+        try:
+            rows = InterestBook(data).all()
+        finally:
+            data.close()
+        if not rows:
+            voice.say(console, "Ainda não tenho interesses próprios.")
+            return
+        table = Table(header_style="bold")
+        for column in ("Id", "Tema", "Intensidade", "Eu acho", "Estudado em", "Razões"):
+            table.add_column(column, overflow="fold")
+        for i in rows:
+            table.add_row(
+                i.id,
+                i.topic,
+                f"{i.intensity:.2f}",
+                STANCE_WORDS[i.stance],
+                _local(i.last_studied_at) if i.last_studied_at else "ainda não",
+                "; ".join(i.reasons),
+            )
+        console.print(table)
+        voice.say(
+            console,
+            "Meu gosto é de segunda mão: eu li sobre isso, não vivi. "
+            "Para apagar um tema: juniper memory interests forget <id>",
+        )
+
+    @interests_app.command("forget")
+    def interests_forget(
+        interest_id: Annotated[str, typer.Argument(help="Id do interesse.")],
+        yes: Annotated[
+            bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")
+        ] = False,
+    ) -> None:
+        """Apaga um interesse para sempre."""
+        data = _open(console)
+        try:
+            found = data.interests.get(interest_id.strip())
+            if found is None:
+                voice.say(console, f"Não achei o interesse {interest_id}.", "red")
+                raise typer.Exit(1)
+            voice.say(console, f"Vou esquecer o meu interesse por {found.topic}.")
+            if not yes and not typer.confirm("Pode apagar?", default=False):
+                voice.say(console, "Ok, não apaguei nada.")
+                return
+            InterestBook(data).forget(found.id)
+        finally:
+            data.close()
+        voice.say(console, "Esqueci esse interesse.")
 
     @memory_app.command("journal")
     def journal(
