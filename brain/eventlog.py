@@ -32,6 +32,11 @@ def bind_session(session_id: str) -> None:
     _current_session.set(session_id)
 
 
+def current_session() -> str:
+    """The conversation bound to this task ("" when none)."""
+    return _current_session.get()
+
+
 # Longest string value kept verbatim; the rest is cut so one huge tool output cannot flood the log.
 MAX_VALUE_CHARS = 2000
 

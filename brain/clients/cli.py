@@ -50,7 +50,7 @@ from brain.memory.longterm import (
 )
 from brain.memory.profile import ProfileError, render
 from brain.memory.stores import close_session_store, open_session_store
-from brain.memory.v2 import open_transcript_sink
+from brain.memory.v2 import open_v2_runtime
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
@@ -424,18 +424,20 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     background: BackgroundExtractor | None = None
     if background_mode and memory is not None:
         background = BackgroundExtractor(memory, lambda: agent.session.id)
-    transcript = None
+    v2 = None
     try:
-        transcript = open_transcript_sink()
-    except MemoryUnavailableError as exc:  # the chat still works; only the V2 transcript is lost
+        v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
+    except MemoryUnavailableError as exc:  # the chat still works; only the V2 is lost
         printer.say(str(exc), "yellow")
+    if v2 is not None:
+        v2.context.inner = memory
     agent = Agent(
         router,
         Dispatcher(conversational=True),
         session=session,
         store=store,
-        memory=memory,
-        turn_sink=transcript[0] if transcript else None,
+        memory=v2.context if v2 else memory,
+        turn_sink=v2.sink if v2 else None,
     )
     if note is not None:
         printer.say(note)
@@ -450,8 +452,8 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         return code
     finally:
         memory_tools.bind(None)
-        if transcript is not None:
-            transcript[1].close()
+        if v2 is not None:
+            v2.close()
         if memory is not None:
             memory.close()
         if memory_llm is not router:
