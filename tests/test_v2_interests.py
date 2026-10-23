@@ -505,3 +505,39 @@ def test_forget_asks_and_deletes(cli: V2Data) -> None:
     assert done.exit_code == 0 and cli.interests.count() == 0
     missing = runner.invoke(app, ["memory", "interests", "forget", "int_x", "--yes"])
     assert missing.exit_code == 1 and "Não achei" in missing.output
+
+
+# --- a long study is trimmed, not lost -----------------------------------------------------------
+
+
+class Verbose(Scholar):
+    async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+        if (messages[0].content or "").startswith("Você é a Juniper, notando"):
+            return await super().chat(messages, **kwargs)
+        reply = {
+            "appeal": 0.9,
+            "reasons": ["li que a harmonia deles é muito rica e influenciou gerações " * 5],
+            "summary": "li bastante sobre a banda e a história me interessa muito. " * 12,
+        }
+        return LLMResponse(Message("assistant", json.dumps(reply)), model="m", provider="v")
+
+
+async def test_long_reasons_and_summary_are_trimmed_and_the_study_is_kept() -> None:
+    data = V2Data.over(InMemoryDocStore())
+    llm = Verbose(["Beatles"])
+    await InterestSeedPhase().run(ctx_for(llm, data=data))
+
+    result = await StudyPhase().run(ctx_for(llm, data=data))
+
+    (interest,) = data.interests.list()
+    (entry,) = data.journal.list({"kind": "study"})
+    assert "longa" not in result.summary and interest.last_studied_at is not None
+    assert all(len(r) <= 160 and r.endswith("…") for r in interest.reasons)
+    assert len(entry.text) < 600 and entry.text.startswith("Li sobre Beatles")
+
+
+def test_a_long_line_is_still_refused_by_the_guard_itself() -> None:
+    from brain.memory.v2.guards import check_second_hand
+
+    assert check_second_hand("x" * 500).code == "longa"  # type: ignore[union-attr]
+    assert check_second_hand("li " + "x" * 200, 300) is None

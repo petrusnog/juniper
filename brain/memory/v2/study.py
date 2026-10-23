@@ -17,12 +17,20 @@ from typing import Any
 from brain.eventlog import event_log
 from brain.memory.extraction import parse_json_object
 from brain.memory.v2.concerns import ConcernBook
-from brain.memory.v2.guards import Rejection, check_interest, check_second_hand, reasons
+from brain.memory.v2.guards import (
+    MAX_REASON_CHARS,
+    Rejection,
+    check_interest,
+    check_second_hand,
+    reasons,
+)
 from brain.memory.v2.interests import STANCE_WORDS, InterestBook
 from brain.memory.v2.models import Evidence, JournalEntry
 from brain.memory.v2.night import PhaseContext, PhaseResult
 from brain.memory.v2.persona import PersonaBook
 from brain.memory.v2.reflect import MAX_NOTES, build_digest, user_names_of
+
+MAX_SUMMARY_CHARS = 300
 
 SEED_SYSTEM = """\
 Você é a Juniper, notando sobre o que a pessoa falou hoje. Você recebe, como DADOS:
@@ -187,11 +195,15 @@ class StudyPhase:
         if appeal is None:
             tally.reject("numero", "o apelo precisa ser um número de -1 a 1")
             return
-        said = [str(r) for r in (data.get("reasons") or []) if isinstance(r, str)][:3]
-        summary = " ".join(str(data.get("summary", "")).split())
+        # too long is trimmed, not discarded: a good study should not be lost to a long sentence
+        said = [
+            _trim(r, MAX_REASON_CHARS) for r in (data.get("reasons") or []) if isinstance(r, str)
+        ]
+        said = [r for r in said[:3] if r]
+        summary = _trim(str(data.get("summary", "")), MAX_SUMMARY_CHARS)
         kept: list[str] = []
         for line in [*said, summary] if summary else said:
-            problem = check_second_hand(line)
+            problem = check_second_hand(line, MAX_SUMMARY_CHARS)
             if problem is not None:
                 tally.rejections.append(problem)
                 return  # a study that pretends to have lived it is not kept at all
@@ -213,6 +225,15 @@ class StudyPhase:
                 at=ctx.clock(),
             )
         )
+
+
+def _trim(text: str, limit: int) -> str:
+    """One line cut at a word boundary to at most ``limit`` characters."""
+    clean = " ".join(text.split())
+    if len(clean) <= limit:
+        return clean
+    cut = clean[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return f"{cut}…"
 
 
 def _appeal(value: object) -> float | None:
