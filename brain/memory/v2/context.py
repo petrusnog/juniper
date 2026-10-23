@@ -31,6 +31,7 @@ from brain.memory.v2.affect import AffectBook, AffectState
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
 from brain.memory.v2.models import Belief, utcnow
+from brain.memory.v2.persona import PersonaBook, render_persona
 
 if TYPE_CHECKING:
     from brain.core.agent import ContextProvider
@@ -175,6 +176,9 @@ class V2Context:
         await self._apply_feedback(session, message)
         hurting = self._hurting_now(session, message, previous)
         parts: list[str] = []
+        persona = await asyncio.to_thread(self._persona_block)
+        if persona:
+            parts.append(persona)  # how she is these days: fine even when he is hurting
         if hurting:
             parts.append(WELCOME_FIRST)
         else:
@@ -199,6 +203,10 @@ class V2Context:
             return True
         self._hurting.pop(session, None)
         return False
+
+    def _persona_block(self) -> str | None:
+        """``<personalidade>``: how she is compared to her usual self (fixed template)."""
+        return render_persona(PersonaBook(self.data, self.config.persona, self._clock).current())
 
     def _state_block(self) -> str | None:
         """``<estado>``: the current mood and the strongest feeling, in one or two lines."""

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -420,6 +420,31 @@ class V2AffectSettings(BaseModel):
     max_per_night: int = Field(default=5, ge=0, le=50)
 
 
+class TraitDefault(BaseModel):
+    """Um traço da personalidade viva: ponto de partida e faixa permitida."""
+
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[a-zà-ÿ][a-zà-ÿ-]*$")
+    baseline: float = Field(ge=0.0, le=1.0)
+    min: float = Field(default=0.0, ge=0.0, le=1.0)
+    max: float = Field(default=1.0, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _within_range(self) -> TraitDefault:
+        if not self.min <= self.baseline <= self.max:
+            raise ValueError(f"o baseline de {self.name} precisa estar entre min e max")
+        return self
+
+
+DEFAULT_TRAITS = [
+    TraitDefault(name="brincadeira", baseline=0.6, min=0.2, max=0.9),
+    TraitDefault(name="franqueza", baseline=0.7, min=0.3, max=0.95),
+    TraitDefault(name="introspecção", baseline=0.4, min=0.1, max=0.8),
+    TraitDefault(name="carinho", baseline=0.8, min=0.4, max=1.0),
+    TraitDefault(name="proatividade", baseline=0.7, min=0.3, max=0.95),
+    TraitDefault(name="ironia", baseline=0.5, min=0.1, max=0.8),
+]
+
+
 class V2PersonaSettings(BaseModel):
     """Personalidade viva (ADR-017, seção 8)."""
 
@@ -427,6 +452,14 @@ class V2PersonaSettings(BaseModel):
     evolves: bool = True
     # Passo máximo de um traço por noite.
     max_step: float = Field(default=0.03, ge=0.0, le=0.2)
+    # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
+    impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    # O passo de um traço é min(max_step, step_factor x impacto) por noite.
+    step_factor: float = Field(default=0.05, ge=0.0, le=1.0)
+    # Meia-vida do retorno ao baseline: uma fase passa.
+    baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
+    # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
+    traits: list[TraitDefault] = Field(default_factory=lambda: list(DEFAULT_TRAITS))
 
 
 class MemoryV2Settings(BaseModel):
