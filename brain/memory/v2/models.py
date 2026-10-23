@@ -569,6 +569,9 @@ class TranscriptTurn:
     index: int
     user: str
     assistant: str = ""
+    used_tools: bool = (
+        False  # her reply may carry tool output: it must not feed the subjective layers
+    )
     at: datetime = field(default_factory=utcnow)
 
     @property
@@ -585,6 +588,7 @@ class TranscriptTurn:
             "index": self.index,
             "user": self.user,
             "assistant": self.assistant,
+            "used_tools": self.used_tools,
             "at": self.at,
         }
 
@@ -596,6 +600,7 @@ class TranscriptTurn:
                 index=int(doc["index"]),
                 user=str(doc.get("user", "")),
                 assistant=str(doc.get("assistant", "")),
+                used_tools=bool(doc.get("used_tools", False)),
                 at=as_dt(doc["at"]),
             )
         except (KeyError, TypeError, ValueError) as exc:

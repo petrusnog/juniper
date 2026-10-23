@@ -196,7 +196,7 @@ MODELS: list[tuple[str, Callable[[], Any], type]] = [
         DreamRun,
     ),
     ("watermark", lambda: Watermark("s1", 4, NOW), Watermark),
-    ("transcript", lambda: TranscriptTurn("s1", 3, "oi", "olá", NOW), TranscriptTurn),
+    ("transcript", lambda: TranscriptTurn("s1", 3, "oi", "olá", used_tools=True, at=NOW), TranscriptTurn),
 ]
 
 

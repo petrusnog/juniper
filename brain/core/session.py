@@ -43,6 +43,9 @@ class Turn:
     # 0-based position of this turn in the whole conversation (``Session.turns_total``), the
     # provenance that facts and beliefs cite. ``None`` when the caller does not track it.
     index: int | None = None
+    # True when tools ran during the turn: her reply may then carry what the tools returned
+    # (an event title, a commit message), which must never feed the subjective layers.
+    used_tools: bool = False
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:
