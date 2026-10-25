@@ -89,6 +89,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
 | `memory.v2.beliefs.max_new_per_night` | `10` | Teto de crenças novas por noite. |
+| `memory.v2.opinions.always_on` | `2` | Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto com 3 fontes ou mais) entram em toda conversa, como visão geral, além das que tocam o assunto. 0 desliga; nunca no modo de acolher. |
 | `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do Petrus, honestidade, curiosidade, capricho e autonomia do Petrus. É carregado no banco na primeira vez; depois quem manda é o Petrus (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
 | `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O Petrus não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
@@ -104,9 +105,10 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
 | `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
-| `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
+| `memory.v2.persona.max_step` | `0.06` | Passo máximo de um traço por sonho. |
 | `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
-| `memory.v2.persona.step_factor` | `0.05` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.step_factor` | `0.1` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.always_describe` | `true` | Na conversa, o bloco `<personalidade>` sempre diz como ela está hoje (todos os traços, em palavras graduadas), além do que se afastou do jeito de sempre e do que a marcou. Desligado, só diz o desvio e o que a marcou. |
 | `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
 | `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
 | `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |

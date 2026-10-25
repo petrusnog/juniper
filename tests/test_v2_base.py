@@ -54,7 +54,7 @@ def test_the_v2_is_off_by_default_with_the_documented_defaults() -> None:
     assert v2.night.quiet_minutes == 0  # every unread message enters the next dream
     assert v2.interests.max_per_night == 10
     assert (v2.affect.enabled, v2.affect.intensity) == (True, 1.0)
-    assert (v2.persona.evolves, v2.persona.max_step) == (True, 0.03)
+    assert (v2.persona.evolves, v2.persona.max_step) == (True, 0.06)
 
 
 @pytest.mark.parametrize(

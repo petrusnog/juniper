@@ -27,11 +27,11 @@ from brain.llm.types import Message
 from brain.memory.extraction import parse_json_object
 from brain.memory.retrieval import RecalledContext, build_query, clean_text, estimate_tokens
 from brain.memory.v2 import confidence as conf
-from brain.memory.v2.affect import AffectBook, AffectState
+from brain.memory.v2.affect import MOOD_FLOOR, AffectBook, AffectState
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
 from brain.memory.v2.models import Belief, utcnow
-from brain.memory.v2.persona import PersonaBook, render_persona
+from brain.memory.v2.persona import PersonaBook, default_state, render_persona
 from brain.memory.v2.semantic import semantic_search
 
 if TYPE_CHECKING:
@@ -75,15 +75,28 @@ def mood_words(mood: float) -> str | None:
         return "bem pra baixo"
     if mood <= -0.2:
         return "meio pra baixo"
+    if mood <= -MOOD_FLOOR:
+        return "um pouco pra baixo"
     if mood >= 0.5:
         return "ótimo"
     if mood >= 0.2:
         return "de bom humor"
+    if mood >= MOOD_FLOOR:
+        return "um pouco animado"
     return None
 
 
+def _when(state: AffectState, felt: Any) -> str:
+    """ "hoje", "ontem" or "anteontem" for an echo, from its age."""
+    if state.now is None:
+        return "ontem"
+    hours = (state.now - felt.affect.occurred_at).total_seconds() / 3600
+    return "hoje" if hours < 12 else "ontem" if hours < 36 else "anteontem"
+
+
 def state_lines(state: AffectState) -> list[str]:
-    """At most two lines: the mood, then the strongest feeling (a mild grievance counts)."""
+    """At most two lines: the mood, then the strongest feeling (a mild grievance counts); a
+    feeling that already faded still echoes for 48 hours."""
     lines: list[str] = []
     words = mood_words(state.mood)
     if words:
@@ -94,6 +107,10 @@ def state_lines(state: AffectState) -> list[str]:
         what = "uma mágoa leve" if top.affect.persistence == "grievance" else top.affect.kind
         scale = "forte" if top.strength >= 0.6 else "leve" if top.strength < 0.3 else "moderada"
         lines.append(f"O que mais pesou hoje: {clean_text(what)} ({scale}).")
+    elif state.echoes:
+        echo = state.echoes[0]
+        what = "uma mágoa" if echo.affect.persistence == "grievance" else echo.affect.kind
+        lines.append(f"Há pouco o que mais te tocou foi {clean_text(what)} ({_when(state, echo)}).")
     return lines[:2]
 
 
@@ -289,7 +306,10 @@ class V2Context:
 
     def _persona_block(self) -> str | None:
         """``<personalidade>``: how she is compared to her usual self (fixed template)."""
-        return render_persona(PersonaBook(self.data, self.config.persona, self._clock).current())
+        book = PersonaBook(self.data, self.config.persona, self._clock)
+        # before the first dream there is no stored personality: she is her starting self
+        state = book.current() or default_state(self.config.persona, self._clock())
+        return render_persona(state, self.config.persona.always_describe)
 
     def _state_block(self) -> str | None:
         """``<estado>``: the current mood and the strongest feeling, in one or two lines."""
@@ -320,21 +340,26 @@ class V2Context:
         ready: bool,
         spent: int,
     ) -> str | None:
-        if not ready:
-            return None  # the embedding model is still loading: no opinions rather than a wait
-        hits = await asyncio.to_thread(self._relevant, build_query(message, previous))
-        if not hits:
+        hits: list[Belief] = []
+        if ready:  # while the embedding model loads there is no search, but no wait either
+            hits = await asyncio.to_thread(self._relevant, build_query(message, previous))
+        general: list[Belief] = []
+        if not hurting:
+            general = await asyncio.to_thread(self._general_view, {b.id for b in hits})
+        if not hits and not general:
             return None
         lines, kept = [], []
         used = spent + estimate_tokens(f"{HEADER}\n{OPEN_TAG}\n{CLOSE_TAG}")
-        for belief in hits:
-            line = f"- {self._book.words(belief)}: {clean_text(belief.statement)}"
+        for belief, general_view in [(b, False) for b in hits] + [(b, True) for b in general]:
+            tag = "(visão geral) " if general_view else ""
+            line = f"- {tag}{self._book.words(belief)}: {clean_text(belief.statement)}"
             if used + estimate_tokens(line) > self.config.max_tokens:
                 break
             used += estimate_tokens(line)
             lines.append(line)
-            kept.append(belief)
-        if not kept:
+            if not general_view:
+                kept.append(belief)  # only what touched the subject can be asked about
+        if not lines:
             return None
         ask = None if hurting else self._question_for(session, kept)
         text = f"{HEADER}\n{OPEN_TAG}\n" + "\n".join(lines) + f"\n{CLOSE_TAG}"
@@ -344,8 +369,16 @@ class V2Context:
                 "\nSe couber de forma natural, faça UMA pergunta curta para checar com ele a "
                 f"hipótese «{clean_text(ask.statement)}», sem insistir se ele desviar."
             )
-        event_log.log("opinions", shown=len(kept), asking=ask is not None)
+        event_log.log("opinions", shown=len(lines), asking=ask is not None)
         return text
+
+    def _general_view(self, already: set[str]) -> list[Belief]:
+        """The firmest beliefs, present in every conversation (``memory.v2.opinions.always_on``)."""
+        limit = self.config.opinions.always_on
+        if limit <= 0:
+            return []
+        firmest = self._book.firmest(limit + len(already))
+        return [b for b in firmest if b.id not in already][:limit]
 
     def _relevant(self, query: str) -> list[Belief]:
         if not query or self._embedder is None:

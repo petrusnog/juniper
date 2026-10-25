@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 MAX_RECENT = 3
 MAX_CHANGED_BY = 12
 # A shift smaller than this is not worth a word in the prompt.
-NOTICEABLE = 0.04
+NOTICEABLE = 0.03
 RELAX_EPSILON = 1e-3
 
 # Each trait as an adjective, used with "mais" or "menos".
@@ -280,10 +280,29 @@ def _degree(shift: float) -> str:
     return "um pouco mais" if shift > 0 else "um pouco menos"
 
 
-def persona_lines(state: PersonaState | None) -> list[str]:
-    """The sentences that describe how she is compared to her usual self (may be none)."""
+def _grade(value: float) -> str:
+    """How much of a trait, in words, from its absolute value (0 to 1)."""
+    if value >= 0.8:
+        return "muito"
+    if value >= 0.6:
+        return "bastante"
+    if value >= 0.4:
+        return "moderadamente"
+    if value >= 0.25:
+        return "pouco"
+    return "quase nada"
+
+
+def persona_lines(state: PersonaState | None, always: bool = True) -> list[str]:
+    """The sentences that say how she is today, how that differs from her usual self, and what
+    marked her lately. Always says how she is today (even with no drift); empty without a state."""
     if state is None:
         return []
+    lines: list[str] = []
+    ordered = sorted(state.traits.items(), key=lambda kv: (-kv[1].value, kv[0]))
+    today = ", ".join(f"{_grade(t.value)} {WORDS.get(name, name)}" for name, t in ordered)
+    if today and always:
+        lines.append(f"Seu jeito hoje: {today}.")
     parts: list[str] = []
     for name in sorted(state.traits):
         trait = state.traits[name]
@@ -292,19 +311,18 @@ def persona_lines(state: PersonaState | None) -> list[str]:
         if word is None or abs(shift) < NOTICEABLE:
             continue
         parts.append(f"{_degree(shift)} {word}")
-    lines: list[str] = []
     if parts:
-        lines.append("Seu jeito anda " + ", ".join(parts) + ".")
+        lines.append("Comparada ao seu jeito de sempre, você anda " + ", ".join(parts) + ".")
     if state.recent:
         marked = "; ".join(r.strip().rstrip(" .!?…") for r in state.recent[:MAX_RECENT])
         lines.append(f"O que te marcou ultimamente: {marked}.")
     return lines
 
 
-def render_persona(state: PersonaState | None) -> str | None:
-    """The ``<personalidade>`` block for ``state``, from a fixed template (``None`` if she is her
-    usual self and nothing marked her lately). Same state, same text."""
-    lines = persona_lines(state)
+def render_persona(state: PersonaState | None, always: bool = True) -> str | None:
+    """The ``<personalidade>`` block for ``state``, from a fixed template (``None`` without a
+    personality yet). Same state, same text."""
+    lines = persona_lines(state, always)
     if not lines:
         return None
     return f"{PERSONA_HEADER}\n{PERSONA_OPEN}\n" + "\n".join(lines) + f"\n{PERSONA_CLOSE}"
