@@ -6,5 +6,6 @@ export const pages = [
   { id: "estudos", title: "Estudos", module: "/assets/pages/studies.js" },
   { id: "sonhos", title: "Sonhos", module: "/assets/pages/dreams.js" },
   { id: "conversas", title: "Conversas", module: "/assets/pages/conversations.js" },
+  { id: "pesquisa", title: "Pesquisa", module: "/assets/pages/search.js" },
   { id: "afetos", title: "Afetos", module: "/assets/pages/affects.js" },
 ];

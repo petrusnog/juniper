@@ -36,6 +36,7 @@ O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. 
 | `/api/persona`, `/api/concerns`, `/api/core` | Personalidade e histórico, preocupações, núcleo e perfil |
 | `/api/interests` (+ `/<id>`), `/api/notes` | Temas com passo e posição; **cada nota** com incerteza, fonte e passo (filtros `interest`, `uncertainty`, `source`, `kind`, `q`) |
 | `/api/prompt?message=` | O simulador: os blocos que a Memória V2 acrescentaria ao prompt para aquela mensagem, com tokens; usa um contexto próprio e não grava nada |
+| `/api/search?q=` | Pesquisa em tudo: memórias, crenças, temas, notas, sentimentos e conversas; filtros `type` (repetível) e `limit` |
 | `/api/dreams`, `/api/journal` | Execuções do sonho (fases, tokens, erros) e o diário |
 | `/api/sessions` (+ `/<id>`) | Conversas (somem com `dashboard.transcripts: false`); a resposta dela depois de tools fica de fora |
 
@@ -54,9 +55,11 @@ Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no ba
 - **Sonhos (T-135):** cada execução com o horário, o status (ok, parcial, falhou), a duração, as conversas lidas, os **tokens gastos** (barra proporcional) e as **fases** com o resultado, as mudanças e o resumo; fase que estourou o orçamento ou deu erro aparece destacada. Abaixo, o **diário** (7, 30 ou 90 dias; sonhos, estudos, personalidade).
 - **Conversas (T-135):** as sessões com o número de turnos e se o sonho já as leu (ou quantos turnos esperam o próximo); dentro de uma, a conversa em balões, começando pelos turnos mais novos. A resposta dela depois de ferramentas **não aparece**. Com `dashboard.transcripts: false` a página diz que está desligada.
 
+- **Pesquisa (T-136):** uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas (as conversas só com `dashboard.transcripts`). Cada coisa é procurada **por palavras** (todas as palavras da busca aparecem) e **por significado** (embeddings, com um piso de relevância); o que casa por palavras vem sempre antes. Se o modelo de embeddings não responder, a busca cai para palavras e avisa. As conversas são lidas até os últimos 3000 turnos. Cada resultado é um link para a página certa.
+
 ## O que vem a seguir {#depois}
 
-A página restante: a Pesquisa.
+A T-137 fecha a épica: este livro de bolso por inteiro, o aceite ponta a ponta e o roteiro de deploy.
 
 ## Configuração {#configuracao}
 
