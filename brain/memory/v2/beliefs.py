@@ -168,7 +168,8 @@ class BeliefBook:
 
     def words(self, belief: Belief) -> str:
         """ "talvez", "acho que" or "tenho bastante certeza" for this belief."""
-        return conf.band(conf.confidence(belief.alpha, belief.beta), belief.n)
+        sources = conf.distinct_sources(belief.evidence_for)
+        return conf.band(conf.confidence(belief.alpha, belief.beta), belief.n, sources)
 
     def confidence_of(self, belief: Belief) -> float:
         return conf.confidence(belief.alpha, belief.beta)

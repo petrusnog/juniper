@@ -525,3 +525,11 @@ def test_the_phase_is_part_of_the_default_night() -> None:
     from brain.memory.v2.night import default_phases
 
     assert "persona" in [p.name for p in default_phases()]
+
+
+def test_what_marked_her_never_gets_a_double_period() -> None:
+    state = state_with()
+    state.recent = ["A perda dele me fez pensar mais devagar.", "Ele riu da piada!", "E agora?"]
+    text = render_persona(state) or ""
+    assert "devagar; Ele riu da piada; E agora." in text
+    assert ".." not in text and "!." not in text and "?." not in text

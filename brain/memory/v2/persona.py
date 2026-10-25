@@ -296,7 +296,8 @@ def persona_lines(state: PersonaState | None) -> list[str]:
     if parts:
         lines.append("Seu jeito anda " + ", ".join(parts) + ".")
     if state.recent:
-        lines.append("O que te marcou ultimamente: " + "; ".join(state.recent[:MAX_RECENT]) + ".")
+        marked = "; ".join(r.strip().rstrip(" .!?…") for r in state.recent[:MAX_RECENT])
+        lines.append(f"O que te marcou ultimamente: {marked}.")
     return lines
 
 
