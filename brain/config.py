@@ -485,6 +485,18 @@ class V2OpinionSettings(BaseModel):
     always_on: int = Field(default=2, ge=0, le=5)
 
 
+class V2RefineSettings(BaseModel):
+    """O refinamento das memórias pelo sonho (ADR-018)."""
+
+    enabled: bool = True
+    # Memórias brutas refinadas por sonho, das mais recentes para as mais antigas.
+    max_per_night: int = Field(default=20, ge=0, le=500)
+    # Turnos de cada lado do turno de origem que entram como contexto da lembrança.
+    context_turns: int = Field(default=2, ge=0, le=10)
+    # Memórias vizinhas oferecidas ao modelo como possíveis ligações.
+    neighbors: int = Field(default=3, ge=0, le=10)
+
+
 class MemoryV2Settings(BaseModel):
     """Memória V2: do fato à personalidade viva (ADR-017)."""
 
@@ -495,6 +507,7 @@ class MemoryV2Settings(BaseModel):
     night: V2NightSettings = Field(default_factory=V2NightSettings)
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
     opinions: V2OpinionSettings = Field(default_factory=V2OpinionSettings)
+    refine: V2RefineSettings = Field(default_factory=V2RefineSettings)
     concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)

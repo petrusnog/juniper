@@ -274,13 +274,13 @@ def check_second_hand(text: object, max_chars: int = MAX_REASON_CHARS) -> Reject
 MAX_MARKED_CHARS = 140
 
 
-def check_marked(text: object) -> Rejection | None:
+def check_marked(text: object, max_chars: int = MAX_MARKED_CHARS) -> Rejection | None:
     """Whether a "what marked me lately" line may be kept: short, no question, no secrets."""
     if not isinstance(text, str) or not _normalize(text):
         return Rejection("vazia", "sem texto")
     clean = _normalize(text)
-    if len(clean) > MAX_MARKED_CHARS:
-        return Rejection("longa", f"maior que {MAX_MARKED_CHARS} caracteres")
+    if len(clean) > max_chars:
+        return Rejection("longa", f"maior que {max_chars} caracteres")
     if clean.endswith("?"):
         return Rejection("pergunta", "é uma pergunta")
     if _NO_WEB.search(clean):

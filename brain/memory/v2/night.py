@@ -230,6 +230,7 @@ def default_phases() -> list[Phase]:
     from brain.memory.v2.evolve import PersonaPhase
     from brain.memory.v2.feel import AffectPhase
     from brain.memory.v2.observe import ObservationPhase
+    from brain.memory.v2.refine import RefinePhase
     from brain.memory.v2.reflect import BeliefReflectionPhase
     from brain.memory.v2.study import InterestSeedPhase, StudyPhase
 
@@ -240,6 +241,7 @@ def default_phases() -> list[Phase]:
         InterestSeedPhase(),
         StudyPhase(),
         PersonaPhase(),
+        RefinePhase(),
     ]
 
 

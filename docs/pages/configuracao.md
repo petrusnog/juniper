@@ -105,6 +105,10 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
 | `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
+| `memory.v2.refine.enabled` | `true` | Liga o refinamento: o sonho transforma memórias brutas em lembranças (contexto, sentimento, como ela era, ligações, relevância). A bruta fica como `superseded` (ADR-018). |
+| `memory.v2.refine.max_per_night` | `20` | Quantas memórias brutas o sonho refina por noite, das mais recentes para as mais antigas. 0 desliga. |
+| `memory.v2.refine.context_turns` | `2` | Quantos turnos de cada lado do turno de origem entram como contexto da lembrança. |
+| `memory.v2.refine.neighbors` | `3` | Quantas memórias vizinhas são oferecidas ao modelo como possíveis ligações. 0 não oferece nenhuma. |
 | `memory.v2.persona.max_step` | `0.06` | Passo máximo de um traço por sonho. |
 | `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
 | `memory.v2.persona.step_factor` | `0.1` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |

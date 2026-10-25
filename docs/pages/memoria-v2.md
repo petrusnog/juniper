@@ -244,6 +244,29 @@ O mundo próprio dela decide o que ela percebe (o *Umwelt*), nos dois sentidos.
 
 **Quando ela deixa escapar um interesse (dosagem).** Na conversa, o bloco `<interesse>` só aparece quando a mensagem **toca o tema** (similaridade ≥ 0,5), com **no máximo um por resposta**, e no máximo **uma vez a cada 6 mensagens** da conversa, no jeito de quem "só deixa escapar pedaços". Só entram temas em que ela já tem posição (`like`, `dislike` ou `mixed`) e que não esmaeceram. Ele chega como dado, com a posição dela, uma razão e a ressalva de que o gosto é de segunda mão: ela leu a respeito, não ouviu, viu nem viveu. **Nunca** no turno em que o Petrus parece estar mal (a regra de acolher primeiro tem prioridade), e respeita o teto de tokens do bloco da V2.
 
+## Refinamento: de fato bruto a lembrança {#refinamento kind=módulo file=brain/memory/v2/refine.py}
+
+Uma memória bruta é só o fato ("Petrus compõe música psicodélica"). A fase `refine` do sonho
+acrescenta a camada de *lembrar* (ADR-018): o contexto em que o fato surgiu, o que ela sentiu de
+verdade, como ela era, a que ele se liga e o quanto importa. **O fato nunca é reescrito e nada é
+inventado:**
+
+- os **sentimentos** são registros reais de afeto perto daquele turno; o modelo só escolhe quais
+  pertencem à lembrança, e o código copia tipo, valência e intensidade;
+- o **como eu era** vem da versão da personalidade, escrito pelo código;
+- as **ligações** só valem se o id foi oferecido (memórias vizinhas, crenças e interesses que
+  citam o mesmo turno); ids inventados são recusados;
+- o **contexto** é uma frase curta, passa pelas mesmas guardas de qualquer texto dela (segredo,
+  ordem, tamanho) e vem só da conversa em volta (a resposta dela após ferramentas fica de fora).
+
+A memória refinada é um registro **novo** (`refinada_de` guarda o id da bruta). A bruta passa a
+`superseded` com `superseded_by` apontando para a nova: exclusão suave, auditável com
+`juniper memory list --reflexao`. Se a bruta mudou ou foi esquecida enquanto o modelo pensava, a
+nova é desfeita. Se o modelo falha, a bruta fica como estava e tenta de novo na noite seguinte.
+Por noite, `memory.v2.refine.max_per_night` memórias (padrão 20), das mais novas para as mais
+antigas. No `--dry-run` a fase só diz o que refinaria; o que o ensaio acabou de extrair na mesma
+noite só é refinado no sonho de verdade.
+
 ## Configuração {#configuracao}
 
 Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.

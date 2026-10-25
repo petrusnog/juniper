@@ -319,6 +319,20 @@ def persona_lines(state: PersonaState | None, always: bool = True) -> list[str]:
     return lines
 
 
+def how_she_was(state: PersonaState | None) -> str:
+    """A short phrase for how she was in a given version, for a refined memory ("como eu era")."""
+    if state is None:
+        return ""
+    parts = []
+    for name in sorted(state.traits):
+        trait = state.traits[name]
+        word = WORDS.get(name)
+        shift = trait.value - trait.baseline
+        if word is not None and abs(shift) >= NOTICEABLE:
+            parts.append(f"{_degree(shift)} {word}")
+    return ", ".join(parts) if parts else "no seu jeito de sempre"
+
+
 def render_persona(state: PersonaState | None, always: bool = True) -> str | None:
     """The ``<personalidade>`` block for ``state``, from a fixed template (``None`` without a
     personality yet). Same state, same text."""

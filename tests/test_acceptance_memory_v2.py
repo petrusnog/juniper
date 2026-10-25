@@ -167,6 +167,8 @@ class Night(LLMProvider):
                     }
                 ]
             }
+        if system.startswith("Você é a Juniper, lembrando"):
+            return {"contexto": "ele contou isso de passagem.", "relevancia": 0.6}
         raise AssertionError(f"chamada inesperada: {system[:60]!r}")
 
 
@@ -254,8 +256,10 @@ async def test_after_the_night_she_wakes_up_with_opinions_whose_confidence_she_c
 async def test_the_long_message_was_read_to_the_end_and_the_fact_is_kept_as_said(
     morning: World,
 ) -> None:
-    assert [m.text for m in morning.store.list_memories(None, True)] == [FACT]
-    (memory,) = morning.store.list_memories(None, True)
+    # the dream refined it: the raw fact is kept as superseded and the remembered one is active
+    assert [m.text for m in morning.store.list_memories(None, True)] == [FACT, FACT]
+    (memory,) = morning.store.list_memories(None, False)
+    assert memory.status_reflexao == "refinada" and memory.refinada_de is not None
     assert memory.session_id == RECENT and memory.turn == 0  # provenance
 
 
