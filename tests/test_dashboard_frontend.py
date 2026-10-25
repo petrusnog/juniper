@@ -25,14 +25,10 @@ def pages_registry() -> list[tuple[str, str]]:
 
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
-    assert [p[0] for p in pages][:6] == [
-        "visao",
-        "memorias",
-        "central",
-        "estudos",
-        "sonhos",
-        "conversas",
-    ]
+    ids = [p[0] for p in pages]
+    assert ids == [
+        "visao", "memorias", "central", "estudos", "sonhos", "conversas", "pesquisa", "afetos",
+    ]  # fmt: skip
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
         path = STATIC_DIR / module.lstrip("/")
@@ -120,3 +116,10 @@ def test_the_dreams_page_flags_phases_that_hit_the_budget_or_failed() -> None:
         "r.error",
     ):
         assert needle in page, needle
+
+
+def test_the_search_page_sends_many_types_and_the_api_helper_supports_lists() -> None:
+    api = (ASSETS / "api.js").read_text()
+    assert "Array.isArray(value)" in api and "query.append" in api
+    page = (ASSETS / "pages" / "search.js").read_text()
+    assert "type: [...state.types]" in page and "data.warning" in page

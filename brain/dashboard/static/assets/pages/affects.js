@@ -44,7 +44,7 @@ async function showDetail(panel, id) {
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-export async function render() {
+export async function render(rest = []) {
   const root = h("div", {});
   const chartBox = h("div", {});
   const list = h("div", {});
@@ -96,6 +96,7 @@ export async function render() {
   }
 
   await Promise.all([drawChart(), draw()]);
+  if (rest[0]) showDetail(panel, rest[0]).catch(() => {});
   root.append(
     h("h1", { text: "Afetos" }),
     card("Humor", chartBox),

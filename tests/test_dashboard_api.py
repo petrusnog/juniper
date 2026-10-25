@@ -470,3 +470,101 @@ async def test_the_simulator_needs_a_message_and_the_v2() -> None:
     assert (await world.get("/prompt", message="   "))[0] == 400
     status, body = await world.get("/prompt", message="x" * 5000)
     assert status == 200 and len(body["message"]) == 2000  # silly sizes are cut
+
+
+# --- search --------------------------------------------------------------------------------------
+
+
+def group(body: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    return next(g["items"] for g in body["groups"] if g["type"] == kind)
+
+
+async def test_search_finds_by_words_in_every_kind_of_thing(world: World) -> None:
+    from brain.memory.v2.concerns import ConcernBook
+
+    world.memory_item("Petrus compõe música psicodélica.")
+    world.memory_item("Petrus usa ZSH.")
+    add_belief(world, "Acho que o Petrus ama música psicodélica.")
+    add_study(world)  # topic "psicodelia", notes about the 60s
+    ConcernBook(world.data, MemoryV2Settings().concerns).ensure_defaults()
+    AffectBook(world.data, MemoryV2Settings().affect, lambda: NOW).record(
+        "psicodelia", 0.5, 0.5, ["turn:s:1", "concern:curiosidade"]
+    )
+    world.data.transcripts.save(
+        TranscriptTurn("sessA", 4, "hoje ouvi falar de psicodelia", "legal", at=NOW)
+    )
+
+    status, body = await world.get("/search", q="psicodél")
+    assert status == 200 and body["query"] == "psicodél"
+    assert [m["text"] for m in group(body, "memorias") if m["match"] == "texto"] == [
+        "Petrus compõe música psicodélica."
+    ]
+    assert group(body, "crencas")[0]["link"] == "#/central"
+
+    _, body = await world.get("/search", q="psicodelia")
+    assert group(body, "temas")[0]["link"].startswith("#/estudos/")
+    assert group(body, "afetos")[0]["link"].startswith("#/afetos/")
+    assert group(body, "conversas")[0]["link"] == "#/conversas/sessA"
+    assert all(i["match"] == "texto" for i in group(body, "temas"))
+
+
+async def test_search_needs_every_word_and_ranks_words_above_meaning(world: World) -> None:
+    world.memory_item("Petrus toca violão e canta.")
+    world.memory_item("Petrus toca piano.")
+    _, body = await world.get("/search", q="toca violão", type="memorias")
+    items = group(body, "memorias")
+    assert items[0]["text"] == "Petrus toca violão e canta." and items[0]["match"] == "texto"
+    assert [i["match"] for i in items][1:] <= ["significado"] * len(items)
+
+
+async def test_search_can_be_narrowed_and_limited(world: World) -> None:
+    for n in range(6):
+        world.memory_item(f"Petrus gosta de jazz número{n}.")
+    _, body = await world.get("/search", q="jazz", type="memorias", limit=3)
+    assert [g["type"] for g in body["groups"]] == ["memorias"] and len(group(body, "memorias")) == 3
+    _, body = await world.get("/search", q="jazz", type="notas")
+    assert [g["type"] for g in body["groups"]] == ["notas"] and body["total"] == 0
+
+
+async def test_search_falls_back_to_words_when_the_embedding_model_fails(world: World) -> None:
+    class Broken:
+        model_id = MODEL
+
+        def embed(self, text: str, kind: str = "passage") -> list[float]:
+            raise RuntimeError("modelo caiu")
+
+    world.memory_item("Petrus usa ZSH.")
+    world.memory.embedder = Broken()  # type: ignore[assignment]
+    status, body = await world.get("/search", q="ZSH")
+    assert (
+        status == 200 and body["semantic"] is False and "só busca por palavras" in body["warning"]
+    )
+    assert group(body, "memorias")[0]["text"] == "Petrus usa ZSH."
+
+
+async def test_search_without_an_embedder_and_with_the_layers_off() -> None:
+    world = World()
+    world.memory.embedder = None  # type: ignore[assignment]
+    status, body = await world.get("/search", q="nada")
+    assert status == 200 and body["semantic"] is False and body["total"] == 0
+    api = build_api(Sources())
+    status, body = await api.handle("/search", {"q": ["x"]})
+    assert status == 200 and body["groups"] == []
+
+
+async def test_search_refuses_an_empty_query_cuts_a_huge_one_and_hides_what_is_off() -> None:
+    world = World(transcripts=False)
+    world.data.transcripts.save(TranscriptTurn("sessA", 0, "psicodelia", "r", at=NOW))
+    assert (await world.get("/search"))[0] == 400
+    assert (await world.get("/search", q="   "))[0] == 400
+    _, body = await world.get("/search", q="psicodelia")
+    assert "conversas" not in [g["type"] for g in body["groups"]]  # switched off
+    _, big = await world.get("/search", q="a" * 900)
+    assert len(big["query"]) == 200
+
+
+async def test_search_masks_secrets_and_never_returns_vectors(world: World) -> None:
+    world.memory_item(f"a chave é {SECRET} do servidor")
+    _, body = await world.get("/search", q="servidor")
+    dumped = json.dumps(body, ensure_ascii=False)
+    assert SECRET not in dumped and "embedding" not in dumped
