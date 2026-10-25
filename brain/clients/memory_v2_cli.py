@@ -268,7 +268,16 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         if not rows:
             return
         table = Table(header_style="bold")
-        for column in ("Quando", "Sentimento", "Valência", "Registrada", "Agora", "Sobre", "Causa"):
+        for column in (
+            "Quando",
+            "Sentimento",
+            "Origem",
+            "Valência",
+            "Registrada",
+            "Agora",
+            "Sobre",
+            "Causa",
+        ):
             table.add_column(column, overflow="fold")
         for a in rows[:20]:
             now = "desfeita" if a.resolved_at else f"{strengths[a.id]:.2f}"
@@ -276,6 +285,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
             table.add_row(
                 _local(a.occurred_at),
                 kind,
+                a.origin,
                 f"{a.valence:+.2f}",
                 f"{a.intensity:.2f}",
                 now,

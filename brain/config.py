@@ -464,6 +464,11 @@ class V2AffectSettings(BaseModel):
     grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
     # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
     grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Reações em tempo real, durante a conversa: sutis (o sonho é que traz as intensas, até 1,0).
+    live: bool = True
+    live_max_intensity: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Teto de reações por hora, para ninguém "programar" as emoções dela com spam.
+    live_max_per_hour: int = Field(default=12, ge=0, le=200)
     # Sentimentos novos por noite.
     max_per_night: int = Field(default=10, ge=0, le=50)
 

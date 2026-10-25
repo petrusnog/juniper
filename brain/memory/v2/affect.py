@@ -104,6 +104,19 @@ class AffectState:
         )
 
 
+def _chain(felt: list[Felt]) -> list[Felt]:
+    """Feelings of the same kind add up (three small provocations become a strong irritation),
+    up to 1.0. The strongest one gives the cause and the valence; grievances stay apart."""
+    grouped: dict[tuple[str, str], list[Felt]] = {}
+    for item in felt:
+        grouped.setdefault((item.affect.persistence, item.affect.kind), []).append(item)
+    merged = []
+    for group in grouped.values():
+        top = max(group, key=lambda f: f.strength)
+        merged.append(Felt(top.affect, min(1.0, sum(f.strength for f in group))))
+    return sorted(merged, key=lambda f: -f.strength)
+
+
 class AffectBook:
     def __init__(
         self,
@@ -132,8 +145,12 @@ class AffectBook:
         *,
         grievance: bool = False,
         occurred_at: datetime | None = None,
+        origin: str = "sonho",
     ) -> tuple[Affect | None, Rejection | None]:
-        """Keep a feeling, scaled by the dial. ``(None, None)`` when feelings are off."""
+        """Keep a feeling, scaled by the dial. ``(None, None)`` when feelings are off.
+
+        A feeling born in the conversation (``origin="conversa"``) is subtle: its intensity is
+        capped at ``live_max_intensity`` before the dial scales it. Only the dream goes to 1.0."""
         if not self.active:
             return None, None
         problem = check_affect(kind, valence, intensity, cause, about)
@@ -141,6 +158,8 @@ class AffectBook:
             return None, problem
         if grievance and not (about == "user" and valence < 0):
             return None, Rejection("magoa", "mágoa é um sentimento negativo sobre o usuário")
+        if origin == "conversa":
+            intensity = min(float(intensity), self.config.live_max_intensity)
         scaled = float(intensity) * self.config.intensity
         if grievance:
             scaled = min(scaled, self.config.grievance_cap)
@@ -153,6 +172,7 @@ class AffectBook:
             cause=list(cause),
             about=about,
             persistence="grievance" if grievance else "emotion",
+            origin=origin,
             occurred_at=occurred_at or self.clock(),
             created_at=self.clock(),
         )
@@ -197,6 +217,7 @@ class AffectBook:
         visible = sorted(
             (f for f in felt if f.strength >= VISIBLE_BELOW), key=lambda f: -f.strength
         )
+        visible = _chain(visible)
         echoing = sorted(
             (
                 Felt(f.affect, f.affect.intensity)

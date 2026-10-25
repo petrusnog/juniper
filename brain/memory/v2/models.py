@@ -39,6 +39,7 @@ NOTE_SOURCES = ("modelo", "documento")
 STANCES = ("undecided", "like", "dislike", "mixed")
 AFFECT_ABOUT = ("user", "self", "situation")
 AFFECT_PERSISTENCE = ("emotion", "grievance")
+AFFECT_ORIGINS = ("sonho", "conversa")  # where the feeling was born: the dream or the chat
 JOURNAL_KINDS = ("dream", "study", "persona", "note")
 RUN_STATUSES = ("running", "done", "partial", "failed")
 
@@ -403,6 +404,7 @@ class Affect:
     cause: list[str] = field(default_factory=list)  # "fact:<id>", "belief:<id>", "concern:<id>"
     about: str = "user"
     persistence: str = "emotion"
+    origin: str = "sonho"
     id: str = field(default_factory=lambda: new_id("aff"))
     occurred_at: datetime = field(default_factory=utcnow)
     resolved_at: datetime | None = None  # a grievance undone by an apology or a talk
@@ -415,6 +417,7 @@ class Affect:
         _unit(self.intensity, "intensity")
         _choice(self.about, AFFECT_ABOUT, "about")
         _choice(self.persistence, AFFECT_PERSISTENCE, "persistence")
+        _choice(self.origin, AFFECT_ORIGINS, "origin")
 
     def to_doc(self) -> dict[str, Any]:
         self.validate()
@@ -426,6 +429,7 @@ class Affect:
             "cause": list(self.cause),
             "about": self.about,
             "persistence": self.persistence,
+            "origin": self.origin,
             "occurred_at": self.occurred_at,
             "resolved_at": self.resolved_at,
             "created_at": self.created_at,
@@ -442,6 +446,7 @@ class Affect:
                 cause=[str(c) for c in doc.get("cause") or []],
                 about=doc.get("about", "user"),
                 persistence=doc.get("persistence", "emotion"),
+                origin=doc.get("origin", "sonho"),
                 occurred_at=as_dt(doc["occurred_at"]),
                 resolved_at=_opt_dt(doc.get("resolved_at")),
                 created_at=as_dt(doc.get("created_at", doc["occurred_at"])),
