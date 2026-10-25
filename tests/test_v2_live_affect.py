@@ -329,3 +329,62 @@ async def test_memory_affect_shows_where_each_feeling_was_born(
     out = CliRunner().invoke(app, ["memory", "affect"]).output
 
     assert "Origem" in out and "conversa" in out and "sonho" in out
+
+
+async def test_affect_show_traces_a_feeling_back_to_the_line_that_caused_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app, console
+    from brain.memory.v2.models import TranscriptTurn
+
+    data = V2Data.over(InMemoryDocStore())
+    monkeypatch.setattr("brain.clients.memory_v2_cli.require_v2", lambda: None)
+    monkeypatch.setattr("brain.clients.memory_v2_cli.open_v2_data", lambda: data)
+    monkeypatch.setattr(console, "width", 300, raising=False)
+    data.transcripts.save(TranscriptTurn(SESSION, 3, "você é uma inútil", "Poxa, calma.", at=NOW))
+    await LiveReactor(data, Judge(PROVOKE), config=config(), clock=lambda: NOW).react(
+        SESSION, say()
+    )
+    (affect,) = data.affects.list()
+    runner = CliRunner()
+
+    listing = runner.invoke(app, ["memory", "affect"]).output
+    shown = runner.invoke(app, ["memory", "affect", "show", affect.id])
+
+    assert affect.id in listing  # the list now carries the id to ask about
+    out = shown.output
+    assert shown.exit_code == 0 and "Origem: conversa" in out and "irritação" in out
+    assert "você é uma inútil" in out and "Ela respondeu: Poxa, calma." in out
+    assert "O bem-estar do Petrus (peso 0.90)" in out
+
+    missing = runner.invoke(app, ["memory", "affect", "show", "aff_x"])
+    assert missing.exit_code == 1 and "Não achei" in missing.output
+
+
+async def test_affect_show_survives_a_line_that_is_gone_and_hides_a_reply_after_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from brain.clients.cli import app, console
+    from brain.memory.v2.models import TranscriptTurn
+
+    data = V2Data.over(InMemoryDocStore())
+    monkeypatch.setattr("brain.clients.memory_v2_cli.require_v2", lambda: None)
+    monkeypatch.setattr("brain.clients.memory_v2_cli.open_v2_data", lambda: data)
+    monkeypatch.setattr(console, "width", 300, raising=False)
+    book = AffectBook(data, V2AffectSettings(), lambda: NOW)
+    gone, _ = book.record("tristeza", -0.5, 0.5, ["turn:sumiu:9", "concern:inexistente"])
+    data.transcripts.save(
+        TranscriptTurn("s", 1, "oi", "RESULTADO-DA-TOOL", used_tools=True, at=NOW)
+    )
+    tools, _ = book.record("alegria", 0.5, 0.5, ["turn:s:1"])
+    assert gone is not None and tools is not None
+
+    first = CliRunner().invoke(app, ["memory", "affect", "show", gone.id]).output
+    second = CliRunner().invoke(app, ["memory", "affect", "show", tools.id]).output
+
+    assert "não está mais guardada" in first and "não existe mais" in first
+    assert "oi" in second and "RESULTADO-DA-TOOL" not in second

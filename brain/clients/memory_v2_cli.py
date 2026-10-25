@@ -56,6 +56,42 @@ def _provenance(belief: Belief) -> str:
     )
 
 
+TRACE_CHARS = 600
+
+
+def _cut(text: str) -> str:
+    clean = " ".join(text.split())
+    return clean if len(clean) <= TRACE_CHARS else clean[: TRACE_CHARS - 1].rstrip() + "…"
+
+
+def _trace(data: V2Data, ref: str) -> str:
+    """One cause reference as readable lines (the user's line, what she answered, what mattered)."""
+    kind, _, rest = ref.partition(":")
+    if kind == "turn":
+        session, _, index = rest.rpartition(":")
+        try:
+            number = int(index)
+        except ValueError:
+            return f"Causa: {ref}"
+        turns = data.transcripts.list({"session_id": session, "index": number})
+        if not turns:
+            return f"Causa: a fala {ref} (a transcrição dela não está mais guardada)"
+        turn = turns[0]
+        out = f"Causa, o que o Petrus escreveu ({session}, turno {number}):\n  {_cut(turn.user)}"
+        if turn.assistant.strip() and not turn.used_tools:
+            out += f"\n  Ela respondeu: {_cut(turn.assistant)}"
+        return out
+    if kind == "concern":
+        concern = data.concerns.get(rest)
+        if concern is None:
+            return f"Atingiu a preocupação {rest} (não existe mais)"
+        return f"Atingiu o que importa para ela: {concern.name} (peso {concern.weight:.2f})"
+    if kind == "belief":
+        belief = data.beliefs.get(rest)
+        return f"Ligado à crença: {belief.statement}" if belief else f"Crença {rest} (apagada)"
+    return f"Causa: {ref}"
+
+
 def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None:
     """Register the commands on ``juniper memory`` and ``juniper persona``."""
     beliefs_app = typer.Typer(
@@ -247,7 +283,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
 
     @affect_app.callback()
     def affect(ctx: typer.Context) -> None:
-        """Mostra o estado afetivo de agora e os sentimentos recentes. Subcomando: clear."""
+        """Mostra o estado afetivo de agora e os sentimentos recentes. Subcomandos: show, clear."""
         if ctx.invoked_subcommand is not None:
             return
         data = _open(console)
@@ -269,6 +305,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
             return
         table = Table(header_style="bold")
         for column in (
+            "Id",
             "Quando",
             "Sentimento",
             "Origem",
@@ -283,6 +320,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
             now = "desfeita" if a.resolved_at else f"{strengths[a.id]:.2f}"
             kind = f"{a.kind} (mágoa)" if a.persistence == "grievance" else a.kind
             table.add_row(
+                a.id,
                 _local(a.occurred_at),
                 kind,
                 a.origin,
@@ -293,6 +331,34 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
                 ", ".join(a.cause),
             )
         console.print(table)
+
+    @affect_app.command("show")
+    def affect_show(
+        affect_id: Annotated[str, typer.Argument(help="Id do sentimento (coluna Id).")],
+    ) -> None:
+        """Rastreia a origem de um sentimento: a fala que o causou e o que ele atingiu."""
+        data = _open(console)
+        try:
+            found = data.affects.get(affect_id.strip())
+            if found is None:
+                voice.say(console, f"Não achei o sentimento {affect_id}.", "red")
+                raise typer.Exit(1)
+            book = AffectBook(data)
+            how = "reação na conversa" if found.origin == "conversa" else "nasceu no sonho"
+            lines = [
+                f"Sentimento: {found.kind}"
+                + (" (mágoa)" if found.persistence == "grievance" else ""),
+                f"Origem: {found.origin} ({how})",
+                f"Quando: {_local(found.occurred_at)}",
+                f"Valência {found.valence:+.2f}, registrada com intensidade {found.intensity:.2f},"
+                f" agora {book.strength(found):.2f}" + (" (desfeita)" if found.resolved_at else ""),
+                f"Sobre: {found.about}",
+            ]
+            lines += [_trace(data, ref) for ref in found.cause]
+        finally:
+            data.close()
+        for line in lines:
+            console.print(line, highlight=False, markup=False)
 
     @affect_app.command("clear")
     def affect_clear(

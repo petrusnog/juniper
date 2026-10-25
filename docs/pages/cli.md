@@ -125,6 +125,7 @@ juniper memory reindex [--force]
 juniper memory beliefs [--all] [--min-confidence X]   # Memória V2
 juniper memory beliefs show <id>
 juniper memory beliefs forget <id> [--yes]
+juniper memory affect [show <id>|clear]        # sentimentos; show rastreia a origem
 juniper memory knowledge                       # o que ela anotou estudando
 juniper memory knowledge show <tema>
 juniper memory knowledge forget <tema> [--yes]
