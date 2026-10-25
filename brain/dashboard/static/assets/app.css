@@ -186,3 +186,16 @@ ul.notes li.note { display: flex; flex-direction: column; align-items: stretch; 
 .note-text { overflow-wrap: anywhere; }
 .note-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .note.question .note-text { font-style: italic; }
+
+/* dreams and conversations */
+.section-title { margin: 24px 0 8px; }
+.card.run + .card.run { margin-top: 16px; }
+li.phase { display: grid; grid-template-columns: 9ch auto 1fr; gap: 4px 10px; align-items: center; border-top: 1px solid var(--line); }
+li.phase .phase-summary { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+@media (min-width: 700px) { li.phase .phase-summary { grid-column: 2 / -1; } }
+.entry { border-top: 1px solid var(--line); padding: 10px 0; }
+.pre-line { white-space: pre-line; overflow-wrap: anywhere; margin: 0; }
+.turn { margin-bottom: 18px; }
+.bubble { margin: 4px 0; padding: 10px 14px; border-radius: 14px; max-width: 92%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.me { background: var(--accent-soft); margin-right: auto; border-bottom-left-radius: 4px; }
+.bubble.her { background: rgb(122 79 176 / 12%); margin-left: auto; border-bottom-right-radius: 4px; }
