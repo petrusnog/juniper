@@ -161,7 +161,15 @@ def _subject(text: str, user_names: Sequence[str]) -> Rejection | None:
     return None
 
 
-def check_interest(topic: object, *, user_names: Sequence[str] = ("Petrus",)) -> Rejection | None:
+def is_technical(topic: str, excluded: Iterable[str]) -> bool:
+    """Whether ``topic`` is about code, tools or systems (whole words, accents ignored)."""
+    padded = f" {' '.join(_WORDS.findall(_plain(topic)))} "
+    return any(f" {_plain(term).strip()} " in padded for term in excluded if term.strip())
+
+
+def check_interest(
+    topic: object, *, user_names: Sequence[str] = ("Petrus",), excluded: Iterable[str] = ()
+) -> Rejection | None:
     """Whether ``topic`` may become an interest: a generic subject, with no personal data."""
     if not isinstance(topic, str) or not _normalize(topic):
         return Rejection("vazio", "sem tema")
@@ -175,6 +183,8 @@ def check_interest(topic: object, *, user_names: Sequence[str] = ("Petrus",)) ->
     refs = _user_refs(user_names) - {"ele", "voce", "você"}
     if any(_plain(w) in refs for w in _WORDS.findall(text)) or _POSSESSIVE.search(text):
         return Rejection("pessoal", "tema pessoal: só assuntos gerais")
+    if is_technical(text, excluded):
+        return Rejection("tecnico", "tema técnico (código, ferramentas, sistemas) não é estudado")
     return _content(text)
 
 

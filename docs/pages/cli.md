@@ -125,6 +125,9 @@ juniper memory reindex [--force]
 juniper memory beliefs [--all] [--min-confidence X]   # Memória V2
 juniper memory beliefs show <id>
 juniper memory beliefs forget <id> [--yes]
+juniper memory knowledge                       # o que ela anotou estudando
+juniper memory knowledge show <tema>
+juniper memory knowledge forget <tema> [--yes]
 juniper memory journal [--days N]
 juniper memory dream [--dry-run]
 juniper memory prompt "<mensagem>" [--anterior "..."]   # o que a V2 acrescenta ao prompt

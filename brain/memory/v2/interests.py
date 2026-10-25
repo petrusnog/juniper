@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from brain.config import V2InterestSettings, settings
 from brain.eventlog import event_log
+from brain.memory.v2.guards import is_technical
 from brain.memory.v2.models import Evidence, Interest, utcnow
 
 if TYPE_CHECKING:
@@ -156,11 +157,12 @@ class InterestBook:
     def due(self, limit: int | None = None) -> list[Interest]:
         """Topics worth studying tonight: never studied first, then the strongest, after the gap."""
         now = self.clock()
-        gap = timedelta(days=self.config.study_gap_days)
+        gap = timedelta(hours=self.config.study_gap_hours)
         ready = [
             i
             for i in self.data.interests.list()
-            if i.last_studied_at is None or now - i.last_studied_at >= gap
+            if (i.last_studied_at is None or now - i.last_studied_at >= gap)
+            and not is_technical(i.topic, self.config.excluded_terms)
         ]
         ready.sort(key=lambda i: (i.last_studied_at is not None, -i.intensity, i.topic))
         return ready[: self.config.max_per_night if limit is None else limit]
@@ -191,6 +193,8 @@ class InterestBook:
         return StudyOutcome(interest.stance, before != interest.stance, weight)
 
     def forget(self, interest_id: str) -> bool:
+        """Forget an interest and every note studied for it."""
+        self.data.notes.delete_where({"interest_id": interest_id})
         return self.data.interests.delete(interest_id)
 
 

@@ -15,6 +15,7 @@ from typing import Any
 # Collections (ADR-017, section 12). ``memories`` is the v1 collection (layer 1, the facts).
 BELIEFS = "beliefs"
 INTERESTS = "interests"
+STUDY_NOTES = "study_notes"
 AFFECTS = "affects"
 CONCERNS = "concerns"
 PERSONA_STATE = "persona_state"
@@ -32,6 +33,9 @@ BELIEF_STATUSES = ("candidate", "active", "revised", "retired")
 BELIEF_ORIGINS = ("night", "conversation")
 USER_CONFIRMATIONS = ("confirmed", "denied")
 EVIDENCE_KINDS = ("observation", "explicit", "confirmation", "denial", "contradiction")
+UNCERTAINTIES = ("baixa", "média", "alta")  # how unsure the note is (alta = least reliable)
+NOTE_KINDS = ("afirmacao", "pergunta")
+NOTE_SOURCES = ("modelo", "documento")
 STANCES = ("undecided", "like", "dislike", "mixed")
 AFFECT_ABOUT = ("user", "self", "situation")
 AFFECT_PERSISTENCE = ("emotion", "grievance")
@@ -253,6 +257,7 @@ class Interest:
     origin: Evidence | None = None
     experience: str = "reading"  # second-hand taste: she read about it, she did not live it
     exposures: int = 0
+    level: int = 0  # study steps already taken (no ceiling); each night adds one
     last_studied_at: datetime | None = None
     faded_at: datetime | None = None  # the last time the lack of contact was accounted for
     embedding: list[float] = field(default_factory=list)
@@ -280,6 +285,7 @@ class Interest:
             "origin": None if self.origin is None else self.origin.to_doc(),
             "experience": self.experience,
             "exposures": self.exposures,
+            "level": self.level,
             "last_studied_at": self.last_studied_at,
             "faded_at": self.faded_at,
             "embedding": [float(x) for x in self.embedding],
@@ -303,6 +309,7 @@ class Interest:
                 origin=None if origin is None else Evidence.from_doc(origin),
                 experience=doc.get("experience", "reading"),
                 exposures=int(doc.get("exposures", 0)),
+                level=int(doc.get("level", 0)),
                 last_studied_at=_opt_dt(doc.get("last_studied_at")),
                 faded_at=_opt_dt(doc.get("faded_at")),
                 embedding=_vector(doc),
@@ -314,6 +321,73 @@ class Interest:
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise V2DataError(f"interesse corrompido ({doc.get('_id')}): {exc}") from exc
         return interest
+
+
+# --- study notes ------------------------------------------------------------------------------
+
+
+@dataclass
+class StudyNote:
+    """One thing she noted while studying a topic (ADR-019): a short claim with how unsure it is,
+    or an open question for the next step. Second-hand knowledge, auditable and deletable."""
+
+    interest_id: str
+    text: str
+    kind: str = "afirmacao"
+    uncertainty: str = "média"
+    source: str = "modelo"
+    level: int = 1  # the study step that wrote it
+    id: str = field(default_factory=lambda: new_id("nota"))
+    embedding: list[float] = field(default_factory=list)
+    embedding_model: str = ""
+    created_at: datetime = field(default_factory=utcnow)
+    updated_at: datetime = field(default_factory=utcnow)
+
+    def validate(self) -> None:
+        _text(self.interest_id, "interest_id")
+        _text(self.text, "text")
+        _choice(self.kind, NOTE_KINDS, "kind")
+        _choice(self.uncertainty, UNCERTAINTIES, "uncertainty")
+        _choice(self.source, NOTE_SOURCES, "source")
+        if self.level < 0:
+            raise V2DataError("level não pode ser negativo")
+
+    def to_doc(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "_id": self.id,
+            "interest_id": self.interest_id,
+            "text": self.text,
+            "kind": self.kind,
+            "uncertainty": self.uncertainty,
+            "source": self.source,
+            "level": self.level,
+            "embedding": [float(x) for x in self.embedding],
+            "embedding_model": self.embedding_model,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_doc(cls, doc: Mapping[str, Any]) -> StudyNote:
+        try:
+            note = cls(
+                id=str(doc["_id"]),
+                interest_id=doc["interest_id"],
+                text=doc["text"],
+                kind=doc.get("kind", "afirmacao"),
+                uncertainty=doc.get("uncertainty", "média"),
+                source=doc.get("source", "modelo"),
+                level=int(doc.get("level", 1)),
+                embedding=_vector(doc),
+                embedding_model=doc.get("embedding_model", ""),
+                created_at=as_dt(doc["created_at"]),
+                updated_at=as_dt(doc.get("updated_at", doc["created_at"])),
+            )
+            note.validate()
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise V2DataError(f"nota de estudo corrompida ({doc.get('_id')}): {exc}") from exc
+        return note
 
 
 # --- affect -----------------------------------------------------------------------------------

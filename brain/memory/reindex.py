@@ -65,7 +65,11 @@ def reindex_memories(
 
 
 # V2 collections that carry an embedding, and the field the vector is made from.
-V2_EMBEDDED: tuple[tuple[str, str], ...] = (("beliefs", "statement"), ("interests", "topic"))
+V2_EMBEDDED: tuple[tuple[str, str], ...] = (
+    ("beliefs", "statement"),
+    ("interests", "topic"),
+    ("study_notes", "text"),
+)
 
 
 def reindex_v2(

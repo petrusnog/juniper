@@ -29,6 +29,9 @@ def export_v2(data: V2Data, include_vectors: bool = False) -> dict[str, Any]:
     return {
         "beliefs": [_plain(b.to_doc(), include_vectors) for b in data.beliefs.list()],
         "interests": [_plain(i.to_doc(), include_vectors) for i in data.interests.list()],
+        "study_notes": [
+            _plain(n.to_doc(), include_vectors) for n in data.notes.list(sort=[("created_at", 1)])
+        ],
         "concerns": [_plain(c.to_doc(), include_vectors) for c in data.concerns.list()],
         "affects": [_plain(a.to_doc(), include_vectors) for a in data.affects.list()],
         "persona": {

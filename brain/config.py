@@ -409,8 +409,46 @@ class V2InterestSettings(BaseModel):
     max_seeds_per_night: int = Field(default=5, ge=0, le=20)
     # Sem contato, a intensidade de um interesse cai pela metade nesse tempo.
     half_life_days: float = Field(default=45.0, ge=1.0, le=3650.0)
-    # Um tema só é estudado de novo depois deste intervalo (a posição muda devagar).
-    study_gap_days: int = Field(default=3, ge=1, le=365)
+    # Um tema só avança outro passo depois deste intervalo (um passo por tema por noite).
+    study_gap_hours: int = Field(default=18, ge=1, le=8760)
+    # Notas guardadas por tema; passando disso, as mais antigas e incertas saem (consolidação).
+    max_notes_per_topic: int = Field(default=40, ge=5, le=500)
+    # Perguntas em aberto que um passo deixa para o seguinte.
+    max_open_questions: int = Field(default=5, ge=0, le=20)
+    # Temas técnicos (código, ferramentas, sistemas) não viram tema de estudo noturno.
+    excluded_terms: list[str] = Field(
+        default_factory=lambda: [
+            "python",
+            "java",
+            "javascript",
+            "typescript",
+            "código",
+            "codigo",
+            "programação",
+            "programacao",
+            "software",
+            "framework",
+            "biblioteca",
+            "api",
+            "docker",
+            "kubernetes",
+            "git",
+            "github",
+            "linux",
+            "terminal",
+            "servidor",
+            "banco de dados",
+            "mongodb",
+            "sql",
+            "bug",
+            "deploy",
+            "compilador",
+            "algoritmo",
+            "devops",
+            "backend",
+            "frontend",
+        ]
+    )
 
 
 class V2AffectSettings(BaseModel):

@@ -26,7 +26,8 @@ from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.context import state_lines
 from brain.memory.v2.interests import STANCE_WORDS, InterestBook
-from brain.memory.v2.models import Belief
+from brain.memory.v2.knowledge import NoteBook
+from brain.memory.v2.models import Belief, Interest
 from brain.memory.v2.persona import PersonaBook, PersonaError, drift, persona_lines
 from brain.memory.v2.store import V2Data
 
@@ -456,6 +457,107 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         finally:
             data.close()
         voice.say(console, "Esqueci esse interesse.")
+
+    knowledge_app = typer.Typer(
+        help="O que eu anotei estudando, com a incerteza de cada nota.", invoke_without_command=True
+    )
+    memory_app.add_typer(knowledge_app, name="knowledge")
+
+    def _find_interest(data: V2Data, wanted: str) -> Interest | None:
+        wanted = wanted.strip()
+        return data.interests.get(wanted) or InterestBook(data).find(wanted)
+
+    @knowledge_app.callback()
+    def knowledge(ctx: typer.Context) -> None:
+        """Lista os temas que estudei, em que passo estão e quantas notas tenho de cada."""
+        if ctx.invoked_subcommand is not None:
+            return
+        data = _open(console)
+        try:
+            book = NoteBook(data)
+            rows = [
+                (i, len(book.claims(i.id)), len(book.questions(i.id)))
+                for i in InterestBook(data).all()
+            ]
+        finally:
+            data.close()
+        rows = [r for r in rows if r[0].level or r[1]]
+        if not rows:
+            voice.say(console, "Ainda não estudei nada, então não tenho notas.")
+            return
+        table = Table(header_style="bold")
+        for column in ("Tema", "Passo", "Notas", "Perguntas em aberto", "Estudado em"):
+            table.add_column(column, overflow="fold")
+        for i, claims, asks in rows:
+            table.add_row(
+                i.topic,
+                str(i.level),
+                str(claims),
+                str(asks),
+                _local(i.last_studied_at) if i.last_studied_at else "ainda não",
+            )
+        console.print(table)
+        voice.say(
+            console,
+            "Isso é conhecimento de segunda mão: o que eu sei de cabeça e o que você me ensinou. "
+            "Para ver: juniper memory knowledge show <tema>. Para apagar: knowledge forget <tema>",
+        )
+
+    @knowledge_app.command("show")
+    def knowledge_show(
+        topic: Annotated[str, typer.Argument(help="O tema (ou o id do interesse).")],
+    ) -> None:
+        """Mostra as notas de um tema, com a incerteza, a origem e o passo de cada uma."""
+        data = _open(console)
+        try:
+            found = _find_interest(data, topic)
+            if found is None:
+                voice.say(console, f"Não achei o tema {topic}.", "red")
+                raise typer.Exit(1)
+            notes = NoteBook(data).of(found.id)
+        finally:
+            data.close()
+        voice.say(console, f"{found.topic}: passo {found.level}, {len(notes)} nota(s).")
+        if not notes:
+            return
+        table = Table(header_style="bold")
+        for column in ("Id", "Tipo", "Nota", "Incerteza", "Origem", "Passo"):
+            table.add_column(column, overflow="fold")
+        for n in notes:
+            table.add_row(
+                n.id,
+                "pergunta" if n.kind == "pergunta" else "afirmação",
+                n.text,
+                n.uncertainty if n.kind == "afirmacao" else "-",
+                n.source,
+                str(n.level),
+            )
+        console.print(table)
+
+    @knowledge_app.command("forget")
+    def knowledge_forget(
+        topic: Annotated[str, typer.Argument(help="O tema (ou o id do interesse).")],
+        yes: Annotated[
+            bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")
+        ] = False,
+    ) -> None:
+        """Apaga as notas de um tema (o interesse e a minha posição ficam; o passo recomeça)."""
+        data = _open(console)
+        try:
+            found = _find_interest(data, topic)
+            if found is None:
+                voice.say(console, f"Não achei o tema {topic}.", "red")
+                raise typer.Exit(1)
+            count = len(NoteBook(data).of(found.id))
+            voice.say(console, f"Vou apagar as {count} nota(s) que tenho sobre {found.topic}.")
+            if not yes and not typer.confirm("Pode apagar?", default=False):
+                voice.say(console, "Ok, não apaguei nada.")
+                return
+            NoteBook(data).forget(found.id)
+            data.interests.update(found.id, level=0)
+        finally:
+            data.close()
+        voice.say(console, "Esqueci essas notas.")
 
     @memory_app.command("prompt")
     def prompt(
