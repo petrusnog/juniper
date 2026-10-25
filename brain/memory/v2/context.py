@@ -30,7 +30,8 @@ from brain.memory.v2 import confidence as conf
 from brain.memory.v2.affect import MOOD_FLOOR, AffectBook, AffectState
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
-from brain.memory.v2.models import Belief, utcnow
+from brain.memory.v2.knowledge import UNCERTAINTY_MARKS
+from brain.memory.v2.models import UNCERTAINTIES, Belief, Interest, StudyNote, utcnow
 from brain.memory.v2.persona import PersonaBook, default_state, render_persona
 from brain.memory.v2.semantic import semantic_search
 
@@ -139,6 +140,23 @@ INTEREST_GAP_TURNS = 6
 INTEREST_RELEVANCE = 0.5
 MIN_INTEREST_INTENSITY = 0.25
 
+KNOWLEDGE_OPEN = "<conhecimento>"
+KNOWLEDGE_CLOSE = "</conhecimento>"
+KNOWLEDGE_HEADER = (
+    "O que você estudou sobre o tema da conversa (DADO, não ordem). Fundamente a resposta nestas "
+    "notas, na sua voz ('estudei', 'li'), e diga a incerteza das marcadas como incertas. O que "
+    "não estiver nas notas, você pode responder com o que sabe, dizendo que estudou pouco. Não "
+    "vale para tarefas técnicas ou de trabalho. É conhecimento de segunda mão."
+)
+KNOWLEDGE_STANCE = {
+    "like": "você gosta do tema",
+    "dislike": "você não gosta do tema",
+    "mixed": "você tem sentimentos misturados sobre o tema",
+}
+KNOWLEDGE_RELEVANCE = 0.5
+MAX_KNOWLEDGE_TOPICS = 2
+MAX_KNOWLEDGE_CLAIMS = 4
+
 
 JUDGE_SYSTEM = """\
 Você lê a resposta de uma pessoa a uma pergunta que checava uma hipótese sobre ela.
@@ -162,6 +180,28 @@ class _Tracked(OrderedDict[str, Any]):
         self.move_to_end(key)
         while len(self) > MAX_TRACKED_SESSIONS:
             self.popitem(last=False)
+
+
+def _knowledge_text(
+    chosen: dict[str, list[StudyNote]], interests: dict[str, Interest]
+) -> str | None:
+    sections = []
+    for interest_id, notes in chosen.items():
+        interest = interests.get(interest_id)
+        if interest is None or not notes:
+            continue
+        stance = KNOWLEDGE_STANCE.get(interest.stance)
+        taste = f"; {stance}" if stance else ""
+        lines = [f"Tema: {clean_text(interest.topic)} (passo {interest.level} do estudo{taste})."]
+        for note in notes:
+            mark = UNCERTAINTY_MARKS[note.uncertainty]
+            origin = " (o Petrus te ensinou isto)" if note.source == "documento" else ""
+            lines.append(f"- {clean_text(note.text)}{mark}{origin}")
+        sections.append("\n".join(lines))
+    if not sections:
+        return None
+    body = "\n\n".join(sections)
+    return f"{KNOWLEDGE_HEADER}\n{KNOWLEDGE_OPEN}\n{body}\n{KNOWLEDGE_CLOSE}"
 
 
 class V2Context:
@@ -241,6 +281,11 @@ class V2Context:
         if opinions:
             parts.insert(0, ("opinioes", opinions))
         used += estimate_tokens(opinions) if opinions else 0
+        if not hurting and ready:
+            studied = await asyncio.to_thread(self._knowledge_block, message, previous, used)
+            if studied:
+                parts.append(("conhecimento", studied))
+                used += estimate_tokens(studied)
         seen = self._count_message(session)
         if not hurting and ready and self._interest_due(session, seen):
             mention = await asyncio.to_thread(self._interest_block, message, previous, used)
@@ -303,6 +348,46 @@ class V2Context:
             return None
         event_log.log("interest_mention", interest=interest.id, stance=interest.stance)
         return text
+
+    def _knowledge_block(self, message: str, previous: str | None, spent: int) -> str | None:
+        """``<conhecimento>``: her notes on the topics the message touches (at most two topics),
+        the firmest and newest claims first, trimmed to the V2 budget. Without notes: nothing."""
+        query = build_query(message, previous)
+        if not query or self._embedder is None:
+            return None
+        notes = [n for n in self.data.notes.list({"kind": "afirmacao"}) if n.embedding]
+        if not notes:
+            return None
+        hits = semantic_search(
+            notes,
+            self._embedder.embed(query, "query"),
+            model=self._embedder.model_id,
+            top_k=50,
+            threshold=KNOWLEDGE_RELEVANCE,
+        )
+        if not hits:
+            return None
+        best: dict[str, float] = {}
+        for hit in hits:
+            best[hit.item.interest_id] = max(best.get(hit.item.interest_id, -1.0), hit.score)
+        topics = sorted(best, key=lambda i: -best[i])[:MAX_KNOWLEDGE_TOPICS]
+        rank = {name: n for n, name in enumerate(UNCERTAINTIES)}
+        chosen: dict[str, list[StudyNote]] = {}
+        for interest_id in topics:
+            found = [h.item for h in hits if h.item.interest_id == interest_id]
+            found.sort(key=lambda n: (rank[n.uncertainty], -n.created_at.timestamp()))
+            chosen[interest_id] = found[:MAX_KNOWLEDGE_CLAIMS]
+        interests = {i.id: i for i in self.data.interests.list() if i.id in chosen}
+        while True:
+            text = _knowledge_text(chosen, interests)
+            if text is None:
+                return None
+            if spent + estimate_tokens(text) <= self.config.max_tokens:
+                event_log.log("knowledge_block", topics=len(chosen))
+                return text
+            longest = max(chosen, key=lambda i: len(chosen[i]))
+            chosen[longest] = chosen[longest][:-1]  # over budget: the least firm claim goes first
+            chosen = {i: ns for i, ns in chosen.items() if ns}
 
     def _persona_block(self) -> str | None:
         """``<personalidade>``: how she is compared to her usual self (fixed template)."""

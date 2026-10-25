@@ -270,6 +270,15 @@ Por noite, `memory.v2.refine.max_per_night` memórias (padrão 20), das mais nov
 antigas. No `--dry-run` a fase só diz o que refinaria; o que o ensaio acabou de extrair na mesma
 noite só é refinado no sonho de verdade.
 
+## Responder pelas notas dela {#conhecimento kind=módulo file=brain/memory/v2/context.py}
+
+Quando a mensagem toca um tema que ela estudou, o bloco `<conhecimento>` leva as notas relevantes ao prompt (ADR-019). A busca é por significado entre as notas de afirmação, com limiar de relevância; entram até **2 temas** e até **4 afirmações por tema**, as mais firmes (menor incerteza) e mais recentes primeiro, dentro do orçamento `memory.v2.max_tokens` (estourando, sai primeiro a afirmação menos firme).
+
+- O bloco traz o passo do estudo, a posição dela sobre o tema e cada afirmação com a marca de incerteza ("(incerto)", "(não tenho certeza total)"); nota vinda de documento diz que o Petrus a ensinou.
+- A instrução viaja com o dado: fundamente a resposta nas notas, na voz de quem estudou ("estudei", "li"), diga a incerteza das incertas, responda com o que sabe fora delas dizendo que estudou pouco, e não use isso em tarefas técnicas ou de trabalho. O núcleo (`persona.core.md` e a versão compacta) ganhou a mesma regra.
+- **Sem notas, nada muda:** a resposta usa o modelo como antes. O bloco nunca aparece quando o Petrus parece estar mal (o modo de acolher).
+- **Honestidade:** é conhecimento de segunda mão, o que o modelo sabe mais o que o Petrus ensinou. Ela não passa a "saber" nada que o modelo não saiba; o ganho é consistência, incerteza explícita e a conversa seguir o que ela estudou. `juniper memory prompt` mostra o bloco.
+
 ## Configuração {#configuracao}
 
 Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.
