@@ -192,32 +192,45 @@ class V2Context:
         return replace(base, block=joined, tokens=base.tokens + estimate_tokens(block))
 
     async def _blocks(self, message: str, previous: str | None, ready: bool) -> str | None:
-        """Welcome first when he is hurting; otherwise her state and her opinions."""
+        """The V2 text for this message (``None`` when she has nothing to add)."""
+        sections = await self._sections(message, previous, ready)
+        return "\n\n".join(text for _, text in sections) if sections else None
+
+    async def preview(self, message: str, previous: str | None = None) -> list[tuple[str, str]]:
+        """What the V2 adds to the prompt for ``message``, block by block (``juniper memory
+        prompt``). Reads the data and changes nothing in the database."""
+        return await self._sections(message, previous, True)
+
+    async def _sections(
+        self, message: str, previous: str | None, ready: bool
+    ) -> list[tuple[str, str]]:
+        """The named blocks, in prompt order: welcome first when he is hurting; otherwise her
+        state and her opinions."""
         session = current_session()
         await self._apply_feedback(session, message)
         hurting = self._hurting_now(session, message, previous)
-        parts: list[str] = []
+        parts: list[tuple[str, str]] = []
         persona = await asyncio.to_thread(self._persona_block)
         if persona:
-            parts.append(persona)  # how she is these days: fine even when he is hurting
+            parts.append(("personalidade", persona))  # how she is: fine even when he is hurting
         if hurting:
-            parts.append(WELCOME_FIRST)
+            parts.append(("acolher", WELCOME_FIRST))
         else:
             feeling = await asyncio.to_thread(self._state_block)
             if feeling:
-                parts.append(feeling)
-        used = sum(estimate_tokens(p) for p in parts)
+                parts.append(("estado", feeling))
+        used = sum(estimate_tokens(text) for _, text in parts)
         opinions = await self._opinions(session, message, previous, hurting, ready, used)
         if opinions:
-            parts.insert(0, opinions)
+            parts.insert(0, ("opinioes", opinions))
         used += estimate_tokens(opinions) if opinions else 0
         seen = self._count_message(session)
         if not hurting and ready and self._interest_due(session, seen):
             mention = await asyncio.to_thread(self._interest_block, message, previous, used)
             if mention:
                 self._last_interest.put(session, seen)
-                parts.append(mention)
-        return "\n\n".join(parts) if parts else None
+                parts.append(("interesse", mention))
+        return parts
 
     def _hurting_now(self, session: str, message: str, previous: str | None) -> bool:
         """Whether he is hurting in this message or in one of the last few."""

@@ -8,6 +8,7 @@ visible, reversible and deletable).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Optional
 from zoneinfo import ZoneInfo
@@ -455,6 +456,53 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         finally:
             data.close()
         voice.say(console, "Esqueci esse interesse.")
+
+    @memory_app.command("prompt")
+    def prompt(
+        words: Annotated[list[str], typer.Argument(help="A mensagem, como você a escreveria.")],
+        previous: Annotated[
+            Optional[str],  # noqa: UP045
+            typer.Option("--anterior", help="A mensagem anterior (para respostas curtas)."),
+        ] = None,
+    ) -> None:
+        """Mostra, bloco a bloco, o que a Memória V2 acrescenta ao prompt para uma mensagem.
+
+        É o jeito de ver como os dados guardados (crenças, sentimentos, personalidade, interesses)
+        viram texto que a Juniper lê. Não grava nada. Os fatos da memória v1 não entram aqui.
+        """
+        message = " ".join(words).strip()
+        if not message:
+            voice.say(console, 'Escreva a mensagem: juniper memory prompt "bom dia"', "red")
+            raise typer.Exit(1)
+        data = _open(console)
+        try:
+            from brain.memory.embeddings import open_embedding_provider
+            from brain.memory.retrieval import estimate_tokens
+            from brain.memory.v2.context import V2Context
+
+            context = V2Context(data, open_embedding_provider())
+            sections = asyncio.run(context.preview(message, previous))
+        finally:
+            data.close()
+        if not sections:
+            voice.say(
+                console,
+                "Nenhum bloco: para essa mensagem a V2 não acrescenta nada ao prompt "
+                "(sem opinião que toque o assunto, personalidade ou estado a dizer).",
+            )
+            return
+        total = 0
+        for name, text in sections:
+            tokens = estimate_tokens(text)
+            total += tokens
+            console.print(f"[bold]── {name} (~{tokens} tokens) ──[/bold]")
+            console.print(text, markup=False, highlight=False)
+            console.print()
+        voice.say(
+            console,
+            f"A V2 acrescentaria {len(sections)} bloco(s), ~{total} tokens, antes da sua mensagem. "
+            "Isso vem depois do núcleo da persona, do perfil e das memórias (v1).",
+        )
 
     @memory_app.command("journal")
     def journal(
