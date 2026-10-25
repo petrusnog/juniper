@@ -25,7 +25,7 @@ def pages_registry() -> list[tuple[str, str]]:
 
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
-    assert [p[0] for p in pages][:2] == ["visao", "afetos"]
+    assert [p[0] for p in pages][:3] == ["visao", "memorias", "central"]
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
         path = STATIC_DIR / module.lstrip("/")

@@ -35,6 +35,7 @@ O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. 
 | `/api/affects` (+ `/<id>`), `/api/mood` | Sentimentos (filtros `origin`, `kind`), o rastreio até a fala que os causou e a série do humor |
 | `/api/persona`, `/api/concerns`, `/api/core` | Personalidade e histórico, preocupações, núcleo e perfil |
 | `/api/interests` (+ `/<id>`), `/api/notes` | Temas com passo e posição; **cada nota** com incerteza, fonte e passo (filtros `interest`, `uncertainty`, `source`, `kind`, `q`) |
+| `/api/prompt?message=` | O simulador: os blocos que a Memória V2 acrescentaria ao prompt para aquela mensagem, com tokens; usa um contexto próprio e não grava nada |
 | `/api/dreams`, `/api/journal` | Execuções do sonho (fases, tokens, erros) e o diário |
 | `/api/sessions` (+ `/<id>`) | Conversas (somem com `dashboard.transcripts: false`); a resposta dela depois de tools fica de fora |
 
@@ -45,9 +46,12 @@ Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no ba
   - **Afetos:** a série do humor (7, 14 ou 30 dias) e a lista de sentimentos (filtro conversa ou sonho). Ao clicar num sentimento aparece **de onde veio**: a fala do Petrus, a resposta dela e a preocupação atingida.
 - **Segurança do frontend:** tudo que vem do servidor entra na tela com `textContent`, nunca como HTML (um teste proíbe `innerHTML` e afins), e a CSP bloqueia script e estilo inline.
 
+- **Memórias (T-133):** busca por texto e filtros (ativas, substituídas ou todas; brutas ou refinadas; tipo). O detalhe de uma refinada mostra o fato, a **lembrança** (contexto, o que ela sentiu, como ela era, relevância), a **linhagem** (bruta ↔ refinada, com links) e as ligações.
+- **Memória central (T-133):** o núcleo (recolhido, para ler quando quiser), o perfil, a personalidade (radar, as frases que a descrevem e **a linha do tempo de cada traço** por versão), as crenças (confiança, faixa, fontes e **cada evidência**), o que importa para ela e o **simulador do prompt**: você escreve uma mensagem e vê, bloco a bloco, o que a V2 acrescentaria.
+
 ## O que vem a seguir {#depois}
 
-As páginas restantes: Memórias, Memória central (com o simulador do prompt), Estudos, Sonhos, Conversas e Pesquisa.
+As páginas restantes: Estudos (com cada nota), Sonhos, Conversas e Pesquisa.
 
 ## Configuração {#configuracao}
 

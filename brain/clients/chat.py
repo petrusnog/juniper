@@ -661,7 +661,6 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     handler.sources = Sources(
         memory=commands or memory,
         data=v2.data if v2 else None,
-        context=v2.context if v2 else None,
         transcripts=settings.dashboard.transcripts,
     )
     warm_up = asyncio.get_running_loop().create_task(handler.warm_up())

@@ -16,10 +16,11 @@ from brain.core.persona import load_core
 from brain.dashboard.api import Api, ApiError, Query, first
 from brain.dashboard.serialize import contains, number, paged
 from brain.dashboard.sources import Sources
+from brain.memory.retrieval import estimate_tokens
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.confidence import distinct_sources
-from brain.memory.v2.context import state_lines
+from brain.memory.v2.context import V2Context, state_lines
 from brain.memory.v2.interests import STANCE_WORDS
 from brain.memory.v2.knowledge import NoteBook
 from brain.memory.v2.models import utcnow
@@ -29,6 +30,7 @@ from brain.memory.vector import Memory
 
 T = TypeVar("T")
 
+MAX_PROMPT_CHARS = 2000
 OFF_V1 = {"enabled": False, "reason": "a memória de longo prazo está desligada"}
 OFF_V2 = {"enabled": False, "reason": "a Memória V2 está desligada"}
 
@@ -215,6 +217,22 @@ def build_api(sources: Sources) -> Api:
             "status_reflexao": m.status_reflexao,
             "created_at": m.created_at,
         }
+
+    # --- the prompt simulator -----------------------------------------------------------------
+
+    async def prompt(query: Query) -> Any:
+        store = need_v2()
+        message = (first(query, "message") or "").strip()[:MAX_PROMPT_CHARS]
+        if not message:
+            raise ApiError(400, "escreva a mensagem")
+        previous = (first(query, "previous") or "").strip()[:MAX_PROMPT_CHARS] or None
+        # A context of its own: the simulation must not touch the live chat's in-memory state
+        # (the interest gap, the verification question), nor the database.
+        found = await V2Context(store, sources.embedder).preview(message, previous)
+        blocks = [
+            {"name": name, "text": text, "tokens": estimate_tokens(text)} for name, text in found
+        ]
+        return {"message": message, "sections": blocks, "tokens": sum(b["tokens"] for b in blocks)}
 
     # --- beliefs ------------------------------------------------------------------------------
 
@@ -595,6 +613,7 @@ def build_api(sources: Sources) -> Api:
         "/overview": overview,
         "/memories": memories,
         "/memories/": memory_detail,
+        "/prompt": prompt,
         "/beliefs": beliefs,
         "/beliefs/": belief_detail,
         "/affects": affects,

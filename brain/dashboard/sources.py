@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from brain.memory.v2.context import V2Context
     from brain.memory.v2.store import V2Data
 
 
@@ -16,7 +15,6 @@ class Sources:
 
     memory: Any | None = None  # the v1 LongTermMemory (store, embedder, profile)
     data: V2Data | None = None  # the V2 collections
-    context: V2Context | None = None  # builds the prompt blocks (the simulator)
     transcripts: bool = True  # dashboard.transcripts
 
     @property
