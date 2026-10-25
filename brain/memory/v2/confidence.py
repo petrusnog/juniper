@@ -34,6 +34,7 @@ EXPLICIT_KINDS = frozenset({"explicit", "confirmation"})
 TALVEZ_BELOW = 0.45
 CERTEZA_FROM = 0.70
 CERTEZA_MIN_N = 6.0
+CERTEZA_MIN_SOURCES = 3
 WORD_TALVEZ = "talvez"
 WORD_ACHO = "acho que"
 WORD_CERTEZA = "tenho bastante certeza"
@@ -83,11 +84,18 @@ def decay(
     )
 
 
-def band(conf: float, n: float) -> str:
-    """The words for this confidence. With little evidence it never goes past "acho que"."""
+def band(conf: float, n: float, sources: int | None = None) -> str:
+    """The words for this confidence. With little evidence it never goes past "acho que".
+
+    "Tenho bastante certeza" also needs evidence from at least ``CERTEZA_MIN_SOURCES`` distinct
+    sources (session and day): a lot of weight from one conversation is still one conversation.
+    ``sources=None`` skips that check (callers that only have the numbers).
+    """
     if conf < TALVEZ_BELOW:
         return WORD_TALVEZ
     if conf < CERTEZA_FROM or n < CERTEZA_MIN_N:
+        return WORD_ACHO
+    if sources is not None and sources < CERTEZA_MIN_SOURCES:
         return WORD_ACHO
     return WORD_CERTEZA
 
