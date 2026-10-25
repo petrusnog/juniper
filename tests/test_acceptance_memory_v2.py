@@ -152,6 +152,11 @@ class Night(LLMProvider):
                 "appeal": 1.0,
                 "reasons": ["li que a harmonia deles é rica"],
                 "summary": "li bastante sobre a banda e a história me interessa.",
+                "notes": [
+                    {"text": "os Beatles se formaram em Liverpool", "uncertainty": "baixa"},
+                    {"text": "a banda gravou em Abbey Road", "uncertainty": "média"},
+                ],
+                "questions": ["como foi o fim da banda?"],
             }
         if system.startswith("Você é a Juniper, pensando"):
             return {
@@ -193,7 +198,7 @@ class World:
             )
         self.config = MemoryV2Settings(enabled=True)
 
-    def runner(self) -> NightRunner:
+    def runner(self, night: datetime = NIGHT) -> NightRunner:
         return NightRunner(
             self.data,
             config=self.config,
@@ -201,7 +206,7 @@ class World:
             reflect=self.llm,
             embedder=FakeEmbedder(),
             memory=self.memory,
-            clock=lambda: NIGHT,
+            clock=lambda: night,
         )
 
     def context(self, hours_later: float = 1.0, **kw: Any) -> V2Context:

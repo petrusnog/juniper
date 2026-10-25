@@ -22,7 +22,7 @@ A memória v1 guarda **fatos**. A V2 acrescenta camadas em que cada uma é uma *
 5. PERSONALIDADE   traços e narrativa recente (viva)
 ```
 
-O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, um interesse quando o assunto toca) e só atualiza na hora os fatos e a resposta a uma pergunta de verificação; **à noite** o [algoritmo de sonho](memoria-v2.html#passada-noturna) (o *Juniper dream*, antes chamado passada noturna) relê o que o Petrus escreveu, propõe, o código valida e aplica, e ela acorda um pouco diferente. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
+O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, o que estudou quando o assunto toca, um interesse) e só atualiza na hora os fatos, a resposta a uma pergunta de verificação e reações emocionais sutis (até 0,3); **à noite** o [algoritmo de sonho](memoria-v2.html#passada-noturna) (o *Juniper dream*, antes chamado passada noturna) relê o que o Petrus escreveu, propõe, o código valida e aplica, refina as memórias em lembranças, avança um passo no estudo de cada tema e ela acorda um pouco diferente. As mudanças intensas (até 1,0) são do sonho. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
 
 Tudo mora no **MongoDB** (o mesmo banco da v1), em coleções por camada; só o núcleo é arquivo (`prompts/persona.core.md`). A V2 exige `memory.session.store: mongo`: com arquivos, ligar `memory.v2.enabled` é recusado com uma mensagem clara. O código está em `brain/memory/v2/`.
 
@@ -96,14 +96,14 @@ O algoritmo de sonho só lê o que o Petrus **escreveu** e as respostas dela, nu
 O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. Na VPS, pelo atalho do contêiner ([Usar a Juniper na VPS](producao.html#usar-na-vps)).
 
 ```text
-coleta  →  fases (observar, refletir, sentir, personalidade, estudar)  →  aplicação pelo código  →  diário
+coleta  →  fases (observar, refletir, sentir, interesses, estudar, personalidade, refinar)  →  aplicação pelo código  →  diário
 ```
 
 | Peça | Como funciona |
 |---|---|
 | **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), **sem espera**: com `memory.v2.night.quiet_minutes` em 0 (o padrão), toda mensagem ainda não lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então uma conversa lida pela metade continua de onde parou. Com um valor maior, as sessões mexidas há menos de tantos minutos ficam para depois. Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
 | **Transcrição** | O `Agent` entrega cada turno terminado a um *sink* (`TranscriptWriter`): o texto do Petrus, a resposta dela e se **houve tool** no turno. Nunca a saída de tool. Se a gravação falhar, a conversa segue (só vai para o log). |
-| **Fases** | Objetos com `run(ctx)` (`brain/memory/v2/night.py`). Cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
+| **Fases, em ordem** | `observe` (fatos), `reflect` (crenças), `affect` (sentimentos), `interests` (sementes), `study` (um passo por tema), `persona` (traços) e `refine` (memórias brutas viram lembranças). Objetos com `run(ctx)` (`brain/memory/v2/night.py`); cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
 | **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
 | **Orçamento** | `memory.v2.night.max_tokens` e `max_minutes`. Estourou, a fase termina com o estado `budget` e o resto fica para a noite seguinte. |
 | **Dois modelos** | O barato (o do chat) para a observação; `llm.reflection` (provider e modelo) para refletir e estudar, e sem ele usa o do chat. Um modelo de raciocínio pode devolver o "pensamento" antes da resposta: ele é removido antes de qualquer JSON ser lido. |
@@ -120,7 +120,7 @@ Nada foi gravado (--dry-run). O que seria gravado:
     memories: 3 added
 ```
 
-Sem a V2 ligada, a passada não faz nada, não chama LLM e não abre o banco. Ligar a V2 com `memory.session.store: file` é recusado com uma mensagem clara, nunca derruba o servidor.
+Sem a V2 ligada, o sonho não faz nada, não chama LLM e não abre o banco. Ligar a V2 com `memory.session.store: file` é recusado com uma mensagem clara, nunca derruba o servidor.
 
 ## Observação: mensagens longas e janelas do dia {#observacao kind=módulo file=brain/memory/v2/observe.py}
 
@@ -294,7 +294,7 @@ Para o que o modelo não sabia, o Petrus entrega um texto: `juniper study add <a
 
 Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.
 
-- **Ligar:** `memory.v2.enabled: true` com `memory.session.store: mongo`. Rode antes `juniper memory dream --dry-run` para ver o que ela concluiria sem gravar nada, e só então deixe a passada rodar sozinha (`memory.v2.night.at`, 03:00, depois do backup das 02:30).
+- **Ligar:** `memory.v2.enabled: true` com `memory.session.store: mongo`. Rode antes `juniper memory dream --dry-run` para ver o que ela concluiria sem gravar nada, e só então deixe o sonho rodar sozinho (`memory.v2.night.at`, 03:00, depois do backup das 02:30).
 - **Modelos:** o barato (o da conversa) lê, extrai e julga respostas curtas; o avançado (`llm.reflection`) reflete, estuda e propõe. O código decide: nada que o LLM proponha altera uma camada além dos limites.
 - **Controles do Petrus:** `affect.enabled` e `affect.intensity` (de 0 a 1), `persona.evolves`, as listas de traços e de preocupações, os tetos por noite e o orçamento da noite (`night.max_tokens`, `night.max_minutes`).
 
