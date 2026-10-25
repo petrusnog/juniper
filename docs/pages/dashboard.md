@@ -51,9 +51,12 @@ Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no ba
 
 - **Estudos (T-134):** os temas que ela estuda, com passo, posição e intensidade. Dentro de um tema: as notas **por passo** (um gráfico simples), as **perguntas em aberto** que ficaram para o próximo passo e **cada nota**, com a incerteza (firme, incerteza média ou incerta), a fonte (modelo ou documento), o passo que a escreveu e a data. Dá para filtrar por incerteza e fonte e buscar no texto. "Todas as notas" lista as de todos os temas, paginadas, com os mesmos filtros e o link para o tema de cada uma.
 
+- **Sonhos (T-135):** cada execução com o horário, o status (ok, parcial, falhou), a duração, as conversas lidas, os **tokens gastos** (barra proporcional) e as **fases** com o resultado, as mudanças e o resumo; fase que estourou o orçamento ou deu erro aparece destacada. Abaixo, o **diário** (7, 30 ou 90 dias; sonhos, estudos, personalidade).
+- **Conversas (T-135):** as sessões com o número de turnos e se o sonho já as leu (ou quantos turnos esperam o próximo); dentro de uma, a conversa em balões, começando pelos turnos mais novos. A resposta dela depois de ferramentas **não aparece**. Com `dashboard.transcripts: false` a página diz que está desligada.
+
 ## O que vem a seguir {#depois}
 
-As páginas restantes: Sonhos, Conversas e Pesquisa.
+A página restante: a Pesquisa.
 
 ## Configuração {#configuracao}
 
