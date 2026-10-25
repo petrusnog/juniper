@@ -40,9 +40,14 @@ O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. 
 
 Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no banco (um teste confere).
 
+- **Casca e primeiras páginas (T-132):** responsivo de 360 px a telas largas (menu lateral no computador, barra inferior no celular), tema claro e escuro automático, teclado e foco visíveis. Sem biblioteca externa: os gráficos são SVG simples.
+  - **Visão geral:** como ela está agora (humor, sentimentos e ecos), a personalidade (radar de traços contra o jeito de partida), contadores de cada camada e o último sonho com as fases.
+  - **Afetos:** a série do humor (7, 14 ou 30 dias) e a lista de sentimentos (filtro conversa ou sonho). Ao clicar num sentimento aparece **de onde veio**: a fala do Petrus, a resposta dela e a preocupação atingida.
+- **Segurança do frontend:** tudo que vem do servidor entra na tela com `textContent`, nunca como HTML (um teste proíbe `innerHTML` e afins), e a CSP bloqueia script e estilo inline.
+
 ## O que vem a seguir {#depois}
 
-As páginas: Visão geral e Afetos, Memórias, Memória central (com o simulador do prompt), Estudos, Sonhos, Conversas e Pesquisa.
+As páginas restantes: Memórias, Memória central (com o simulador do prompt), Estudos, Sonhos, Conversas e Pesquisa.
 
 ## Configuração {#configuracao}
 
