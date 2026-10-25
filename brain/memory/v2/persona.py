@@ -161,7 +161,7 @@ class PersonaBook:
 
     # --- the night ----------------------------------------------------------------------------
 
-    def evolve(self, moves: list[Move], reason: str = "passada noturna") -> EvolveReport:
+    def evolve(self, moves: list[Move], reason: str = "algoritmo de sonho") -> EvolveReport:
         """Relax toward the baseline, apply the moves that earn it, and write one new version.
 
         Nothing is written when nothing changed. ``evolves: false`` keeps every trait at its

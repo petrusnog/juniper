@@ -45,13 +45,14 @@ from brain.memory.v2.store import DocStore, InMemoryDocStore, MongoDocStore, V2D
 def test_the_v2_is_off_by_default_with_the_documented_defaults() -> None:
     v2 = MemoryV2Settings()
     assert v2.enabled is False and v2.max_tokens == 600
-    assert (v2.night.at, v2.night.max_tokens, v2.night.max_minutes) == ("03:00", 60_000, 20)
+    assert (v2.night.at, v2.night.max_tokens, v2.night.max_minutes) == ("03:00", 300_000, 45)
     assert (v2.beliefs.half_life_days, v2.beliefs.min_evidence, v2.beliefs.max_new_per_night) == (
         60,
         2,
-        5,
+        10,
     )
-    assert v2.interests.max_per_night == 2
+    assert v2.night.quiet_minutes == 0  # every unread message enters the next dream
+    assert v2.interests.max_per_night == 10
     assert (v2.affect.enabled, v2.affect.intensity) == (True, 1.0)
     assert (v2.persona.evolves, v2.persona.max_step) == (True, 0.03)
 

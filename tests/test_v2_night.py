@@ -1,4 +1,4 @@
-"""A passada noturna (T-103): coleta, orçamento, idempotência, dry-run, diário e agendamento."""
+"""O algoritmo de sonho (T-103): coleta, orçamento, idempotência, dry-run, diário e agendamento."""
 
 from __future__ import annotations
 
@@ -239,9 +239,53 @@ def test_only_quiet_sessions_with_unread_turns_are_collected_oldest_first(data: 
     add_session(data, "ativo", 4, last_at=T0 - timedelta(minutes=5))  # still a conversation
     add_session(data, "lido", 3, last_at=T0 - timedelta(days=2), read=3)  # nothing new
 
-    batch = collect_material(data, T0, max_tokens=10_000)
+    batch = collect_material(data, T0, max_tokens=10_000, active_minutes=30)
 
     assert [m.session_id for m in batch] == ["velho", "novo"]
+
+
+def test_by_default_every_unread_message_enters_even_one_from_a_second_ago(data: V2Data) -> None:
+    add_session(data, "agora", 2, last_at=T0 - timedelta(seconds=1))
+    add_session(data, "agorinha", 3, last_at=T0 - timedelta(minutes=5))
+    add_session(data, "lido", 3, last_at=T0 - timedelta(days=2), read=3)
+
+    batch = collect_material(data, T0, max_tokens=10_000)
+
+    assert [m.session_id for m in batch] == ["agorinha", "agora"]  # oldest first
+
+
+def test_a_conversation_read_halfway_continues_where_it_stopped_without_repeating(
+    data: V2Data,
+) -> None:
+    add_session(data, "s1", 6, last_at=T0 - timedelta(seconds=2), read=2)
+    (first,) = collect_material(data, T0, max_tokens=10_000)
+    assert [t.index for t in first.turns] == [2, 3, 4, 5]
+
+    mark = data.watermarks.get("s1")
+    assert mark is not None
+    mark.turns_read = first.last_index + 1  # what the dream does after reading
+    data.watermarks.save(mark)
+    for i in (6, 7):
+        data.transcripts.save(TranscriptTurn("s1", i, f"mensagem {i}", "ok", at=T0))
+    mark.turns_total = 8
+    data.watermarks.save(mark)
+
+    (second,) = collect_material(data, T0, max_tokens=10_000)
+    assert [t.index for t in second.turns] == [6, 7]
+
+
+async def test_the_runner_uses_quiet_minutes_from_the_configuration(data: V2Data) -> None:
+    add_session(data, "ativo", 2, last_at=T0 - timedelta(minutes=5))
+    for minutes, expected in ((0, 1), (30, 0)):
+        config = MemoryV2Settings(enabled=True, night=V2NightSettings(quiet_minutes=minutes))
+        runner = NightRunner(data, config=config, phases=[], clock=lambda: T0)
+        report = await runner.run(dry_run=True)
+        assert report.sessions == expected, minutes
+
+
+def test_the_default_budget_is_300k_tokens_and_45_minutes() -> None:
+    night = V2NightSettings()
+    assert (night.max_tokens, night.max_minutes, night.quiet_minutes) == (300_000, 45, 0)
 
 
 def test_only_the_turns_after_the_watermark_are_read(data: V2Data) -> None:

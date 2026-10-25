@@ -64,7 +64,7 @@ class LLMOllamaSettings(BaseModel):
 
 
 class LLMReflectionSettings(BaseModel):
-    """O modelo da reflexão e do estudo da passada noturna (ADR-017, seção 11).
+    """O modelo da reflexão e do estudo do algoritmo de sonho (ADR-017, seção 11).
 
     Vazio = o mesmo do chat. A reflexão roda uma vez por dia, então um modelo mais capaz custa
     pouco no total; o modelo barato continua conversando.
@@ -315,14 +315,18 @@ def _hhmm(value: str, name: str) -> str:
 
 
 class V2NightSettings(BaseModel):
-    """A passada noturna, o "inconsciente" (ADR-017, seção 9)."""
+    """O algoritmo de sonho, o "inconsciente" (ADR-017, seção 9)."""
 
     # Hora diária (HH:MM, fuso do agente) em que o servidor roda a passada.
     at: str = "03:00"
     # Orçamento da noite: tokens estimados de LLM e minutos. Estourou, a fase termina e o resto
     # fica para a noite seguinte.
-    max_tokens: int = Field(default=60_000, ge=1_000, le=5_000_000)
-    max_minutes: int = Field(default=20, ge=1, le=240)
+    max_tokens: int = Field(default=300_000, ge=1_000, le=5_000_000)
+    max_minutes: int = Field(default=45, ge=1, le=240)
+    # Só lê conversas paradas há pelo menos tantos minutos. 0 (o padrão): toda mensagem ainda não
+    # lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então
+    # uma conversa lida pela metade continua de onde parou.
+    quiet_minutes: int = Field(default=0, ge=0, le=1440)
 
     @field_validator("at")
     @classmethod
@@ -338,7 +342,7 @@ class V2BeliefSettings(BaseModel):
     # Evidência mínima (n = alpha + beta - 2, de dias ou sessões diferentes) para uma crença valer.
     min_evidence: int = Field(default=2, ge=1, le=20)
     # Teto de crenças novas por noite.
-    max_new_per_night: int = Field(default=5, ge=0, le=50)
+    max_new_per_night: int = Field(default=10, ge=0, le=50)
 
 
 class ConcernDefault(BaseModel):
@@ -390,7 +394,7 @@ class V2ConcernSettings(BaseModel):
     # O ponto de partida, carregado no banco na primeira vez. Depois quem manda é o Petrus
     # (`juniper memory concerns set`); mudar esta lista não sobrescreve o que já existe.
     defaults: list[ConcernDefault] = Field(default_factory=lambda: list(DEFAULT_CONCERNS))
-    # Quanto a passada noturna pode mexer num peso por mês (o Petrus não tem teto).
+    # Quanto o algoritmo de sonho pode mexer num peso por mês (o Petrus não tem teto).
     max_monthly_change: float = Field(default=0.05, ge=0.0, le=0.5)
     # Impacto mínimo (0 a 1) de um evento para a noite mexer num peso.
     min_impact: float = Field(default=0.8, ge=0.0, le=1.0)
@@ -400,9 +404,9 @@ class V2InterestSettings(BaseModel):
     """Interesses próprios da Juniper (ADR-017, seção 5.6)."""
 
     # Temas estudados por noite (sem web: usa o conhecimento do modelo avançado).
-    max_per_night: int = Field(default=2, ge=0, le=10)
+    max_per_night: int = Field(default=10, ge=0, le=50)
     # Temas novos que a noite pode semear a partir das conversas.
-    max_seeds_per_night: int = Field(default=3, ge=0, le=20)
+    max_seeds_per_night: int = Field(default=5, ge=0, le=20)
     # Sem contato, a intensidade de um interesse cai pela metade nesse tempo.
     half_life_days: float = Field(default=45.0, ge=1.0, le=3650.0)
     # Um tema só é estudado de novo depois deste intervalo (a posição muda devagar).
@@ -423,7 +427,7 @@ class V2AffectSettings(BaseModel):
     # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
     grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
     # Sentimentos novos por noite.
-    max_per_night: int = Field(default=5, ge=0, le=50)
+    max_per_night: int = Field(default=10, ge=0, le=50)
 
 
 class TraitDefault(BaseModel):

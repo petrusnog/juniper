@@ -95,7 +95,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 30 2 * * * cd $HOME/juniper && ./scripts/backup_memory.sh daily >> $HOME/juniper/backups/backup.log 2>&1
 ```
 
-Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes de uma eventual passada noturna da [Memória V2](adr-017.html), prevista para as 03:00. Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
+Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes de uma eventual algoritmo de sonho da [Memória V2](adr-017.html), prevista para as 03:00. Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
 
 ## Códigos de saída {#saida}
 

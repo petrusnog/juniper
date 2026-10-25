@@ -246,7 +246,7 @@ def test_show_marks_the_night_and_its_event(v2: V2Data) -> None:
     run()
     ConcernBook(v2).propose_night_change("curiosidade", 0.03, 0.9, "S2:t7", "estudo")
     out = run("show", "curiosidade").output
-    assert "passada noturna" in out and "evento S2:t7" in out
+    assert "algoritmo de sonho" in out and "evento S2:t7" in out
 
 
 def test_set_refuses_a_bad_weight_and_an_unknown_concern(v2: V2Data) -> None:
