@@ -177,3 +177,12 @@ pre.block {
 form { margin: 0; }
 form button { margin-top: 8px; }
 .detail-box { margin-top: 12px; padding-top: 4px; }
+
+/* studies */
+a.card.topic { display: block; color: var(--fg); text-decoration: none; }
+a.card.topic:hover { border-color: var(--accent); }
+a.card.topic h2 { margin-bottom: 6px; }
+ul.notes li.note { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line); }
+.note-text { overflow-wrap: anywhere; }
+.note-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.note.question .note-text { font-style: italic; }

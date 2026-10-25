@@ -25,7 +25,7 @@ def pages_registry() -> list[tuple[str, str]]:
 
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
-    assert [p[0] for p in pages][:3] == ["visao", "memorias", "central"]
+    assert [p[0] for p in pages][:4] == ["visao", "memorias", "central", "estudos"]
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
         path = STATIC_DIR / module.lstrip("/")
@@ -87,3 +87,12 @@ async def test_the_shell_and_every_module_are_served_after_login() -> None:
             assert body == script.read_bytes()
     finally:
         await dash.stop()
+
+
+def test_the_studies_page_shows_each_notes_uncertainty_source_and_step() -> None:
+    page = (ASSETS / "pages" / "studies.js").read_text()
+    for needle in ("n.uncertainty", "n.source", "n.level", "pergunta em aberto", "/notes"):
+        assert needle in page, needle
+    # the labels the person reads for the three uncertainty levels
+    for label in ("firme", "incerteza média", "incerta"):
+        assert label in page, label
