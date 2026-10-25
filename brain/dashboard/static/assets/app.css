@@ -150,3 +150,30 @@ blockquote {
   background: var(--accent-soft); border-radius: 0 8px 8px 0; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 blockquote.her { border-left-color: var(--live); background: rgb(122 79 176 / 10%); }
+
+/* memories and the central memory */
+.mem-item {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 4px; border-top: 1px solid var(--line);
+  color: var(--fg); text-decoration: none;
+}
+.mem-item:hover { background: var(--accent-soft); }
+.mem-text { overflow-wrap: anywhere; }
+.mem-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mem-context { font-style: italic; }
+input[type="search"], select { max-width: 100%; }
+select {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px; min-height: 44px; margin: 4px 0 8px;
+}
+details.fold { margin-top: 8px; }
+details.fold summary { cursor: pointer; padding: 8px 0; font-weight: 600; min-height: 44px; }
+pre.block {
+  margin: 4px 0 12px; padding: 12px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: .85rem/1.5 ui-monospace, monospace;
+  max-height: 60vh; overflow: auto;
+}
+.row-item.belief { grid-template-columns: 1fr auto minmax(60px, 120px) auto; }
+@media (max-width: 600px) { .row-item.belief { grid-template-columns: 1fr; } }
+form { margin: 0; }
+form button { margin-top: 8px; }
+.detail-box { margin-top: 12px; padding-top: 4px; }

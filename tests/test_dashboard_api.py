@@ -439,3 +439,34 @@ async def test_the_api_works_through_the_real_server_with_login(world: World) ->
         assert asyncio.iscoroutinefunction(world.api.handle)
     finally:
         await dash.stop()
+
+
+# --- the prompt simulator ------------------------------------------------------------------------
+
+
+async def test_the_simulator_shows_the_blocks_without_writing_anything(world: World) -> None:
+    from brain.memory.v2.persona import PersonaBook
+
+    PersonaBook(world.data, MemoryV2Settings().persona).ensure()
+    belief = add_belief(world, "Acho que o Petrus planeja tudo em planilhas.")
+    before = sorted(map(str, world.data.docs.find("beliefs")))
+
+    status, body = await world.get("/prompt", message="me ajuda a planejar tudo em planilhas")
+
+    assert status == 200 and body["tokens"] == sum(s["tokens"] for s in body["sections"])
+    names = [s["name"] for s in body["sections"]]
+    assert "personalidade" in names
+    assert any("<personalidade>" in s["text"] for s in body["sections"])
+    assert sorted(map(str, world.data.docs.find("beliefs"))) == before  # nothing written
+    assert belief.id  # (the belief exists; whether it shows depends on the fake embedder)
+
+
+async def test_the_simulator_needs_a_message_and_the_v2() -> None:
+    api = build_api(Sources())
+    assert (await api.handle("/prompt", {"message": ["oi"]}))[0] == 503
+    world = World()
+    status, body = await world.get("/prompt")
+    assert status == 400 and "mensagem" in body["error"]
+    assert (await world.get("/prompt", message="   "))[0] == 400
+    status, body = await world.get("/prompt", message="x" * 5000)
+    assert status == 200 and len(body["message"]) == 2000  # silly sizes are cut
