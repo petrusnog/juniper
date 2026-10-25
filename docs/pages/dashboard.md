@@ -49,9 +49,11 @@ Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no ba
 - **Memórias (T-133):** busca por texto e filtros (ativas, substituídas ou todas; brutas ou refinadas; tipo). O detalhe de uma refinada mostra o fato, a **lembrança** (contexto, o que ela sentiu, como ela era, relevância), a **linhagem** (bruta ↔ refinada, com links) e as ligações.
 - **Memória central (T-133):** o núcleo (recolhido, para ler quando quiser), o perfil, a personalidade (radar, as frases que a descrevem e **a linha do tempo de cada traço** por versão), as crenças (confiança, faixa, fontes e **cada evidência**), o que importa para ela e o **simulador do prompt**: você escreve uma mensagem e vê, bloco a bloco, o que a V2 acrescentaria.
 
+- **Estudos (T-134):** os temas que ela estuda, com passo, posição e intensidade. Dentro de um tema: as notas **por passo** (um gráfico simples), as **perguntas em aberto** que ficaram para o próximo passo e **cada nota**, com a incerteza (firme, incerteza média ou incerta), a fonte (modelo ou documento), o passo que a escreveu e a data. Dá para filtrar por incerteza e fonte e buscar no texto. "Todas as notas" lista as de todos os temas, paginadas, com os mesmos filtros e o link para o tema de cada uma.
+
 ## O que vem a seguir {#depois}
 
-As páginas restantes: Estudos (com cada nota), Sonhos, Conversas e Pesquisa.
+As páginas restantes: Sonhos, Conversas e Pesquisa.
 
 ## Configuração {#configuracao}
 
