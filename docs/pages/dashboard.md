@@ -3,11 +3,11 @@ title: Dashboard
 group: Clientes
 order: 5
 description: O painel web da Juniper: memórias, afetos, estudos e notas, memória central e pesquisa, somente leitura, em qualquer dispositivo da tailnet.
-status: proposto
+status: pronta
 tags: dashboard web painel tailnet memória afetos estudos notas pesquisa responsivo adr-020
 ---
 
-> **Nota:** o dashboard está sendo construído por fases (épica #159). Esta página descreve o que já existe e o que vem a seguir. A decisão está no [ADR-020](adr-020.html).
+> **Nota:** o dashboard é **somente leitura** e foi construído na épica #159. A decisão está no [ADR-020](adr-020.html).
 
 ## Visão geral {#visao-geral}
 
@@ -19,7 +19,7 @@ http://<IP-da-tailnet-da-VPS>:8766/
 
 O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. Nada neste painel escreve no banco.
 
-## O que já existe {#hoje}
+## O que ele mostra {#hoje}
 
 - **Servidor e login (T-130):** a tela de login pede o token do servidor (o mesmo dos clientes, `~/.juniper/token`). O token **nunca vai na URL**: vai num cabeçalho, e o servidor devolve um cookie `HttpOnly` que vale `dashboard.session_hours` (12 horas). Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo.
 - **Defesas:** o cabeçalho `Host` precisa ser um IP, `localhost` ou um nome `*.ts.net` (ou um host de `dashboard.allowed_hosts`); CSP restritiva (nada inline nem externo); sem CORS; só `GET`.
@@ -57,10 +57,6 @@ Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no ba
 
 - **Pesquisa (T-136):** uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas (as conversas só com `dashboard.transcripts`). Cada coisa é procurada **por palavras** (todas as palavras da busca aparecem) e **por significado** (embeddings, com um piso de relevância); o que casa por palavras vem sempre antes. Se o modelo de embeddings não responder, a busca cai para palavras e avisa. As conversas são lidas até os últimos 3000 turnos. Cada resultado é um link para a página certa.
 
-## O que vem a seguir {#depois}
-
-A T-137 fecha a épica: este livro de bolso por inteiro, o aceite ponta a ponta e o roteiro de deploy.
-
 ## Configuração {#configuracao}
 
 Veja as chaves `dashboard.*` em [Configuração](configuracao.html).
@@ -68,3 +64,25 @@ Veja as chaves `dashboard.*` em [Configuração](configuracao.html).
 ## Na VPS {#vps}
 
 O compose de produção publica `${TAILSCALE_IP}:8766`, nunca em `0.0.0.0`. **A ACL do Tailscale precisa liberar a porta 8766** para os seus dispositivos (hoje ela só libera a `8765` e o SSH). Para HTTPS (instalar como app no celular, por exemplo), use `tailscale serve` na VPS; o código não muda.
+
+## Deploy e primeiro teste {#deploy}
+
+1. **Libere a porta 8766 na ACL do Tailscale** para os seus dispositivos (hoje a política só libera a `8765` e o SSH). Sem isso o dashboard abre dentro da VPS e não de fora.
+2. Faça o deploy como de costume. O `docker-compose.prod.yml` já publica `${TAILSCALE_IP}:8766`. Confira: `docker compose -p juniper-prod ps` mostra as duas portas do `brain`, ambas no endereço da tailnet.
+3. **O token** é o mesmo dos clientes: na VPS, `docker compose -p juniper-prod exec brain cat /home/juniper/.juniper/state/token`. Ele só é digitado na tela de login (nunca vai na URL) e vale por 12 horas.
+4. No navegador de qualquer dispositivo da tailnet: `http://<IP-da-VPS-na-tailnet>:8766/`. Para o endereço, `tailscale ip -4` na VPS (ou o nome `*.ts.net` do MagicDNS).
+5. **No celular:** com o Tailscale ligado, abra o mesmo endereço. O menu fica na barra de baixo; role para o lado para ver todas as seções.
+
+**Se algo não abrir:**
+
+| Sintoma | Causa provável |
+|---|---|
+| Nada responde de fora da VPS | A ACL do Tailscale não libera a 8766, ou o `TAILSCALE_IP` do `.env` não é o da tailnet |
+| "Host não aceito" (421) | Você abriu por um nome que não é IP nem `*.ts.net`; inclua-o em `dashboard.allowed_hosts` |
+| "muitas tentativas" (429) | Cinco tokens errados em cinco minutos; espere um pouco |
+| Volta sempre para o login | O token mudou no servidor (isso encerra as sessões) ou o cookie venceu |
+| A porta está ocupada | O servidor segue sem o dashboard e registra o aviso (evento `error` com `where=dashboard.start`) |
+
+**HTTPS (opcional):** para instalar como app no celular, `tailscale serve --bg http://<IP-da-tailnet>:8766` na VPS dá um endereço `https://...ts.net`; o servidor reconhece o `X-Forwarded-Proto` e marca o cookie como `Secure`. Isso não foi testado aqui.
+
+**Desligar:** `dashboard.enabled: false` no `config.prod.yaml`. A conversa não depende do dashboard.
