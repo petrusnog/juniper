@@ -200,8 +200,8 @@ class AffectBook:
         half = timedelta(days=self.config.mood_half_life_days)
         total = weight = 0.0
         for a in self.data.affects.list():
-            if a.resolved_at is not None:
-                continue
+            if a.resolved_at is not None or a.occurred_at > now:
+                continue  # an undone grievance, or something that had not happened yet at ``now``
             w = a.intensity * _decay(now - a.occurred_at, half)
             total += a.valence * w
             weight += w

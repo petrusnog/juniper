@@ -161,6 +161,8 @@ class ChatHandler:
         self._memory_service = MemoryService(commands_memory or memory)
         self._live: dict[str, Conversation] = {}
         self._tasks: set[asyncio.Task[None]] = set()
+        # What the read-only dashboard may look at (ADR-020); set by `open_chat_handler`.
+        self.sources: Any | None = None
 
     # --- ConnectionHandler ---
 
@@ -653,6 +655,14 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         commands_memory=commands,
         turn_sink=v2.sink if v2 else None,
         v2_context=v2.context if v2 else None,
+    )
+    from brain.dashboard.sources import Sources
+
+    handler.sources = Sources(
+        memory=commands or memory,
+        data=v2.data if v2 else None,
+        context=v2.context if v2 else None,
+        transcripts=settings.dashboard.transcripts,
     )
     warm_up = asyncio.get_running_loop().create_task(handler.warm_up())
     try:
