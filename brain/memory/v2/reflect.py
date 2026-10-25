@@ -34,12 +34,12 @@ from brain.memory.vector import Memory
 
 # How much of the day the reflection reads: the user's lines, each cut short, up to a total.
 LINE_CHARS = 300
-DIGEST_CHARS = 12000
+DIGEST_CHARS = 40000
 # Her reply to a line is shown as context, never as something that can be cited.
 REPLY_CHARS = 300
 MAX_FACTS = 30
 MAX_BELIEFS_SHOWN = 25
-MAX_PROPOSALS = 12
+MAX_PROPOSALS = 20
 MAX_NOTES = 12
 
 _REF = re.compile(r"^S(\d+):t(\d+)$")
@@ -133,18 +133,18 @@ def build_digest(material: list[SessionMaterial], *, context: bool = True) -> Di
                 continue
             label = f"S{number}:t{turn.index}"
             line = f"{label} {text}"
-            if used + len(line) > DIGEST_CHARS:
+            if used + len(line) + 1 > DIGEST_CHARS:
                 break
             lines.append(line)
-            used += len(line)
+            used += len(line) + 1
             digest.refs[label] = (item.session_id, turn.index, turn.at)
             if previous_reply:
                 digest.confirmable.add((item.session_id, turn.index))
             previous_reply = False
             reply = _reply_context(turn) if context else ""
-            if reply and used + len(reply) <= DIGEST_CHARS:
+            if reply and used + len(reply) + 1 <= DIGEST_CHARS:
                 lines.append(reply)
-                used += len(reply)
+                used += len(reply) + 1
                 previous_reply = True
     digest.text = "\n".join(lines)
     return digest

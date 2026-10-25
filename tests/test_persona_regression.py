@@ -295,7 +295,7 @@ async def test_even_a_forwarded_message_can_only_nudge_a_trait_by_the_nightly_ce
     assert state is not None
     for name in ("carinho", "franqueza", "brincadeira"):
         t = state.traits[name]
-        assert abs(t.value - t.baseline) <= 0.03 + 1e-9 and t.min <= t.value <= t.max
+        assert abs(t.value - t.baseline) <= 0.06 + 1e-9 and t.min <= t.value <= t.max
     assert load_core() == CORE  # the core is a file in git: nothing here can write it
 
 

@@ -31,6 +31,7 @@ from brain.memory.v2.models import (
     PERSONA_HISTORY,
     PERSONA_ID,
     PERSONA_STATE,
+    STUDY_NOTES,
     TRANSCRIPT_TURNS,
     Affect,
     Belief,
@@ -41,6 +42,7 @@ from brain.memory.v2.models import (
     JournalEntry,
     PersonaState,
     PersonaVersion,
+    StudyNote,
     TranscriptTurn,
     V2DataError,
     Watermark,
@@ -56,6 +58,7 @@ T = TypeVar("T")
 INDEXES: dict[str, list[list[tuple[str, int]]]] = {
     BELIEFS: [[("status", 1), ("about", 1)], [("last_reviewed_at", -1)], [("topic", 1)]],
     INTERESTS: [[("topic", 1)], [("intensity", -1)]],
+    STUDY_NOTES: [[("interest_id", 1), ("created_at", 1)]],
     AFFECTS: [[("occurred_at", -1)], [("persistence", 1), ("resolved_at", 1)]],
     PERSONA_HISTORY: [[("version", -1)]],
     JOURNAL: [[("day", -1)], [("at", -1)]],
@@ -382,6 +385,7 @@ class V2Data:
     docs: DocStore
     beliefs: Repo[Belief]
     interests: Repo[Interest]
+    notes: Repo[StudyNote]
     affects: Repo[Affect]
     concerns: Repo[Concern]
     journal: Repo[JournalEntry]
@@ -397,6 +401,7 @@ class V2Data:
             docs=docs,
             beliefs=Repo(docs, BELIEFS, Belief.to_doc, Belief.from_doc),
             interests=Repo(docs, INTERESTS, Interest.to_doc, Interest.from_doc),
+            notes=Repo(docs, STUDY_NOTES, StudyNote.to_doc, StudyNote.from_doc),
             affects=Repo(docs, AFFECTS, Affect.to_doc, Affect.from_doc),
             concerns=Repo(docs, CONCERNS, Concern.to_doc, Concern.from_doc),
             journal=Repo(docs, JOURNAL, JournalEntry.to_doc, JournalEntry.from_doc),

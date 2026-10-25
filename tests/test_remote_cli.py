@@ -63,6 +63,12 @@ class LiveServer:
 
 
 @pytest.fixture(autouse=True)
+def _wide_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tables fold text at the terminal width; these tests read the text, not the layout."""
+    monkeypatch.setattr(cli.console, "width", 300, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def server_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """O CLI aponta para o servidor de teste; token e id do dispositivo ficam no tmp."""
     token = tmp_path / "token"

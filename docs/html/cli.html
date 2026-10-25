@@ -66,8 +66,13 @@ juniper memory reindex [--force]
 juniper memory beliefs [--all] [--min-confidence X]   # Memória V2
 juniper memory beliefs show &lt;id&gt;
 juniper memory beliefs forget &lt;id&gt; [--yes]
+juniper memory knowledge                       # o que ela anotou estudando
+juniper memory knowledge show &lt;tema&gt;
+juniper memory knowledge forget &lt;tema&gt; [--yes]
 juniper memory journal [--days N]
-juniper memory dream [--dry-run]</code></pre>
+juniper study add &lt;arquivo|-&gt; [--topic TEMA]    # ensinar a partir de um texto
+juniper memory dream [--dry-run]
+juniper memory prompt &quot;&lt;mensagem&gt;&quot; [--anterior &quot;...&quot;]   # o que a V2 acrescenta ao prompt</code></pre>
 <p>A personalidade viva tem os seus: <code>juniper persona show</code> (traços, versão, deriva), <code>persona history</code> e <code>persona revert [--to N] [--yes]</code> (volta a uma versão anterior como uma versão nova). Os comandos <code>beliefs</code>, <code>concerns</code>, <code>affect</code>, <code>journal</code> e <code>dream</code> são da <a href="memoria-v2.html">Memória V2</a>: leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.</p>
 <div class="tablewrap"><table class="tbl"><thead><tr><th>Comando</th><th>O que faz</th></tr></thead><tbody><tr><td><code>list</code></td><td>Mais novas primeiro, com id, tipo, status, data e texto. <code>--all</code> inclui as <code>superseded</code> (só para auditoria).</td></tr><tr><td><code>search</code></td><td>Mostra a <strong>nota de cada resultado</strong>: é a ferramenta para calibrar <code>memory.retrieval.threshold</code> (<code>--threshold -1</code> mostra a nota de tudo).</td></tr><tr><td><code>forget</code></td><td>Mostra o texto, pergunta "Pode apagar?" (padrão não) e apaga com as versões antigas. <code>--yes</code> pula a pergunta.</td></tr><tr><td><code>export</code></td><td>JSON com <code>{&quot;profile&quot;: ..., &quot;memories&quot;: [...]}</code>; sem os vetores, a menos que <code>--vectors</code>.</td></tr><tr><td><code>profile</code></td><td>Mostra, define (<code>set</code>) ou apaga (<code>forget</code>) o perfil.</td></tr><tr><td><code>reindex</code></td><td>Refaz os vetores (<a href="memoria-longo-prazo.html#reindex">Memória de longo prazo</a>).</td></tr></tbody></table></div>
 <h3 id="docs">juniper docs</h3>

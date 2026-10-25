@@ -34,6 +34,7 @@ def _memory_row(m: Memory) -> dict[str, Any]:
         "text": mask_secrets(m.text),
         "type": m.type,
         "status": m.status,
+        "status_reflexao": m.status_reflexao,
         "created_at": m.created_at.isoformat(),
     }
 

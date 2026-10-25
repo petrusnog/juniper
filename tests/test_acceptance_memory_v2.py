@@ -1,7 +1,7 @@
 """Aceite do marco da Memória V2 (ADR-017): uma noite inteira da Juniper, de ponta a ponta.
 
 Conversas do dia (uma mensagem longa com um fato no fim, uma opinião do Petrus sobre si, um
-desabafo, um tema que ele detesta) -> passada noturna completa com LLM roteirizado -> no dia
+desabafo, um tema que ele detesta) -> algoritmo de sonho completa com LLM roteirizado -> no dia
 seguinte ela acorda com crenças de confiança calculada, um sentimento que decai, um interesse com
 posição própria e uma personalidade que mudou um pouco, tudo no diário; a conversa seguinte traz os
 blocos, e um turno de sofrimento não mostra estado nem interesse.
@@ -152,6 +152,11 @@ class Night(LLMProvider):
                 "appeal": 1.0,
                 "reasons": ["li que a harmonia deles é rica"],
                 "summary": "li bastante sobre a banda e a história me interessa.",
+                "notes": [
+                    {"text": "os Beatles se formaram em Liverpool", "uncertainty": "baixa"},
+                    {"text": "a banda gravou em Abbey Road", "uncertainty": "média"},
+                ],
+                "questions": ["como foi o fim da banda?"],
             }
         if system.startswith("Você é a Juniper, pensando"):
             return {
@@ -167,6 +172,8 @@ class Night(LLMProvider):
                     }
                 ]
             }
+        if system.startswith("Você é a Juniper, lembrando"):
+            return {"contexto": "ele contou isso de passagem.", "relevancia": 0.6}
         raise AssertionError(f"chamada inesperada: {system[:60]!r}")
 
 
@@ -191,7 +198,7 @@ class World:
             )
         self.config = MemoryV2Settings(enabled=True)
 
-    def runner(self) -> NightRunner:
+    def runner(self, night: datetime = NIGHT) -> NightRunner:
         return NightRunner(
             self.data,
             config=self.config,
@@ -199,7 +206,7 @@ class World:
             reflect=self.llm,
             embedder=FakeEmbedder(),
             memory=self.memory,
-            clock=lambda: NIGHT,
+            clock=lambda: night,
         )
 
     def context(self, hours_later: float = 1.0, **kw: Any) -> V2Context:
@@ -254,8 +261,10 @@ async def test_after_the_night_she_wakes_up_with_opinions_whose_confidence_she_c
 async def test_the_long_message_was_read_to_the_end_and_the_fact_is_kept_as_said(
     morning: World,
 ) -> None:
-    assert [m.text for m in morning.store.list_memories(None, True)] == [FACT]
-    (memory,) = morning.store.list_memories(None, True)
+    # the dream refined it: the raw fact is kept as superseded and the remembered one is active
+    assert [m.text for m in morning.store.list_memories(None, True)] == [FACT, FACT]
+    (memory,) = morning.store.list_memories(None, False)
+    assert memory.status_reflexao == "refinada" and memory.refinada_de is not None
     assert memory.session_id == RECENT and memory.turn == 0  # provenance
 
 
@@ -289,7 +298,7 @@ async def test_the_personality_moved_a_little_within_the_nightly_step(morning: W
     state = morning.data.persona.current()
     assert state is not None and state.version == 2
     shift = state.traits["introspecção"].value - state.traits["introspecção"].baseline
-    assert 0 < shift <= 0.03 + 1e-9
+    assert 0 < shift <= 0.06 + 1e-9
     assert morning.data.persona.history.count() == 1  # the version she left is kept
     assert state.recent == ["A perda dele me fez pensar mais devagar."]
 

@@ -380,6 +380,7 @@ def _memory(row: dict[str, Any]) -> Memory:
         embedding_model="",
         id=row["id"],
         status=row.get("status", "active"),
+        status_reflexao=row.get("status_reflexao", "bruta"),
         created_at=created,
         updated_at=created,
     )

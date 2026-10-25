@@ -32,7 +32,10 @@ if TYPE_CHECKING:
 # An emotion below this has faded out of the state; far past it, out of the database.
 VISIBLE_BELOW = 0.12
 PRUNE_BELOW = 0.02
+ECHO_HOURS = 48  # a feeling that already faded still "echoes" in how she says she feels
+ECHO_MIN_INTENSITY = 0.3
 EXPRESS_TOP = 2  # how many feelings show in the state
+MOOD_FLOOR = 0.08  # below this the mood is neutral and says nothing
 MOOD_ANCHOR = 1.0  # makes a lone small feeling a small mood, not a full one
 
 _APOLOGY = re.compile(r"\b(desculp\w*|perdao|me perdoa\w*|foi mal|sinto muito)\b")
@@ -87,10 +90,31 @@ class AffectState:
     feelings: list[Felt] = field(default_factory=list)
     mood: float = 0.0  # -1 (low) to 1 (high), fading to 0
     grievances: list[Felt] = field(default_factory=list)
+    # what weighed most in the last 48 hours but has already faded (strength is its registered one)
+    echoes: list[Felt] = field(default_factory=list)
+    now: datetime | None = None
 
     @property
     def empty(self) -> bool:
-        return not self.feelings and not self.grievances and abs(self.mood) < 0.05
+        return (
+            not self.feelings
+            and not self.grievances
+            and not self.echoes
+            and abs(self.mood) < MOOD_FLOOR
+        )
+
+
+def _chain(felt: list[Felt]) -> list[Felt]:
+    """Feelings of the same kind add up (three small provocations become a strong irritation),
+    up to 1.0. The strongest one gives the cause and the valence; grievances stay apart."""
+    grouped: dict[tuple[str, str], list[Felt]] = {}
+    for item in felt:
+        grouped.setdefault((item.affect.persistence, item.affect.kind), []).append(item)
+    merged = []
+    for group in grouped.values():
+        top = max(group, key=lambda f: f.strength)
+        merged.append(Felt(top.affect, min(1.0, sum(f.strength for f in group))))
+    return sorted(merged, key=lambda f: -f.strength)
 
 
 class AffectBook:
@@ -121,8 +145,12 @@ class AffectBook:
         *,
         grievance: bool = False,
         occurred_at: datetime | None = None,
+        origin: str = "sonho",
     ) -> tuple[Affect | None, Rejection | None]:
-        """Keep a feeling, scaled by the dial. ``(None, None)`` when feelings are off."""
+        """Keep a feeling, scaled by the dial. ``(None, None)`` when feelings are off.
+
+        A feeling born in the conversation (``origin="conversa"``) is subtle: its intensity is
+        capped at ``live_max_intensity`` before the dial scales it. Only the dream goes to 1.0."""
         if not self.active:
             return None, None
         problem = check_affect(kind, valence, intensity, cause, about)
@@ -130,6 +158,8 @@ class AffectBook:
             return None, problem
         if grievance and not (about == "user" and valence < 0):
             return None, Rejection("magoa", "mágoa é um sentimento negativo sobre o usuário")
+        if origin == "conversa":
+            intensity = min(float(intensity), self.config.live_max_intensity)
         scaled = float(intensity) * self.config.intensity
         if grievance:
             scaled = min(scaled, self.config.grievance_cap)
@@ -142,6 +172,7 @@ class AffectBook:
             cause=list(cause),
             about=about,
             persistence="grievance" if grievance else "emotion",
+            origin=origin,
             occurred_at=occurred_at or self.clock(),
             created_at=self.clock(),
         )
@@ -181,12 +212,29 @@ class AffectBook:
         if not self.active:
             return AffectState()
         now = now or self.clock()
-        felt = [Felt(a, self.strength(a, now)) for a in self.data.affects.list()]
-        felt = sorted((f for f in felt if f.strength >= VISIBLE_BELOW), key=lambda f: -f.strength)
+        affects = self.data.affects.list()
+        felt = [Felt(a, self.strength(a, now)) for a in affects]
+        visible = sorted(
+            (f for f in felt if f.strength >= VISIBLE_BELOW), key=lambda f: -f.strength
+        )
+        visible = _chain(visible)
+        echoing = sorted(
+            (
+                Felt(f.affect, f.affect.intensity)
+                for f in felt
+                if f.strength < VISIBLE_BELOW
+                and f.affect.resolved_at is None
+                and f.affect.intensity >= ECHO_MIN_INTENSITY
+                and now - f.affect.occurred_at <= timedelta(hours=ECHO_HOURS)
+            ),
+            key=lambda f: -f.strength,
+        )
         return AffectState(
-            feelings=[f for f in felt if f.affect.persistence == "emotion"][:EXPRESS_TOP],
+            feelings=[f for f in visible if f.affect.persistence == "emotion"][:EXPRESS_TOP],
             mood=self.mood(now),
-            grievances=[f for f in felt if f.affect.persistence == "grievance"][:1],
+            grievances=[f for f in visible if f.affect.persistence == "grievance"][:1],
+            echoes=echoing[:1],
+            now=now,
         )
 
     # --- repair and upkeep --------------------------------------------------------------------

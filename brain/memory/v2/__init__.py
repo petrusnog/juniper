@@ -8,7 +8,9 @@ clear message, never a crash of the server.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any
 
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
     from brain.llm.base import LLMProvider
     from brain.memory.embeddings import EmbeddingProvider
     from brain.memory.v2.context import V2Context
+    from brain.memory.v2.live import LiveReactor
     from brain.memory.v2.store import V2Data
     from brain.memory.v2.transcripts import TranscriptWriter
 
@@ -56,15 +59,38 @@ class V2Runtime:
     The caller closes it when the chat ends.
     """
 
-    def __init__(self, data: V2Data, context: V2Context, writer: TranscriptWriter) -> None:
+    def __init__(
+        self,
+        data: V2Data,
+        context: V2Context,
+        writer: TranscriptWriter,
+        reactor: LiveReactor | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ) -> None:
         self.data = data
         self.context = context
         self._writer = writer
+        self._reactor = reactor
+        self._loop = loop
+        self._reactions: set[Future[Any]] = set()
 
     def sink(self, session_id: str, turn: Turn) -> None:
-        """The ``turn_sink``: tells the context what she asked, then keeps the transcript."""
+        """The ``turn_sink``: tells the context what she asked, keeps the transcript and, in the
+        background, lets her react to what he wrote (the reply never waits for it)."""
         self.context.after_turn(session_id, turn)
         self._writer.write(session_id, turn)
+        self._react_in_background(session_id, turn)
+
+    def _react_in_background(self, session_id: str, turn: Turn) -> None:
+        loop = self._loop
+        if self._reactor is None or loop is None or loop.is_closed() or not self._reactor.active:
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._reactor.react(session_id, turn), loop)
+        except RuntimeError:  # the loop is gone: nothing to react in
+            return
+        self._reactions.add(future)
+        future.add_done_callback(self._reactions.discard)
 
     def close(self) -> None:
         self.data.close()
@@ -82,6 +108,7 @@ def open_v2_runtime(
         return None
     from brain.memory.embeddings import open_embedding_provider
     from brain.memory.v2.context import V2Context
+    from brain.memory.v2.live import LiveReactor
     from brain.memory.v2.transcripts import TranscriptWriter
 
     data = open_v2_data()
@@ -90,7 +117,11 @@ def open_v2_runtime(
     except Exception:
         data.close()
         raise
-    return V2Runtime(data, context, TranscriptWriter(data))
+    try:
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:  # opened outside a running loop: no live reactions
+        loop = None
+    return V2Runtime(data, context, TranscriptWriter(data), LiveReactor(data, judge), loop)
 
 
 def open_v2_data() -> V2Data:

@@ -64,7 +64,7 @@ class LLMOllamaSettings(BaseModel):
 
 
 class LLMReflectionSettings(BaseModel):
-    """O modelo da reflexão e do estudo da passada noturna (ADR-017, seção 11).
+    """O modelo da reflexão e do estudo do algoritmo de sonho (ADR-017, seção 11).
 
     Vazio = o mesmo do chat. A reflexão roda uma vez por dia, então um modelo mais capaz custa
     pouco no total; o modelo barato continua conversando.
@@ -315,14 +315,18 @@ def _hhmm(value: str, name: str) -> str:
 
 
 class V2NightSettings(BaseModel):
-    """A passada noturna, o "inconsciente" (ADR-017, seção 9)."""
+    """O algoritmo de sonho, o "inconsciente" (ADR-017, seção 9)."""
 
     # Hora diária (HH:MM, fuso do agente) em que o servidor roda a passada.
     at: str = "03:00"
     # Orçamento da noite: tokens estimados de LLM e minutos. Estourou, a fase termina e o resto
     # fica para a noite seguinte.
-    max_tokens: int = Field(default=60_000, ge=1_000, le=5_000_000)
-    max_minutes: int = Field(default=20, ge=1, le=240)
+    max_tokens: int = Field(default=300_000, ge=1_000, le=5_000_000)
+    max_minutes: int = Field(default=45, ge=1, le=240)
+    # Só lê conversas paradas há pelo menos tantos minutos. 0 (o padrão): toda mensagem ainda não
+    # lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então
+    # uma conversa lida pela metade continua de onde parou.
+    quiet_minutes: int = Field(default=0, ge=0, le=1440)
 
     @field_validator("at")
     @classmethod
@@ -338,7 +342,7 @@ class V2BeliefSettings(BaseModel):
     # Evidência mínima (n = alpha + beta - 2, de dias ou sessões diferentes) para uma crença valer.
     min_evidence: int = Field(default=2, ge=1, le=20)
     # Teto de crenças novas por noite.
-    max_new_per_night: int = Field(default=5, ge=0, le=50)
+    max_new_per_night: int = Field(default=10, ge=0, le=50)
 
 
 class ConcernDefault(BaseModel):
@@ -390,7 +394,7 @@ class V2ConcernSettings(BaseModel):
     # O ponto de partida, carregado no banco na primeira vez. Depois quem manda é o Petrus
     # (`juniper memory concerns set`); mudar esta lista não sobrescreve o que já existe.
     defaults: list[ConcernDefault] = Field(default_factory=lambda: list(DEFAULT_CONCERNS))
-    # Quanto a passada noturna pode mexer num peso por mês (o Petrus não tem teto).
+    # Quanto o algoritmo de sonho pode mexer num peso por mês (o Petrus não tem teto).
     max_monthly_change: float = Field(default=0.05, ge=0.0, le=0.5)
     # Impacto mínimo (0 a 1) de um evento para a noite mexer num peso.
     min_impact: float = Field(default=0.8, ge=0.0, le=1.0)
@@ -400,13 +404,51 @@ class V2InterestSettings(BaseModel):
     """Interesses próprios da Juniper (ADR-017, seção 5.6)."""
 
     # Temas estudados por noite (sem web: usa o conhecimento do modelo avançado).
-    max_per_night: int = Field(default=2, ge=0, le=10)
+    max_per_night: int = Field(default=10, ge=0, le=50)
     # Temas novos que a noite pode semear a partir das conversas.
-    max_seeds_per_night: int = Field(default=3, ge=0, le=20)
+    max_seeds_per_night: int = Field(default=5, ge=0, le=20)
     # Sem contato, a intensidade de um interesse cai pela metade nesse tempo.
     half_life_days: float = Field(default=45.0, ge=1.0, le=3650.0)
-    # Um tema só é estudado de novo depois deste intervalo (a posição muda devagar).
-    study_gap_days: int = Field(default=3, ge=1, le=365)
+    # Um tema só avança outro passo depois deste intervalo (um passo por tema por noite).
+    study_gap_hours: int = Field(default=18, ge=1, le=8760)
+    # Notas guardadas por tema; passando disso, as mais antigas e incertas saem (consolidação).
+    max_notes_per_topic: int = Field(default=40, ge=5, le=500)
+    # Perguntas em aberto que um passo deixa para o seguinte.
+    max_open_questions: int = Field(default=5, ge=0, le=20)
+    # Temas técnicos (código, ferramentas, sistemas) não viram tema de estudo noturno.
+    excluded_terms: list[str] = Field(
+        default_factory=lambda: [
+            "python",
+            "java",
+            "javascript",
+            "typescript",
+            "código",
+            "codigo",
+            "programação",
+            "programacao",
+            "software",
+            "framework",
+            "biblioteca",
+            "api",
+            "docker",
+            "kubernetes",
+            "git",
+            "github",
+            "linux",
+            "terminal",
+            "servidor",
+            "banco de dados",
+            "mongodb",
+            "sql",
+            "bug",
+            "deploy",
+            "compilador",
+            "algoritmo",
+            "devops",
+            "backend",
+            "frontend",
+        ]
+    )
 
 
 class V2AffectSettings(BaseModel):
@@ -422,8 +464,13 @@ class V2AffectSettings(BaseModel):
     grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
     # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
     grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Reações em tempo real, durante a conversa: sutis (o sonho é que traz as intensas, até 1,0).
+    live: bool = True
+    live_max_intensity: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Teto de reações por hora, para ninguém "programar" as emoções dela com spam.
+    live_max_per_hour: int = Field(default=12, ge=0, le=200)
     # Sentimentos novos por noite.
-    max_per_night: int = Field(default=5, ge=0, le=50)
+    max_per_night: int = Field(default=10, ge=0, le=50)
 
 
 class TraitDefault(BaseModel):
@@ -457,17 +504,40 @@ class V2PersonaSettings(BaseModel):
     # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
     evolves: bool = True
     # Passo máximo de um traço por noite.
-    max_step: float = Field(default=0.03, ge=0.0, le=0.2)
+    max_step: float = Field(default=0.06, ge=0.0, le=0.2)
     # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
     impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     # O passo de um traço é min(max_step, step_factor x impacto) por noite.
-    step_factor: float = Field(default=0.05, ge=0.0, le=1.0)
+    step_factor: float = Field(default=0.1, ge=0.0, le=1.0)
+    # Na conversa, o bloco <personalidade> sempre diz como ela está hoje (todos os traços, em
+    # palavras). Desligado, só diz o que se afastou do jeito de sempre e o que a marcou.
+    always_describe: bool = True
     # Meia-vida do retorno ao baseline: uma fase passa.
     baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
     # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
     drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
     # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
     traits: list[TraitDefault] = Field(default_factory=lambda: list(DEFAULT_TRAITS))
+
+
+class V2OpinionSettings(BaseModel):
+    """Opiniões dela na conversa (ADR-017, seção 10)."""
+
+    # Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto de 3 fontes ou mais)
+    # entram em toda conversa, além das que tocam o assunto. 0 desliga. Nunca no modo de acolher.
+    always_on: int = Field(default=2, ge=0, le=5)
+
+
+class V2RefineSettings(BaseModel):
+    """O refinamento das memórias pelo sonho (ADR-018)."""
+
+    enabled: bool = True
+    # Memórias brutas refinadas por sonho, das mais recentes para as mais antigas.
+    max_per_night: int = Field(default=20, ge=0, le=500)
+    # Turnos de cada lado do turno de origem que entram como contexto da lembrança.
+    context_turns: int = Field(default=2, ge=0, le=10)
+    # Memórias vizinhas oferecidas ao modelo como possíveis ligações.
+    neighbors: int = Field(default=3, ge=0, le=10)
 
 
 class MemoryV2Settings(BaseModel):
@@ -479,6 +549,8 @@ class MemoryV2Settings(BaseModel):
     max_tokens: int = Field(default=600, ge=100, le=8000)
     night: V2NightSettings = Field(default_factory=V2NightSettings)
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
+    opinions: V2OpinionSettings = Field(default_factory=V2OpinionSettings)
+    refine: V2RefineSettings = Field(default_factory=V2RefineSettings)
     concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)

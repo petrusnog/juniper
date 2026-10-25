@@ -872,10 +872,10 @@ def memory_reindex(
 def memory_dream(
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", help="Roda a passada sem gravar nada e mostra o que gravaria."),
+        typer.Option("--dry-run", help="Roda o sonho sem gravar nada e mostra o que gravaria."),
     ] = False,
 ) -> None:
-    """Roda a passada noturna agora (o "inconsciente" da Memória V2, ADR-017).
+    """Roda o algoritmo de sonho agora (o "inconsciente" da Memória V2, ADR-017).
 
     Lê as conversas com novidade, reflete e atualiza as camadas. O servidor já a roda sozinho
     todo dia em `memory.v2.night.at`; use este comando para testar ou para recuperar uma noite.
@@ -921,8 +921,18 @@ def memory_list(
         bool,
         typer.Option("--all", "-a", help="Inclui as memórias substituídas (só para auditoria)."),
     ] = False,
+    reflexao: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option(
+            "--reflexao",
+            help="Só as brutas ou só as refinadas pelo sonho: bruta ou refinada.",
+        ),
+    ] = None,
 ) -> None:
     """Lista as memórias guardadas, das mais novas para as mais antigas."""
+    if reflexao is not None and reflexao not in ("bruta", "refinada"):
+        voice.say(console, "--reflexao aceita: bruta ou refinada.", "red")
+        raise typer.Exit(1)
     memory = _command_memory()
     try:
         memories = memory.store.list_memories(memory_type, include_all)
@@ -931,14 +941,16 @@ def memory_list(
         raise typer.Exit(1) from None
     finally:
         memory.close()
+    if reflexao is not None:
+        memories = [m for m in memories if m.status_reflexao == reflexao]
     if not memories:
         voice.say(console, "Ainda não guardei nenhuma memória.")
         return
     table = Table(header_style="bold")
-    for column in ("Id", "Tipo", "Status", "Criada em", "Texto"):
+    for column in ("Id", "Tipo", "Status", "Reflexão", "Criada em", "Texto"):
         table.add_column(column, overflow="fold")
     for m in memories:
-        table.add_row(m.id, m.type, m.status, _local(m.created_at), m.text)
+        table.add_row(m.id, m.type, m.status, m.status_reflexao, _local(m.created_at), m.text)
     console.print(table)
     voice.say(console, f"{len(memories)} memória(s). Para apagar uma: juniper memory forget <id>")
 

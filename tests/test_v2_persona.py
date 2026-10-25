@@ -100,8 +100,8 @@ def test_a_high_impact_event_moves_the_trait_by_the_maximum_step() -> None:
     book.ensure()
     clock.advance(hours=1)
     report = book.evolve([move()])  # impact 0.9 x 0.9 x 1.0 = 0.81
-    assert report.changed == {"introspecção": pytest.approx(0.03)}
-    assert value(book, "introspecção") == pytest.approx(0.43, abs=1e-4)
+    assert report.changed == {"introspecção": pytest.approx(0.06)}
+    assert value(book, "introspecção") == pytest.approx(0.46, abs=1e-4)
     assert report.wrote and report.version == 2
 
 
@@ -122,7 +122,7 @@ def test_the_threshold_is_the_one_in_the_config() -> None:
     assert book.evolve([move(intensity=0.5)]).changed  # 0.45 >= 0.3
 
 
-def test_the_step_is_five_percent_of_the_impact_when_that_is_smaller_than_the_ceiling() -> None:
+def test_the_step_is_a_share_of_the_impact_when_that_is_smaller_than_the_ceiling() -> None:
     book, _, clock = make(V2PersonaSettings(impact_threshold=0.2, step_factor=0.05))
     book.ensure()
     clock.advance(hours=1)
@@ -135,8 +135,8 @@ def test_the_nights_ceiling_holds_however_many_moves_pile_up() -> None:
     book.ensure()
     clock.advance(hours=1)
     report = book.evolve([move(event=f"turn:sessA:{i}") for i in range(10)])
-    assert report.changed == {"introspecção": pytest.approx(0.03)}
-    assert value(book, "introspecção") == pytest.approx(0.43, abs=1e-4)
+    assert report.changed == {"introspecção": pytest.approx(0.06)}
+    assert value(book, "introspecção") == pytest.approx(0.46, abs=1e-4)
 
 
 def test_moves_in_both_directions_net_out_inside_the_ceiling() -> None:
@@ -144,7 +144,7 @@ def test_moves_in_both_directions_net_out_inside_the_ceiling() -> None:
     book.ensure()
     clock.advance(hours=1)
     report = book.evolve([move(direction=1), move(direction=-1)])
-    assert abs(value(book, "introspecção") - 0.4) <= 0.03 + 1e-9
+    assert abs(value(book, "introspecção") - 0.4) <= 0.06 + 1e-9
     assert report.rejections == [] or all(r.code == "sem_espaco" for r in report.rejections)
 
 
@@ -154,7 +154,7 @@ def test_recurring_events_accumulate_over_nights_and_one_alone_barely_moves() ->
     clock.advance(hours=1)
     book.evolve([move()])
     isolated = value(book, "introspecção") - 0.4
-    assert 0 < isolated <= 0.03  # a single event: a tiny shift on a 0..1 scale
+    assert 0 < isolated <= 0.06  # a single event: a tiny shift on a 0..1 scale
 
     for _ in range(4):
         clock.advance(days=1)
@@ -315,8 +315,16 @@ def state_with(**shifts: float) -> PersonaState:
     return base
 
 
-def test_the_usual_self_renders_nothing() -> None:
-    assert render_persona(state_with()) is None and render_persona(None) is None
+def test_the_usual_self_still_says_how_she_is_today_but_no_drift() -> None:
+    text = render_persona(state_with()) or ""
+    assert "Seu jeito hoje:" in text and "Comparada ao seu jeito de sempre" not in text
+    assert render_persona(None) is None
+
+
+def test_with_always_describe_off_the_usual_self_renders_nothing() -> None:
+    assert render_persona(state_with(), always=False) is None
+    drifted = render_persona(state_with(introspecção=0.1), always=False) or ""
+    assert "Seu jeito hoje" not in drifted and "mais reflexiva" in drifted
 
 
 def test_the_rendering_describes_shifts_in_words() -> None:
@@ -340,8 +348,32 @@ def test_the_degree_words(shift: float, words: str) -> None:
     assert f"{words} " in (render_persona(state_with(ironia=shift)) or "")
 
 
-def test_a_tiny_shift_is_not_worth_a_word() -> None:
-    assert render_persona(state_with(ironia=0.02)) is None
+def test_a_tiny_shift_is_not_worth_a_drift_word() -> None:
+    assert "Comparada ao seu jeito de sempre" not in (render_persona(state_with(ironia=0.02)) or "")
+    assert "Comparada ao seu jeito de sempre" in (render_persona(state_with(ironia=0.03)) or "")
+
+
+@pytest.mark.parametrize(
+    ("value", "grade"),
+    [
+        (0.9, "muito"),
+        (0.7, "bastante"),
+        (0.5, "moderadamente"),
+        (0.3, "pouco"),
+        (0.1, "quase nada"),
+    ],
+)
+def test_every_trait_is_graded_in_words_from_its_value(value: float, grade: str) -> None:
+    state = state_with()
+    state.traits["ironia"] = Trait(value, 0.5, 0.0, 1.0)
+    text = render_persona(state) or ""
+    assert f"{grade} irônica" in text
+
+
+def test_the_traits_are_listed_from_the_strongest_to_the_weakest() -> None:
+    text = render_persona(state_with(carinho=0.15)) or ""  # carinho 0.95: muito
+    today = next(line for line in text.splitlines() if line.startswith("Seu jeito hoje"))
+    assert today.index("carinhosa") < today.index("direta") < today.index("reflexiva")
 
 
 def test_the_rendering_is_deterministic_and_changes_with_the_traits() -> None:
@@ -391,10 +423,32 @@ async def test_the_block_reaches_the_conversation_after_the_night_changes_her() 
     assert PERSONA_OPEN in block and "mais reflexiva" in block and "A perda dele me marcou" in block
 
 
-async def test_with_a_default_personality_the_conversation_has_no_block() -> None:
+async def test_with_a_default_personality_the_conversation_describes_her_but_adds_no_drift() -> (
+    None
+):
     book, data, clock = make()
     book.ensure()
     v2 = V2Context(data, FakeEmbedder(), config=MemoryV2Settings(enabled=True), clock=clock)
+    block = (await v2.context_for("bom dia")).block or ""
+    assert PERSONA_OPEN in block and "Seu jeito hoje:" in block
+    assert "Comparada ao seu jeito de sempre" not in block
+
+
+async def test_before_the_first_dream_she_already_describes_her_starting_self_without_writing() -> (
+    None
+):
+    data = V2Data.over(InMemoryDocStore())
+    v2 = V2Context(data, FakeEmbedder(), config=MemoryV2Settings(enabled=True), clock=Clock())
+    block = (await v2.context_for("bom dia")).block or ""
+    assert "Seu jeito hoje: muito carinhosa" in block
+    assert data.persona.current() is None  # reading never creates the personality
+
+
+async def test_with_always_describe_off_a_default_personality_adds_no_block() -> None:
+    book, data, clock = make()
+    book.ensure()
+    off = MemoryV2Settings(enabled=True, persona=V2PersonaSettings(always_describe=False))
+    v2 = V2Context(data, FakeEmbedder(), config=off, clock=clock)
     assert (await v2.context_for("bom dia")).block is None
 
 
@@ -463,7 +517,7 @@ async def test_the_phase_turns_a_proposal_into_a_small_versioned_shift() -> None
 
     state = ctx.data.persona.current()
     assert state is not None and state.version == 2
-    assert state.traits["introspecção"].value == pytest.approx(0.43, abs=1e-3)
+    assert state.traits["introspecção"].value == pytest.approx(0.46, abs=1e-3)
     assert state.recent == ["A perda dele me fez pensar mais devagar."]
     assert state.changed_by == ["turn:sessA:4"] and "versão 2" in result.summary
     assert "minha avó faleceu" in llm.calls[0][1] and PERSONA_SYSTEM.startswith("Você é a Juniper")
@@ -525,3 +579,11 @@ def test_the_phase_is_part_of_the_default_night() -> None:
     from brain.memory.v2.night import default_phases
 
     assert "persona" in [p.name for p in default_phases()]
+
+
+def test_what_marked_her_never_gets_a_double_period() -> None:
+    state = state_with()
+    state.recent = ["A perda dele me fez pensar mais devagar.", "Ele riu da piada!", "E agora?"]
+    text = render_persona(state) or ""
+    assert "devagar; Ele riu da piada; E agora." in text
+    assert ".." not in text and "!." not in text and "?." not in text

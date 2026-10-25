@@ -8,6 +8,7 @@ visible, reversible and deletable).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Optional
 from zoneinfo import ZoneInfo
@@ -25,7 +26,8 @@ from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.context import state_lines
 from brain.memory.v2.interests import STANCE_WORDS, InterestBook
-from brain.memory.v2.models import Belief
+from brain.memory.v2.knowledge import NoteBook
+from brain.memory.v2.models import Belief, Interest
 from brain.memory.v2.persona import PersonaBook, PersonaError, drift, persona_lines
 from brain.memory.v2.store import V2Data
 
@@ -212,7 +214,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         if not concern.history:
             console.print("Nunca mudou.")
         for c in concern.history:
-            who = "você" if c.source == "petrus" else "passada noturna"
+            who = "você" if c.source == "petrus" else "algoritmo de sonho"
             event = f" · evento {c.event_ref}" if c.event_ref else ""
             console.print(f"  - {_local(c.at)} · {c.delta:+.2f} · {who} · {c.reason}{event}")
 
@@ -266,7 +268,16 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         if not rows:
             return
         table = Table(header_style="bold")
-        for column in ("Quando", "Sentimento", "Valência", "Registrada", "Agora", "Sobre", "Causa"):
+        for column in (
+            "Quando",
+            "Sentimento",
+            "Origem",
+            "Valência",
+            "Registrada",
+            "Agora",
+            "Sobre",
+            "Causa",
+        ):
             table.add_column(column, overflow="fold")
         for a in rows[:20]:
             now = "desfeita" if a.resolved_at else f"{strengths[a.id]:.2f}"
@@ -274,6 +285,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
             table.add_row(
                 _local(a.occurred_at),
                 kind,
+                a.origin,
                 f"{a.valence:+.2f}",
                 f"{a.intensity:.2f}",
                 now,
@@ -455,6 +467,200 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         finally:
             data.close()
         voice.say(console, "Esqueci esse interesse.")
+
+    knowledge_app = typer.Typer(
+        help="O que eu anotei estudando, com a incerteza de cada nota.", invoke_without_command=True
+    )
+    memory_app.add_typer(knowledge_app, name="knowledge")
+
+    def _find_interest(data: V2Data, wanted: str) -> Interest | None:
+        wanted = wanted.strip()
+        return data.interests.get(wanted) or InterestBook(data).find(wanted)
+
+    @knowledge_app.callback()
+    def knowledge(ctx: typer.Context) -> None:
+        """Lista os temas que estudei, em que passo estão e quantas notas tenho de cada."""
+        if ctx.invoked_subcommand is not None:
+            return
+        data = _open(console)
+        try:
+            book = NoteBook(data)
+            rows = [
+                (i, len(book.claims(i.id)), len(book.questions(i.id)))
+                for i in InterestBook(data).all()
+            ]
+        finally:
+            data.close()
+        rows = [r for r in rows if r[0].level or r[1]]
+        if not rows:
+            voice.say(console, "Ainda não estudei nada, então não tenho notas.")
+            return
+        table = Table(header_style="bold")
+        for column in ("Tema", "Passo", "Notas", "Perguntas em aberto", "Estudado em"):
+            table.add_column(column, overflow="fold")
+        for i, claims, asks in rows:
+            table.add_row(
+                i.topic,
+                str(i.level),
+                str(claims),
+                str(asks),
+                _local(i.last_studied_at) if i.last_studied_at else "ainda não",
+            )
+        console.print(table)
+        voice.say(
+            console,
+            "Isso é conhecimento de segunda mão: o que eu sei de cabeça e o que você me ensinou. "
+            "Para ver: juniper memory knowledge show <tema>. Para apagar: knowledge forget <tema>",
+        )
+
+    @knowledge_app.command("show")
+    def knowledge_show(
+        topic: Annotated[str, typer.Argument(help="O tema (ou o id do interesse).")],
+    ) -> None:
+        """Mostra as notas de um tema, com a incerteza, a origem e o passo de cada uma."""
+        data = _open(console)
+        try:
+            found = _find_interest(data, topic)
+            if found is None:
+                voice.say(console, f"Não achei o tema {topic}.", "red")
+                raise typer.Exit(1)
+            notes = NoteBook(data).of(found.id)
+        finally:
+            data.close()
+        voice.say(console, f"{found.topic}: passo {found.level}, {len(notes)} nota(s).")
+        if not notes:
+            return
+        table = Table(header_style="bold")
+        for column in ("Id", "Tipo", "Nota", "Incerteza", "Origem", "Passo"):
+            table.add_column(column, overflow="fold")
+        for n in notes:
+            table.add_row(
+                n.id,
+                "pergunta" if n.kind == "pergunta" else "afirmação",
+                n.text,
+                n.uncertainty if n.kind == "afirmacao" else "-",
+                n.source,
+                str(n.level),
+            )
+        console.print(table)
+
+    @knowledge_app.command("forget")
+    def knowledge_forget(
+        topic: Annotated[str, typer.Argument(help="O tema (ou o id do interesse).")],
+        yes: Annotated[
+            bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")
+        ] = False,
+    ) -> None:
+        """Apaga as notas de um tema (o interesse e a minha posição ficam; o passo recomeça)."""
+        data = _open(console)
+        try:
+            found = _find_interest(data, topic)
+            if found is None:
+                voice.say(console, f"Não achei o tema {topic}.", "red")
+                raise typer.Exit(1)
+            count = len(NoteBook(data).of(found.id))
+            voice.say(console, f"Vou apagar as {count} nota(s) que tenho sobre {found.topic}.")
+            if not yes and not typer.confirm("Pode apagar?", default=False):
+                voice.say(console, "Ok, não apaguei nada.")
+                return
+            NoteBook(data).forget(found.id)
+            data.interests.update(found.id, level=0)
+        finally:
+            data.close()
+        voice.say(console, "Esqueci essas notas.")
+
+    study_app = typer.Typer(help="Ensinar a Juniper a partir de um texto.", no_args_is_help=True)
+    app.add_typer(study_app, name="study")
+
+    @study_app.command("add")
+    def study_add(
+        source: Annotated[
+            str, typer.Argument(help="Arquivo de texto, ou - para ler da entrada padrão.")
+        ],
+        topic: Annotated[
+            Optional[str],  # noqa: UP045
+            typer.Option("--topic", "-t", help="O tema (padrão: o nome do arquivo)."),
+        ] = None,
+    ) -> None:
+        """Ela lê o texto e anota o que ele afirma, como conhecimento vindo do documento.
+
+        É administrativo, como `memory dream`: na VPS use `-` e o `docker compose exec -T`.
+        Só o texto é lido (nada de endereço), até 100 KB, e texto com segredo é recusado.
+        """
+        import sys
+        from pathlib import Path
+
+        from brain.memory.v2.teach import MAX_TEXT_BYTES, TeachError
+
+        if source == "-":
+            if not topic:
+                voice.say(console, 'Com a entrada padrão, diga o tema: --topic "..."', "red")
+                raise typer.Exit(1)
+            text = sys.stdin.read(MAX_TEXT_BYTES + 1)
+        else:
+            path = Path(source).expanduser()
+            if not path.is_file():
+                voice.say(console, f"Não achei o arquivo {source}.", "red")
+                raise typer.Exit(1)
+            with path.open("rb") as handle:
+                raw = handle.read(MAX_TEXT_BYTES + 1)
+            text = raw.decode("utf-8", errors="replace")
+            topic = topic or path.stem.replace("_", " ").replace("-", " ")
+        try:
+            from brain.memory.v2.service import run_teach
+
+            report = asyncio.run(run_teach(text, topic or ""))
+        except (TeachError, MemoryUnavailableError) as exc:
+            voice.say(console, str(exc), "red")
+            raise typer.Exit(1) from None
+        voice.say(console, report.text())
+
+    @memory_app.command("prompt")
+    def prompt(
+        words: Annotated[list[str], typer.Argument(help="A mensagem, como você a escreveria.")],
+        previous: Annotated[
+            Optional[str],  # noqa: UP045
+            typer.Option("--anterior", help="A mensagem anterior (para respostas curtas)."),
+        ] = None,
+    ) -> None:
+        """Mostra, bloco a bloco, o que a Memória V2 acrescenta ao prompt para uma mensagem.
+
+        É o jeito de ver como os dados guardados (crenças, sentimentos, personalidade, interesses)
+        viram texto que a Juniper lê. Não grava nada. Os fatos da memória v1 não entram aqui.
+        """
+        message = " ".join(words).strip()
+        if not message:
+            voice.say(console, 'Escreva a mensagem: juniper memory prompt "bom dia"', "red")
+            raise typer.Exit(1)
+        data = _open(console)
+        try:
+            from brain.memory.embeddings import open_embedding_provider
+            from brain.memory.retrieval import estimate_tokens
+            from brain.memory.v2.context import V2Context
+
+            context = V2Context(data, open_embedding_provider())
+            sections = asyncio.run(context.preview(message, previous))
+        finally:
+            data.close()
+        if not sections:
+            voice.say(
+                console,
+                "Nenhum bloco: para essa mensagem a V2 não acrescenta nada ao prompt "
+                "(sem opinião que toque o assunto, personalidade ou estado a dizer).",
+            )
+            return
+        total = 0
+        for name, text in sections:
+            tokens = estimate_tokens(text)
+            total += tokens
+            console.print(f"[bold]── {name} (~{tokens} tokens) ──[/bold]")
+            console.print(text, markup=False, highlight=False)
+            console.print()
+        voice.say(
+            console,
+            f"A V2 acrescentaria {len(sections)} bloco(s), ~{total} tokens, antes da sua mensagem. "
+            "Isso vem depois do núcleo da persona, do perfil e das memórias (v1).",
+        )
 
     @memory_app.command("journal")
     def journal(

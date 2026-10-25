@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
 import pytest
 
-from brain.config import MemoryV2Settings
+from brain.config import MemoryV2Settings, V2OpinionSettings, V2PersonaSettings
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session, Turn
@@ -81,9 +81,28 @@ def seeded(
     made = []
     for text in (statements or STATEMENTS)[:n]:
         belief, _ = book.create(text, "dinheiro", Evidence("explicit", "old", 1, at=NOW))
-        data.beliefs.update(belief.id, status="active", alpha=alpha, beta=beta)
+        spread = [Evidence("observation", f"s{i}", i, at=NOW - timedelta(days=i)) for i in range(3)]
+        data.beliefs.update(
+            belief.id,
+            status="active",
+            alpha=alpha,
+            beta=beta,
+            evidence_for=[e.to_doc() for e in spread],  # three distinct sources
+        )
         made.append(data.beliefs.get(belief.id))
     return data, [m for m in made if m is not None]
+
+
+# The conversation as it was before the V2 always spoke: no always-on personality or opinions.
+QUIET = {
+    "persona": V2PersonaSettings(always_describe=False),
+    "opinions": V2OpinionSettings(always_on=0),
+}
+
+
+def quiet(**kw: Any) -> MemoryV2Settings:
+    """A V2 config where only what touches the message (or what drifted) reaches the prompt."""
+    return MemoryV2Settings(enabled=True, **{**QUIET, **kw})
 
 
 def context(
@@ -98,7 +117,7 @@ def context(
         data,
         FakeEmbedder(),
         inner,
-        config=config or MemoryV2Settings(enabled=True),
+        config=config or quiet(),
         judge=judge,
         clock=lambda: NOW,
         **({} if relevance is None else {"relevance": relevance}),
@@ -156,10 +175,10 @@ async def test_only_held_beliefs_are_shown_never_candidates_or_retired() -> None
 async def test_the_block_respects_the_token_budget() -> None:
     data, _ = seeded(5)
     loose = (await context(data, relevance=0.1).context_for(BROAD)).block
-    tight = MemoryV2Settings(enabled=True).model_copy(update={"max_tokens": 100})
+    tight = quiet().model_copy(update={"max_tokens": 100})
     result = await context(data, config=tight, relevance=0.1).context_for(BROAD)
     assert len(lines(result.block)) < len(lines(loose))
-    none = MemoryV2Settings(enabled=True).model_copy(update={"max_tokens": 5})
+    none = quiet().model_copy(update={"max_tokens": 5})
     assert (await context(data, config=none, relevance=0.1).context_for(BROAD)).block is None
 
 
@@ -419,3 +438,41 @@ def test_the_chat_handler_composes_the_opinions_over_the_v1_memory_for_every_con
     handler = ChatHandler(FileSessionStore(tmp_path), FakeProvider([]), None, v2_context=v2)
     conversation = handler._new_conversation()
     assert conversation.agent._memory is v2
+
+
+# --- the highest band needs three distinct sources ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sources", "expected"), [(1, "acho que"), (2, "acho que"), (3, "tenho bastante certeza")]
+)
+def test_a_lot_of_weight_from_few_conversations_never_reaches_the_highest_band(
+    sources: int, expected: str
+) -> None:
+    data, (belief,) = seeded(1, alpha=12.0, beta=1.0)
+    spread = [
+        Evidence("observation", f"s{i}", i, at=NOW - timedelta(days=i)) for i in range(sources)
+    ]
+    data.beliefs.update(belief.id, evidence_for=[e.to_doc() for e in spread])
+    stored = data.beliefs.get(belief.id)
+    assert stored is not None
+    book = BeliefBook(data, FakeEmbedder(), MemoryV2Settings().beliefs, lambda: NOW)
+    assert book.words(stored) == expected
+
+
+def test_the_same_day_and_session_count_as_one_source() -> None:
+    data, (belief,) = seeded(1, alpha=12.0, beta=1.0)
+    same = [Evidence("confirmation", "s1", i, at=NOW) for i in range(4)]  # 4 lines, one source
+    data.beliefs.update(belief.id, evidence_for=[e.to_doc() for e in same])
+    stored = data.beliefs.get(belief.id)
+    assert stored is not None
+    book = BeliefBook(data, FakeEmbedder(), MemoryV2Settings().beliefs, lambda: NOW)
+    assert book.words(stored) == "acho que"
+
+
+def test_band_without_sources_keeps_the_numeric_rule() -> None:
+    from brain.memory.v2 import confidence as conf
+
+    assert conf.band(0.9, 8.0) == "tenho bastante certeza"
+    assert conf.band(0.9, 8.0, sources=2) == "acho que"
+    assert conf.band(0.9, 8.0, sources=3) == "tenho bastante certeza"

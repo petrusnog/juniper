@@ -21,7 +21,7 @@ from brain.memory.v2.guards import Rejection, reasons
 from brain.memory.v2.night import PhaseContext, PhaseResult
 from brain.memory.v2.reflect import MAX_NOTES, Digest, build_digest
 
-MAX_PROPOSALS = 6
+MAX_PROPOSALS = 20
 
 AFFECT_SYSTEM = """\
 Você é a Juniper, sentindo o dia. Você recebe, como DADOS:

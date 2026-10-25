@@ -295,4 +295,10 @@ Com a [Memória V2](memoria-v2.html) ligada, `forget` (comando ou tool) também 
 
 ## A V2 em cima dos fatos
 
-A [Memória V2](memoria-v2.html) (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (`source.turn`), a passada noturna reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.
+A [Memória V2](memoria-v2.html) (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (`source.turn`), o algoritmo de sonho reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.
+
+## Memória bruta e refinada {#refinada}
+
+Cada memória tem a coluna `status_reflexao`: **`bruta`** (como foi salva pela conversa, pela tool `remember` ou pela observação do sonho) ou **`refinada`**. Memórias antigas, sem a coluna, contam como `bruta`, sem migração. Com a [Memória V2](memoria-v2.html), o sonho refina as brutas ([ADR-018](adr-018.html)): a refinada **mantém o texto do fato** e soma `contexto`, `sentimento` (sentimentos reais registrados), `como_eu_era` (a personalidade da época), `ligacoes` e `relevancia`; a bruta fica guardada como `superseded`.
+
+Na conversa, uma refinada aparece no bloco `<memorias>` com o fato e, logo abaixo, a lembrança ("lembrança, contexto: ...; na época você sentiu admiração (forte); você estava um pouco mais reflexiva"), e a `relevancia` pesa até 0,05 no ranking (`similaridade + 0,05 × relevância`), só para desempatar. `juniper memory list` mostra a coluna `Reflexão` e aceita `--reflexao bruta|refinada`; `memory export` inclui o status e a lembrança.

@@ -129,7 +129,7 @@ class ConcernBook:
         self._record(
             concern,
             allowed,
-            reason.strip() or "mudança da passada noturna",
+            reason.strip() or "mudança do algoritmo de sonho",
             str(event_ref).strip(),
             SOURCE_NIGHT,
             round(concern.weight + allowed, 6),

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -203,19 +204,13 @@ class SnapshotVectorStore:
 
 
 def _copy(memory: Memory) -> Memory:
-    return Memory(
-        text=memory.text,
-        type=memory.type,
+    """An independent copy (every field, including the layer of remembering)."""
+    return replace(
+        memory,
         embedding=list(memory.embedding),
-        embedding_model=memory.embedding_model,
-        id=memory.id,
-        status=memory.status,
-        superseded_by=memory.superseded_by,
-        source_kind=memory.source_kind,
-        session_id=memory.session_id,
-        turn=memory.turn,
-        created_at=memory.created_at,
-        updated_at=memory.updated_at,
+        sentimento=[dict(item) for item in memory.sentimento],
+        como_eu_era=dict(memory.como_eu_era),
+        ligacoes={k: list(v) for k, v in memory.ligacoes.items()},
     )
 
 
