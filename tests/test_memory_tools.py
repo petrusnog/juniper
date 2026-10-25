@@ -350,7 +350,10 @@ def test_the_four_subcommands_have_portuguese_help() -> None:
         assert phrase in runner.invoke(cli.app, ["memory", name, "--help"]).output
 
 
-def test_cli_list(cli_memory: LongTermMemory, store: MongoVectorStore) -> None:
+def test_cli_list(
+    cli_memory: LongTermMemory, store: MongoVectorStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.console, "width", 300, raising=False)  # the table folds text otherwise
     empty = runner.invoke(cli.app, ["memory", "list"])
     assert empty.exit_code == 0 and "Ainda não guardei" in empty.output
     old = seed(store, "O projeto X usa Laravel 11.")

@@ -146,6 +146,13 @@ juniper memory profile forget [--yes]     # apaga só o perfil</code></pre>
 <h2 id="testes">Testes</h2>
 <pre><code class="lang-bash">pytest -m &quot;not integration&quot;     # CI: LLM, banco e embedding simulados
 pytest -m integration           # com o modelo real (baixa ~120 MB) e o MongoDB local</code></pre>
+<h2 id="esquecer-um-fato-e-as-crencas">Esquecer um fato e as crenças</h2>
+<p>Com a <a href="memoria-v2.html">Memória V2</a> ligada, <code>forget</code> (comando ou tool) também solta das crenças a evidência que veio do fato esquecido; a crença que fica sem sustentação é aposentada. Apagar uma crença, ao contrário, nunca apaga fatos.</p>
+<h2 id="a-v2-em-cima-dos-fatos">A V2 em cima dos fatos</h2>
+<p>A <a href="memoria-v2.html">Memória V2</a> (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (<code>source.turn</code>), o algoritmo de sonho reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.</p>
+<h2 id="refinada">Memória bruta e refinada</h2>
+<p>Cada memória tem a coluna <code>status_reflexao</code>: <strong><code>bruta</code></strong> (como foi salva pela conversa, pela tool <code>remember</code> ou pela observação do sonho) ou <strong><code>refinada</code></strong>. Memórias antigas, sem a coluna, contam como <code>bruta</code>, sem migração. Com a <a href="memoria-v2.html">Memória V2</a>, o sonho refina as brutas (<a href="adr-018.html">ADR-018</a>): a refinada <strong>mantém o texto do fato</strong> e soma <code>contexto</code>, <code>sentimento</code> (sentimentos reais registrados), <code>como_eu_era</code> (a personalidade da época), <code>ligacoes</code> e <code>relevancia</code>; a bruta fica guardada como <code>superseded</code>.</p>
+<p>Na conversa, uma refinada aparece no bloco <code>&lt;memorias&gt;</code> com o fato e, logo abaixo, a lembrança ("lembrança, contexto: ...; na época você sentiu admiração (forte); você estava um pouco mais reflexiva"), e a <code>relevancia</code> pesa até 0,05 no ranking (<code>similaridade + 0,05 × relevância</code>), só para desempatar. <code>juniper memory list</code> mostra a coluna <code>Reflexão</code> e aceita <code>--reflexao bruta|refinada</code>; <code>memory export</code> inclui o status e a lembrança.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

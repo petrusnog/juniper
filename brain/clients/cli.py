@@ -50,6 +50,7 @@ from brain.memory.longterm import (
 )
 from brain.memory.profile import ProfileError, render
 from brain.memory.stores import close_session_store, open_session_store
+from brain.memory.v2 import open_v2_runtime, v2_enabled
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
@@ -423,8 +424,20 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
     background: BackgroundExtractor | None = None
     if background_mode and memory is not None:
         background = BackgroundExtractor(memory, lambda: agent.session.id)
+    v2 = None
+    try:
+        v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
+    except MemoryUnavailableError as exc:  # the chat still works; only the V2 is lost
+        printer.say(str(exc), "yellow")
+    if v2 is not None:
+        v2.context.inner = memory
     agent = Agent(
-        router, Dispatcher(conversational=True), session=session, store=store, memory=memory
+        router,
+        Dispatcher(conversational=True),
+        session=session,
+        store=store,
+        memory=v2.context if v2 else memory,
+        turn_sink=v2.sink if v2 else None,
     )
     if note is not None:
         printer.say(note)
@@ -439,6 +452,8 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         return code
     finally:
         memory_tools.bind(None)
+        if v2 is not None:
+            v2.close()
         if memory is not None:
             memory.close()
         if memory_llm is not router:
@@ -829,6 +844,12 @@ def memory_reindex(
             result = reindex_memories(
                 connection.collection(MEMORIES_COLLECTION), provider, force=force
             )
+        v2_result = None
+        if settings.memory.v2.enabled:  # the V2 layers carry embeddings too (ADR-017)
+            from brain.memory.reindex import reindex_v2
+            from brain.memory.v2.store import MongoDocStore
+
+            v2_result = reindex_v2(MongoDocStore(connection), provider, force=force)
     except MemoryUnavailableError as exc:
         voice.say(console, str(exc), "red")
         raise typer.Exit(1) from None
@@ -839,6 +860,35 @@ def memory_reindex(
         f"Pronto: {result.reindexed} memória(s) reindexada(s), {result.skipped} já estavam "
         f"em dia (de {result.total}).",
     )
+    if v2_result is not None:
+        voice.say(
+            console,
+            f"Memória V2: {v2_result.reindexed} item(ns) reindexado(s) (crenças e interesses), "
+            f"{v2_result.skipped} já estavam em dia (de {v2_result.total}).",
+        )
+
+
+@memory_app.command("dream")
+def memory_dream(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Roda o sonho sem gravar nada e mostra o que gravaria."),
+    ] = False,
+) -> None:
+    """Roda o algoritmo de sonho agora (o "inconsciente" da Memória V2, ADR-017).
+
+    Lê as conversas com novidade, reflete e atualiza as camadas. O servidor já a roda sozinho
+    todo dia em `memory.v2.night.at`; use este comando para testar ou para recuperar uma noite.
+    É administrativo: acessa o banco do processo onde roda (na VPS, pelo atalho do contêiner).
+    """
+    from brain.memory.v2.service import run_night
+
+    try:
+        report = asyncio.run(run_night(dry_run=dry_run))
+    except MemoryUnavailableError as exc:
+        voice.say(console, str(exc), "red")
+        raise typer.Exit(1) from None
+    voice.say(console, report.text())
 
 
 def _command_memory() -> LongTermMemory:
@@ -871,8 +921,18 @@ def memory_list(
         bool,
         typer.Option("--all", "-a", help="Inclui as memórias substituídas (só para auditoria)."),
     ] = False,
+    reflexao: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option(
+            "--reflexao",
+            help="Só as brutas ou só as refinadas pelo sonho: bruta ou refinada.",
+        ),
+    ] = None,
 ) -> None:
     """Lista as memórias guardadas, das mais novas para as mais antigas."""
+    if reflexao is not None and reflexao not in ("bruta", "refinada"):
+        voice.say(console, "--reflexao aceita: bruta ou refinada.", "red")
+        raise typer.Exit(1)
     memory = _command_memory()
     try:
         memories = memory.store.list_memories(memory_type, include_all)
@@ -881,14 +941,16 @@ def memory_list(
         raise typer.Exit(1) from None
     finally:
         memory.close()
+    if reflexao is not None:
+        memories = [m for m in memories if m.status_reflexao == reflexao]
     if not memories:
         voice.say(console, "Ainda não guardei nenhuma memória.")
         return
     table = Table(header_style="bold")
-    for column in ("Id", "Tipo", "Status", "Criada em", "Texto"):
+    for column in ("Id", "Tipo", "Status", "Reflexão", "Criada em", "Texto"):
         table.add_column(column, overflow="fold")
     for m in memories:
-        table.add_row(m.id, m.type, m.status, _local(m.created_at), m.text)
+        table.add_row(m.id, m.type, m.status, m.status_reflexao, _local(m.created_at), m.text)
     console.print(table)
     voice.say(console, f"{len(memories)} memória(s). Para apagar uma: juniper memory forget <id>")
 
@@ -979,13 +1041,31 @@ def memory_export(
         raise typer.Exit(1) from None
     finally:
         memory.close()
-    text = json.dumps({"profile": profile_export, "memories": rows}, ensure_ascii=False, indent=2)
+    payload: dict[str, Any] = {"profile": profile_export, "memories": rows}
+    if v2_enabled():  # the layers above the facts (ADR-017): all of them, vectors only on request
+        from brain.memory.v2 import open_v2_data
+        from brain.memory.v2.export import export_v2
+
+        try:
+            data = open_v2_data()
+            try:
+                payload["v2"] = export_v2(data, vectors)
+            finally:
+                data.close()
+        except MemoryUnavailableError as exc:
+            voice.say(console, str(exc), "red")
+            raise typer.Exit(1) from None
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     if output is None:
         typer.echo(text)
         return
     output.write_text(text + "\n", encoding="utf-8")
     voice.say(console, f"Perfil e {len(rows)} memória(s) exportados para {output}.")
 
+
+from brain.clients import memory_v2_cli  # noqa: E402
+
+memory_v2_cli.install(app, memory_app, console)
 
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",

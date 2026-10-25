@@ -102,7 +102,7 @@ def test_compact_messages_fall_back_when_nothing_to_swap(tmp_path: Path) -> None
 
 
 def test_the_shipped_compact_persona_is_much_shorter() -> None:
-    full = (Path(compact.__file__).resolve().parents[2] / "prompts" / "juniper.md").read_text()
+    full = (Path(compact.__file__).resolve().parents[2] / "prompts" / "persona.core.md").read_text()
     short = compact.COMPACT_PERSONA_PATH.read_text()
     assert 0 < len(short) < len(full) / 3
     for must_mention in ("create_event", "git_search", "git_deploy", "[data e hora"):

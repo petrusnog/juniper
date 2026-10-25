@@ -154,7 +154,7 @@ await router.aclose()
 
 ### Prompt compacto {#prompt-compacto kind=conceito file=brain/llm/compact.py}
 
-Um Ollama em CPU levaria mais de um minuto para ler o prompt completo (persona + todas as tools, ~2.200 tokens) antes do primeiro token. Para providers com `compact_prompt = True`, o router envia uma persona curta (`prompts/juniper.compact.md`) e schemas de tool enxutos (descrições de até 100 caracteres, parâmetros até 60). Nomes, tipos, `required` e `enum` não mudam, então o tool calling continua funcionando. DeepInfra e Groq recebem o prompt completo.
+Um Ollama em CPU levaria mais de um minuto para ler o prompt completo (persona + todas as tools, ~2.200 tokens) antes do primeiro token. Para providers com `compact_prompt = True`, o router envia uma persona curta (`prompts/persona.core.compact.md`) e schemas de tool enxutos (descrições de até 100 caracteres, parâmetros até 60). Nomes, tipos, `required` e `enum` não mudam, então o tool calling continua funcionando. DeepInfra e Groq recebem o prompt completo.
 
 ## Configuração {#configuracao}
 

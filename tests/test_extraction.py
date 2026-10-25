@@ -158,7 +158,7 @@ async def test_new_facts_are_stored_with_vector_and_source(store: MongoVectorSto
     docs = stored(store)
     assert len(docs) == 2 and all(d["status"] == "active" for d in docs)
     assert docs[0]["embedding_model"] == MODEL and len(docs[0]["embedding"]) == 64
-    assert docs[0]["source"] == {"kind": "extracted", "session_id": "s1"}
+    assert docs[0]["source"] == {"kind": "extracted", "session_id": "s1", "turn": None}
     assert llm.judge_calls() == 0  # nothing similar stored: no judge needed
     assert result.changed and result.error is None
 
@@ -332,7 +332,9 @@ async def test_agent_keeps_the_plain_turns_for_extraction() -> None:
     await agent.run("oi")
     await agent.run("uso ZSH")
     turns = agent.drain_turns()
-    assert turns == [Turn("oi", "Oi!"), Turn("uso ZSH", "Anotado.")]  # no date prefix
+    # no date prefix; the index is the position in the whole conversation (provenance)
+    assert turns == [Turn("oi", "Oi!", 0), Turn("uso ZSH", "Anotado.", 1)]
+    assert agent.session.turns_total == 2
     assert agent.drain_turns() == []
 
 

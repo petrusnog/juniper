@@ -17,6 +17,7 @@ import asyncio
 import json
 import re
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -100,18 +101,56 @@ nationality, gender. Sem dado de identidade novo, "profile" é null. Nunca docum
 """
 
 
-def extract_system(profile: bool = False, feelings: bool = True, max_chars: int = 500) -> str:
-    """The extraction prompt for this configuration."""
+_ATTENTION = """\
+
+ATENÇÃO: repare com mais cuidado em fatos duráveis que toquem estes temas, mesmo ditos de
+passagem: {topics}. Isso só afina o seu olhar; não muda o que vale guardar nem nenhuma das
+regras acima (segredos, hipóteses, o que a assistente disse).
+"""
+MAX_ATTENTION = 3
+MAX_ATTENTION_CHARS = 60
+
+
+def extract_system(
+    profile: bool = False,
+    feelings: bool = True,
+    max_chars: int = 500,
+    attention: Sequence[str] = (),
+) -> str:
+    """The extraction prompt for this configuration.
+
+    ``attention`` (at most 3 short topics) is where her interests sharpen what she notices; empty,
+    the prompt is exactly the one without it.
+    """
     shape = '{"memories": [{"text": "...", "type": "preference|project|fact"}]'
     if profile:
         shape += ', "profile": null | {"text": "...", "fields": {"name": "..."}}'
     shape += "}"
-    return _EXTRACT_BASE.format(
+    prompt = _EXTRACT_BASE.format(
         feelings=_FEELINGS if feelings else _NO_FEELINGS,
         profile=_PROFILE.format(max_chars=max_chars) if profile else "",
         shape=shape,
         empty='{"memories": [], "profile": null}' if profile else '{"memories": []}',
     )
+    topics = [_attention_topic(t) for t in attention][:MAX_ATTENTION]
+    topics = [t for t in dict.fromkeys(topics) if t]
+    if not topics:
+        return prompt
+    head, _, tail = prompt.partition("\nLinhas marcadas")
+    return (
+        head
+        + _ATTENTION.format(topics=", ".join(f"«{t}»" for t in topics))
+        + "\nLinhas marcadas"
+        + tail
+    )
+
+
+def _attention_topic(topic: object) -> str:
+    """A topic fit for the prompt: one short line, no characters that could close a block."""
+    if not isinstance(topic, str):
+        return ""
+    clean = " ".join(re.sub(r"[<>«»\x00-\x1f\x7f]", " ", topic).split())
+    return clean[:MAX_ATTENTION_CHARS]
 
 
 def is_extract_prompt(system: str) -> bool:
@@ -239,12 +278,15 @@ class MemoryExtractor:
         store: VectorStore,
         config: ExtractionSettings | None = None,
         profiles: ProfileStore | None = None,
+        attention: Callable[[], Sequence[str]] | None = None,
     ) -> None:
         self.llm = llm
         self.embedder = embedder
         self.store = store
         self.config = config if config is not None else settings.memory.extraction
         self.profiles = profiles
+        # Topics that sharpen what is noticed (the Umwelt, ADR-017 5.7); it never raises.
+        self.attention = attention
         self._stages = Stages()
 
     async def extract(
@@ -258,6 +300,8 @@ class MemoryExtractor:
         transcript = build_transcript(turns, self.config.max_turns, context)
         if not transcript:
             return result
+        # Provenance: the last NEW turn analyzed (the first `context` ones were already read).
+        turn = max((t.index for t in turns[context:] if t.index is not None), default=None)
         self._stages = Stages()
         try:
             candidates, proposal = await self._analyze(transcript, result)
@@ -275,7 +319,7 @@ class MemoryExtractor:
                 if any(_same(text, s) for s in seen):
                     continue
                 seen.append(text)
-                await self._reconcile(text, str(kind), session_id, result)
+                await self._reconcile(text, str(kind), session_id, result, turn=turn)
         except LLMError as exc:
             result.error = f"não consegui falar com o LLM para guardar memórias: {exc}"
         except MemoryUnavailableError as exc:
@@ -349,7 +393,8 @@ class MemoryExtractor:
             shown = render(current) if current is not None else "(vazio)"
             parts.append(f"<perfil_atual>{shown}</perfil_atual>")
         parts.append(f"<conversa>\n{transcript}\n</conversa>")
-        system = extract_system(self._profile_on(), cfg.save_feelings, max_chars)
+        topics = await self._attention_topics()
+        system = extract_system(self._profile_on(), cfg.save_feelings, max_chars, topics)
         data = parse_json_object(await self._ask(system, "\n".join(parts), "llm_extract"))
         if not data:
             return [], None
@@ -385,6 +430,16 @@ class MemoryExtractor:
             await asyncio.to_thread(self.profiles.set, profile)
         result.profile = profile
 
+    async def _attention_topics(self) -> list[str]:
+        """The attention topics now, or none: a failure here never touches the extraction."""
+        if self.attention is None:
+            return []
+        try:
+            return list(await asyncio.to_thread(self.attention))[:MAX_ATTENTION]
+        except Exception as exc:  # noqa: BLE001
+            event_log.log("error", where="memory.attention", type=type(exc).__name__)
+            return []
+
     async def _ask(self, system: str, user: str, stage: str = "llm") -> str | None:
         with self._stages.stage(stage):
             response = await self.llm.chat(
@@ -401,6 +456,7 @@ class MemoryExtractor:
         session_id: str | None,
         result: ExtractionResult,
         source_kind: str = "extracted",
+        turn: int | None = None,
     ) -> None:
         started = time.perf_counter()
         vector = await asyncio.to_thread(self.embedder.embed, text, "passage")
@@ -428,6 +484,7 @@ class MemoryExtractor:
             embedding_model=self.embedder.model_id,
             session_id=session_id,
             source_kind=source_kind,
+            turn=turn,
         )
         with self._stages.stage("write"):
             await asyncio.to_thread(self.store.add, memory)
