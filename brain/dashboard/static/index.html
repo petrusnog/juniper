@@ -7,12 +7,14 @@
   <title>Juniper — dashboard</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body>
-  <main class="card">
-    <h1>Juniper</h1>
-    <p id="status" class="muted">Conectando…</p>
-    <button id="logout" type="button">Sair</button>
-  </main>
-  <script src="/assets/app.js"></script>
+<body class="app">
+  <a class="skip" href="#view">Ir para o conteúdo</a>
+  <header class="topbar">
+    <span class="brand">Juniper</span>
+    <button id="logout" type="button" class="ghost">Sair</button>
+  </header>
+  <nav id="nav" class="nav" aria-label="Seções"></nav>
+  <main id="view" class="view" tabindex="-1" aria-live="polite"></main>
+  <script type="module" src="/assets/app.js"></script>
 </body>
 </html>
