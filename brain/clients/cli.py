@@ -921,8 +921,18 @@ def memory_list(
         bool,
         typer.Option("--all", "-a", help="Inclui as memórias substituídas (só para auditoria)."),
     ] = False,
+    reflexao: Annotated[
+        Optional[str],  # noqa: UP045
+        typer.Option(
+            "--reflexao",
+            help="Só as brutas ou só as refinadas pelo sonho: bruta ou refinada.",
+        ),
+    ] = None,
 ) -> None:
     """Lista as memórias guardadas, das mais novas para as mais antigas."""
+    if reflexao is not None and reflexao not in ("bruta", "refinada"):
+        voice.say(console, "--reflexao aceita: bruta ou refinada.", "red")
+        raise typer.Exit(1)
     memory = _command_memory()
     try:
         memories = memory.store.list_memories(memory_type, include_all)
@@ -931,14 +941,16 @@ def memory_list(
         raise typer.Exit(1) from None
     finally:
         memory.close()
+    if reflexao is not None:
+        memories = [m for m in memories if m.status_reflexao == reflexao]
     if not memories:
         voice.say(console, "Ainda não guardei nenhuma memória.")
         return
     table = Table(header_style="bold")
-    for column in ("Id", "Tipo", "Status", "Criada em", "Texto"):
+    for column in ("Id", "Tipo", "Status", "Reflexão", "Criada em", "Texto"):
         table.add_column(column, overflow="fold")
     for m in memories:
-        table.add_row(m.id, m.type, m.status, _local(m.created_at), m.text)
+        table.add_row(m.id, m.type, m.status, m.status_reflexao, _local(m.created_at), m.text)
     console.print(table)
     voice.say(console, f"{len(memories)} memória(s). Para apagar uma: juniper memory forget <id>")
 

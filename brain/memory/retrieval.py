@@ -17,7 +17,7 @@ from brain.config import settings
 from brain.eventlog import event_log
 from brain.memory.embeddings import EmbeddingProvider
 from brain.memory.profile import Profile, ProfileStore, render
-from brain.memory.vector import SearchHit, VectorStore
+from brain.memory.vector import Memory, SearchHit, VectorStore
 from brain.timing import Stages
 
 CHARS_PER_TOKEN = 4  # same estimate the session budget uses (brain.core.session)
@@ -48,6 +48,46 @@ def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# What the relevance of a refined memory adds to its similarity when recalling (ADR-018).
+RELEVANCE_BOOST = 0.05
+
+
+def _intensity_words(intensity: float) -> str:
+    return "forte" if intensity >= 0.6 else "leve" if intensity < 0.3 else "moderada"
+
+
+def remembering_lines(memory: Memory) -> str:
+    """The layer of remembering of a refined memory, as indented lines after the fact (``""`` for
+    a raw one): what the conversation was, what she felt and how she was back then. The fact above
+    is untouched; this is only the colour around it."""
+    if memory.status_reflexao != "refinada":
+        return ""
+    parts: list[str] = []
+    if memory.contexto:
+        parts.append(f"contexto: {clean_text(memory.contexto)}")
+    felt = [
+        f"{clean_text(str(item['kind']))} ({_intensity_words(float(item.get('intensity', 0)))})"
+        for item in memory.sentimento[:2]
+        if item.get("kind")
+    ]
+    if felt:
+        parts.append("na época você sentiu " + " e ".join(felt))
+    how = clean_text(str(memory.como_eu_era.get("jeito", "")))
+    if how:
+        parts.append(f"você estava {how}")
+    return "".join(
+        f"\n    lembrança, {part}" if i == 0 else f"; {part}" for i, part in enumerate(parts)
+    )
+
+
+def boost_by_relevance(hits: list[SearchHit]) -> list[SearchHit]:
+    """Reorder the hits so a more important refined memory comes first among near ties."""
+    return sorted(
+        hits,
+        key=lambda h: -(h.score + RELEVANCE_BOOST * float(h.memory.relevancia or 0.0)),
+    )
+
+
 def format_memory_block(
     hits: list[SearchHit], max_tokens: int
 ) -> tuple[str | None, list[SearchHit]]:
@@ -56,6 +96,7 @@ def format_memory_block(
     used, lines, kept = frame, [], []
     for hit in hits:
         line = f"- ({hit.memory.type}) {clean_text(hit.memory.text)}"
+        line += remembering_lines(hit.memory)
         cost = estimate_tokens(line)
         if used + cost > max_tokens:
             break  # hits are ranked: stop at the first that does not fit, never skip to a worse one
@@ -137,7 +178,7 @@ async def recall_context(
     config = settings.memory.retrieval
     with stages.stage("search"):
         hits = await asyncio.to_thread(store.search, vector, config.top_k, config.threshold)
-    block, kept = format_memory_block(hits, config.max_tokens)
+    block, kept = format_memory_block(boost_by_relevance(hits), config.max_tokens)
     return RecalledContext(
         block=block,
         hits=kept,
