@@ -461,17 +461,28 @@ class V2PersonaSettings(BaseModel):
     # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
     evolves: bool = True
     # Passo máximo de um traço por noite.
-    max_step: float = Field(default=0.03, ge=0.0, le=0.2)
+    max_step: float = Field(default=0.06, ge=0.0, le=0.2)
     # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
     impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     # O passo de um traço é min(max_step, step_factor x impacto) por noite.
-    step_factor: float = Field(default=0.05, ge=0.0, le=1.0)
+    step_factor: float = Field(default=0.1, ge=0.0, le=1.0)
+    # Na conversa, o bloco <personalidade> sempre diz como ela está hoje (todos os traços, em
+    # palavras). Desligado, só diz o que se afastou do jeito de sempre e o que a marcou.
+    always_describe: bool = True
     # Meia-vida do retorno ao baseline: uma fase passa.
     baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
     # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
     drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
     # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
     traits: list[TraitDefault] = Field(default_factory=lambda: list(DEFAULT_TRAITS))
+
+
+class V2OpinionSettings(BaseModel):
+    """Opiniões dela na conversa (ADR-017, seção 10)."""
+
+    # Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto de 3 fontes ou mais)
+    # entram em toda conversa, além das que tocam o assunto. 0 desliga. Nunca no modo de acolher.
+    always_on: int = Field(default=2, ge=0, le=5)
 
 
 class MemoryV2Settings(BaseModel):
@@ -483,6 +494,7 @@ class MemoryV2Settings(BaseModel):
     max_tokens: int = Field(default=600, ge=100, le=8000)
     night: V2NightSettings = Field(default_factory=V2NightSettings)
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
+    opinions: V2OpinionSettings = Field(default_factory=V2OpinionSettings)
     concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)

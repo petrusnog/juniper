@@ -153,6 +153,12 @@ class BeliefBook:
         """The beliefs she holds (active or revised), newest first."""
         return self.data.beliefs.list({"status": {"$in": list(HELD)}}, [("created_at", -1)])
 
+    def firmest(self, limit: int) -> list[Belief]:
+        """The held beliefs she is surest about ("tenho bastante certeza"), firmest first."""
+        sure = [b for b in self.held() if self.words(b) == conf.WORD_CERTEZA]
+        sure.sort(key=lambda b: (-self.confidence_of(b), -b.n, b.id))
+        return sure[:limit]
+
     def candidates(self) -> list[Belief]:
         return self.data.beliefs.list({"status": "candidate"}, [("created_at", -1)])
 

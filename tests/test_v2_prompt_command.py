@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from brain.clients.cli import app
-from brain.config import V2AffectSettings, V2PersonaSettings
+from brain.config import V2AffectSettings, V2OpinionSettings, V2PersonaSettings, settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.persona import PersonaBook
@@ -24,6 +24,9 @@ def cli(monkeypatch: pytest.MonkeyPatch) -> V2Data:
     monkeypatch.setattr("brain.clients.memory_v2_cli.require_v2", lambda: None)
     monkeypatch.setattr("brain.clients.memory_v2_cli.open_v2_data", lambda: data)
     monkeypatch.setattr("brain.memory.embeddings.open_embedding_provider", FakeEmbedder)
+    # the command reads the real settings: silence the always-on parts so only the data speaks
+    monkeypatch.setattr(settings.memory.v2, "persona", V2PersonaSettings(always_describe=False))
+    monkeypatch.setattr(settings.memory.v2, "opinions", V2OpinionSettings(always_on=0))
     from brain.clients.cli import console
 
     monkeypatch.setattr(console, "width", 300, raising=False)

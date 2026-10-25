@@ -28,7 +28,7 @@ from brain.memory.v2.distress import seems_down
 from brain.memory.v2.store import InMemoryDocStore, V2Data
 from tests.test_agent import FakeProvider, call, make_registry, say
 from tests.test_extraction import FakeEmbedder
-from tests.test_v2_context import MESSAGE, seeded
+from tests.test_v2_context import MESSAGE, quiet, seeded
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 SESSION = "20261022-120000-bbbbbb"
@@ -42,7 +42,7 @@ def _session() -> None:
 
 
 def ctx_over(data: V2Data, affect: V2AffectSettings | None = None, **kw: Any) -> V2Context:
-    config = MemoryV2Settings(enabled=True, affect=affect or V2AffectSettings())
+    config = quiet(affect=affect or V2AffectSettings())
     return V2Context(data, FakeEmbedder(), config=config, clock=lambda: NOW, **kw)
 
 

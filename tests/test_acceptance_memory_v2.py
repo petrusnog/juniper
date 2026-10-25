@@ -289,7 +289,7 @@ async def test_the_personality_moved_a_little_within_the_nightly_step(morning: W
     state = morning.data.persona.current()
     assert state is not None and state.version == 2
     shift = state.traits["introspecção"].value - state.traits["introspecção"].baseline
-    assert 0 < shift <= 0.03 + 1e-9
+    assert 0 < shift <= 0.06 + 1e-9
     assert morning.data.persona.history.count() == 1  # the version she left is kept
     assert state.recent == ["A perda dele me fez pensar mais devagar."]
 

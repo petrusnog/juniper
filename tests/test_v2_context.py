@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from brain.config import MemoryV2Settings
+from brain.config import MemoryV2Settings, V2OpinionSettings, V2PersonaSettings
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session, Turn
@@ -93,6 +93,18 @@ def seeded(
     return data, [m for m in made if m is not None]
 
 
+# The conversation as it was before the V2 always spoke: no always-on personality or opinions.
+QUIET = {
+    "persona": V2PersonaSettings(always_describe=False),
+    "opinions": V2OpinionSettings(always_on=0),
+}
+
+
+def quiet(**kw: Any) -> MemoryV2Settings:
+    """A V2 config where only what touches the message (or what drifted) reaches the prompt."""
+    return MemoryV2Settings(enabled=True, **{**QUIET, **kw})
+
+
 def context(
     data: V2Data,
     *,
@@ -105,7 +117,7 @@ def context(
         data,
         FakeEmbedder(),
         inner,
-        config=config or MemoryV2Settings(enabled=True),
+        config=config or quiet(),
         judge=judge,
         clock=lambda: NOW,
         **({} if relevance is None else {"relevance": relevance}),
@@ -163,10 +175,10 @@ async def test_only_held_beliefs_are_shown_never_candidates_or_retired() -> None
 async def test_the_block_respects_the_token_budget() -> None:
     data, _ = seeded(5)
     loose = (await context(data, relevance=0.1).context_for(BROAD)).block
-    tight = MemoryV2Settings(enabled=True).model_copy(update={"max_tokens": 100})
+    tight = quiet().model_copy(update={"max_tokens": 100})
     result = await context(data, config=tight, relevance=0.1).context_for(BROAD)
     assert len(lines(result.block)) < len(lines(loose))
-    none = MemoryV2Settings(enabled=True).model_copy(update={"max_tokens": 5})
+    none = quiet().model_copy(update={"max_tokens": 5})
     assert (await context(data, config=none, relevance=0.1).context_for(BROAD)).block is None
 
 

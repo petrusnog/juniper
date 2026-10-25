@@ -32,6 +32,7 @@ from brain.memory.v2.interests import InterestBook
 from brain.memory.v2.models import Evidence
 from brain.memory.v2.store import InMemoryDocStore, V2Data
 from tests.test_extraction import MODEL, FakeEmbedder
+from tests.test_v2_context import quiet
 from tests.test_vector_store import FakeConnection
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
@@ -295,7 +296,7 @@ def test_with_the_v2_off_the_extractor_has_no_attention(monkeypatch: pytest.Monk
 
 
 def v2(data: V2Data) -> V2Context:
-    return V2Context(data, FakeEmbedder(), config=MemoryV2Settings(enabled=True), clock=lambda: NOW)
+    return V2Context(data, FakeEmbedder(), config=quiet(), clock=lambda: NOW)
 
 
 TOPIC_MESSAGE = "ouvindo a banda inglesa Beatles rock clássico hoje"
@@ -382,7 +383,7 @@ async def test_each_conversation_has_its_own_dosage() -> None:
 async def test_the_interest_respects_the_token_budget() -> None:
     data = V2Data.over(InMemoryDocStore())
     interest(data, "a banda inglesa Beatles rock clássico", 0.8)
-    tight = MemoryV2Settings(enabled=True).model_copy(update={"max_tokens": 20})
+    tight = quiet().model_copy(update={"max_tokens": 20})
     context = V2Context(data, FakeEmbedder(), config=tight, clock=lambda: NOW)
     assert (await context.context_for(TOPIC_MESSAGE)).block is None
 
