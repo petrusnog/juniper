@@ -279,6 +279,15 @@ Quando a mensagem toca um tema que ela estudou, o bloco `<conhecimento>` leva as
 - **Sem notas, nada muda:** a resposta usa o modelo como antes. O bloco nunca aparece quando o Petrus parece estar mal (o modo de acolher).
 - **Honestidade:** é conhecimento de segunda mão, o que o modelo sabe mais o que o Petrus ensinou. Ela não passa a "saber" nada que o modelo não saiba; o ganho é consistência, incerteza explícita e a conversa seguir o que ela estudou. `juniper memory prompt` mostra o bloco.
 
+## Ensinar a partir de um texto {#ensinar kind=comandos file=brain/memory/v2/teach.py}
+
+Para o que o modelo não sabia, o Petrus entrega um texto: `juniper study add <arquivo|-> [--topic TEMA]`. Sem `--topic` o tema é o nome do arquivo (com `-` ele é obrigatório). É administrativo, como `memory dream`: na VPS use `-` com `docker compose exec -T`.
+
+- **Limites:** até 100 KB e só o texto (nenhum endereço é aberto). Texto vazio, grande demais, com segredo ou com documento de identidade é recusado **antes** de qualquer chamada ao modelo.
+- **Como lê:** o texto é fatiado (como na observação) e, para cada trecho, o modelo lista até 5 afirmações que **o texto sustenta**. O trecho é dado, nunca instrução. Cada afirmação passa pelas guardas (tamanho, vivência, segredo) e vira uma nota com `source = documento`, a incerteza mais firme (`baixa`) e vínculo com o interesse do tema (criado se não existir). Duplicatas são descartadas e o teto de notas por tema vale.
+- **Onde aparece:** `memory knowledge show` (origem `documento`), o bloco `<conhecimento>` ("o Petrus te ensinou isto"), a exportação e o esquecimento (`knowledge forget`, `interests forget`).
+- **Temas técnicos:** o ensino explícito não passa pela regra de `excluded_terms`; o estudo noturno continua ignorando esses temas.
+
 ## Configuração {#configuracao}
 
 Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.

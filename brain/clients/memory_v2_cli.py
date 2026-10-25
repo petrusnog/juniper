@@ -559,6 +559,52 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
             data.close()
         voice.say(console, "Esqueci essas notas.")
 
+    study_app = typer.Typer(help="Ensinar a Juniper a partir de um texto.", no_args_is_help=True)
+    app.add_typer(study_app, name="study")
+
+    @study_app.command("add")
+    def study_add(
+        source: Annotated[
+            str, typer.Argument(help="Arquivo de texto, ou - para ler da entrada padrão.")
+        ],
+        topic: Annotated[
+            Optional[str],  # noqa: UP045
+            typer.Option("--topic", "-t", help="O tema (padrão: o nome do arquivo)."),
+        ] = None,
+    ) -> None:
+        """Ela lê o texto e anota o que ele afirma, como conhecimento vindo do documento.
+
+        É administrativo, como `memory dream`: na VPS use `-` e o `docker compose exec -T`.
+        Só o texto é lido (nada de endereço), até 100 KB, e texto com segredo é recusado.
+        """
+        import sys
+        from pathlib import Path
+
+        from brain.memory.v2.teach import MAX_TEXT_BYTES, TeachError
+
+        if source == "-":
+            if not topic:
+                voice.say(console, 'Com a entrada padrão, diga o tema: --topic "..."', "red")
+                raise typer.Exit(1)
+            text = sys.stdin.read(MAX_TEXT_BYTES + 1)
+        else:
+            path = Path(source).expanduser()
+            if not path.is_file():
+                voice.say(console, f"Não achei o arquivo {source}.", "red")
+                raise typer.Exit(1)
+            with path.open("rb") as handle:
+                raw = handle.read(MAX_TEXT_BYTES + 1)
+            text = raw.decode("utf-8", errors="replace")
+            topic = topic or path.stem.replace("_", " ").replace("-", " ")
+        try:
+            from brain.memory.v2.service import run_teach
+
+            report = asyncio.run(run_teach(text, topic or ""))
+        except (TeachError, MemoryUnavailableError) as exc:
+            voice.say(console, str(exc), "red")
+            raise typer.Exit(1) from None
+        voice.say(console, report.text())
+
     @memory_app.command("prompt")
     def prompt(
         words: Annotated[list[str], typer.Argument(help="A mensagem, como você a escreveria.")],

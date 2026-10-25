@@ -129,6 +129,7 @@ juniper memory knowledge                       # o que ela anotou estudando
 juniper memory knowledge show <tema>
 juniper memory knowledge forget <tema> [--yes]
 juniper memory journal [--days N]
+juniper study add <arquivo|-> [--topic TEMA]    # ensinar a partir de um texto
 juniper memory dream [--dry-run]
 juniper memory prompt "<mensagem>" [--anterior "..."]   # o que a V2 acrescenta ao prompt
 ```
