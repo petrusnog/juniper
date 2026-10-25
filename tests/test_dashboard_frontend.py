@@ -25,7 +25,10 @@ def pages_registry() -> list[tuple[str, str]]:
 
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
-    assert [p[0] for p in pages][:3] == ["visao", "memorias", "central"]
+    ids = [p[0] for p in pages]
+    assert ids == [
+        "visao", "memorias", "central", "estudos", "sonhos", "conversas", "pesquisa", "afetos",
+    ]  # fmt: skip
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
         path = STATIC_DIR / module.lstrip("/")
@@ -87,3 +90,36 @@ async def test_the_shell_and_every_module_are_served_after_login() -> None:
             assert body == script.read_bytes()
     finally:
         await dash.stop()
+
+
+def test_the_studies_page_shows_each_notes_uncertainty_source_and_step() -> None:
+    page = (ASSETS / "pages" / "studies.js").read_text()
+    for needle in ("n.uncertainty", "n.source", "n.level", "pergunta em aberto", "/notes"):
+        assert needle in page, needle
+    # the labels the person reads for the three uncertainty levels
+    for label in ("firme", "incerteza média", "incerta"):
+        assert label in page, label
+
+
+def test_conversations_never_show_a_reply_that_followed_tools_and_handle_the_switch_off() -> None:
+    page = (ASSETS / "pages" / "conversations.js").read_text()
+    assert "used_tools" in page and "a resposta usou ferramentas" in page
+    assert "error.status === 404" in page and "dashboard.transcripts" in page
+
+
+def test_the_dreams_page_flags_phases_that_hit_the_budget_or_failed() -> None:
+    page = (ASSETS / "pages" / "dreams.js").read_text()
+    for needle in (
+        'budget: ["orçamento", "warn"]',
+        'error: ["erro", "warn"]',
+        "p.error",
+        "r.error",
+    ):
+        assert needle in page, needle
+
+
+def test_the_search_page_sends_many_types_and_the_api_helper_supports_lists() -> None:
+    api = (ASSETS / "api.js").read_text()
+    assert "Array.isArray(value)" in api and "query.append" in api
+    page = (ASSETS / "pages" / "search.js").read_text()
+    assert "type: [...state.types]" in page and "data.warning" in page

@@ -14,6 +14,7 @@ from typing import Any, TypeVar
 from brain.config import settings
 from brain.core.persona import load_core
 from brain.dashboard.api import Api, ApiError, Query, first
+from brain.dashboard.search import SEARCH_TYPES, run_search
 from brain.dashboard.serialize import contains, number, paged
 from brain.dashboard.sources import Sources
 from brain.memory.retrieval import estimate_tokens
@@ -31,6 +32,7 @@ from brain.memory.vector import Memory
 T = TypeVar("T")
 
 MAX_PROMPT_CHARS = 2000
+MAX_QUERY_CHARS = 200
 OFF_V1 = {"enabled": False, "reason": "a memória de longo prazo está desligada"}
 OFF_V2 = {"enabled": False, "reason": "a Memória V2 está desligada"}
 
@@ -217,6 +219,16 @@ def build_api(sources: Sources) -> Api:
             "status_reflexao": m.status_reflexao,
             "created_at": m.created_at,
         }
+
+    # --- search -------------------------------------------------------------------------------
+
+    async def search(query: Query) -> Any:
+        text = (first(query, "q") or "").strip()[:MAX_QUERY_CHARS]
+        if not text:
+            raise ApiError(400, "escreva o que procurar")
+        limit = number(query, "limit", 8, 1, 20)
+        wanted = set(query.get("type", [])) or set(SEARCH_TYPES)
+        return await _blocking(lambda: run_search(sources, text, limit, wanted))
 
     # --- the prompt simulator -----------------------------------------------------------------
 
@@ -613,6 +625,7 @@ def build_api(sources: Sources) -> Api:
         "/overview": overview,
         "/memories": memories,
         "/memories/": memory_detail,
+        "/search": search,
         "/prompt": prompt,
         "/beliefs": beliefs,
         "/beliefs/": belief_detail,
