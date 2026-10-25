@@ -617,28 +617,34 @@ def serve() -> None:
     token = ensure_token(token_file)
     host, port = settings.deployment.server.host, settings.deployment.server.port
 
-    dashboard = None
-    if settings.dashboard.enabled:
-        from brain.dashboard.server import DashboardServer
-
-        cfg = settings.dashboard
-        dashboard = DashboardServer(
-            cfg.host or host,
-            cfg.port,
-            token,
-            session_hours=cfg.session_hours,
-            allowed_hosts=cfg.allowed_hosts,
-        )
+    cfg = settings.dashboard
+    dash_host = cfg.host or host
 
     async def run() -> None:
         async with open_chat_handler() as handler:
+            dashboard = None
+            if cfg.enabled:
+                try:
+                    from brain.dashboard.routes import build_api
+                    from brain.dashboard.server import DashboardServer
+
+                    dashboard = DashboardServer(
+                        dash_host,
+                        cfg.port,
+                        token,
+                        build_api(handler.sources),
+                        session_hours=cfg.session_hours,
+                        allowed_hosts=cfg.allowed_hosts,
+                    )
+                except Exception as exc:  # noqa: BLE001  (the dashboard never stops the server)
+                    voice.say(console, f"O dashboard não subiu: {exc}", "yellow")
             await run_server(
                 BrainServer(host, port, token, handler, health=handler.health), dashboard
             )
 
     voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).")
-    if dashboard is not None:
-        voice.say(console, f"Dashboard em http://{dashboard.host}:{dashboard.port}/")
+    if cfg.enabled:
+        voice.say(console, f"Dashboard em http://{dash_host}:{cfg.port}/")
     try:
         asyncio.run(run())
     except MemoryUnavailableError as exc:

@@ -25,9 +25,24 @@ O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. 
 - **Defesas:** o cabeçalho `Host` precisa ser um IP, `localhost` ou um nome `*.ts.net` (ou um host de `dashboard.allowed_hosts`); CSP restritiva (nada inline nem externo); sem CORS; só `GET`.
 - **Isolamento:** se a porta estiver ocupada ou uma rota falhar, o servidor e a conversa seguem funcionando; o problema vai para o log.
 
+- **API de leitura (T-131):** todas as camadas por JSON, só `GET`, paginada (`?limit=` até 200 e `?offset=`). Tudo que sai passa por um único ponto que **mascara segredos e remove vetores**; nossos ids são preservados.
+
+| Rota | O que entrega |
+|---|---|
+| `/api/overview` | Contadores, humor e sentimentos de agora, traços, último sonho |
+| `/api/memories` (+ `/api/memories/<id>`) | Fatos, com filtros `type`, `status` (`active`, `superseded`, `all`), `reflexao` e `q`; o detalhe traz a lembrança e a linhagem bruta → refinada |
+| `/api/beliefs` (+ `/<id>`) | Crenças com confiança, faixa de certeza, fontes e evidências |
+| `/api/affects` (+ `/<id>`), `/api/mood` | Sentimentos (filtros `origin`, `kind`), o rastreio até a fala que os causou e a série do humor |
+| `/api/persona`, `/api/concerns`, `/api/core` | Personalidade e histórico, preocupações, núcleo e perfil |
+| `/api/interests` (+ `/<id>`), `/api/notes` | Temas com passo e posição; **cada nota** com incerteza, fonte e passo (filtros `interest`, `uncertainty`, `source`, `kind`, `q`) |
+| `/api/dreams`, `/api/journal` | Execuções do sonho (fases, tokens, erros) e o diário |
+| `/api/sessions` (+ `/<id>`) | Conversas (somem com `dashboard.transcripts: false`); a resposta dela depois de tools fica de fora |
+
+Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no banco (um teste confere).
+
 ## O que vem a seguir {#depois}
 
-Visão geral e Afetos (com rastreio até a fala), Memórias, Memória central (núcleo, personalidade, crenças e o simulador do prompt), Estudos (com cada nota), Sonhos, Conversas e Pesquisa.
+As páginas: Visão geral e Afetos, Memórias, Memória central (com o simulador do prompt), Estudos, Sonhos, Conversas e Pesquisa.
 
 ## Configuração {#configuracao}
 

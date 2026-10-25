@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
+from urllib.parse import unquote
+
+from brain.dashboard.serialize import sanitize
 
 Query = Mapping[str, list[str]]
 Route = Callable[[Query], Awaitable[Any]]
@@ -24,21 +27,32 @@ class ApiError(Exception):
 
 
 class Api:
+    """Exact routes (``/memories``) and prefix routes (``/memories/``), where the rest of the
+    path reaches the handler as ``query["_id"]``. Everything returned goes through ``sanitize``."""
+
     def __init__(self) -> None:
         self._routes: dict[str, Route] = {}
+        self._prefixes: dict[str, Route] = {}
 
     def route(self, path: str, handler: Route) -> None:
-        self._routes[path] = handler
+        (self._prefixes if path.endswith("/") else self._routes)[path] = handler
 
     def paths(self) -> list[str]:
-        return sorted(self._routes)
+        return sorted([*self._routes, *self._prefixes])
 
     async def handle(self, path: str, query: Query) -> tuple[int, Any]:
         handler = self._routes.get(path)
+        params = query
+        if handler is None:
+            for prefix in sorted(self._prefixes, key=len, reverse=True):
+                rest = path.removeprefix(prefix)
+                if path.startswith(prefix) and rest and "/" not in rest:
+                    handler, params = self._prefixes[prefix], {**query, "_id": [unquote(rest)]}
+                    break
         if handler is None:
             return 404, {"error": "não existe", "path": path}
         try:
-            return 200, await handler(query)
+            return 200, sanitize(await handler(params))
         except ApiError as exc:
             return exc.status, {"error": exc.message}
 
