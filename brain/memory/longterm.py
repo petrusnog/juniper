@@ -109,6 +109,8 @@ class LongTermMemory:
                 "superseded_by": m.superseded_by,
                 "source": {"kind": m.source_kind, "session_id": m.session_id},
                 "embedding_model": m.embedding_model,
+                "status_reflexao": m.status_reflexao,
+                "lembranca": _remembering_export(m),
                 "created_at": m.created_at.isoformat(),
                 "updated_at": m.updated_at.isoformat(),
             }
@@ -163,6 +165,21 @@ class LongTermMemory:
         close = getattr(self.store, "close", None)
         if callable(close):
             close()
+
+
+def _remembering_export(m: Memory) -> dict[str, Any] | None:
+    """The layer of remembering of a refined memory, as plain data (``None`` for a raw one)."""
+    if m.status_reflexao != "refinada":
+        return None
+    return {
+        "contexto": m.contexto,
+        "sentimento": m.sentimento,
+        "como_eu_era": m.como_eu_era,
+        "ligacoes": m.ligacoes,
+        "relevancia": m.relevancia,
+        "refinada_em": m.refinada_em.isoformat() if m.refinada_em else None,
+        "refinada_de": m.refinada_de,
+    }
 
 
 def long_term_enabled() -> bool:

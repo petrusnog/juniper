@@ -85,7 +85,7 @@ async def test_list_returns_what_the_local_command_shows(
     assert [r["id"] for r in rows] == [m.id for m in expected]
     assert {r["id"] for r in rows} == {a.id, b.id}
     first = rows[0]
-    assert set(first) == {"id", "text", "type", "status", "created_at"}
+    assert set(first) == {"id", "text", "type", "status", "status_reflexao", "created_at"}
     assert first["created_at"] == expected[0].created_at.isoformat()
     assert [r["id"] for r in only_pref.data["memories"]] == [b.id]
 

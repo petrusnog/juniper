@@ -29,10 +29,23 @@ SourceKind = Literal["extracted", "explicit"]
 MEMORY_TYPES: tuple[str, ...] = ("preference", "project", "fact")
 MEMORY_STATUSES: tuple[str, ...] = ("active", "superseded")
 SOURCE_KINDS: tuple[str, ...] = ("extracted", "explicit")
+# Where a memory stands in the dream's refinement (ADR-018): as it was saved, or with the layer of
+# remembering added (context, what she felt, how she was, links). Old documents have no field and
+# count as "bruta".
+REFLECTION_STATUSES: tuple[str, ...] = ("bruta", "refinada")
 
 # What `update` may change. The id and the creation date never change.
 _UPDATABLE = frozenset(
-    {"text", "type", "status", "superseded_by", "embedding", "embedding_model", "source"}
+    {
+        "text",
+        "type",
+        "status",
+        "superseded_by",
+        "embedding",
+        "embedding_model",
+        "source",
+        "status_reflexao",
+    }
 )
 
 
@@ -60,6 +73,18 @@ class Memory:
     session_id: str | None = None
     # Provenance (ADR-017): the last turn of the conversation that was being analyzed (0-based).
     turn: int | None = None
+    # The dream's refinement (ADR-018). The fact (``text``) never changes; the refined memory adds
+    # the layer of remembering. All empty for a "bruta" memory.
+    status_reflexao: str = "bruta"
+    contexto: str = ""  # how and why it came up
+    sentimento: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # real feelings: kind, valence, intensity
+    como_eu_era: dict[str, Any] = field(default_factory=dict)  # personality version and how she was
+    ligacoes: dict[str, list[str]] = field(default_factory=dict)  # memorias, crencas, interesses
+    relevancia: float | None = None  # 0..1: how much it matters (weighs a little when recalling)
+    refinada_em: datetime | None = None
+    refinada_de: str | None = None  # the id of the raw memory it came from
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -73,6 +98,12 @@ class Memory:
             raise VectorStoreError(f"Status inválido: {self.status!r} ({MEMORY_STATUSES}).")
         if self.source_kind not in SOURCE_KINDS:
             raise VectorStoreError(f"Origem inválida: {self.source_kind!r} ({SOURCE_KINDS}).")
+        if self.status_reflexao not in REFLECTION_STATUSES:
+            raise VectorStoreError(
+                f"Status de reflexão inválido: {self.status_reflexao!r} ({REFLECTION_STATUSES})."
+            )
+        if self.relevancia is not None and not 0.0 <= float(self.relevancia) <= 1.0:
+            raise VectorStoreError("A relevância vai de 0 a 1.")
         if not self.embedding_model:
             raise VectorStoreError("A memória precisa dizer qual modelo gerou o vetor.")
         check_vector(self.embedding)
@@ -194,8 +225,25 @@ def memory_to_doc(memory: Memory) -> dict[str, Any]:
             "session_id": memory.session_id,
             "turn": memory.turn,
         },
+        "status_reflexao": memory.status_reflexao,
+        "lembranca": _remembering_to_doc(memory),
         "created_at": memory.created_at,
         "updated_at": memory.updated_at,
+    }
+
+
+def _remembering_to_doc(memory: Memory) -> dict[str, Any] | None:
+    """The layer of remembering of a refined memory (``None`` for a raw one)."""
+    if memory.status_reflexao != "refinada":
+        return None
+    return {
+        "contexto": memory.contexto,
+        "sentimento": [dict(item) for item in memory.sentimento],
+        "como_eu_era": dict(memory.como_eu_era),
+        "ligacoes": {k: list(v) for k, v in memory.ligacoes.items()},
+        "relevancia": memory.relevancia,
+        "refinada_em": memory.refinada_em,
+        "refinada_de": memory.refinada_de,
     }
 
 
@@ -214,6 +262,8 @@ def memory_from_doc(doc: Mapping[str, Any]) -> Memory:
             source_kind=source.get("kind", "extracted"),
             session_id=source.get("session_id"),
             turn=source.get("turn"),
+            status_reflexao=doc.get("status_reflexao") or "bruta",
+            **_remembering_from_doc(doc.get("lembranca")),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
@@ -221,6 +271,21 @@ def memory_from_doc(doc: Mapping[str, Any]) -> Memory:
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise VectorStoreError(f"memória corrompida ({doc.get('_id')}): {exc}") from exc
     return memory
+
+
+def _remembering_from_doc(doc: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not doc:
+        return {}
+    relevance = doc.get("relevancia")
+    return {
+        "contexto": str(doc.get("contexto") or ""),
+        "sentimento": [dict(item) for item in doc.get("sentimento") or []],
+        "como_eu_era": dict(doc.get("como_eu_era") or {}),
+        "ligacoes": {k: [str(i) for i in v] for k, v in (doc.get("ligacoes") or {}).items()},
+        "relevancia": None if relevance is None else float(relevance),
+        "refinada_em": doc.get("refinada_em"),
+        "refinada_de": doc.get("refinada_de"),
+    }
 
 
 def check_update_fields(fields: Mapping[str, Any]) -> None:
@@ -234,6 +299,8 @@ def check_update_fields(fields: Mapping[str, Any]) -> None:
         raise VectorStoreError(f"Tipo de memória inválido: {fields['type']!r}.")
     if "status" in fields and fields["status"] not in MEMORY_STATUSES:
         raise VectorStoreError(f"Status inválido: {fields['status']!r}.")
+    if "status_reflexao" in fields and fields["status_reflexao"] not in REFLECTION_STATUSES:
+        raise VectorStoreError(f"Status de reflexão inválido: {fields['status_reflexao']!r}.")
     if "embedding" in fields:
         check_vector(fields["embedding"])
         if not fields.get("embedding_model"):
