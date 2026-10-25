@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Livro de bolso Juniper</title>
+<meta name="description" content="O painel web da Juniper: memórias, afetos, estudos e notas, memória central e pesquisa, somente leitura, em qualquer dispositivo da tailnet.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/dashboard.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Clientes / Dashboard</div>
+<h1>Dashboard <span class="tag a">proposto</span></h1>
+<p class="lead">O painel web da Juniper: memórias, afetos, estudos e notas, memória central e pesquisa, somente leitura, em qualquer dispositivo da tailnet.</p>
+<div class="callout info"><p><strong>Nota:</strong> o dashboard está sendo construído por fases (épica #159). Esta página descreve o que já existe e o que vem a seguir. A decisão está no <a href="adr-020.html">ADR-020</a>.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Um painel web, <strong>somente leitura</strong>, para ver a memória da Juniper sem o terminal. Roda dentro do servidor (<code>juniper serve</code>), na porta <strong>8766</strong>, e abre em qualquer navegador de qualquer dispositivo da tailnet:</p>
+<pre><code class="lang-text">http://&lt;IP-da-tailnet-da-VPS&gt;:8766/</code></pre>
+<p>O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. Nada neste painel escreve no banco.</p>
+<h2 id="hoje">O que já existe</h2>
+<ul><li><strong>Servidor e login (T-130):</strong> a tela de login pede o token do servidor (o mesmo dos clientes, <code>~/.juniper/token</code>). O token <strong>nunca vai na URL</strong>: vai num cabeçalho, e o servidor devolve um cookie <code>HttpOnly</code> que vale <code>dashboard.session_hours</code> (12 horas). Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo.</li><li><strong>Defesas:</strong> o cabeçalho <code>Host</code> precisa ser um IP, <code>localhost</code> ou um nome <code>*.ts.net</code> (ou um host de <code>dashboard.allowed_hosts</code>); CSP restritiva (nada inline nem externo); sem CORS; só <code>GET</code>.</li><li><strong>Isolamento:</strong> se a porta estiver ocupada ou uma rota falhar, o servidor e a conversa seguem funcionando; o problema vai para o log.</li></ul>
+<h2 id="depois">O que vem a seguir</h2>
+<p>Visão geral e Afetos (com rastreio até a fala), Memórias, Memória central (núcleo, personalidade, crenças e o simulador do prompt), Estudos (com cada nota), Sonhos, Conversas e Pesquisa.</p>
+<h2 id="configuracao">Configuração</h2>
+<p>Veja as chaves <code>dashboard.*</code> em <a href="configuracao.html">Configuração</a>.</p>
+<h2 id="vps">Na VPS</h2>
+<p>O compose de produção publica <code>${TAILSCALE_IP}:8766</code>, nunca em <code>0.0.0.0</code>. <strong>A ACL do Tailscale precisa liberar a porta 8766</strong> para os seus dispositivos (hoje ela só libera a <code>8765</code> e o SSH). Para HTTPS (instalar como app no celular, por exemplo), use <code>tailscale serve</code> na VPS; o código não muda.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

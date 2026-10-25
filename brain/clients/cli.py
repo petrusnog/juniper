@@ -617,11 +617,28 @@ def serve() -> None:
     token = ensure_token(token_file)
     host, port = settings.deployment.server.host, settings.deployment.server.port
 
+    dashboard = None
+    if settings.dashboard.enabled:
+        from brain.dashboard.server import DashboardServer
+
+        cfg = settings.dashboard
+        dashboard = DashboardServer(
+            cfg.host or host,
+            cfg.port,
+            token,
+            session_hours=cfg.session_hours,
+            allowed_hosts=cfg.allowed_hosts,
+        )
+
     async def run() -> None:
         async with open_chat_handler() as handler:
-            await run_server(BrainServer(host, port, token, handler, health=handler.health))
+            await run_server(
+                BrainServer(host, port, token, handler, health=handler.health), dashboard
+            )
 
     voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).")
+    if dashboard is not None:
+        voice.say(console, f"Dashboard em http://{dashboard.host}:{dashboard.port}/")
     try:
         asyncio.run(run())
     except MemoryUnavailableError as exc:

@@ -445,8 +445,10 @@ def _id_of(frame: str | bytes) -> str | None:
 # ---------------------------------------------------------------------------------------------
 
 
-async def run_server(server: BrainServer) -> None:
-    """Sobe o servidor e roda até SIGTERM (deploy: fecha com 1012) ou SIGINT (1001)."""
+async def run_server(server: BrainServer, dashboard: Any | None = None) -> None:
+    """Sobe o servidor e roda até SIGTERM (deploy: fecha com 1012) ou SIGINT (1001).
+
+    O dashboard (ADR-020), se houver, sobe junto e isolado: se não subir, o servidor segue."""
     loop = asyncio.get_running_loop()
     stop: asyncio.Future[int] = loop.create_future()
 
@@ -457,6 +459,8 @@ async def run_server(server: BrainServer) -> None:
     loop.add_signal_handler(signal.SIGTERM, request_stop, p.CLOSE_SERVICE_RESTART)
     loop.add_signal_handler(signal.SIGINT, request_stop, p.CLOSE_GOING_AWAY)
     await server.start()
+    if dashboard is not None:
+        await dashboard.start()  # logs and returns False if the port is taken
     # Daily housekeeping, cron-style: gzip yesterday's log and delete the expired ones.
     cron = loop.create_task(run_daily("log_rotation", settings.logging.rotate_at, run_rotation))
     # The Memória V2 nightly pass (ADR-017), only when it is on and can run.
@@ -477,4 +481,7 @@ async def run_server(server: BrainServer) -> None:
                     await job
         loop.remove_signal_handler(signal.SIGTERM)
         loop.remove_signal_handler(signal.SIGINT)
+    if dashboard is not None:
+        with contextlib.suppress(Exception):
+            await dashboard.stop()
     await server.stop(code, "servidor reiniciando" if code == p.CLOSE_SERVICE_RESTART else "saindo")

@@ -39,6 +39,8 @@ services:
     ports:
       # Nunca em 0.0.0.0: na VPS só o endereço Tailscale (ADR-013, seção 2).
       - "${TAILSCALE_IP:-127.0.0.1}:8765:8765"
+      # O dashboard (ADR-020), somente leitura, também só na tailnet.
+      - "${TAILSCALE_IP:-127.0.0.1}:8766:8766"
     environment:
       # A senha do Mongo e as chaves de LLM vêm do .env montado abaixo, não daqui.
       JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml

@@ -140,6 +140,21 @@ class AuthSettings(BaseModel):
     token_file: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "token")
 
 
+class DashboardSettings(BaseModel):
+    """O dashboard web da Juniper (ADR-020): somente leitura, dentro do processo do servidor."""
+
+    enabled: bool = True
+    # None = o mesmo endereço do servidor (deployment.server.host).
+    host: str | None = None
+    port: int = Field(default=8766, ge=1, le=65535)
+    # Mostra as conversas (transcrições, com segredos mascarados).
+    transcripts: bool = True
+    # Quanto tempo vale o login (cookie) antes de pedir o token de novo.
+    session_hours: int = Field(default=12, ge=1, le=720)
+    # Nomes de host aceitos além de IPs, localhost e *.ts.net (defesa contra DNS rebinding).
+    allowed_hosts: list[str] = Field(default_factory=list)
+
+
 class DeploymentSettings(BaseModel):
     """Modo de deployment do brain."""
 
@@ -687,6 +702,7 @@ class Settings(BaseSettings):
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")

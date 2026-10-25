@@ -80,6 +80,12 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 |---|---|---|
 | `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
+| `dashboard.enabled` | `true` | Sobe o dashboard web junto do servidor (`juniper serve`). Somente leitura ([Dashboard](dashboard.html)). |
+| `dashboard.host` | vazio | Endereço do dashboard; vazio usa o mesmo do servidor (`deployment.server.host`). |
+| `dashboard.port` | `8766` | Porta do dashboard. Na VPS, publicada só no IP da tailnet. |
+| `dashboard.transcripts` | `true` | Mostra as conversas (com segredos mascarados) no dashboard. |
+| `dashboard.session_hours` | `12` | Quanto tempo vale o login antes de pedir o token de novo. |
+| `dashboard.allowed_hosts` | vazio | Nomes de host aceitos além de IPs, `localhost` e `*.ts.net` (defesa contra DNS rebinding). |
 | `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](adr-017.html)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
 | `memory.v2.max_tokens` | `600` | Teto (estimado) do bloco da V2 no prompt da conversa. |
 | `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) do algoritmo de sonho, o "inconsciente". |
