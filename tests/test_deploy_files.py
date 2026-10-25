@@ -112,8 +112,12 @@ def test_services_restart_unless_stopped_and_cap_their_logs(service: str) -> Non
 
 
 def test_brain_port_is_never_published_on_all_interfaces() -> None:
-    (port,) = COMPOSE["services"]["brain"]["ports"]
-    assert port == "${TAILSCALE_IP:-127.0.0.1}:8765:8765"  # o padrão é o loopback, nunca 0.0.0.0
+    ports = COMPOSE["services"]["brain"]["ports"]
+    # o padrão é o loopback, nunca 0.0.0.0: o servidor (8765) e o dashboard (8766, ADR-020)
+    assert ports == [
+        "${TAILSCALE_IP:-127.0.0.1}:8765:8765",
+        "${TAILSCALE_IP:-127.0.0.1}:8766:8766",
+    ]
 
 
 def test_mongo_is_not_reachable_from_outside_the_compose_network() -> None:

@@ -189,7 +189,7 @@ A chave do LLM só vai pelo ambiente (nunca por argumento) e não é gravada no 
 
 O Tailscale é uma **rede privada entre os seus dispositivos**: a VPS e o seu PC recebem endereços privados (e nomes, como `juniper-brain.<tailnet>.ts.net`) e o tráfego é cifrado. Para o usuário: instale o Tailscale e entre na mesma conta em cada dispositivo.
 
-- **Etiquetas e ACL:** a VPS é `tag:juniper-server`, os clientes `tag:juniper-client`, o runner do CI `tag:ci`; a política só deixa clientes e CI alcançarem o servidor na porta `8765` e no SSH.
+- **Etiquetas e ACL:** a VPS é `tag:juniper-server`, os clientes `tag:juniper-client`, o runner do CI `tag:ci`; a política só deixa clientes e CI alcançarem o servidor na porta `8765` e no SSH. Para o [dashboard](dashboard.html), libere também a `8766` para os seus dispositivos.
 - **Firewall no servidor (`ufw`):** `default deny incoming` e `allow in on tailscale0`; a porta 22 pública fechada. O SSH só pela tailnet.
 - **Autenticação:** o token estático do ADR-007 por cima da rede: duas travas independentes.
 - **Limite:** dispositivos que não aceitam instalar o Tailscale (TV, carro) não alcançam a VPS; é um problema de futuro.

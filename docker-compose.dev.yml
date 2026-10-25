@@ -47,6 +47,7 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:${JUNIPER_DEV_PORT:-8765}:8765"
+      - "127.0.0.1:${JUNIPER_DEV_DASHBOARD_PORT:-8766}:8766"
     environment:
       JUNIPER_CONFIG_PATH: /home/juniper/.juniper/config.yaml
       # O seu config.yaml pessoal entra como base: agenda do Google, persona etc. valem aqui
