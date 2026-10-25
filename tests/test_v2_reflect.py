@@ -340,16 +340,19 @@ async def test_the_nightly_ceiling_of_new_beliefs_is_respected() -> None:
     assert ctx.data.beliefs.count() == 3 and "limite_noite" in result.summary
 
 
-async def test_at_most_twelve_proposals_are_considered() -> None:
+async def test_at_most_twenty_proposals_are_considered() -> None:
+    from brain.memory.v2.reflect import MAX_PROPOSALS
+
+    assert MAX_PROPOSALS == 20
     props = [
         new(f"Acho que o Petrus pensa no tema x{i}y{i}z{i} {'qwerty'[i % 6] * 9}.", ["S1:t4"])
-        for i in range(20)
+        for i in range(30)
     ]
     ctx = ctx_for(
         Reflector({"proposals": props}), DAY, beliefs=V2BeliefSettings(max_new_per_night=50)
     )
     result = await reflect(ctx)
-    assert "12 proposta(s) analisada(s)" in result.summary
+    assert "20 proposta(s) analisada(s)" in result.summary
 
 
 # --- refusals ---------------------------------------------------------------------------------

@@ -181,7 +181,7 @@ def test_history_lists_the_versions_with_the_reason_and_the_events(cli: Any) -> 
     result = run("history")
     assert result.exit_code == 0
     assert "4 (atual)" in result.output and "turn:s:2" in result.output
-    assert "passada noturna" in result.output
+    assert "algoritmo de sonho" in result.output
 
 
 def test_revert_asks_for_confirmation_then_creates_a_new_version(cli: Any) -> None:

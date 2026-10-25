@@ -2,9 +2,9 @@
 title: Memória V2
 group: Memória
 order: 4
-description: A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com a passada noturna.
+description: A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
 status: pronta
-tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento metacognição inconsciente passada noturna camadas personalidade sentimentos interesses adr-017
+tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento metacognição inconsciente algoritmo de sonho camadas personalidade sentimentos interesses adr-017
 ---
 
 > **Nota:** esta página acompanha a [ADR-017](adr-017.html), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.html): o prompt, a extração e os comandos são os de antes.
@@ -22,7 +22,7 @@ A memória v1 guarda **fatos**. A V2 acrescenta camadas em que cada uma é uma *
 5. PERSONALIDADE   traços e narrativa recente (viva)
 ```
 
-O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, um interesse quando o assunto toca) e só atualiza na hora os fatos e a resposta a uma pergunta de verificação; **à noite** a [passada noturna](memoria-v2.html#passada-noturna) relê o que o Petrus escreveu, propõe, o código valida e aplica, e ela acorda um pouco diferente. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
+O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, um interesse quando o assunto toca) e só atualiza na hora os fatos e a resposta a uma pergunta de verificação; **à noite** o [algoritmo de sonho](memoria-v2.html#passada-noturna) (o *Juniper dream*, antes chamado passada noturna) relê o que o Petrus escreveu, propõe, o código valida e aplica, e ela acorda um pouco diferente. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
 
 Tudo mora no **MongoDB** (o mesmo banco da v1), em coleções por camada; só o núcleo é arquivo (`prompts/persona.core.md`). A V2 exige `memory.session.store: mongo`: com arquivos, ligar `memory.v2.enabled` é recusado com uma mensagem clara. O código está em `brain/memory/v2/`.
 
@@ -34,8 +34,8 @@ Tudo mora no **MongoDB** (o mesmo banco da v1), em coleções por camada; só o 
 | `beliefs` | Crenças com `alpha`, `beta`, evidências e status. |
 | `interests`, `affects`, `concerns` | Interesses, sentimentos e preocupações. |
 | `persona_state`, `persona_history` | A personalidade atual (um documento versionado) e as versões anteriores. |
-| `journal`, `dream_runs`, `dream_watermarks` | O diário, as execuções da passada noturna e até onde cada sessão foi lida. |
-| `transcript_turns` | A **transcrição completa** de cada turno (o que o Petrus escreveu e a resposta dela). A sessão salva é *compactada* (só os últimos turnos), então a passada noturna precisa desta. Nunca tem saída de tool. |
+| `journal`, `dream_runs`, `dream_watermarks` | O diário, as execuções do algoritmo de sonho e até onde cada sessão foi lida. |
+| `transcript_turns` | A **transcrição completa** de cada turno (o que o Petrus escreveu e a resposta dela). A sessão salva é *compactada* (só os últimos turnos), então o algoritmo de sonho precisa desta. Nunca tem saída de tool. |
 | `calibration` | Quanto as opiniões dela acertaram em cada tema. |
 
 O armazenamento é uma interface (`DocStore`) com duas implementações, MongoDB e memória, que passam nos mesmos testes. O MongoDB do compose é um nó único e não tem transações entre documentos: as operações são **idempotentes e retomáveis**, e a personalidade usa versão otimista. Um documento corrompido é ignorado ao listar, sem esconder os bons. `juniper memory reindex` refaz também os vetores de crenças e interesses.
@@ -59,7 +59,7 @@ Cada crença nasce com um a priori fraco (`alpha = beta = 1`, "não sei") e cada
 - **Formação:** uma observação isolada é um palpite, não uma crença. A hipótese (`candidate`) vira `active` com pelo menos `min_evidence` (2) de evidência a favor vinda de **sessões ou dias diferentes**, ou com uma afirmação explícita ou confirmação do Petrus.
 - **Em palavras** (é o que o Petrus lê e o que vai ao prompt; o número fica por baixo): "talvez" até 0,45; "acho que" de 0,45 a 0,70; "tenho bastante certeza" acima de 0,70 **e** `n >= 6`. Com pouca evidência nunca passa de "acho que".
 - **`retired`** (final): o Petrus negou; ou a confiança caiu abaixo de 0,25 com `n >= 4` (ela estava errada); ou a crença desbotou (`n < 0,25`) sem confirmação.
-- A **mesma referência** (sessão, turno) conta **uma vez**: reexecutar a passada noturna não infla nada. As referências guardadas são no máximo 50 por lado; os pesos continuam nas contagens.
+- A **mesma referência** (sessão, turno) conta **uma vez**: reexecutar o algoritmo de sonho não infla nada. As referências guardadas são no máximo 50 por lado; os pesos continuam nas contagens.
 
 Os valores são um primeiro palpite, ajustáveis em `memory.v2.beliefs.*`.
 
@@ -73,7 +73,7 @@ O único lugar que cria, reforça, confirma, nega, revisa e aposenta crenças. O
 
 ## Guardas de conteúdo {#guardas kind=módulo file=brain/memory/v2/guards.py}
 
-O LLM **propõe**; o código **dispõe**. Toda proposta da passada noturna passa por aqui antes de virar dado, e a recusa guarda só o **motivo** (um código curto), nunca o texto recusado.
+O LLM **propõe**; o código **dispõe**. Toda proposta do algoritmo de sonho passa por aqui antes de virar dado, e a recusa guarda só o **motivo** (um código curto), nunca o texto recusado.
 
 | Regra | Como é garantida |
 |---|---|
@@ -89,9 +89,9 @@ Os guardas são heurísticas: erram para o lado de **recusar** (um falso positiv
 
 ### O material da noite {#material}
 
-A passada noturna só lê o que o Petrus **escreveu** e as respostas dela, nunca a saída de uma tool (a transcrição não a guarda). E mais: se **houve tool no turno**, a resposta dela é **omitida** do material, porque pode citar o que a tool devolveu (o título de um evento da agenda, uma mensagem de commit). Assim, um texto plantado num título de evento não chega às camadas subjetivas. Segredos são mascarados e cada linha leva uma etiqueta `[t<turno>]`, que é a referência que as crenças citam como evidência.
+O algoritmo de sonho só lê o que o Petrus **escreveu** e as respostas dela, nunca a saída de uma tool (a transcrição não a guarda). E mais: se **houve tool no turno**, a resposta dela é **omitida** do material, porque pode citar o que a tool devolveu (o título de um evento da agenda, uma mensagem de commit). Assim, um texto plantado num título de evento não chega às camadas subjetivas. Segredos são mascarados e cada linha leva uma etiqueta `[t<turno>]`, que é a referência que as crenças citam como evidência.
 
-## A passada noturna {#passada-noturna kind=módulo file=brain/memory/v2/night.py}
+## O algoritmo de sonho {#passada-noturna kind=módulo file=brain/memory/v2/night.py}
 
 O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. Na VPS, pelo atalho do contêiner ([Usar a Juniper na VPS](producao.html#usar-na-vps)).
 
@@ -101,7 +101,7 @@ coleta  →  fases (observar, refletir, sentir, personalidade, estudar)  →  ap
 
 | Peça | Como funciona |
 |---|---|
-| **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), deixadas em paz enquanto **ativas** (último turno há menos de 30 minutos). Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
+| **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), **sem espera**: com `memory.v2.night.quiet_minutes` em 0 (o padrão), toda mensagem ainda não lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então uma conversa lida pela metade continua de onde parou. Com um valor maior, as sessões mexidas há menos de tantos minutos ficam para depois. Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
 | **Transcrição** | O `Agent` entrega cada turno terminado a um *sink* (`TranscriptWriter`): o texto do Petrus, a resposta dela e se **houve tool** no turno. Nunca a saída de tool. Se a gravação falhar, a conversa segue (só vai para o log). |
 | **Fases** | Objetos com `run(ctx)` (`brain/memory/v2/night.py`). Cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
 | **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
@@ -188,7 +188,7 @@ A Camada 3 é a **régua dos sentimentos**: uma lista curta do que importa para 
 
 A Camada 4 é o que a Juniper **sentiu** com o que viveu. Um momento é medido contra as preocupações e produz um sentimento (`kind`, `valence` de -1 a 1, `intensity` de 0 a 1, `cause`, `about`: `user`, `self` ou `situation`).
 
-- **Avaliação (`appraise`):** na passada noturna (fase `affect`) ela diz qual preocupação o momento atingiu, o quanto ajudou ou prejudicou (`effect`) e o quanto foi inesperado (`novelty`). **Quem calcula é o código**: a valência é o efeito ponderado pelo peso da preocupação e a intensidade cresce com o peso e a novidade. "A avó do Petrus faleceu" sobre `bem-estar-do-petrus` (peso 0,9) dá tristeza forte, `about=user`, causa = a fala + a preocupação.
+- **Avaliação (`appraise`):** no algoritmo de sonho (fase `affect`) ela diz qual preocupação o momento atingiu, o quanto ajudou ou prejudicou (`effect`) e o quanto foi inesperado (`novelty`). **Quem calcula é o código**: a valência é o efeito ponderado pelo peso da preocupação e a intensidade cresce com o peso e a novidade. "A avó do Petrus faleceu" sobre `bem-estar-do-petrus` (peso 0,9) dá tristeza forte, `about=user`, causa = a fala + a preocupação.
 - **Só o que o Petrus escreveu** pode ser citado (a resposta dela vai como contexto, sem etiqueta, como na reflexão), e todo sentimento cita a fala que o causou (`sem_causa` se não houver). Até `memory.v2.affect.max_per_night` por noite; recusas voltam ao relatório só como códigos.
 - **Decaimento:** a emoção cai pela metade a cada 6 h; o **humor** é uma média móvel (valência × intensidade) que decai em 3 dias e puxa para o neutro; a **mágoa** (um momento duro *com ela*) decai em 14 dias, tem teto de intensidade (`grievance_cap`) e **sempre passa**. Sentimentos esgotados são apagados.
 - **Reparo:** a mágoa é desfeita quando o Petrus volta a conversar depois dela ou pede desculpas.
@@ -221,7 +221,7 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 | `juniper persona history` | As versões e os eventos que causaram cada mudança. |
 | `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
 
-**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), a passada noturna escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](adr-017.html)).
+**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](adr-017.html)).
 
 ## Interesses próprios {#interesses kind=módulo file=brain/memory/v2/interests.py}
 

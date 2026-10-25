@@ -212,7 +212,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         if not concern.history:
             console.print("Nunca mudou.")
         for c in concern.history:
-            who = "você" if c.source == "petrus" else "passada noturna"
+            who = "você" if c.source == "petrus" else "algoritmo de sonho"
             event = f" · evento {c.event_ref}" if c.event_ref else ""
             console.print(f"  - {_local(c.at)} · {c.delta:+.2f} · {who} · {c.reason}{event}")
 

@@ -36,8 +36,6 @@ from brain.memory.v2.overlay import OverlayDocStore
 from brain.memory.v2.store import V2Data
 
 CHARS_PER_TOKEN = 4
-# A session touched in the last minutes is still a conversation, not yesterday's: wait for it.
-ACTIVE_MINUTES = 30
 # Share of the night's token budget that the material read may take; the rest is for answers.
 MATERIAL_SHARE = 0.4
 
@@ -106,9 +104,12 @@ class SessionMaterial:
 
 
 def collect_material(
-    data: V2Data, now: datetime, *, max_tokens: int, active_minutes: int = ACTIVE_MINUTES
+    data: V2Data, now: datetime, *, max_tokens: int, active_minutes: int = 0
 ) -> list[SessionMaterial]:
     """Sessions with unread turns, oldest first, up to ``max_tokens`` of text.
+
+    ``active_minutes`` (``memory.v2.night.quiet_minutes``) skips a session touched more recently
+    than that; with 0 every unread message counts, even one from a second ago.
 
     A very long session may be cut in the middle: the watermark then advances only as far as the
     last turn included, and the rest is read tomorrow.
@@ -197,7 +198,7 @@ class PhaseContext:
         """
         llm = self.reflect if which == "reflect" and self.reflect is not None else self.cheap
         if llm is None:
-            raise MemoryUnavailableError("a passada noturna não tem LLM configurado")
+            raise MemoryUnavailableError("o algoritmo de sonho não tem LLM configurado")
         self.budget.check()
         response = await llm.chat(
             [Message("system", system), Message("user", user)],
@@ -316,7 +317,10 @@ class NightRunner:
             data.runs.save(run)
 
         material = collect_material(
-            self.data, self.clock(), max_tokens=int(night.max_tokens * MATERIAL_SHARE)
+            self.data,
+            self.clock(),
+            max_tokens=int(night.max_tokens * MATERIAL_SHARE),
+            active_minutes=night.quiet_minutes,
         )
         ctx = PhaseContext(
             data=data,

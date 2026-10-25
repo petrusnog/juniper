@@ -1,7 +1,7 @@
 """Aceite do marco da Memória V2 (ADR-017): uma noite inteira da Juniper, de ponta a ponta.
 
 Conversas do dia (uma mensagem longa com um fato no fim, uma opinião do Petrus sobre si, um
-desabafo, um tema que ele detesta) -> passada noturna completa com LLM roteirizado -> no dia
+desabafo, um tema que ele detesta) -> algoritmo de sonho completa com LLM roteirizado -> no dia
 seguinte ela acorda com crenças de confiança calculada, um sentimento que decai, um interesse com
 posição própria e uma personalidade que mudou um pouco, tudo no diário; a conversa seguinte traz os
 blocos, e um turno de sofrimento não mostra estado nem interesse.

@@ -82,17 +82,18 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
 | `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](adr-017.html)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
 | `memory.v2.max_tokens` | `600` | Teto (estimado) do bloco da V2 no prompt da conversa. |
-| `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) da passada noturna, o "inconsciente". |
-| `memory.v2.night.max_tokens` | `60000` | Orçamento de tokens de LLM por noite; estourou, o resto fica para a noite seguinte. |
-| `memory.v2.night.max_minutes` | `20` | Orçamento de minutos por noite. |
+| `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) do algoritmo de sonho, o "inconsciente". |
+| `memory.v2.night.max_tokens` | `300000` | Orçamento de tokens de LLM por sonho; estourou, o resto fica para o sonho seguinte. |
+| `memory.v2.night.max_minutes` | `45` | Orçamento de minutos por sonho. |
+| `memory.v2.night.quiet_minutes` | `0` | Só lê conversas paradas há tantos minutos. Com 0, toda mensagem ainda não lida entra no próximo sonho, mesmo a de um segundo atrás. |
 | `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
-| `memory.v2.beliefs.max_new_per_night` | `5` | Teto de crenças novas por noite. |
+| `memory.v2.beliefs.max_new_per_night` | `10` | Teto de crenças novas por noite. |
 | `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do Petrus, honestidade, curiosidade, capricho e autonomia do Petrus. É carregado no banco na primeira vez; depois quem manda é o Petrus (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
-| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto a passada noturna pode mexer num peso por mês (por item). O Petrus não tem teto. |
+| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O Petrus não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
-| `memory.v2.interests.max_per_night` | `2` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
-| `memory.v2.interests.max_seeds_per_night` | `3` | Temas novos que a noite pode semear a partir do que o Petrus escreveu (só o tema, nunca a opinião dele). |
+| `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.interests.max_seeds_per_night` | `5` | Temas novos que a noite pode semear a partir do que o Petrus escreveu (só o tema, nunca a opinião dele). |
 | `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
 | `memory.v2.interests.study_gap_days` | `3` | Intervalo mínimo para estudar o mesmo tema de novo (a posição muda devagar). |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
@@ -101,7 +102,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
 | `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o Petrus voltar a conversar ou pedir desculpas. |
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
-| `memory.v2.affect.max_per_night` | `5` | Sentimentos novos por noite. |
+| `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
 | `memory.v2.persona.max_step` | `0.03` | Passo máximo de um traço por noite. |
 | `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |

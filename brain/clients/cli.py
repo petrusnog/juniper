@@ -872,10 +872,10 @@ def memory_reindex(
 def memory_dream(
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", help="Roda a passada sem gravar nada e mostra o que gravaria."),
+        typer.Option("--dry-run", help="Roda o sonho sem gravar nada e mostra o que gravaria."),
     ] = False,
 ) -> None:
-    """Roda a passada noturna agora (o "inconsciente" da Memória V2, ADR-017).
+    """Roda o algoritmo de sonho agora (o "inconsciente" da Memória V2, ADR-017).
 
     Lê as conversas com novidade, reflete e atualiza as camadas. O servidor já a roda sozinho
     todo dia em `memory.v2.night.at`; use este comando para testar ou para recuperar uma noite.
