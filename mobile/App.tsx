@@ -1,15 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-  Pressable,
-} from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useBrain } from './src/app/useBrain';
-import { isProblem, statusText } from './src/connection/status';
 import {
   Credentials,
   loadCredentials,
@@ -17,6 +9,7 @@ import {
 } from './src/storage/credentials';
 import { spacing } from './src/theme/tokens';
 import { useTheme } from './src/theme/useTheme';
+import { ChatScreen } from './src/ui/ChatScreen';
 import { SetupScreen } from './src/ui/SetupScreen';
 
 function Home({
@@ -26,34 +19,17 @@ function Home({
   credentials: Credentials;
   onConfigure: () => void;
 }) {
-  const theme = useTheme();
-  const { state, reconnect } = useBrain(credentials);
+  const { chat, state, reconnect } = useBrain(credentials);
+  if (chat === null) {
+    return <ActivityIndicator style={styles.center} />;
+  }
   return (
-    <View style={styles.home}>
-      <Text style={[styles.title, { color: theme.ink }]}>Juniper</Text>
-      <Text
-        testID="status"
-        style={{
-          color: isProblem(state)
-            ? theme.red
-            : state === 'connected'
-            ? theme.green
-            : theme.muted,
-        }}
-      >
-        {statusText(state)}
-      </Text>
-      <View style={styles.row}>
-        {state === 'replaced' || state === 'offline' ? (
-          <Pressable onPress={reconnect}>
-            <Text style={{ color: theme.blue }}>Reconectar</Text>
-          </Pressable>
-        ) : null}
-        <Pressable onPress={onConfigure}>
-          <Text style={{ color: theme.blue }}>Configurar</Text>
-        </Pressable>
-      </View>
-    </View>
+    <ChatScreen
+      chat={chat}
+      connection={state}
+      onReconnect={reconnect}
+      onConfigure={onConfigure}
+    />
   );
 }
 
