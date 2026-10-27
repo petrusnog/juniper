@@ -76,10 +76,24 @@ Implementada no T-152 (`brain/clients/voice_session.py`, ligada ao `ChatHandler`
 
 Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.html#voz).
 
+## Ligar a voz e testar de verdade {#ligar}
+
+Tudo acima foi verificado com **peças falsas** nas pontas (LLM, Google, Groq, YouTube e um tom sintético no lugar da voz). O que só se confirma com os serviços e o aparelho reais está neste roteiro. Os passos de 1 a 4 não precisam do app.
+
+1. **Conta de serviço do Google** (Text-to-Speech ligado no projeto, com faturamento): baixe o JSON e salve em `certs/gcp-voice.json` (a pasta `certs/` é montada só para leitura; o arquivo nunca entra na imagem nem no Git).
+2. **Chave da Groq** em `JUNIPER_GROQ_API_KEY` no `.env`.
+3. **Ligue** no seu config (`docker/config.base.yaml` ou o pessoal): `voice: {enabled: true}`. O gasto do mês fica em `voice-usage.json` no volume `juniper-music` (veja [Produção](producao.html)), então sobrevive a deploys.
+4. **Confira:** `juniper voice status` deve mostrar «Credencial do Google: encontrada», «Chave da Groq: configurada» e o gasto do mês em zero. Ele nunca imprime chaves.
+5. **No aparelho** (quando o app existir, [App mobile](mobile.html)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
+6. **Ajustes que só o uso mostra:** os limiares do detector (3 vezes o piso para falar, 6 vezes para interromper) e `voice.vad.*`; a qualidade da voz Leda; se o STT da Groq acerta nomes de músicas e artistas.
+7. **Custo:** `juniper voice status` mostra quanto do orçamento de caracteres foi usado; ao esgotar, a voz do aparelho assume sozinha e a Juniper avisa uma vez.
+
+O que ainda **não** foi verificado: o formato real das respostas do Google e da Groq, os limites gratuitos atuais da Groq (as fontes citam 20 requisições por minuto e 2.000 por dia, a confirmar no console) e o comportamento do cancelamento de eco em aparelhos reais.
+
 ## Mensagens {#protocolo}
 
 Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](adr-023.html#7-protocolo-extensao-compativel-do-adr-012).
 
 ## Tasks {#tasks}
 
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite do backend, **pronto**: `tests/test_acceptance_voice.py`). Épica #179.
