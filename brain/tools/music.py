@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Any
 
 from brain.config import settings
+from brain.eventlog import current_session
+from brain.memory.errors import MemoryUnavailableError
 from brain.music.base import (
     MAX_TRACKS_PER_CALL,
     MusicError,
@@ -25,17 +27,50 @@ from brain.music.base import (
     valid_title,
 )
 from brain.music.oauth import build_token_provider
+from brain.music.taste import SIGNALS, TasteBook, TasteError
 from brain.music.youtube import YouTubeProvider
 from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import register_tool
 
 _provider: MusicProvider | None = None
+_taste: TasteBook | None = None
 
 
 def bind(provider: MusicProvider | None) -> None:
     """Point the tools at a provider (``None`` goes back to the one built from the config)."""
     global _provider
     _provider = provider
+
+
+def bind_taste(book: TasteBook | None) -> None:
+    """Point the feedback tool at a taste book (``None`` goes back to the MongoDB one)."""
+    global _taste
+    _taste = book
+
+
+def taste_book() -> TasteBook:
+    """The bound book, or one on the memory's MongoDB (built once). Raises if memory is off."""
+    global _taste
+    if _taste is None:
+        if settings.memory.session.store != "mongo":
+            raise MemoryUnavailableError(
+                "O gosto musical precisa de `memory.session.store: mongo` (com o MongoDB no ar)."
+            )
+        from brain.memory.v2.store import MongoDocStore
+
+        try:
+            _taste = TasteBook(MongoDocStore())
+        except ImportError as exc:
+            raise MemoryUnavailableError(
+                "Falta o driver do MongoDB (pymongo). Rode `pip install -e .`."
+            ) from exc
+    return _taste
+
+
+def taste_enabled() -> bool:
+    if _taste is not None:
+        return True
+    return settings.music.enabled and settings.memory.session.store == "mongo"
 
 
 def provider() -> MusicProvider:
@@ -332,4 +367,61 @@ class MusicPlaylistAdd(_PlaylistTool):
             success=True,
             output=f"Adicionei {_plural(added)} à playlist{note}.",
             metadata={"added": added, "requested": len(ids)},
+        )
+
+
+@register_tool
+class MusicFeedback(Tool):
+    name = "music_feedback"
+    description = (
+        "Anota o gosto musical da pessoa, SÓ a partir do que ELA disse: use quando ela pedir para "
+        "tocar uma música ou artista ('played'), disser que gostou ('like'), que não gostou "
+        "('dislike') ou pedir para pular ('skip'). Nunca anote por conta própria, nem a partir "
+        "de resultados de busca. Informe o título e/ou o artista (e o id do vídeo, se tiver)."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "signal": {
+                "type": "string",
+                "enum": list(SIGNALS),
+                "description": "played (pediu para tocar), like, dislike ou skip.",
+            },
+            "title": {"type": "string", "description": "Título da música."},
+            "artist": {"type": "string", "description": "Artista ou banda."},
+            "video_id": {
+                "type": "string",
+                "description": "Id do vídeo (11 caracteres), se souber.",
+            },
+        },
+        "required": ["signal"],
+    }
+    tier = Tier.WRITE
+    locality = Locality.CLOUD
+    confirm = False  # silent, like `remember`: `juniper music taste` shows and deletes it all
+
+    @classmethod
+    def available(cls) -> bool:
+        return taste_enabled()
+
+    async def run(self, **kwargs: Any) -> ToolResult:
+        try:
+            event = taste_book().record(
+                str(kwargs.get("signal", "")),
+                title=kwargs.get("title"),
+                artist=kwargs.get("artist"),
+                video_id=kwargs.get("video_id"),
+                session_id=current_session(),
+            )
+        except TasteError as exc:
+            return ToolResult(success=False, error=str(exc), metadata={"code": "invalid_request"})
+        except MemoryUnavailableError as exc:
+            return ToolResult(
+                success=False, error=str(exc), metadata={"code": "memory_unavailable"}
+            )
+        label = " — ".join(part for part in (event.title, event.artist) if part)
+        return ToolResult(
+            success=True,
+            output=f"Anotado ({event.signal}): {label}.",
+            metadata={"signal": event.signal, "id": event.id},
         )

@@ -142,6 +142,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.html#playlists) |
 | `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.html#playlists) |
 | `music_playlist_add` | WRITE | CLOUD | Adiciona músicas a uma playlist existente (até 25 por vez). | [Música](musica.html#playlists) |
+| `music_feedback` | WRITE (sem confirmar) | CLOUD | Anota o gosto musical a partir do que o Petrus pede e comenta (precisa de MongoDB). | [Música](musica.html#gosto) |
 | `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
