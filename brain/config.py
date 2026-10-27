@@ -260,9 +260,18 @@ class VoiceSettings(BaseModel):
     max_spoken_chars: int = Field(default=800, ge=100, le=5000)
     # Silêncio (sem ninguém falar) que encerra a conversa de voz.
     idle_timeout_seconds: int = Field(default=60, ge=10, le=3600)
+    # Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício.
+    usage_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "voice" / "usage.json"
+    )
     tts: VoiceTTSSettings = Field(default_factory=VoiceTTSSettings)
     stt: VoiceSTTSettings = Field(default_factory=VoiceSTTSettings)
     vad: VoiceVADSettings = Field(default_factory=VoiceVADSettings)
+
+    @field_validator("usage_file")
+    @classmethod
+    def _expand_usage(cls, v: Path) -> Path:
+        return v.expanduser()
 
 
 class MusicSettings(BaseModel):

@@ -41,10 +41,21 @@ O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice
 
 As opções estão em [Configuração](configuracao.html#voice).
 
+## Orçamento e voz do aparelho {#orcamento}
+
+Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
+
+- **Contagem** (`VoiceBudget`): os caracteres enviados ao Google são somados por mês civil, **no fuso da Juniper** (`agent.timezone`), num arquivo JSON pequeno (`voice.usage_file`, permissão 0600). Funciona sem MongoDB e sobrevive a reinício. Arquivo ausente, corrompido ou de outro mês começa o mês em zero; se o disco recusar a escrita, a contagem continua na memória e a conversa não para.
+- **Reserva e estorno:** o texto é reservado antes da chamada e devolvido se ela falhar (o Google cobra só o que sintetiza). Se sobrar menos que uma frase, o mês é dado como gasto, para a voz não alternar entre Google e aparelho frase a frase. `monthly_chars_limit: 0` desliga a voz do Google.
+- **Cada frase** (`SpeechService.speak`) sai como áudio (`voice.audio`) ou, se o orçamento acabou ou o Google falhou, como texto para o aparelho falar (`voice.say`). Depois de uma falha, o Google fica em paz por 30 s (10 min se o erro foi de cota) antes de outra tentativa.
+- **Aviso uma vez:** cada troca de modo vira um único `voice.fallback` (motivo `budget`, `quota` ou `error`) e outro quando o Google volta (`recovered`, por exemplo na virada do mês). Falha inesperada do provedor também cai no aparelho: nenhuma frase fica sem voz.
+- **Log:** só tamanhos e códigos, nunca o texto.
+- **`juniper voice status`:** mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
+
 ## Mensagens {#protocolo}
 
 Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](adr-023.html#7-protocolo-extensao-compativel-do-adr-012).
 
 ## Tasks {#tasks}
 
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
