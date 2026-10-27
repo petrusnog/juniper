@@ -202,8 +202,8 @@ async def test_the_whole_cost_is_reserved_before_anything_is_created(tmp_path: P
     with pytest.raises(MusicError) as exc:
         await provider.create_playlist("Foco", [V1, V2])  # needs 150
     assert exc.value.code == "quota_exhausted"
-    assert api.requests == [] and quota.used() == 0  # no half-made playlist, no login asked
-    assert tokens is not None and tokens.asked == 0
+    assert api.requests == [] and quota.used() == 0  # no half-made playlist, nothing counted
+    assert tokens is not None and tokens.asked == 1  # the login came first: it is free to check
 
 
 async def test_an_unavailable_or_duplicate_track_is_skipped_not_fatal(tmp_path: Path) -> None:
@@ -276,20 +276,27 @@ async def test_bad_add_input_is_refused_without_a_call(
 
 async def test_without_a_login_provider_playlists_are_not_configured(tmp_path: Path) -> None:
     api = Api()
-    provider, _, _ = make(api, tmp_path, tokens=None)
+    provider, quota, _ = make(api, tmp_path, tokens=None)
     with pytest.raises(MusicError) as exc:
         await provider.list_playlists()
     assert exc.value.code == "not_configured" and api.requests == []
+    assert quota.used() == 0
 
 
 @pytest.mark.parametrize("code", ["auth_required", "auth_expired"])
 async def test_a_missing_or_expired_login_comes_through_as_is(tmp_path: Path, code: Any) -> None:
     api = Api()
     tokens = FakeTokens(tmp_path, MusicError(code, "Faça o login: rode `juniper music login`."))
-    provider, _, _ = make(api, tmp_path, tokens=tokens)
-    with pytest.raises(MusicError) as exc:
-        await provider.add_to_playlist(PL, [V1])
-    assert exc.value.code == code and api.requests == []
+    provider, quota, _ = make(api, tmp_path, tokens=tokens)
+    for attempt in (
+        lambda: provider.add_to_playlist(PL, [V1, V2]),
+        lambda: provider.create_playlist("Foco", [V1]),
+        lambda: provider.list_playlists(),
+    ):
+        with pytest.raises(MusicError) as exc:
+            await attempt()
+        assert exc.value.code == code
+    assert api.requests == [] and quota.used() == 0  # no login, no cost
 
 
 @pytest.mark.parametrize(
@@ -322,6 +329,7 @@ class FakeLists(MusicProvider):
         self.added: list[tuple[str, list[str]]] = []
         self.error: MusicError | None = None
         self.partial = False
+        self.playlists = [Playlist(PL, "Foco", 7), Playlist("PLother0000000", "Treino", None)]
 
     async def search(
         self, query: str, *, limit: int = 5, mode: SearchMode = "track"
@@ -331,7 +339,7 @@ class FakeLists(MusicProvider):
     async def list_playlists(self) -> list[Playlist]:
         if self.error:
             raise self.error
-        return [Playlist(PL, "Foco", 7), Playlist("PLother0000000", "Treino", None)]
+        return self.playlists
 
     async def create_playlist(self, title: str, video_ids: list[str]) -> Playlist:
         if self.error:
@@ -442,18 +450,47 @@ async def test_create_refuses_bad_input_before_asking(
     assert fake.created == []
 
 
-async def test_add_describes_with_the_title_when_given_and_with_the_id_otherwise(
-    fake: FakeLists,
-) -> None:
+async def test_add_names_the_playlist_the_id_really_is(fake: FakeLists) -> None:
+    """The question carries the real title (found by id), not a name the LLM chose."""
     tool = music_tools.MusicPlaylistAdd()
-    named = {"playlist_id": PL, "video_ids": [V1], "playlist_title": "Foco"}
-    assert await tool.describe(**named) == "adicionar 1 música a «Foco»"
-    assert await tool.subjects(**named) == ["Foco"]
-    bare = {"playlist_id": PL, "video_ids": [V1, V2]}
-    assert await tool.describe(**bare) == f"adicionar 2 músicas a a playlist {PL}"
-    assert await tool.subjects(**bare) is None
-    result = await tool.run(**bare)
+    args = {"playlist_id": PL, "video_ids": [V1, f"https://youtu.be/{V2}"]}
+    assert await tool.precheck(**args) is None
+    assert await tool.describe(**args) == "adicionar 2 músicas a «Foco»"
+    assert await tool.subjects(**args) == ["Foco"]
+    canonical = await tool.canonical_arguments(**{**args, "playlist_id": f" {PL} "})
+    assert canonical == {"playlist_id": PL, "video_ids": [V1, V2]}
+    result = await tool.run(**canonical)
     assert result.success and fake.added == [(PL, [V1, V2])]
+    assert "playlist_title" not in music_tools.MusicPlaylistAdd.parameters["properties"]
+
+
+async def test_add_refuses_an_id_that_is_not_one_of_the_users_playlists(fake: FakeLists) -> None:
+    tool = music_tools.MusicPlaylistAdd()
+    refusal = await tool.precheck(playlist_id="PLoutra0000000000", video_ids=[V1])
+    assert refusal is not None and refusal.metadata == {"code": "invalid_request"}
+    assert "não é uma das da pessoa" in (refusal.error or "")
+    assert await tool.describe(playlist_id="PLoutra0000000000", video_ids=[V1]) == (
+        "adicionar 1 música a a playlist PLoutra0000000000"
+    )
+    assert await tool.subjects(playlist_id="PLoutra0000000000", video_ids=[V1]) is None
+
+
+async def test_add_without_login_fails_in_precheck_before_asking(fake: FakeLists) -> None:
+    fake.error = MusicError("auth_required", "Falta entrar: rode `juniper music login`.")
+    refusal = await music_tools.MusicPlaylistAdd().precheck(playlist_id=PL, video_ids=[V1])
+    assert refusal is not None and refusal.metadata == {"code": "auth_required"}
+
+
+async def test_a_very_short_playlist_name_names_nothing_so_it_is_asked(fake: FakeLists) -> None:
+    """A title like "a" is a substring of any question: it cannot stand for a "sim" in context."""
+    create = music_tools.MusicPlaylistCreate()
+    assert await create.subjects(title="a", video_ids=[V1]) is None
+    assert await create.subjects(title="mi", video_ids=[V1]) is None
+    assert await create.subjects(title="Mix", video_ids=[V1]) == ["Mix"]
+    fake.playlists = [Playlist(PL, "A", 1)]
+    add = music_tools.MusicPlaylistAdd()
+    assert await add.precheck(playlist_id=PL, video_ids=[V1]) is None
+    assert await add.subjects(playlist_id=PL, video_ids=[V1]) is None
 
 
 @pytest.mark.parametrize(
@@ -535,3 +572,112 @@ async def test_in_conversation_the_named_playlist_is_created_on_a_yes(fake: Fake
     assert fake.created == []  # asked first, nothing created yet
     await agent.run("sim")
     assert fake.created == [("Foco", [V1, V2])]
+
+
+# --- halfway failures say what exists --------------------------------------------------------
+
+
+async def test_a_failure_while_creating_says_which_playlist_exists_and_how_far_it_got(
+    tmp_path: Path,
+) -> None:
+    api = Api([ok({"id": "i"}), err(403, "quotaExceeded")])
+    provider, _, _ = make(api, tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.create_playlist("Foco", [V1, V2, V3])
+    error = exc.value
+    assert error.code == "quota_exhausted"
+    assert (error.playlist_id, error.added) == (PL, 1)
+    assert PL in error.message and "1 de 3" in error.message
+    assert "music_playlist_add" in error.message and "não crie outra" in error.message
+
+
+async def test_a_network_failure_halfway_also_reports_progress(tmp_path: Path) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if request.url.path.endswith("/playlists"):
+            return ok({"id": PL})
+        if calls == 3:
+            raise httpx.ConnectError("x")
+        return ok({"id": "i"})
+
+    quota = QuotaTracker(tmp_path / "q.json", 5000)
+    provider = YouTubeProvider(
+        "k", quota=quota, tokens=FakeTokens(tmp_path), transport=httpx.MockTransport(handler)
+    )
+    with pytest.raises(MusicError) as exc:
+        await provider.create_playlist("Foco", [V1, V2, V3])
+    assert exc.value.code == "network_error" and (exc.value.playlist_id, exc.value.added) == (PL, 1)
+
+
+async def test_a_failure_while_adding_says_how_many_went_in(tmp_path: Path) -> None:
+    api = Api([ok({"id": "i"}), ok({"id": "i"}), err(500)])
+    provider, _, _ = make(api, tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.add_to_playlist(PL, [V1, V2, V3])
+    assert exc.value.added == 2 and exc.value.playlist_id == PL
+    assert "Adicionei 2 de 3" in exc.value.message
+
+
+async def test_a_failure_before_any_track_is_a_plain_error(tmp_path: Path) -> None:
+    provider, _, _ = make(Api([err(500)]), tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.add_to_playlist(PL, [V1])
+    assert exc.value.playlist_id is None and "Adicionei" not in exc.value.message
+
+
+async def test_the_tool_hands_the_partial_result_to_the_llm(fake: FakeLists) -> None:
+    fake.error = MusicError("quota_exhausted", "Parou na faixa 2.", playlist_id=PL, added=1)
+    result = await music_tools.MusicPlaylistCreate().run(title="Foco", video_ids=[V1, V2])
+    assert not result.success and result.error == "Parou na faixa 2."
+    assert result.metadata == {
+        "code": "quota_exhausted",
+        "playlist_id": PL,
+        "url": f"https://music.youtube.com/playlist?list={PL}",
+        "added": 1,
+    }
+
+
+# --- listing pages ---------------------------------------------------------------------------
+
+
+async def test_listing_follows_the_pages(tmp_path: Path) -> None:
+    pages: list[dict[str, Any]] = [
+        {
+            "items": [{"id": "PLfirst00000000", "snippet": {"title": "Um"}}],
+            "nextPageToken": "T2",
+        },
+        {"items": [{"id": "PLsecond0000000", "snippet": {"title": "Dois"}}]},
+    ]
+    seen: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return ok(pages[len(seen) - 1])
+
+    quota = QuotaTracker(tmp_path / "q.json", 5000)
+    provider = YouTubeProvider(
+        "k", quota=quota, tokens=FakeTokens(tmp_path), transport=httpx.MockTransport(handler)
+    )
+    assert [p.title for p in await provider.list_playlists()] == ["Um", "Dois"]
+    assert "pageToken" not in seen[0] and seen[1]["pageToken"] == "T2"
+    assert quota.used() == 2 * COST_READ
+
+
+# --- ids and titles are cleaned and strict ---------------------------------------------------
+
+
+def test_a_trailing_newline_never_passes_for_an_id() -> None:
+    assert extract_video_id(f"https://music.youtube.com/watch?v={V1}%0A") is None
+    assert clean_video_ids([V1, f"https://music.youtube.com/watch?v={V1}%0A"]) is None
+    assert not is_playlist_id(PL + "\n")
+
+
+def test_titles_lose_control_and_direction_characters() -> None:
+    assert valid_title("Treino\u202egnp.exe") == "Treinognp.exe"
+    assert valid_title("a\x00b\x1bc") == "abc"
+    assert valid_title("zero\u200bwidth") == "zerowidth"
+    assert valid_title("\u202e\x00") is None  # nothing left
+    assert valid_title("duas\n linhas\t aqui") == "duas linhas aqui"

@@ -41,12 +41,15 @@ def current_session() -> str:
 MAX_VALUE_CHARS = 2000
 
 _SECRET_KEY = re.compile(
-    r"(api[_-]?key|(?<!first_)token(?!s)|secret|password|passwd|authorization|private[_-]?key|assertion)",
+    r"(api[_-]?key|(?<!first_)token(?!s)|secret|password|passwd|authorization|private[_-]?key"
+    r"|assertion|device[_-]?code)",
     re.I,
 )
 _SECRET_VALUE = re.compile(
     r"(gsk_[A-Za-z0-9]{10,}"  # Groq keys
     r"|Bearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|ya29\.[\w.-]{10,}"  # Google OAuth access token
+    r"|AIza[\w-]{20,}"  # Google API key
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$))"
 )
 
@@ -82,7 +85,12 @@ def redact(value: Any, _key: str = "", limit: int = MAX_VALUE_CHARS) -> Any:
 
 def _mask_known_key(text: str) -> str:
     """Mask the configured provider keys even if they do not match a known pattern."""
-    for key in (settings.groq_api_key, settings.deepinfra_api_key):
+    for key in (
+        settings.groq_api_key,
+        settings.deepinfra_api_key,
+        settings.youtube_api_key,
+        settings.youtube_client_secret,
+    ):
         secret = key.get_secret_value() if key else ""
         if len(secret) >= 8:
             text = text.replace(secret, REDACTED)

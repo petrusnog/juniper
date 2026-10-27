@@ -167,7 +167,7 @@ A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
 | `music.search_limit` | `5` | Máximo de resultados por busca (1 a 5). |
 | `music.region` | `BR` | Código de região de duas letras da busca. |
 | `music.quota_file` | `~/.juniper/music/quota.json` | Onde o contador de cota é guardado (por dia do Pacífico). |
-| `music.oauth_file` | `~/.juniper/music/oauth.json` | Onde fica o token de renovação do login no YouTube (modo 600, fora do git; na VPS, um arquivo montado). |
+| `music.oauth_file` | `~/.juniper/music/oauth.json` | Onde fica o token de renovação do login no YouTube (modo 600, fora do git). Na VPS, o diretório é o volume `juniper-music`, não um arquivo montado. |
 
 ## google {#google}
 

@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import json
 import os
+import tempfile
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
@@ -34,6 +35,7 @@ TOKEN_URL: Final = "https://oauth2.googleapis.com/token"
 SCOPE: Final = "https://www.googleapis.com/auth/youtube"
 DEVICE_GRANT: Final = "urn:ietf:params:oauth:grant-type:device_code"
 REFRESH_SKEW_SECONDS: Final = 60
+MAX_POLL_HICCUPS: Final = 3
 
 LOGIN_HINT: Final = "rode `juniper music login`"
 NO_LOGIN: Final = f"Falta entrar na sua conta do YouTube: {LOGIN_HINT}."
@@ -84,15 +86,30 @@ class TokenStore:
             return None
 
     def save(self, token: StoredToken) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_name(f"{self._path.name}.tmp")
-        # Created private from the start: the secret is never world-readable, not even briefly.
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(asdict(token), handle)
-        os.replace(tmp, self._path)
-        with contextlib.suppress(OSError):
-            self._path.chmod(0o600)
+        """Write the token: a fresh private file (mode 600 from the start), flushed to disk, then
+        moved over the old one, so a crash never leaves a half-written or world-readable token."""
+        directory = self._path.parent
+        tmp_name: str | None = None
+        try:
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=f".{self._path.name}.")
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                json.dump(asdict(token), handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, self._path)
+            tmp_name = None
+        except OSError as exc:
+            raise MusicError(
+                "storage_error",
+                "Não consegui gravar o acesso à sua conta do YouTube (confira a pasta e as "
+                "permissões; em contêiner, monte o diretório, não o arquivo).",
+            ) from exc
+        finally:
+            if tmp_name is not None:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_name)
 
     def clear(self) -> None:
         with contextlib.suppress(OSError):
@@ -164,20 +181,33 @@ class GoogleOAuth:
         sleep = sleep or asyncio.sleep  # looked up now, so tests can replace it
         deadline = clock() + code.expires_in
         interval = max(1, code.interval)
+        hiccups = 0  # a few network/5xx failures in a row must not cancel a login in progress
         while True:
             if clock() >= deadline:
                 raise MusicError(
                     "auth_expired", f"O código expirou antes da autorização: {LOGIN_HINT} de novo."
                 )
             await sleep(interval)
-            status, body = await self._post(
-                TOKEN_URL,
-                {
-                    "client_secret": self._client_secret,
-                    "device_code": code.device_code,
-                    "grant_type": DEVICE_GRANT,
-                },
-            )
+            try:
+                status, body = await self._post(
+                    TOKEN_URL,
+                    {
+                        "client_secret": self._client_secret,
+                        "device_code": code.device_code,
+                        "grant_type": DEVICE_GRANT,
+                    },
+                )
+            except MusicError as exc:
+                hiccups += 1
+                if exc.code != "network_error" or hiccups > MAX_POLL_HICCUPS:
+                    raise
+                continue
+            if status >= 500 and not body.get("error"):
+                hiccups += 1
+                if hiccups > MAX_POLL_HICCUPS:
+                    raise MusicError("api_error", f"O Google está instável agora ({status}).")
+                continue
+            hiccups = 0
             if status == 200 and "access_token" in body:
                 refresh = body.get("refresh_token")
                 if not isinstance(refresh, str) or not refresh:
@@ -250,6 +280,10 @@ class TokenProvider:
     @property
     def store(self) -> TokenStore:
         return self._store
+
+    async def aclose(self) -> None:
+        if self._oauth is not None:
+            await self._oauth.aclose()
 
     async def access_token(self) -> str:
         async with self._lock:  # two calls at once renew once

@@ -19,7 +19,14 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.mongo import MongoConnection
 from brain.memory.v2.store import DocStore, InMemoryDocStore, MongoDocStore
 from brain.music.base import MusicProvider, SearchMode, Track
-from brain.music.taste import MAX_TEXT_CHARS, TASTE, WEIGHT, TasteBook, TasteError
+from brain.music.taste import (
+    MAX_PER_SESSION,
+    MAX_TEXT_CHARS,
+    TASTE,
+    WEIGHT,
+    TasteBook,
+    TasteError,
+)
 from brain.tools import music as music_tools
 from brain.tools.base import Tier
 from brain.tools.registry import registry
@@ -79,7 +86,7 @@ class TestBook:
             book.record(signal, title="x")
 
     def test_text_is_cleaned_and_limited(self, book: TasteBook) -> None:
-        assert book.record("like", title="A\x00B\tC\n D").title == "A B C D"
+        assert book.record("like", title="A\x00B\tC\n D").title == "AB C D"  # control chars go
         with pytest.raises(TasteError, match="passa de"):
             book.record("like", title="x" * (MAX_TEXT_CHARS + 1))
         with pytest.raises(TasteError, match="deve ser um texto"):
@@ -300,3 +307,77 @@ def test_the_cli_explains_when_memory_is_off(monkeypatch: pytest.MonkeyPatch) ->
     for args in (["music", "taste"], ["music", "taste", "clear", "-y"]):
         result = runner.invoke(cli.app, args)
         assert result.exit_code == 1 and "memory.session.store: mongo" in result.output
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+
+class TestHardening:
+    def test_direction_and_zero_width_characters_are_removed(self, book: TasteBook) -> None:
+        event = book.record("like", title="Treino\u202egnp.exe", artist="A\u200bB")
+        assert (event.title, event.artist) == ("Treinognp.exe", "AB")
+
+    def test_the_users_words_are_kept_for_audit_and_limited(self, book: TasteBook) -> None:
+        event = book.record("like", title="Oceano", quote="  gostei   muito dessa ")
+        assert (
+            event.quote == "gostei muito dessa" and book.recent()[0].quote == "gostei muito dessa"
+        )
+        with pytest.raises(TasteError, match="A citação passa de"):
+            book.record("like", title="Oceano 2", quote="x" * 161)
+
+    def test_the_same_reaction_within_a_minute_is_recorded_once(self, docs: DocStore) -> None:
+        clock = Clock()
+        clock.now -= timedelta(minutes=1)  # the first call lands one minute after
+        book = TasteBook(docs, lambda: clock.now)
+        first = book.record("like", title="Oceano", artist="Djavan")
+        clock.now += timedelta(seconds=30)
+        again = book.record("like", title="Oceano", artist="Djavan")
+        assert again.id == first.id and book.count() == 1
+        clock.now += timedelta(seconds=31)  # more than a minute since the first
+        later = book.record("like", title="Oceano", artist="Djavan")
+        assert later.id != first.id and book.count() == 2
+
+    def test_a_different_signal_or_song_is_not_a_repeat(self, book: TasteBook) -> None:
+        book.record("like", title="Oceano", artist="Djavan")
+        book.record("dislike", title="Oceano", artist="Djavan")
+        book.record("like", title="Sina", artist="Djavan")
+        assert book.count() == 3
+
+    def test_a_looping_llm_cannot_fill_the_collection_in_one_session(self, book: TasteBook) -> None:
+        for i in range(MAX_PER_SESSION):
+            book.record("played", title=f"faixa {i}", session_id="s-1")
+        with pytest.raises(TasteError, match="bastante do seu gosto nesta conversa"):
+            book.record("played", title="mais uma", session_id="s-1")
+        assert book.record("played", title="outra sessão", session_id="s-2")  # others are fine
+
+    def test_the_whole_collection_has_a_ceiling(
+        self, book: TasteBook, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("brain.music.taste.MAX_TOTAL", 2)
+        book.record("like", title="A")
+        book.record("like", title="B")
+        with pytest.raises(TasteError, match="chegou ao limite"):
+            book.record("like", title="C")
+        book.clear()
+        assert book.record("like", title="C")
+
+
+def test_the_mongo_index_is_wired_to_the_collection_name() -> None:
+    from brain.memory.v2.store import INDEXES
+
+    assert TASTE in INDEXES  # the literal in store.py must follow TASTE if it is ever renamed
+
+
+async def test_the_tool_passes_the_users_words(tool_book: TasteBook) -> None:
+    await music_tools.MusicFeedback().run(
+        signal="like", title="Oceano", artist="Djavan", quote="amo essa"
+    )
+    assert tool_book.recent()[0].quote == "amo essa"
+    assert "quote" in music_tools.MusicFeedback.parameters["properties"]
+    assert "cite as palavras dela" in music_tools.MusicFeedback.description
+
+
+def test_the_cli_and_the_tool_share_one_book(tool_book: TasteBook) -> None:
+    from brain.music import taste as taste_store
+
+    assert taste_store.book() is tool_book and music_tools.taste_book() is tool_book
