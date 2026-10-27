@@ -1,0 +1,285 @@
+{
+  "_comment": "Casos da política de URL (ADR-014). O brain (Python) e o app (TypeScript) devem concordar em todos.",
+  "urls": [
+    {
+      "url": "https://music.youtube.com/watch?v=abc123",
+      "allowed": true,
+      "normalized": "https://music.youtube.com/watch?v=abc123"
+    },
+    {
+      "url": "  https://music.youtube.com/watch?v=abc123\n",
+      "allowed": true,
+      "normalized": "https://music.youtube.com/watch?v=abc123"
+    },
+    {
+      "url": "HTTPS://Music.YouTube.com./watch?v=abc123",
+      "allowed": true,
+      "normalized": "https://music.youtube.com/watch?v=abc123"
+    },
+    {
+      "url": "http://example.com:8080/a?b=c#d",
+      "allowed": true,
+      "normalized": "http://example.com:8080/a?b=c#d"
+    },
+    {
+      "url": "https://bücher.example/straße",
+      "allowed": true,
+      "normalized": "https://xn--bcher-kva.example/stra%C3%9Fe"
+    },
+    {
+      "url": "https://xn--bcher-kva.example/",
+      "allowed": true,
+      "normalized": "https://xn--bcher-kva.example/"
+    },
+    {
+      "url": "https://[2001:4860:4860::8888]/",
+      "allowed": true,
+      "normalized": "https://[2001:4860:4860::8888]/"
+    },
+    {
+      "url": "https://8.8.8.8/",
+      "allowed": true,
+      "normalized": "https://8.8.8.8/"
+    },
+    {
+      "url": "https://music.youtube.com/watch?v=abc&list=RDAMVMabc",
+      "allowed": true,
+      "normalized": "https://music.youtube.com/watch?v=abc&list=RDAMVMabc"
+    },
+    {
+      "url": "file:///etc/passwd",
+      "allowed": false
+    },
+    {
+      "url": "javascript:alert(1)",
+      "allowed": false
+    },
+    {
+      "url": "data:text/html,hi",
+      "allowed": false
+    },
+    {
+      "url": "ftp://example.com/x",
+      "allowed": false
+    },
+    {
+      "url": "vbscript:msgbox(1)",
+      "allowed": false
+    },
+    {
+      "url": "intent://scan/#Intent;scheme=zxing;end",
+      "allowed": false
+    },
+    {
+      "url": "vnd.youtube://abc",
+      "allowed": false
+    },
+    {
+      "url": "example.com",
+      "allowed": false
+    },
+    {
+      "url": "//example.com/",
+      "allowed": false
+    },
+    {
+      "url": "https:example.com",
+      "allowed": false
+    },
+    {
+      "url": "https://",
+      "allowed": false
+    },
+    {
+      "url": "",
+      "allowed": false
+    },
+    {
+      "url": "   ",
+      "allowed": false
+    },
+    {
+      "url": "https://user:pw@example.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://user@example.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://:pw@example.com/",
+      "allowed": false
+    },
+    {
+      "url": "http://localhost/",
+      "allowed": false
+    },
+    {
+      "url": "http://LOCALHOST:8766/",
+      "allowed": false
+    },
+    {
+      "url": "http://app.localhost/",
+      "allowed": false
+    },
+    {
+      "url": "http://127.0.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://127.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://2130706433/",
+      "allowed": false
+    },
+    {
+      "url": "http://0x7f.0.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://0177.0.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://10.0.0.5/",
+      "allowed": false
+    },
+    {
+      "url": "http://192.168.1.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://172.16.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "http://169.254.169.254/latest/meta-data",
+      "allowed": false
+    },
+    {
+      "url": "http://100.64.0.1:8766/",
+      "allowed": false
+    },
+    {
+      "url": "http://100.127.255.254/",
+      "allowed": false
+    },
+    {
+      "url": "http://[::1]/",
+      "allowed": false
+    },
+    {
+      "url": "http://[::ffff:127.0.0.1]/",
+      "allowed": false
+    },
+    {
+      "url": "http://[fe80::1]/",
+      "allowed": false
+    },
+    {
+      "url": "http://[fd7a:115c:a1e0::1]/",
+      "allowed": false
+    },
+    {
+      "url": "http://0.0.0.0/",
+      "allowed": false
+    },
+    {
+      "url": "http://224.0.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "https://exa mple.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com/a\u0000b",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com/a\tb",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com:99999/",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com:abc/",
+      "allowed": false
+    },
+    {
+      "url": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "allowed": false
+    },
+    {
+      "url": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example/",
+      "allowed": false
+    }
+  ],
+  "trust": [
+    {
+      "host": "music.youtube.com",
+      "domains": [
+        "music.youtube.com"
+      ],
+      "trusted": true
+    },
+    {
+      "host": "music.youtube.com",
+      "domains": [
+        "youtube.com"
+      ],
+      "trusted": true
+    },
+    {
+      "host": "youtube.com",
+      "domains": [
+        "music.youtube.com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "evilyoutube.com",
+      "domains": [
+        "youtube.com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "youtube.com.evil.example",
+      "domains": [
+        "youtube.com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "xn--bcher-kva.example",
+      "domains": [
+        "bücher.example"
+      ],
+      "trusted": true
+    },
+    {
+      "host": "8.8.8.8",
+      "domains": [
+        "8.8.8.8"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "music.youtube.com",
+      "domains": [],
+      "trusted": false
+    },
+    {
+      "host": "music.youtube.com",
+      "domains": [
+        "https://music.youtube.com/"
+      ],
+      "trusted": false
+    }
+  ]
+}

@@ -248,7 +248,7 @@ class Dispatcher:
             if early is not None:
                 plan.early, plan.decision = early, "precheck_failed"
                 return plan
-            if tool_cls.tier is not Tier.READ and tool_cls.confirm:
+            if tool_cls.tier is not Tier.READ and await _asks(plan.tool, tool_cls, call):
                 plan.needs_confirm = True
                 plan.summary = await _summary(plan.tool, call)
         except Exception as exc:  # a tool bug must not kill the agent
@@ -328,6 +328,16 @@ async def _covered(plan: _Plan, consent: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return subjects is not None and mentions_all(consent, subjects)
+
+
+async def _asks(tool: Tool, tool_cls: type[Tool], call: ToolCall) -> bool:
+    """Whether this call must be confirmed. DESTRUCTIVE always asks; a broken hook asks too."""
+    if tool_cls.tier is Tier.DESTRUCTIVE:
+        return True
+    try:
+        return await tool.requires_confirmation(**call.arguments)
+    except Exception:  # noqa: BLE001 - fail closed: a tool bug must not skip the question
+        return True
 
 
 async def _summary(tool: Tool, call: ToolCall) -> str | None:

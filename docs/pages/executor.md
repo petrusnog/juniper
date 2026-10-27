@@ -7,7 +7,7 @@ status: proposto
 tags: executor invoke register result open_url url política domínios confiança roteamento revalidação desktop cli
 ---
 
-> **Nota:** esta página resume o [ADR-014](adr-014.html) (proposto). A Sprint 3 só implementa a primeira tool de executor, `open_url`; as outras (`media_play`, `open_app`, `run_shell`) vêm depois.
+> **Nota:** esta página resume o [ADR-014](adr-014.html) (proposto). A primeira tool de executor, `open_url`, já existe no cérebro (T-139); as outras (`media_play`, `open_app`, `run_shell`) vêm depois. O cliente que a cumpre é o app do celular (substitui o desktop do ADR-015).
 
 ## Visão geral {#visao-geral}
 
@@ -52,7 +52,7 @@ Toda recusa devolve `result` com `success: false`, um `error` em PT-BR e `metada
 
 ## open_url {#open-url kind=tool}
 
-Abre uma página no navegador padrão do dispositivo. `WRITE`, `locality = EXECUTOR`, parâmetro `url` (obrigatório).
+Abre um link no dispositivo: o navegador ou o aplicativo que trata o endereço (um link do YouTube Music abre o app do YouTube Music). `WRITE`, `locality = EXECUTOR`, parâmetro `url` (obrigatório). O cérebro nunca abre nada: a chamada vai ao dispositivo conectado como executor. No modo `local` (sem executor), `run` abre o navegador padrão da própria máquina, com a mesma política.
 
 ### Política de URL {#politica-url}
 
@@ -61,11 +61,11 @@ Vale no brain **e de novo** no cliente:
 - Só `http` e `https` (nada de `file:`, `javascript:`, `data:`, `ftp:` ou esquemas de aplicativos).
 - Sem credenciais embutidas (`usuario:senha@host`); até 2.048 caracteres, sem caracteres de controle.
 - Domínio comparado em ASCII (punycode), para um domínio de uma lista não ser imitado com letras parecidas.
-- `localhost` e endereços de loopback, de rede privada, de link-local e da faixa do Tailscale são recusados quando o host é um IP ou `localhost`. A resolução de DNS **não** é feita na política *(risco aceito, a confirmar)*.
+- `localhost` (e `*.localhost`) e endereços de loopback, de rede privada, de link-local, multicast, reservados e da faixa do Tailscale (`100.64.0.0/10`) são recusados quando o host é um IP ou `localhost`. Valem também as formas que o navegador lê como IPv4 (`2130706433`, `0x7f.0.0.1`, `127.1`) e o IPv4 embutido em IPv6 (`::ffff:127.0.0.1`). A resolução de DNS **não** é feita na política *(risco aceito, a confirmar)*.
 
 ### Confirmação e domínios de confiança {#confianca}
 
-Por padrão, `open_url` pede confirmação na conversa mostrando a **URL exata** ("Posso abrir `https://...`?"). Para o uso comum ficar fluido, `tools.open_url.trusted_domains` (no `config.yaml` do servidor) lista domínios que abrem **sem perguntar**; a lista inicial proposta é `youtube.com` e `music.youtube.com`. Isso exige um gancho de confirmação dinâmica na `Tool` (`requires_confirmation(**args)`, T-079). A lista **não** dispensa a política de URL.
+Por padrão, `open_url` pede confirmação na conversa mostrando a **URL exata** ("Posso abrir `https://...`?"). Para o uso comum ficar fluido, `tools.open_url.trusted_domains` (no `config.yaml` do servidor) lista domínios que abrem **sem perguntar**; a lista inicial é só `music.youtube.com` (a mais estreita que serve à música; `youtube.com` cobriria também os subdomínios). Entradas são normalizadas (minúsculas, ASCII/punycode) e a lista não vale para IPs. O gancho é `Tool.requires_confirmation(**args)` ([Ferramentas](tools.html#limitacoes)); o `Dispatcher` o ignora para `DESTRUCTIVE` e pergunta se ele falhar. A lista **não** dispensa a política de URL, e o brain mostra a URL normalizada na pergunta.
 
 ### Resultado e erros {#resultado}
 
@@ -93,4 +93,4 @@ Não decidido. Opções para "toca *She Said She Said*": (1) o cérebro acha a *
 
 ## Tasks da Sprint 3 {#tasks}
 
-T-078 (`register`/`invoke`/`result` e roteamento no brain), T-079 (a tool `open_url`), T-087 (CLI como executor), T-090 (executor no Electron).
+T-078 (`register`/`invoke`/`result` e roteamento no brain), T-139 (a tool `open_url` no cérebro, retomando a T-079), T-087 (CLI como executor); o executor do celular vem na épica do app mobile (o do Electron, T-090, foi descartado).

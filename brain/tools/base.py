@@ -113,6 +113,15 @@ class Tool(ABC):
         """
         return None
 
+    async def requires_confirmation(self, **kwargs: Any) -> bool:
+        """Whether THIS call asks the user first (ADR-014: confirmation that depends on the call).
+
+        The default follows the class ``confirm`` flag. A WRITE tool may answer ``False`` for
+        calls that are safe by their own arguments (a link to a trusted domain). The dispatcher
+        ignores the answer for DESTRUCTIVE tools and treats a failing hook as "ask".
+        """
+        return type(self).confirm
+
     async def describe(self, **kwargs: Any) -> str | None:
         """Optional one-line summary of what the call will do, shown when asking to confirm.
 
