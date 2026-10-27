@@ -106,6 +106,7 @@ Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provi
 | `juniper install [--dev\|--check\|--clean\|--yes\|--memory=...]` | Instala ou repara a Juniper ([Instalação](install.html#opcoes)). |
 | `juniper docs` | Serve este livro de bolso em `http://localhost:47831`. |
 | `juniper memory ...` | Memória de longo prazo (abaixo). |
+| `juniper music status` · `juniper music login` | Estado da configuração de música (sem revelar chaves) e login no YouTube para playlists ([Música](musica.html#login)). |
 | `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Produção](producao.html)). |
 | `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.html)). `--health` sai com 0 se o bot está vivo. |
 

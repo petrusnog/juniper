@@ -196,15 +196,19 @@ class MusicSettings(BaseModel):
     quota_file: Path = Field(
         default_factory=lambda: Path.home() / ".juniper" / "music" / "quota.json"
     )
+    # Token de renovação do login no Google (playlists); fica fora do git, modo 600.
+    oauth_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "music" / "oauth.json"
+    )
 
     @field_validator("region")
     @classmethod
     def _upper_region(cls, v: str) -> str:
         return v.upper()
 
-    @field_validator("quota_file")
+    @field_validator("quota_file", "oauth_file")
     @classmethod
-    def _expand_quota_file(cls, v: Path) -> Path:
+    def _expand_paths(cls, v: Path) -> Path:
         return v.expanduser()
 
 
@@ -732,6 +736,10 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
     youtube_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_YOUTUBE_API_KEY")
+    youtube_client_id: str | None = Field(default=None, alias="JUNIPER_YOUTUBE_CLIENT_ID")
+    youtube_client_secret: SecretStr | None = Field(
+        default=None, alias="JUNIPER_YOUTUBE_CLIENT_SECRET"
+    )
     telegram_bot_token: SecretStr | None = Field(default=None, alias="JUNIPER_TELEGRAM_BOT_TOKEN")
 
     # Paths (calculados no model_post_init)
