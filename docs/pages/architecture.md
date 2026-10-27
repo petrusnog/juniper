@@ -105,7 +105,7 @@ Exemplo: você digita *"amanhã quero uma ida ao dentista, às 16h"*.
 | 1 | Hello Agent: chat local, LLMs com failover, tools, agenda | pronta |
 | 2 | Memória: sessão, longo prazo, perfil, busca por significado | pronta |
 | 3 | Produção: cérebro na VPS, protocolo, CLI remoto, desktop com chat, executor `open_url` | em planejamento (ADRs 012 a 015) |
-| 4 | Voz por áudio (TTS do Google e STT da Groq pelo cérebro, [ADR-023](adr-023.html)) e app mobile ([ADR-022](adr-022.html)) | em planejamento |
+| 4 | Voz por áudio (TTS do Google e STT da Groq pelo cérebro, [ADR-023](adr-023.html)) e app mobile ([ADR-022](adr-022.html)) | backend e app prontos nas PRs (falta validar no aparelho e com os serviços reais) |
 | 5 | Mais executores: celular (open_url e autoplay), casa; música ([ADR-024](adr-024.html)) | futura |
 | 6 | Iniciativa: tarefas agendadas, proatividade supervisionada; login com MFA ([ADR-021](adr-021.html)) em paralelo | futura |
 

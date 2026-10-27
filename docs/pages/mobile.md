@@ -72,10 +72,35 @@ Para rodar na sua máquina (JDK 17, Android SDK e Node 22 ou superior): `cd mobi
 
 **Não verificado:** o build do APK e a execução no aparelho (o ambiente de desenvolvimento do Claude não tem Android SDK). Os testes acima provam a lógica em JavaScript.
 
+## Instalar no seu celular (sem adb) {#instalar}
+
+1. **Pré-requisitos no computador:** JDK 17, Android SDK (plataforma 36 e as *build tools*; o jeito mais simples é instalar o Android Studio uma vez) e Node 22 ou superior. Aponte `ANDROID_HOME` para a pasta do SDK.
+2. **Gerar o APK:** `cd mobile && npm install && cd android && ./gradlew assembleRelease`. Para assinar com uma chave sua (recomendado), gere uma uma vez com `keytool -genkeypair -v -keystore ~/juniper-release.keystore -alias juniper -keyalg RSA -keysize 2048 -validity 10000` e crie `mobile/android/keystore.properties` com `storeFile`, `storePassword`, `keyAlias` e `keyPassword`. **Guarde a chave e a senha**: sem elas não há como atualizar o app por cima, só desinstalar e reinstalar.
+3. **Levar o APK ao celular sem adb:** o arquivo fica em `mobile/android/app/build/outputs/apk/release/app-release.apk`. Mande para o celular pelo que for mais fácil: o Taildrop do Tailscale, um cabo (copiar o arquivo), e-mail ou um serviço de arquivos privado.
+4. **Instalar:** abra o arquivo no celular e permita «instalar apps desta origem» quando o Android pedir (é uma permissão do app que abriu o arquivo, e dá para desligá-la depois).
+5. **Primeira abertura:** informe o endereço do servidor (nome ou IP do Tailscale, sem `http://`), a porta (8765) e o token dos clientes (na VPS: `docker compose -p juniper-prod exec brain cat /home/juniper/.juniper/state/token`, o mesmo do [dashboard](dashboard.html)), e deixe o Tailscale ligado no celular.
+
+## Roteiro de aceite completo {#aceite}
+
+Marque cada item no aparelho; o que falhar vira uma issue, não um remendo às cegas.
+
+1. **Conexão:** abrir o app com o Tailscale ligado → «Conectada». Desligar o Tailscale → mensagem de «sem conexão»; religar → volta sozinho. Token errado → «o servidor recusou o token».
+2. **Texto:** enviar uma mensagem, ver a resposta chegar aos poucos; «Parar» no meio; «Conversas» → retomar uma antiga e começar uma nova; pedir algo que exige confirmação e responder «sim».
+3. **Música:** «toca Oceano do Djavan» (texto) → o YouTube Music abre e toca sozinho; se não tocar sozinho, conferir a mensagem da Juniper («está pronta, é só tocar no play»). Pedir um endereço proibido e ver que nada abre.
+4. **Voz:** todos os itens do roteiro de voz acima, com e sem fone, com a tela acesa e apagada.
+5. **Falhas:** servidor parado no meio de uma conversa (a conversa para com aviso); trocar de rede (Wi-Fi ↔ dados); matar o app e abrir de novo (retoma a última conversa).
+
+## Decisões em aberto {#abertas}
+
+- Versão do Android do aparelho (o `targetSdk` atual é o do template do React Native).
+- Identificador do app (`app.juniper.mobile`) e se vale pedir «exibir sobre outros apps» para abrir a música com a tela apagada.
+- Se o `TextToSpeech` do Android em pt-BR for ruim, trocar por um modelo local (Piper), como diz o [ADR-023](adr-023.html).
+- QR code para o token (hoje colado à mão) e o [login com MFA](login.html).
+
 ## O que os testes não provam {#limites}
 
 Jest cobre a lógica (conexão, conversas, política de URL, tipos). Áudio, serviço em primeiro plano, autoplay e o comportamento do Android só se verificam **no aparelho**, pelo roteiro de aceite manual.
 
 ## Tasks {#tasks}
 
-T-143 (base do app, **pronto**), T-144 (chat de texto, **pronto**), T-145 (executor e autoplay, **pronto**: o autoplay só se confirma no aparelho), T-146 (chat de voz, **pronto**: só se confirma no aparelho), T-147 (documentação e aceite). Épica #178.
+T-143 (base do app, **pronto**), T-144 (chat de texto, **pronto**), T-145 (executor e autoplay, **pronto**: o autoplay só se confirma no aparelho), T-146 (chat de voz, **pronto**: só se confirma no aparelho), T-147 (documentação e aceite, **pronto**). Épica #178.
