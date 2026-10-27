@@ -175,3 +175,22 @@ def test_google_calls_go_through_the_logged_http(monkeypatch: pytest.MonkeyPatch
     assert _events("http_request")[0]["service"] == "google_calendar"
     assert _events("http_response")[0]["body"] == {"items": []}
     assert "abcdefgh12345678" not in _raw()
+
+
+async def test_redacted_bodies_keep_the_exchange_but_not_what_was_said() -> None:
+    """Voice providers (T-153 review): the log shows sizes and status, never the words."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"text": "transcrição muito privada"})
+
+    transport = LoggingTransport("groq_stt", _Wire(handler), redact_bodies=True)
+    async with httpx.AsyncClient(transport=transport, base_url="https://stt.test") as client:
+        response = await client.post("/t", json={"input": {"text": "texto secreto do Petrus"}})
+        await response.aread()
+
+    (request,) = _events("http_request")
+    (reply,) = _events("http_response")
+    assert request["service"] == "groq_stt" and reply["status"] == 200
+    assert reply["body_bytes"] > 0
+    raw = _raw()
+    assert "secreto" not in raw and "privada" not in raw

@@ -118,7 +118,8 @@ class GroqTranscriber(Transcriber):
         self._model = model or cfg.model
         self._language = language or cfg.language
         self._client = httpx.AsyncClient(
-            timeout=timeout or cfg.timeout, transport=logged_transport("groq_stt", transport)
+            timeout=timeout or cfg.timeout,
+            transport=logged_transport("groq_stt", transport, redact_bodies=True),
         )
 
     async def aclose(self) -> None:
