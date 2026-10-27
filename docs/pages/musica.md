@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155), as playlists (T-156) e o registro do gosto musical (T-157).
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **O backend de música está pronto e coberto por teste de aceite** (T-154 a T-158); o que falta para tocar de ponta a ponta é o [app do celular](mobile.html) com o autoplay. **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155), as playlists (T-156) e o registro do gosto musical (T-157).
 
 ## Como funciona {#como-funciona}
 
@@ -82,6 +82,25 @@ Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.ses
 | `juniper music taste clear [--yes]` | Apaga **tudo**, depois de perguntar. Não dá para desfazer. |
 
 Nesta versão o gosto **só é registrado**: ainda não influencia a conversa nem as sugestões. Que o sonho noturno leia esses eventos e forme crenças sobre o gosto (e que a Juniper sugira algo fora da "bolha") é um passo seguinte que muda o ADR-017, e depende da decisão do Petrus. A coleção `music_taste` não entra na exclusão em cascata da Memória V2: quem apaga é o `juniper music taste clear`.
+
+## Aceite {#aceite}
+
+**O que os testes provam** (`tests/test_acceptance_music.py`, com o servidor, o dispatcher, as tools e o protocolo do executor reais, e só o LLM, o YouTube e o celular falsos):
+
+- "Toca Oceano do Djavan": `music_search` devolve a lista com links, o LLM chama `open_url` e o celular recebe `invoke` com o link de `music.youtube.com`, **sem pergunta no meio**. "Algo parecido" usa o link de mix.
+- Sem celular conectado, a Juniper avisa que o dispositivo está desconectado.
+- Cota esgotada aparece como erro tipado, sem inventar resultado.
+- **Defesas:** um título de resultado que manda abrir outro site é perguntado em palavras, com o endereço exato, e nada chega ao celular antes do "sim"; o truque `evil.example\.music.youtube.com` nunca chega ao celular.
+- Playlist: a Juniper pergunta **uma vez** em palavras ("Posso criar a playlist «Foco» com 2 músicas?"), nada é criado antes do "sim", um "não" não cria nada, um pedido inválido é recusado antes de perguntar, e o link da playlist abre no celular.
+- Gosto: a reação do Petrus ("gostei dessa") é anotada em silêncio; uma busca sozinha não grava nada.
+
+**O que só se verifica no aparelho** (roteiro manual depois do app e da chave):
+
+1. `juniper music status`: chave `configurada`, música `ligada`, cota `0 de 9000`.
+2. No app, "toca Oceano do Djavan": o YouTube Music abre na faixa **e dá play sozinho** (se o autoplay falhar, a faixa aparece pronta e basta apertar play).
+3. "Toca algo parecido com Djavan": confira se o link de mix monta a fila no YouTube Music.
+4. `juniper music login`, depois "cria uma playlist Foco com essas músicas": ela aparece na biblioteca do YouTube Music como **privada**.
+5. "Gostei dessa", depois `juniper music taste`: o registro aparece; `juniper music taste clear` apaga.
 
 ## Por que não a `ytmusicapi` {#ytmusicapi}
 
