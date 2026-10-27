@@ -7,6 +7,10 @@ import {
 import { nativeMediaAutoplay } from '../executor/MediaAutoplay';
 import { OpenUrlExecutor } from '../executor/OpenUrlExecutor';
 import { Credentials, serverUrl } from '../storage/credentials';
+import { nativeAudio } from '../voice/nativeAudio';
+import { deviceStt } from '../voice/nativeStt';
+import { deviceTts } from '../voice/nativeTts';
+import { VoiceController } from '../voice/VoiceController';
 
 export const APP_VERSION = '0.1.0';
 
@@ -16,6 +20,7 @@ export function useBrain(credentials: Credentials | null) {
   const [live, setLive] = useState<{
     connection: BrainConnection;
     chat: ChatController;
+    voice: VoiceController;
   } | null>(null);
   const ref = useRef<BrainConnection | null>(null);
 
@@ -37,12 +42,20 @@ export function useBrain(credentials: Credentials | null) {
     chat.start();
     const executor = new OpenUrlExecutor(connection, nativeMediaAutoplay);
     executor.start();
+    const voice = new VoiceController(
+      connection,
+      nativeAudio,
+      deviceTts,
+      deviceStt,
+    );
+    deviceTts.probe().catch(() => undefined);
     ref.current = connection;
-    setLive({ connection, chat });
+    setLive({ connection, chat, voice });
     const off = connection.onState(setState);
     connection.connect();
     return () => {
       off();
+      voice.end().catch(() => undefined);
       chat.stop();
       executor.stop();
       connection.close();
@@ -55,6 +68,7 @@ export function useBrain(credentials: Credentials | null) {
   return {
     connection: live?.connection ?? null,
     chat: live?.chat ?? null,
+    voice: live?.voice ?? null,
     state,
     reconnect: () => ref.current?.connect(),
   };
