@@ -57,6 +57,10 @@ services:
       - juniper-state:/home/juniper/.juniper/state     # token dos clientes
       - juniper-logs:/home/juniper/.juniper/logs       # eventos JSONL
       - juniper-models:/home/juniper/.juniper/models   # modelo de embeddings (baixa uma vez)
+      # Música: o token de renovação do login no YouTube e o contador de cota (e, no futuro, o uso
+      # da voz). Um VOLUME (diretório), nunca um arquivo montado: gravar o token troca o arquivo
+      # por outro (rename), o que falha em bind mount de arquivo único. Sobrevive a deploys.
+      - juniper-music:/home/juniper/.juniper/music
     healthcheck:
       test:
         - CMD
@@ -138,3 +142,4 @@ volumes:
   juniper-state:
   juniper-logs:
   juniper-models:
+  juniper-music:

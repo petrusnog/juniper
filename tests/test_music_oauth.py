@@ -461,3 +461,150 @@ def test_the_wire_log_masks_what_the_login_sends() -> None:
     )
     assert SECRET not in out and REFRESH not in out and ACCESS not in out
     assert REDACTED in out
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+
+class TestTokenStoreHardening:
+    def test_the_directory_is_private_and_no_temp_file_is_left(self, tmp_path: Path) -> None:
+        store = TokenStore(tmp_path / "music" / "oauth.json")
+        store.save(stored())
+        assert stat.S_IMODE(store.path.parent.stat().st_mode) == 0o700
+        assert [p.name for p in store.path.parent.iterdir()] == ["oauth.json"]
+
+    def test_a_stale_loose_temp_file_cannot_weaken_the_permissions(self, tmp_path: Path) -> None:
+        directory = tmp_path / "music"
+        directory.mkdir()
+        leftover = directory / ".oauth.json.old"
+        leftover.write_text("lixo")
+        leftover.chmod(0o644)
+        store = TokenStore(directory / "oauth.json")
+        store.save(stored())
+        assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+
+    def test_a_failing_disk_is_a_typed_error_and_cleans_up(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = TokenStore(tmp_path / "oauth.json")
+
+        def boom(src: Any, dst: Any) -> None:
+            raise OSError("EBUSY")  # what a single-file bind mount does to os.replace
+
+        monkeypatch.setattr(oauth.os, "replace", boom)
+        with pytest.raises(MusicError) as exc:
+            store.save(stored())
+        assert exc.value.code == "storage_error" and "monte o diretório" in exc.value.message
+        assert list(tmp_path.iterdir()) == []  # no leftover temp file, no half token
+
+    def test_a_save_that_fails_keeps_the_old_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = TokenStore(tmp_path / "oauth.json")
+        original = stored()
+        store.save(original)
+        monkeypatch.setattr(oauth.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("x")))
+        with pytest.raises(MusicError):
+            store.save(stored(100))
+        assert store.load() == original
+
+
+async def test_renewal_with_a_failing_disk_is_typed_not_an_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TokenStore(tmp_path / "t.json")
+    store.save(stored(-10))
+    google = FakeGoogle(
+        [httpx.Response(200, json={"access_token": "ya29.novo", "expires_in": 3599})]
+    )
+    monkeypatch.setattr(oauth.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("x")))
+    with pytest.raises(MusicError) as exc:
+        await TokenProvider(store, google.client()).access_token()
+    assert exc.value.code == "storage_error"
+
+
+class TestPollingHiccups:
+    async def test_a_few_network_failures_do_not_cancel_the_login(self) -> None:
+        answers: list[Any] = [httpx.ConnectError("x"), httpx.ReadTimeout("x"), None]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if str(request.url) == oauth.DEVICE_CODE_URL:
+                return httpx.Response(
+                    200,
+                    json={"device_code": DEVICE, "user_code": "A-B", "verification_url": "u"},
+                )
+            outcome = answers.pop(0)
+            if outcome is None:
+                return httpx.Response(200, json=token_body())
+            raise outcome
+
+        client = GoogleOAuth(CLIENT_ID, SECRET, transport=httpx.MockTransport(handler))
+        token = await client.poll_for_token(CODE, sleep=Sleeper(), clock=Ticker())
+        assert token.access_token == ACCESS
+
+    async def test_too_many_in_a_row_give_up(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("x")
+
+        client = GoogleOAuth(CLIENT_ID, SECRET, transport=httpx.MockTransport(handler))
+        with pytest.raises(MusicError) as exc:
+            await client.poll_for_token(CODE, sleep=Sleeper(), clock=Ticker())
+        assert exc.value.code == "network_error"
+
+    async def test_a_server_error_or_two_is_tolerated(self) -> None:
+        google = FakeGoogle(
+            [
+                httpx.Response(503, text="x"),
+                httpx.Response(502, text="x"),
+                httpx.Response(200, json=token_body()),
+            ]
+        )
+        token = await google.client().poll_for_token(CODE, sleep=Sleeper(), clock=Ticker())
+        assert token.refresh_token == REFRESH
+
+    async def test_a_steady_server_error_gives_up_with_a_typed_message(self) -> None:
+        google = FakeGoogle([httpx.Response(503, text="x")] * 6)
+        with pytest.raises(MusicError) as exc:
+            await google.client().poll_for_token(CODE, sleep=Sleeper(), clock=Ticker())
+        assert exc.value.code == "api_error" and "instável" in exc.value.message
+
+    async def test_hiccups_are_counted_only_while_in_a_row(self) -> None:
+        google = FakeGoogle(
+            [
+                httpx.Response(503, text="x"),
+                pending(),  # a real answer resets the count
+                httpx.Response(503, text="x"),
+                httpx.Response(503, text="x"),
+                httpx.Response(200, json=token_body()),
+            ]
+        )
+        assert (
+            await google.client().poll_for_token(CODE, sleep=Sleeper(), clock=Ticker())
+        ).access_token
+
+
+def test_the_log_masks_the_device_code_google_tokens_and_the_youtube_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from brain.eventlog import REDACTED, redact
+
+    monkeypatch.setattr(settings, "youtube_api_key", SecretStr("AIzaSyDaFakeKeyForTests1234567890"))
+    monkeypatch.setattr(settings, "youtube_client_secret", SecretStr("GOCSPX-fake-secret-value"))
+    out = json.dumps(
+        redact(
+            {
+                "form": {"device_code": DEVICE, "user_code": "ABCD-EFGH"},
+                "cut": '{"access_token": "ya29.abcdefghijklmnop", "expi',  # a truncated JSON body
+                "key": "chave AIzaSyDaFakeKeyForTests1234567890 solta",
+                "secret": "o GOCSPX-fake-secret-value vazou",
+            }
+        )
+    )
+    for secret in (
+        DEVICE,
+        "ya29.abcdefghijklmnop",
+        "AIzaSyDaFakeKeyForTests1234567890",
+        "GOCSPX-fake-secret-value",
+    ):
+        assert secret not in out
+    assert REDACTED in out and "ABCD-EFGH" in out  # the user code is not a secret

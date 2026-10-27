@@ -620,6 +620,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.memory.stores import close_session_store, open_session_store
     from brain.memory.v2 import open_v2_runtime
     from brain.tools import memory as memory_tools
+    from brain.tools import music as music_tools
     from brain.tools.registry import registry
 
     registry.discover()
@@ -673,6 +674,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         if v2 is not None:
             v2.close()
         memory_tools.bind(None)
+        await music_tools.close()
         if memory is not None:
             memory.close()
         if commands is not None and commands is not memory:
