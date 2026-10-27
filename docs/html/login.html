@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login com MFA — Livro de bolso Juniper</title>
+<meta name="description" content="O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/login.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Núcleo / Login com MFA</div>
+<h1>Login com MFA <span class="tag a">proposto</span></h1>
+<p class="lead">O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página resume o <a href="adr-021.html">ADR-021</a> (proposto). <strong>Nada aqui liga o MFA por padrão</strong>; ainda é desenho.</p></div>
+<h2 id="por-que">Por que</h2>
+<p>Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só em uma lista de IDs. Quem controlar a conta do Telegram fala com a Juniper com todas as tools. O Petrus decidiu manter o Telegram completo e fortalecer a <strong>garantia de que é ele</strong>: uma identidade única, com segundo fator, para <strong>todo</strong> cliente. Junto com a rede privada (<a href="producao.html">Produção</a>), são duas camadas independentes.</p>
+<h2 id="como-fica">Como fica</h2>
+<ul><li><strong>Serviço único</strong> <code>brain/auth/</code>: decide quem está autenticado; o cliente só leva a credencial; o LLM nunca vê segredos.</li><li><strong>TOTP</strong> (app autenticador), tolerância de ±1 passo, <strong>código usado não vale de novo</strong>.</li><li><strong>O token estático</strong> passa a significar "este dispositivo é meu"; com o MFA ligado ele sozinho não basta.</li><li><strong>Sessão</strong> com prazo, ligada ao dispositivo e ao canal, <strong>revogável</strong>, guardada só como hash em arquivos sob <code>~/.juniper/auth/</code> (sem depender do MongoDB).</li><li><strong>Recuperação:</strong> 10 códigos de uso único e, em emergência, <code>juniper auth reset</code> por SSH na VPS. Não existe "esqueci o código" remoto.</li></ul>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Autenticação</th></tr></thead><tbody><tr><td>WebSocket (CLI, app)</td><td>Bearer no handshake + <code>auth.login</code> com o código; até lá a conexão fica "locked".</td></tr><tr><td>Telegram</td><td><code>/login &lt;código&gt;</code> (a mensagem é apagada), sessão por usuário e chat, expira por inatividade. A lista de IDs vira filtro prévio.</td></tr><tr><td>Dashboard</td><td>Token <strong>e</strong> código; o cookie leva o token de sessão.</td></tr><tr><td>Voz</td><td>Herda a conexão; a voz nunca é fator (<a href="voz-audio.html">Voz por áudio</a>).</td></tr></tbody></table></div>
+<h2 id="regras">Regras que não mudam</h2>
+<p>O MFA <strong>não substitui a confirmação</strong> (<a href="agente.html#confirmacao">Agente</a>). Falha de login é resultado tipado e nunca derruba o servidor. Códigos e tokens de sessão são mascarados no log, com auditoria sem segredos.</p>
+<h2 id="migracao">Migração</h2>
+<p><code>auth.mfa.enabled</code> começa <strong>desligado</strong>; o Petrus cadastra o autenticador e confere tudo com o MFA ainda desligado; só então liga. Desligar é editar o <code>config.yaml</code> por SSH.</p>
+<h2 id="tasks">Tasks</h2>
+<p>T-159 (núcleo), T-160 (<code>juniper auth</code>), T-161 (WebSocket), T-162 (Telegram e dashboard), T-163 (documentação e aceite). Épica #177.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Música — Livro de bolso Juniper</title>
+<meta name="description" content="Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/musica.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Integrações / Música</div>
+<h1>Música <span class="tag a">proposto</span></h1>
+<p class="lead">Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página resume o <a href="adr-024.html">ADR-024</a> (proposto). Ainda não está implementada.</p></div>
+<h2 id="como-funciona">Como funciona</h2>
+<ol><li>O LLM chama <strong><code>music_search</code></strong> (<code>READ</code>): a YouTube Data API v3 devolve até 5 faixas, com preferência pelas oficiais ("Artista - Topic").</li><li>O LLM escolhe e chama <a href="executor.html#open-url"><code>open_url</code></a> com <code>https://music.youtube.com/watch?v=&lt;videoId&gt;</code>. O domínio <code>music.youtube.com</code> está na lista de confiança, então abre <strong>sem perguntar</strong>.</li><li>O celular redireciona para o app do YouTube Music e o <a href="mobile.html">app mobile</a> dá o play automaticamente; se o autoplay falhar, a faixa aparece pronta e basta apertar play.</li></ol>
+<p>Tocar <strong>não exige login</strong>: basta a chave de API (<code>YOUTUBE_API_KEY</code>).</p>
+<h2 id="tools">Tools</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tool</th><th>Tier</th><th>O que faz</th></tr></thead><tbody><tr><td><code>music_search</code></td><td>READ</td><td>Busca faixas e devolve links (modo <code>radio</code> devolve o link de mix).</td></tr><tr><td><code>music_playlists</code></td><td>READ</td><td>Lista as playlists do Petrus.</td></tr><tr><td><code>music_playlist_create</code></td><td>WRITE</td><td>Cria uma playlist <strong>privada</strong>, com confirmação em palavras.</td></tr><tr><td><code>music_playlist_add</code></td><td>WRITE</td><td>Adiciona faixas a uma playlist, com confirmação.</td></tr><tr><td><code>music_feedback</code></td><td>WRITE (sem confirmar)</td><td>Registra "gostei", "não gostei" ou "pulei".</td></tr></tbody></table></div>
+<p>Apagar playlist não existe na v1.</p>
+<h2 id="cota">Cota e erros</h2>
+<p>A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro conta o que gasta e recusa antes do Google, com o erro tipado <code>quota_exhausted</code>. Os demais códigos: <code>auth_required</code>, <code>auth_expired</code>, <code>api_error</code>, <code>not_configured</code>, <code>network_error</code>.</p>
+<h2 id="login">Playlists e login</h2>
+<p>Criar playlists exige o login do Petrus no Google, pelo fluxo de <strong>código de dispositivo</strong> (<code>juniper music login</code>); o token de renovação fica em <code>~/.juniper/music/oauth.json</code> (modo 600). Se o app OAuth estiver em modo de teste, o Google pode expirar o token a cada 7 dias <em>(a confirmar)</em>.</p>
+<h2 id="gosto">Gosto musical</h2>
+<p>A API oficial não dá o histórico de reprodução. O gosto vem do que o Petrus <strong>pede e comenta</strong>; resultados de busca nunca alimentam a memória subjetiva (<a href="memoria-v2.html">Memória V2</a>). A v1 só registra o feedback e mostra com <code>juniper music taste</code>.</p>
+<h2 id="ytmusicapi">Por que não a <code>ytmusicapi</code></h2>
+<p>Uma POC com a biblioteca não oficial autenticou, mas recebeu HTTP 403 em tudo com um token OAuth próprio. Ela fica fora do caminho crítico e pode voltar atrás da mesma interface.</p>
+<h2 id="tasks">Tasks</h2>
+<p>T-154 (provider, cota e busca), T-155 (login OAuth), T-156 (playlists), T-157 (gosto musical), T-158 (documentação e aceite). Épica #180.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
