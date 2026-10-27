@@ -553,13 +553,16 @@ class ChatHandler:
             submit=lambda text: self._voice_turn(conn, text),
             cancel_turn=lambda: self._cancel_running_turn(conn),
             turn_active=lambda: self._turn_running(conn),
-            ended=lambda: self._voices.pop(conn.id, None) and None,
+            ended=lambda: self._voice_ended(conn),
             input_rate=message.format.sample_rate,
             local_stt=bool(message.local_stt),
             local_tts=bool(message.local_tts),
         )
         self._voices[conn.id] = session
         await session.start(message.id)
+
+    def _voice_ended(self, conn: Connection) -> None:
+        self._voices.pop(conn.id, None)
 
     async def _voice_message(self, conn: Connection, message: p.ClientMessage) -> None:
         session = self._voices.get(conn.id)
