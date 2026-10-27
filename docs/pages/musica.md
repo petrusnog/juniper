@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). Ainda não está implementada.
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154). Login, playlists e gosto musical ainda são desenho.
 
 ## Como funciona {#como-funciona}
 
@@ -15,13 +15,13 @@ tags: musica youtube music data api playlist cota quota oauth gosto musical open
 2. O LLM escolhe e chama [`open_url`](executor.html#open-url) com `https://music.youtube.com/watch?v=<videoId>`. O domínio `music.youtube.com` está na lista de confiança, então abre **sem perguntar**.
 3. O celular redireciona para o app do YouTube Music e o [app mobile](mobile.html) dá o play automaticamente; se o autoplay falhar, a faixa aparece pronta e basta apertar play.
 
-Tocar **não exige login**: basta a chave de API (`YOUTUBE_API_KEY`).
+Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no `.env`) e `music.enabled: true`. A chave viaja no cabeçalho `x-goog-api-key`, **nunca na URL**, e não aparece em erro nem em log. Sem chave ou com a música desligada, a tool nem aparece para o LLM.
 
 ## Tools {#tools}
 
 | Tool | Tier | O que faz |
 |---|---|---|
-| `music_search` | READ | Busca faixas e devolve links (modo `radio` devolve o link de mix). |
+| `music_search` | READ | Busca faixas e devolve links (modo `radio` devolve o link de mix). **Pronta (T-154).** |
 | `music_playlists` | READ | Lista as playlists do Petrus. |
 | `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. |
 | `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. |
@@ -29,9 +29,13 @@ Tocar **não exige login**: basta a chave de API (`YOUTUBE_API_KEY`).
 
 Apagar playlist não existe na v1.
 
+## Como a busca ranqueia {#ranqueamento}
+
+O cérebro busca 10 resultados na categoria de música (o custo é o mesmo de buscar menos) e devolve até 5, sem repetir o mesmo vídeo: primeiro as faixas oficiais (canais "Artista - Topic"), depois as demais; versões "ao vivo", *cover*, *karaoke*, *reaction*, *remix*, *slowed*, *nightcore*, álbum completo e playlist descem na lista, **a menos que o pedido cite a palavra**. Títulos vêm com HTML escapado da API e são mostrados como texto. A escolha final é do LLM, que vê a lista. No modo `radio`, o link devolvido é o de mix (`list=RDAMVM<id>`); se o YouTube Music monta a fila e dá autoplay a partir dele ainda é **a confirmar no aparelho**.
+
 ## Cota e erros {#cota}
 
-A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro conta o que gasta e recusa antes do Google, com o erro tipado `quota_exhausted`. Os demais códigos: `auth_required`, `auth_expired`, `api_error`, `not_configured`, `network_error`.
+A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro conta o que gasta (`music.quota_file`, por dia do **Pacífico**, sobrevive a reinício) e recusa antes do Google, com o erro tipado `quota_exhausted` e quanto falta para voltar; se o próprio Google disser que a cota acabou, o cérebro para de chamar até o dia virar. O limite padrão é 9.000 (margem sob os 10.000). Os demais códigos: `auth_required`, `auth_expired`, `api_error`, `not_configured`, `network_error`.
 
 ## Playlists e login {#login}
 

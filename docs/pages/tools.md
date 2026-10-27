@@ -137,6 +137,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `delete_event` | DESTRUCTIVE | CLOUD | Apaga um evento (irreversível). | [Agenda Google](google-calendar.html) |
 | `git_search` | READ | EXECUTOR | Busca commits por termo. | [Comandos git](git.html) |
 | `git_deploy` | DESTRUCTIVE | EXECUTOR | Cherry-pick de feature em develop/stage. | [Comandos git](git.html) |
+| `music_search` | READ | CLOUD | Procura músicas no YouTube Music e devolve links (só aparece com `music.enabled` e a chave configurada). | [Música](musica.html) |
 | `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |

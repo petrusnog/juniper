@@ -35,6 +35,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `JUNIPER_DEEPINFRA_API_KEY` | Chave da DeepInfra (deepinfra.com/dash/api_keys). |
 | `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.html)). |
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
+| `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.html)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
 | `JUNIPER_CONFIG_PATH` | Caminho do `config.yaml`. |
@@ -152,6 +153,18 @@ O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token 
 | `tools.security.shell_allowlist` | `git, ls, cat, grep, rg, fd, jq, find, wc, head, tail` | Binários que a futura `run_shell` aceita. |
 | `tools.security.shell_require_confirmation` | `true` | Exige confirmação para a `run_shell`. |
 | `tools.security.confirmation_timeout` | `60` | Segundos que o modo de confirmação por callback espera (1 a 600). |
+
+## music {#music}
+
+A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `music.enabled` | `false` | Liga as tools de música (precisa de `JUNIPER_YOUTUBE_API_KEY`). |
+| `music.daily_quota_limit` | `9000` | Unidades da cota diária que o cérebro aceita gastar; o Google dá 10.000 por dia (busca 100, escrita 50) e zera à meia-noite no horário do Pacífico. Ao chegar, a busca devolve `quota_exhausted` sem chamar a API (100 a 1.000.000). |
+| `music.search_limit` | `5` | Máximo de resultados por busca (1 a 5). |
+| `music.region` | `BR` | Código de região de duas letras da busca. |
+| `music.quota_file` | `~/.juniper/music/quota.json` | Onde o contador de cota é guardado (por dia do Pacífico). |
 
 ## google {#google}
 
