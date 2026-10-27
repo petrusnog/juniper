@@ -64,6 +64,7 @@ INDEXES: dict[str, list[list[tuple[str, int]]]] = {
     JOURNAL: [[("day", -1)], [("at", -1)]],
     DREAM_RUNS: [[("started_at", -1)]],
     TRANSCRIPT_TURNS: [[("session_id", 1), ("index", 1)], [("at", -1)]],
+    "music_taste": [[("at", -1)]],  # brain.music.taste.TASTE: kept as a literal to avoid a cycle
 }
 
 

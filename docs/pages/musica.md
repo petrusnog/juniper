@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155) e as playlists (T-156). O gosto musical ainda é desenho.
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155), as playlists (T-156) e o registro do gosto musical (T-157).
 
 ## Como funciona {#como-funciona}
 
@@ -25,7 +25,7 @@ Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no 
 | `music_playlists` | READ | Lista as playlists do Petrus (nome, quantidade e id). **Pronta (T-156).** |
 | `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. **Pronta (T-156).** |
 | `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. **Pronta (T-156).** |
-| `music_feedback` | WRITE (sem confirmar) | Registra "gostei", "não gostei" ou "pulei". |
+| `music_feedback` | WRITE (sem confirmar) | Registra "gostei", "não gostei", "pulei" ou "pediu para tocar". **Pronta (T-157).** |
 
 Apagar playlist não existe na v1.
 
@@ -70,7 +70,18 @@ As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAut
 
 ## Gosto musical {#gosto}
 
-A API oficial não dá o histórico de reprodução. O gosto vem do que o Petrus **pede e comenta**; resultados de busca nunca alimentam a memória subjetiva ([Memória V2](memoria-v2.html)). A v1 só registra o feedback e mostra com `juniper music taste`.
+A API oficial não dá o histórico de reprodução, então o gosto vem **do que o Petrus diz**: "toca Djavan" (`played`) e as reações dele ("gostei dessa" `like`, "não curto" `dislike`, "pula essa" `skip`). A tool **`music_feedback`** anota isso, em silêncio (como `remember`), com título e/ou artista, o id do vídeo quando houver e a conversa de onde veio.
+
+**A regra do [ADR-017](adr-017.html), garantida em código e em teste:** só o que o Petrus **escreveu** entra. Resultado de busca, título devolvido pela API e qualquer saída de tool **nunca** são gravados (a busca não escreve nada, e a única porta de escrita é a `music_feedback`). Texto com cara de segredo é recusado, e o que passa de 200 caracteres também.
+
+Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.session.store: mongo`; sem isso a tool nem aparece). Para ver e apagar:
+
+| Comando | O que faz |
+|---|---|
+| `juniper music taste [-n 15]` | Resumo (por sinal e **artistas em alta**, com pontos: gostei +2, pedi +1, pulei −1, não gostei −2) e os últimos registros. |
+| `juniper music taste clear [--yes]` | Apaga **tudo**, depois de perguntar. Não dá para desfazer. |
+
+Nesta versão o gosto **só é registrado**: ainda não influencia a conversa nem as sugestões. Que o sonho noturno leia esses eventos e forme crenças sobre o gosto (e que a Juniper sugira algo fora da "bolha") é um passo seguinte que muda o ADR-017, e depende da decisão do Petrus. A coleção `music_taste` não entra na exclusão em cascata da Memória V2: quem apaga é o `juniper music taste clear`.
 
 ## Por que não a `ytmusicapi` {#ytmusicapi}
 
@@ -78,4 +89,4 @@ Uma POC com a biblioteca não oficial autenticou, mas recebeu HTTP 403 em tudo c
 
 ## Tasks {#tasks}
 
-T-154 (provider, cota e busca), T-155 (login OAuth), T-156 (playlists), T-157 (gosto musical), T-158 (documentação e aceite). Épica #180.
+T-154 (provider, cota e busca), T-155 (login OAuth), T-156 (playlists), T-157 (gosto musical), T-158 (aceite ponta a ponta). Épica #180.
