@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) e o login no YouTube (T-155). Playlists e gosto musical ainda são desenho.
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155) e as playlists (T-156). O gosto musical ainda é desenho.
 
 ## Como funciona {#como-funciona}
 
@@ -22,9 +22,9 @@ Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no 
 | Tool | Tier | O que faz |
 |---|---|---|
 | `music_search` | READ | Busca faixas e devolve links (modo `radio` devolve o link de mix). **Pronta (T-154).** |
-| `music_playlists` | READ | Lista as playlists do Petrus. |
-| `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. |
-| `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. |
+| `music_playlists` | READ | Lista as playlists do Petrus (nome, quantidade e id). **Pronta (T-156).** |
+| `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. **Pronta (T-156).** |
+| `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. **Pronta (T-156).** |
 | `music_feedback` | WRITE (sem confirmar) | Registra "gostei", "não gostei" ou "pulei". |
 
 Apagar playlist não existe na v1.
@@ -55,6 +55,18 @@ O token de renovação fica em `music.oauth_file` (`~/.juniper/music/oauth.json`
 | O código do login expirou, foi negado ou o Google falhou | `auth_expired`, `auth_required` ou `api_error` |
 
 Se o app OAuth estiver em modo de teste, o Google pode expirar o token de renovação a cada 7 dias *(a confirmar a regra vigente)*; publicar o app (em produção, sem verificação, uso pessoal) evita isso.
+
+## Criar e alterar playlists {#playlists}
+
+As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAuth configurado (a chave de API sozinha não loga ninguém); sem o login feito, elas respondem `auth_required` com a instrução, em vez de falhar calado.
+
+- **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso é decisão do Petrus) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.html#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
+- **`music_playlist_add`** (`playlist_id`, `video_ids`, `playlist_title` opcional, só para a pergunta): adiciona a uma playlist existente; o id vem de `music_playlists`.
+- **O que é recusado antes de perguntar:** título vazio, com mais de 150 caracteres ou com `<` ou `>`; ids ou links que não são do YouTube; mais de 25 faixas; playlist inválida. Você nunca é perguntado sobre algo que vai falhar.
+
+**Custo de cota:** criar custa 50 unidades e **cada faixa adicionada também custa 50**, então uma playlist de 10 faixas gasta 550 do limite diário. O cérebro **reserva o custo inteiro antes de criar qualquer coisa**, para nunca deixar uma playlist pela metade por falta de cota.
+
+**Falhas no meio:** uma faixa que não existe mais ou que já está na playlist é **pulada** (o resultado diz quantas não entraram); uma falha séria (cota, login) para e a resposta diz que a playlist foi criada, com quantas faixas entraram. Outros erros: `playlistNotFound` (não achei a playlist), conta sem canal do YouTube e playlist cheia.
 
 ## Gosto musical {#gosto}
 
