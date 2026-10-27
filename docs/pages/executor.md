@@ -59,13 +59,14 @@ Abre um link no dispositivo: o navegador ou o aplicativo que trata o endereço (
 Vale no brain **e de novo** no cliente:
 
 - Só `http` e `https` (nada de `file:`, `javascript:`, `data:`, `ftp:` ou esquemas de aplicativos).
-- Sem credenciais embutidas (`usuario:senha@host`); até 2.048 caracteres, sem caracteres de controle.
+- Sem credenciais embutidas (`usuario:senha@host`); até 2.048 caracteres, sem espaços nem caracteres de controle e **sem `\`** (um navegador o lê como `/`).
+- O host precisa ser um nome DNS simples (rótulos de letras, dígitos e hífen interno): `%` e `_` no host são recusados, porque um navegador decodifica `%` e `evil.com\.music.youtube.com` abriria `evil.com`.
 - Domínio comparado em ASCII (punycode), para um domínio de uma lista não ser imitado com letras parecidas.
 - `localhost` (e `*.localhost`) e endereços de loopback, de rede privada, de link-local, multicast, reservados e da faixa do Tailscale (`100.64.0.0/10`) são recusados quando o host é um IP ou `localhost`. Valem também as formas que o navegador lê como IPv4 (`2130706433`, `0x7f.0.0.1`, `127.1`) e o IPv4 embutido em IPv6 (`::ffff:127.0.0.1`). A resolução de DNS **não** é feita na política *(risco aceito, a confirmar)*.
 
 ### Confirmação e domínios de confiança {#confianca}
 
-Por padrão, `open_url` pede confirmação na conversa mostrando a **URL exata** ("Posso abrir `https://...`?"). Para o uso comum ficar fluido, `tools.open_url.trusted_domains` (no `config.yaml` do servidor) lista domínios que abrem **sem perguntar**; a lista inicial é só `music.youtube.com` (a mais estreita que serve à música; `youtube.com` cobriria também os subdomínios). Entradas são normalizadas (minúsculas, ASCII/punycode) e a lista não vale para IPs. O gancho é `Tool.requires_confirmation(**args)` ([Ferramentas](tools.html#limitacoes)); o `Dispatcher` o ignora para `DESTRUCTIVE` e pergunta se ele falhar. A lista **não** dispensa a política de URL, e o brain mostra a URL normalizada na pergunta.
+Por padrão, `open_url` pede confirmação na conversa mostrando a **URL exata** ("Posso abrir `https://...`?"). Para o uso comum ficar fluido, `tools.open_url.trusted_domains` (no `config.yaml` do servidor) lista domínios que abrem **sem perguntar**; a lista inicial é só `music.youtube.com` (a mais estreita que serve à música; `youtube.com` cobriria também os subdomínios). Entradas são normalizadas (minúsculas, ASCII/punycode) e a lista não vale para IPs. O gancho é `Tool.requires_confirmation(**args)` ([Ferramentas](tools.html#limitacoes)); o `Dispatcher` o ignora para `DESTRUCTIVE` e pergunta se ele falhar. A lista **não** dispensa a política de URL, o brain mostra a URL normalizada na pergunta e **envia ao dispositivo essa mesma URL** (`Tool.canonical_arguments`). Cuidado: confiar em `youtube.com` incluiria todos os subdomínios e o redirecionador do site, e não há lista de sufixos públicos (`co.uk` confiaria em todo o `.co.uk`).
 
 ### Resultado e erros {#resultado}
 

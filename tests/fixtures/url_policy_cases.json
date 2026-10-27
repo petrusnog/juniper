@@ -217,6 +217,96 @@
     {
       "url": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example/",
       "allowed": false
+    },
+    {
+      "url": "https://evil.com\\.music.youtube.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://127.0.0.1\\.music.youtube.com/",
+      "allowed": false
+    },
+    {
+      "url": "http://localhost\\.example.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com\\@music.youtube.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://example.com/a\\b",
+      "allowed": false
+    },
+    {
+      "url": "https://%31%32%37.0.0.1/",
+      "allowed": false
+    },
+    {
+      "url": "https://localhost%2e/",
+      "allowed": false
+    },
+    {
+      "url": "https://evil.com%2f.music.youtube.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://a_b.example/",
+      "allowed": false
+    },
+    {
+      "url": "https://-a.example/",
+      "allowed": false
+    },
+    {
+      "url": "https://a-.example/",
+      "allowed": false
+    },
+    {
+      "url": "https://a..example/",
+      "allowed": false
+    },
+    {
+      "url": "https://.example/",
+      "allowed": false
+    },
+    {
+      "url": "https://exa*mple.com/",
+      "allowed": false
+    },
+    {
+      "url": "https://999.999.999.999/",
+      "allowed": false
+    },
+    {
+      "url": "https://[::127.0.0.1]/",
+      "allowed": false
+    },
+    {
+      "url": "https://[::ffff:0:127.0.0.1]/",
+      "allowed": false
+    },
+    {
+      "url": "https://[64:ff9b::7f00:1]/",
+      "allowed": false
+    },
+    {
+      "url": "https://[::ffff:7f00:1]/",
+      "allowed": false
+    },
+    {
+      "url": "https://[::]/",
+      "allowed": false
+    },
+    {
+      "url": "https://[64:ff9b::808:808]/",
+      "allowed": true,
+      "normalized": "https://[64:ff9b::808:808]/"
+    },
+    {
+      "url": "https://music.youtube.com/watch?v=a-b_c",
+      "allowed": true,
+      "normalized": "https://music.youtube.com/watch?v=a-b_c"
     }
   ],
   "trust": [
@@ -278,6 +368,41 @@
       "host": "music.youtube.com",
       "domains": [
         "https://music.youtube.com/"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "evil.com",
+      "domains": [
+        "com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "music.youtube.com",
+      "domains": [
+        "*.youtube.com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "localhost",
+      "domains": [
+        "localhost"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "a_b.music.youtube.com",
+      "domains": [
+        "music.youtube.com"
+      ],
+      "trusted": false
+    },
+    {
+      "host": "evil.com\\.music.youtube.com",
+      "domains": [
+        "music.youtube.com"
       ],
       "trusted": false
     }

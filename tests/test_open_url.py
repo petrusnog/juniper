@@ -193,11 +193,42 @@ async def test_a_refused_url_is_neither_asked_nor_sent() -> None:
 
 
 async def test_a_trusted_domain_does_not_lift_the_policy() -> None:
-    """Even if a private address were listed, or a trusted name carried credentials."""
+    """A name that ends in the trusted domain, or carries it as credentials, is not trusted."""
     gateway = FakeGateway()
-    for url in ("https://music.youtube.com@evil.example/", "http://10.0.0.1/"):
-        await make_dispatcher(gateway).dispatch(ToolCall("c1", "open_url", {"url": url}))
-    assert gateway.calls == []
+    asked: list[tuple[str, str | None]] = []
+    for url in (
+        "https://music.youtube.com@evil.example/",
+        "https://evil.example\\.music.youtube.com/",
+        "https://127.0.0.1\\.music.youtube.com/",
+        "https://%31%32%37.0.0.1.music.youtube.com/",
+    ):
+        message = await make_dispatcher(gateway, asked).dispatch(
+            ToolCall("c1", "open_url", {"url": url})
+        )
+        assert (message.content or "").startswith("ERRO: Não posso abrir esse endereço"), url
+    assert gateway.calls == [] and asked == []
+
+
+async def test_the_device_receives_the_url_the_user_was_shown() -> None:
+    """What was checked, asked about and sent is one and the same normalised string."""
+    gateway = FakeGateway()
+    asked: list[tuple[str, str | None]] = []
+    raw = "  HTTPS://Exemplo.COM./a b".replace(" b", "")  # padded, upper-case host, trailing dot
+    await make_dispatcher(gateway, asked).dispatch(ToolCall("c1", "open_url", {"url": raw}))
+    assert asked == [("https://exemplo.com/a", "abrir https://exemplo.com/a")]
+    assert gateway.calls == [("open_url", {"url": "https://exemplo.com/a"})]
+
+
+async def test_a_trusted_link_is_sent_normalised_too() -> None:
+    gateway = FakeGateway()
+    await make_dispatcher(gateway).dispatch(
+        ToolCall("c1", "open_url", {"url": "HTTPS://Music.YouTube.com./watch?v=abc"})
+    )
+    assert gateway.calls == [("open_url", {"url": "https://music.youtube.com/watch?v=abc"})]
+
+
+async def test_open_url_names_no_subjects_so_a_yes_in_context_never_covers_it() -> None:
+    assert await OpenUrl().subjects(url=MUSIC) is None
 
 
 async def test_a_device_failure_comes_back_as_a_typed_result() -> None:
@@ -272,6 +303,20 @@ def test_trusted_domains_load_from_the_environment(
 
 
 # --- end to end: server, phone as executor -----------------------------------------------
+
+
+async def test_the_phone_gets_the_normalised_url(tmp_path: Path) -> None:
+    provider = FakeProvider(
+        [use("open_url", url="HTTPS://Music.YouTube.com./watch?v=abc123 ".strip()), say("Abri.")]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", DEVICE_TOOL)
+        await phone.send(type="chat.send", id="c-1", text="toca")
+        invoke = (await phone.until(p.Invoke))[-1]
+        assert isinstance(invoke, p.Invoke) and invoke.arguments == {"url": MUSIC}
+        await phone.send(type="result", call_id=invoke.call_id, success=True, output="Abri.")
+        await phone.until(p.ChatEnd)
 
 
 async def test_trusted_link_reaches_the_phone_without_a_question(tmp_path: Path) -> None:

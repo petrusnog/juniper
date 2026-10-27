@@ -114,3 +114,83 @@ class TestTrustedDomains:
     def test_ip_addresses_are_never_trusted(self) -> None:
         assert not is_trusted("8.8.8.8", ["8.8.8.8"])
         assert normalise_domain("8.8.8.8") is None
+
+
+class TestParserDifferentials:
+    """What a browser reads differently from ``urlsplit`` must never reach the trust check."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://evil.com\\.music.youtube.com/",
+            "https://127.0.0.1\\.music.youtube.com/",
+            "https://example.com/a\\b",
+        ],
+    )
+    def test_backslash_anywhere_is_refused(self, url: str) -> None:
+        assert not check_url(url).ok
+
+    @pytest.mark.parametrize("url", ["https://%31%32%37.0.0.1/", "https://localhost%2e/"])
+    def test_percent_encoding_in_the_host_is_refused(self, url: str) -> None:
+        result = check_url(url)
+        assert not result.ok and result.reason == "o nome do site é inválido"
+
+    @pytest.mark.parametrize(
+        "host", ["a_b.example", "-a.example", "a-.example", "a..example", "exa*mple.com", "a" * 64]
+    )
+    def test_only_plain_dns_names_pass(self, host: str) -> None:
+        assert not check_url(f"https://{host}/").ok
+
+    def test_a_trusted_suffix_cannot_smuggle_another_host(self) -> None:
+        assert not is_trusted("evil.com\\.music.youtube.com", ["music.youtube.com"])
+        assert not is_trusted("a_b.music.youtube.com", ["music.youtube.com"])
+
+    def test_a_numeric_looking_name_that_is_not_an_address_is_refused(self) -> None:
+        assert not check_url("https://999.999.999.999/").ok
+
+
+class TestIpv6CarryingIpv4:
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "::127.0.0.1",
+            "::ffff:127.0.0.1",
+            "::ffff:0:127.0.0.1",
+            "64:ff9b::7f00:1",
+            "::ffff:a00:1",
+        ],
+    )
+    def test_private_ipv4_inside_ipv6_is_refused(self, host: str) -> None:
+        assert not check_url(f"http://[{host}]/").ok
+
+    def test_a_public_ipv4_inside_nat64_still_passes(self) -> None:
+        assert check_url("https://[64:ff9b::808:808]/").ok
+
+
+class TestTrustedDomainEntries:
+    @pytest.mark.parametrize(
+        "entry", ["com", "localhost", "*.youtube.com", "a_b.example", "a b.com"]
+    )
+    def test_entries_that_would_trust_too_much_or_nothing_are_refused(self, entry: str) -> None:
+        assert normalise_domain(entry) is None
+
+    def test_a_bare_top_level_domain_trusts_nothing(self) -> None:
+        assert not is_trusted("evil.com", ["com"])
+
+
+def test_url_policy_does_not_depend_on_the_configuration() -> None:
+    """``brain.config`` imports this module: importing it back would be a cycle."""
+    import ast
+
+    source = (Path(__file__).parents[1] / "brain" / "tools" / "url_policy.py").read_text()
+    modules = {
+        node.module or ""
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not {m for m in modules if m.startswith("brain")}

@@ -27,6 +27,12 @@ _TAILSCALE_V4 = ipaddress.ip_network("100.64.0.0/10")
 # Forms a browser still reads as an IPv4 address ("2130706433", "0x7f.1", "0177.0.0.1").
 _NUMERIC_HOST = re.compile(r"^(0x[0-9a-f]+|[0-9]+)(\.(0x[0-9a-f]+|[0-9]+)){0,3}$", re.IGNORECASE)
 
+# A hostname label: letters, digits and inner hyphens only (after IDNA, so always ASCII). Anything
+# else in a host ("\\", "%", "_", "*") is read differently by a browser than by ``urlsplit``: a
+# "\\" ends the host for a browser, and "%31" is decoded into a digit. Refuse it instead.
+_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+MAX_HOST_CHARS = 253
+
 _PATH_SAFE = "/%:@!$&'()*+,;=-._~"
 _QUERY_SAFE = "/%:@!$&'()*+,;=-._~?"
 
@@ -59,12 +65,34 @@ def _address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     return None
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_ZERO_PREFIX = bytes(12)  # ::/96, the deprecated IPv4-compatible form
+_SIIT_PREFIX = bytes(8) + b"\xff\xff\x00\x00"  # ::ffff:0:0:0/96
+
+
+def _embedded_v4(addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address a mapped, compatible, SIIT or NAT64 IPv6 address carries, if any."""
+    if addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    raw = addr.packed
+    if raw[:12] in (_ZERO_PREFIX, _SIIT_PREFIX) or addr in _NAT64:
+        return ipaddress.IPv4Address(raw[12:])
+    return None
+
+
 def _blocked_address(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        addr = addr.ipv4_mapped
-    if isinstance(addr, ipaddress.IPv4Address) and addr in _TAILSCALE_V4:
+    if isinstance(addr, ipaddress.IPv6Address):
+        embedded = _embedded_v4(addr)
+        if embedded is not None and _blocked_address(embedded):
+            return True
+    elif addr in _TAILSCALE_V4:
         return True
     return not addr.is_global or addr.is_multicast
+
+
+def _valid_name(host: str) -> bool:
+    """Whether ``host`` (ASCII, lowercase) is a plain DNS name: LDH labels, no empty label."""
+    return 0 < len(host) <= MAX_HOST_CHARS and all(_LABEL.match(label) for label in host.split("."))
 
 
 def _is_local_name(host: str) -> bool:
@@ -80,6 +108,8 @@ def check_url(url: object) -> UrlCheck:
         return _deny(f"o endereço passa de {MAX_URL_CHARS} caracteres")
     if any(unicodedata.category(c).startswith("C") or c.isspace() for c in text):
         return _deny("o endereço tem espaços ou caracteres de controle")
+    if "\\" in text:  # a browser reads "\\" as "/", urlsplit does not: never trust the parse
+        return _deny("o endereço está mal formado")
 
     try:
         parts = urlsplit(text)
@@ -109,6 +139,8 @@ def check_url(url: object) -> UrlCheck:
             return _deny("endereços locais ou de rede privada não são permitidos")
     elif _is_local_name(ascii_host):
         return _deny("endereços locais ou de rede privada não são permitidos")
+    elif _NUMERIC_HOST.match(ascii_host) or not _valid_name(ascii_host):
+        return _deny("o nome do site é inválido")
 
     netloc = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
     if port is not None:
@@ -128,12 +160,16 @@ def check_url(url: object) -> UrlCheck:
 def normalise_domain(domain: str) -> str | None:
     """A configured trusted domain in its ASCII form, or ``None`` if it is not a plain domain."""
     value = domain.strip().lower().rstrip(".")
-    if not value or "/" in value or ":" in value or "@" in value or _address(value) is not None:
+    if not value or _address(value) is not None:
         return None
     try:
-        return value.encode("idna").decode("ascii")
+        ascii_value = value.encode("idna").decode("ascii")
     except UnicodeError:
         return None
+    # At least two labels: a bare "com" would trust every site of a top-level domain.
+    if "." not in ascii_value or not _valid_name(ascii_value) or _NUMERIC_HOST.match(ascii_value):
+        return None
+    return ascii_value
 
 
 def is_trusted(host: str, trusted_domains: Iterable[str]) -> bool:
@@ -141,7 +177,7 @@ def is_trusted(host: str, trusted_domains: Iterable[str]) -> bool:
 
     Trust never covers IP addresses, and it never lifts the URL policy: call ``check_url`` first.
     """
-    if _address(host) is not None:
+    if _address(host) is not None or not _valid_name(host):
         return False
     for domain in trusted_domains:
         wanted = normalise_domain(domain)

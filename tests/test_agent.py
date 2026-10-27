@@ -463,6 +463,60 @@ async def test_the_default_hook_follows_the_class_confirm_flag() -> None:
     assert await write().requires_confirmation() is True
 
 
+# --- canonical_arguments(): what is asked about is what runs -----------------------------
+
+
+def make_canonical_registry(hook: Any) -> tuple[ToolRegistry, list[dict[str, Any]]]:
+    reg = ToolRegistry()
+    seen: list[dict[str, Any]] = []
+
+    class Canon(Tool):
+        name = "canon"
+        description = "Normaliza o argumento."
+        parameters = {"type": "object", "properties": {"id": {"type": "string"}}}
+
+        async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
+            return await hook(**kwargs)
+
+        async def run(self, **kwargs: Any) -> ToolResult:
+            seen.append(kwargs)
+            return ToolResult(success=True, output="feito")
+
+    reg.register(Canon)
+    return reg, seen
+
+
+async def test_the_question_and_the_run_use_the_canonical_arguments() -> None:
+    async def hook(**kwargs: Any) -> dict[str, Any]:
+        return {"id": kwargs["id"].strip().lower()}
+
+    reg, seen = make_canonical_registry(hook)
+    asked: list[str] = []
+    await Dispatcher(counting_confirm(asked), tool_registry=reg).dispatch(
+        ToolCall("c1", "canon", {"id": "  ABC "})
+    )
+    assert asked == ["abc"] and seen == [{"id": "abc"}]
+
+
+async def test_a_broken_canonical_hook_keeps_the_original_arguments() -> None:
+    async def hook(**kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("falha")
+
+    reg, seen = make_canonical_registry(hook)
+    asked: list[str] = []
+    await Dispatcher(counting_confirm(asked), tool_registry=reg).dispatch(
+        ToolCall("c1", "canon", {"id": "X"})
+    )
+    assert asked == ["X"] and seen == [{"id": "X"}]
+
+
+async def test_the_default_canonical_arguments_are_the_same_values() -> None:
+    reg, ran = make_registry()
+    write = reg.get("write_thing")
+    assert write is not None
+    assert await write().canonical_arguments(a=1) == {"a": 1}
+
+
 # --- one approval for the whole batch ----------------------------------------------------
 
 

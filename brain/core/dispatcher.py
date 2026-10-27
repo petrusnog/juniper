@@ -18,7 +18,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from brain.config import settings
@@ -248,6 +248,7 @@ class Dispatcher:
             if early is not None:
                 plan.early, plan.decision = early, "precheck_failed"
                 return plan
+            call = plan.call = await _canonical(plan.tool, call)
             if tool_cls.tier is not Tier.READ and await _asks(plan.tool, tool_cls, call):
                 plan.needs_confirm = True
                 plan.summary = await _summary(plan.tool, call)
@@ -328,6 +329,15 @@ async def _covered(plan: _Plan, consent: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return subjects is not None and mentions_all(consent, subjects)
+
+
+async def _canonical(tool: Tool, call: ToolCall) -> ToolCall:
+    """The call with the tool's canonical arguments; the original one if the tool cannot say."""
+    try:
+        arguments = await tool.canonical_arguments(**call.arguments)
+    except Exception:  # noqa: BLE001 - a tool bug must not block the call
+        return call
+    return call if arguments == call.arguments else replace(call, arguments=arguments)
 
 
 async def _asks(tool: Tool, tool_cls: type[Tool], call: ToolCall) -> bool:

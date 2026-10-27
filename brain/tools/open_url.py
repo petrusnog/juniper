@@ -57,6 +57,12 @@ class OpenUrl(Tool):
         result = check_url(kwargs.get("url"))
         return None if result.ok else _denied(result.reason)
 
+    async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
+        # The user is asked about, and the device receives, the normalised URL: not a second
+        # spelling that a different parser could read differently.
+        result = check_url(kwargs.get("url"))
+        return {**kwargs, "url": result.url} if result.ok else dict(kwargs)
+
     async def requires_confirmation(self, **kwargs: Any) -> bool:
         result = check_url(kwargs.get("url"))
         if not result.ok or result.host is None:
