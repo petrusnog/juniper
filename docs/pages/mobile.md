@@ -7,7 +7,7 @@ status: proposto
 tags: mobile android react native app celular chat texto voz tailscale keystore token executor open_url autoplay kotlin foreground service
 ---
 
-> **Nota:** esta página resume o [ADR-022](adr-022.html) (proposto), que **substitui** o [cliente desktop](desktop.html) em Electron. O app ainda está em planejamento: o que está descrito aqui é o desenho aprovado, não o que já roda.
+> **Nota:** esta página resume o [ADR-022](adr-022.html) (proposto), que **substitui** o [cliente desktop](desktop.html) em Electron. O código está em `mobile/`; esta página diz o que já existe (seção «O que já existe») e o que ainda é desenho.
 
 ## Visão geral {#visao-geral}
 
@@ -29,10 +29,25 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 - **Aparência:** os tokens do livro de bolso (paleta clara e escura, fonte monoespaçada para código).
 - **Build local** de APK, instalado à mão na v1.
 
+## O que já existe {#existe}
+
+**T-143, base do app** (`mobile/`):
+
+- **Projeto:** template oficial do React Native 0.88 (Android apenas; a pasta `ios` não foi trazida), TypeScript, `minSdk` 26, `applicationId` `app.juniper.mobile`, nome na tela «Juniper». `android:usesCleartextTraffic` é `true` porque o cérebro fala `ws://` e só é alcançável dentro do túnel do Tailscale, que já cifra o tráfego ([ADR-013](adr-013.html)).
+- **Tipos do protocolo gerados** (`npm run gen:protocol`): `src/protocol/types.generated.ts` sai de `docs/protocol/schema.json`; `npm run check:protocol` (e um teste Jest) falham se estiver velho. `src/protocol/index.ts` tem `parseMessage`, `serialize` e `Msg<'tipo'>` para estreitar por `type`.
+- **Conexão** (`src/connection/BrainConnection.ts`): WebSocket com `Authorization: Bearer` no handshake, `hello` como cliente `mobile`, `pong` para cada `ping`, retomada da conversa aberta, reconexão com recuo de 1, 2, 4, 8, 16 e 30 s (±20%), zerado depois de 30 s estáveis; `1012` (deploy) reconecta em 0,5 s; `4401`, `4426` e `4409` param de tentar e viram os estados `unauthorized`, `incompatible` e `replaced`. Não enfileira mensagens offline (ADR-012): `send` devolve `false`. Um quadro malformado ou binário é ignorado sem derrubar a conexão.
+- **Credenciais** (`src/storage/credentials.ts`): endereço, porta, token e identificador do aparelho num único item do **Android Keystore** (Keychain, `WHEN_UNLOCKED_THIS_DEVICE_ONLY`); o token nunca vai a log nem a nenhuma mensagem. A tela de configuração valida o endereço (sem `http://` nem porta no campo) e esconde o token.
+- **Tema** (`src/theme/tokens.ts`): a paleta clara e escura do livro de bolso, seguindo o tema do sistema.
+- **Testes** (`npm test`, 45 testes): protocolo, conexão com um WebSocket falso (token, hello, ping/pong, backoff, códigos de fechamento, quadros ruins), credenciais com o Keychain simulado, tela de configuração. Mais `npm run typecheck` e `npx eslint .`; o workflow `Mobile` roda tudo isso quando `mobile/` ou o schema mudam.
+
+Para rodar na sua máquina (JDK 17, Android SDK e Node 22 ou superior): `cd mobile && npm install && npx react-native run-android` (celular com depuração USB ou emulador). Para um APK: crie uma chave local, ponha os dados em `mobile/android/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; o arquivo e a chave **não** vão para o Git) e rode `cd mobile/android && ./gradlew assembleRelease`; o APK sai em `app/build/outputs/apk/release/`. Sem `keystore.properties` o APK sai assinado com a chave de depuração: serve para testar, não para manter.
+
+**Não verificado:** o build do APK e a execução no aparelho (o ambiente de desenvolvimento do Claude não tem Android SDK). Os testes acima provam a lógica em JavaScript.
+
 ## O que os testes não provam {#limites}
 
 Jest cobre a lógica (conexão, conversas, política de URL, tipos). Áudio, serviço em primeiro plano, autoplay e o comportamento do Android só se verificam **no aparelho**, pelo roteiro de aceite manual.
 
 ## Tasks {#tasks}
 
-T-143 (base do app), T-144 (chat de texto), T-145 (executor e autoplay), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.
+T-143 (base do app, **pronto**), T-144 (chat de texto), T-145 (executor e autoplay), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.
