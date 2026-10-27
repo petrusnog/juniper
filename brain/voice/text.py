@@ -71,6 +71,9 @@ def speech_text(text: str, *, say_link: bool = False) -> str:
     return cleaned
 
 
+_ENDS_SENTENCE = re.compile(r"[.!?…][\"')\]]*\s*$")
+
+
 class SentenceChunker:
     """Turns streamed pieces of a reply into speakable sentences, in order.
 
@@ -96,6 +99,14 @@ class SentenceChunker:
 
     def feed(self, piece: str) -> list[str]:
         self._buffer += piece
+        return self._drain(final=False)
+
+    def settle(self) -> list[str]:
+        """The reply paused (a tool is running, the model is thinking): say a sentence that already
+        ends in punctuation without waiting for the space that normally confirms it."""
+        if not _ENDS_SENTENCE.search(self._buffer) or "```" in self._buffer:
+            return []
+        self._buffer += " "
         return self._drain(final=False)
 
     def flush(self) -> list[str]:

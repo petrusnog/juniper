@@ -152,6 +152,10 @@ Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.ht
 
 `voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Um quadro de áudio com base64 inválido, `seq` negativo ou acima do limite é recusado como `bad_request`. Os erros `voice_unavailable` e `voice_busy` estão na [tabela de erros](#erros). `hello.client.kind` passa a documentar também `mobile`.
 
+**Cortar a fala.** Quando o Petrus fala por cima dela, diz «silêncio» ou o app manda `voice.interrupt`, o cérebro para de enviar áudio e manda `voice.state` com `state: listening` **e o `turn_id` do turno cortado**: é a ordem para o app **descartar na hora o áudio daquele turno** que ainda não tocou. O mesmo `listening` **sem** `turn_id` é o fim natural: o app deixa tocar o que já recebeu. Em seguida o turno é cancelado (`chat.end` com `finish: cancelled`).
+
+**Formato de entrada.** O cérebro analisa o áudio a 16 kHz; se o app mandar outra taxa em `voice.start`, o cérebro reamostra cada pedaço (prefira 16 kHz). A taxa do áudio que sai vem em `voice.ready.output`.
+
 ## Reconexão e queda do cliente {#reconexao}
 
 - **Backoff exponencial com jitter:** 1, 2, 4, 8, 16 e depois 30 s (±20%); zera depois de uma conexão estável por 30 s. Em `1012` (deploy), reconecta quase na hora. `4401` e `4426` param e mostram o motivo.

@@ -65,9 +65,9 @@ class Vad:
 
     def set_playing(self, playing: bool) -> None:
         """Tell the detector the Juniper is (not) talking: it changes how easily speech starts."""
+        if playing != self._playing and not self._in_speech:
+            self._loud_run = []  # the bar for "speech" changed: start counting again
         self._playing = playing
-        if self._in_speech is False:
-            self._loud_run = []
 
     @property
     def in_speech(self) -> bool:

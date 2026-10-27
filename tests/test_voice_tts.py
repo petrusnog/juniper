@@ -475,3 +475,23 @@ def test_voice_settings_reject_bad_values(kwargs: dict[str, Any]) -> None:
 def test_the_credentials_path_expands_home() -> None:
     cfg = VoiceSettings(tts={"credentials_file": "~/x/voz.json"})  # type: ignore[arg-type]
     assert cfg.tts.credentials_file == Path.home() / "x" / "voz.json"
+
+
+def test_settle_says_a_finished_sentence_without_waiting_for_the_next_token() -> None:
+    chunker = SentenceChunker()
+    assert chunker.feed("Vou procurar essa música para você agora.") == []
+    assert chunker.settle() == ["Vou procurar essa música para você agora."]
+    assert chunker.settle() == []  # nothing left to say
+
+
+def test_settle_leaves_an_unfinished_sentence_alone() -> None:
+    chunker = SentenceChunker()
+    chunker.feed("Vou procurar essa música para")
+    assert chunker.settle() == []
+    assert chunker.feed(" você agora. Pronto") == ["Vou procurar essa música para você agora."]
+
+
+def test_settle_does_not_read_a_code_block_that_is_still_open() -> None:
+    chunker = SentenceChunker()
+    chunker.feed("Veja o trecho abaixo, por favor.\n```python\nprint('oi').")
+    assert all("print" not in s for s in chunker.settle())
