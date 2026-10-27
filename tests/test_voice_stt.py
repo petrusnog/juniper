@@ -384,3 +384,14 @@ async def test_logs_carry_sizes_never_the_words(monkeypatch: pytest.MonkeyPatch)
     fake.error = VoiceError("quota", "x")
     await s.listen(b"\0\0", SAMPLE_RATE)
     assert seen and "segredo" not in json.dumps(seen)
+
+
+def test_repeating_the_same_playing_state_does_not_restart_the_count() -> None:
+    """The session tells the detector the state on every chunk of audio."""
+    v = vad()
+    v.feed(quiet(500))
+    events = []
+    for _ in range(10):
+        v.set_playing(False)
+        events += v.feed(tone(20))
+    assert kinds(events) == ["speech_start"]
