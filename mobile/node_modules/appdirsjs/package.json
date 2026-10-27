@@ -1,0 +1,38 @@
+{
+  "name": "appdirsjs",
+  "version": "1.2.8",
+  "description": "OS-dependent application paths for cache, data and config directories",
+  "license": "MIT",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/codingjerk"
+    },
+    {
+      "type": "patreon",
+      "url": "https://www.patreon.com/codingjerk"
+    }
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codingjerk/appdirsjs.git"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^6.0.3"
+  }
+}

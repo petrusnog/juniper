@@ -1,0 +1,37 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @generated SignedSource<<da47aab453fb7e939bb4d522892273eb>>
+ *
+ * This file was translated from Flow by scripts/js-api/build-types/index.js.
+ * Original file: packages/react-native/src/react-private-interface.js.flow
+ */
+
+import type { Spec as FabricUIManager } from "../Libraries/ReactNative/FabricUIManager";
+import type { createPublicTextInstance as $$IMPORT_TYPEOF_1$$ } from "../Libraries/ReactNative/ReactFabricPublicInstance/ReactFabricPublicInstance";
+type createPublicTextInstanceT = typeof $$IMPORT_TYPEOF_1$$;
+export type { PublicRootInstance } from "../Libraries/ReactNative/ReactFabricPublicInstance/ReactFabricPublicInstance";
+export type PublicTextInstance = ReturnType<createPublicTextInstanceT>;
+export { default as BatchedBridge } from "../Libraries/BatchedBridge/BatchedBridge";
+export { default as ExceptionsManager } from "../Libraries/Core/ExceptionsManager";
+export { default as Platform } from "../Libraries/Utilities/Platform";
+export { default as RCTEventEmitter } from "../Libraries/EventEmitter/RCTEventEmitter";
+export * as ReactNativeFeatureFlags from "./private/featureflags/ReactNativeFeatureFlags";
+export * as ReactNativeViewConfigRegistry from "../Libraries/Renderer/shims/ReactNativeViewConfigRegistry";
+export { default as TextInputState } from "../Libraries/Components/TextInput/TextInputState";
+export { default as UIManager } from "../Libraries/ReactNative/UIManager";
+export declare const fabricUIManager: null | undefined | FabricUIManager;
+export declare type fabricUIManager = typeof fabricUIManager;
+export { default as deepDiffer } from "../Libraries/Utilities/differ/deepDiffer";
+export { default as deepFreezeAndThrowOnMutationInDev } from "../Libraries/Utilities/deepFreezeAndThrowOnMutationInDev";
+export { default as flattenStyle } from "../Libraries/StyleSheet/flattenStyle";
+export { default as ReactFiberErrorDialog } from "../Libraries/Core/ReactFiberErrorDialog";
+export { default as legacySendAccessibilityEvent } from "../Libraries/Components/AccessibilityInfo/legacySendAccessibilityEvent";
+export { default as RawEventEmitter } from "../Libraries/Core/RawEventEmitter";
+export { default as CustomEvent } from "./private/webapis/dom/events/CustomEvent";
+export { create as createAttributePayload, diff as diffAttributePayloads } from "../Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload";
+export { createPublicRootInstance, createPublicInstance, createPublicTextInstance, getNativeTagFromPublicInstance, getNodeFromPublicInstance, getInternalInstanceHandleFromPublicInstance } from "../Libraries/ReactNative/ReactFabricPublicInstance/ReactFabricPublicInstance";
+export { default as dispatchNativeEvent } from "./private/renderer/events/dispatchNativeEvent";

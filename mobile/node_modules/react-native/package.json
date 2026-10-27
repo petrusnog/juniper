@@ -1,0 +1,222 @@
+{
+  "name": "react-native",
+  "version": "0.88.0",
+  "description": "A framework for building native apps using React",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/react/react-native.git",
+    "directory": "packages/react-native"
+  },
+  "homepage": "https://reactnative.dev/",
+  "keywords": [
+    "react",
+    "react-native",
+    "android",
+    "ios",
+    "mobile",
+    "cross-platform",
+    "app-framework",
+    "mobile-development"
+  ],
+  "bugs": "https://github.com/react/react-native/issues",
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >= 26.0.0"
+  },
+  "bin": {
+    "react-native": "cli.js"
+  },
+  "main": "./index.js",
+  "exports": {
+    ".": {
+      "react-native-legacy-deep-imports": "./types_DEPRECATED/index.d.ts",
+      "types": "./types_generated/index.d.ts",
+      "default": "./index.js"
+    },
+    "./Libraries/*": {
+      "react-native-legacy-deep-imports": [
+        "./types_DEPRECATED/Libraries/*.d.ts",
+        "./Libraries/*.d.ts"
+      ],
+      "types": null,
+      "default": "./Libraries/*.js"
+    },
+    "./Libraries/*.js": {
+      "types": null,
+      "default": "./Libraries/*.js"
+    },
+    "./scripts/*": "./scripts/*.js",
+    "./scripts/*.sh": "./scripts/*.sh",
+    "./scripts/*.rb": "./scripts/*.rb",
+    "./asset-registry": {
+      "types": null,
+      "default": "./src/asset-registry.js"
+    },
+    "./react-private-interface": {
+      "types": null,
+      "default": "./src/react-private-interface.js"
+    },
+    "./setup-env": "./src/setup-env.js",
+    "./unstable-internals-do-not-use": {
+      "react-native-unstable-internals": "./src/unstable-internals-do-not-use.d.ts",
+      "types": null,
+      "default": "./src/unstable-internals-do-not-use.js"
+    },
+    "./src/fb_internal/*": "./src/fb_internal/*",
+    "./package.json": "./package.json"
+  },
+  "jest-junit": {
+    "outputDirectory": "reports/junit",
+    "outputName": "js-test-results.xml"
+  },
+  "files": [
+    "build.gradle.kts",
+    "cli.js",
+    "flow",
+    "gradle.properties",
+    "gradle/libs.versions.toml",
+    "index.js",
+    "index.js.flow",
+    "Libraries",
+    "LICENSE",
+    "React-Core.podspec",
+    "React-Core-prebuilt.podspec",
+    "react-native.config.js",
+    "React.podspec",
+    "React",
+    "!React/Fabric/RCTThirdPartyFabricComponentsProvider.*",
+    "ReactAndroid",
+    "!ReactAndroid/.cxx",
+    "!ReactAndroid/build",
+    "!ReactAndroid/external-artifacts/artifacts",
+    "!ReactAndroid/external-artifacts/build",
+    "!ReactAndroid/hermes-engine/.cxx",
+    "!ReactAndroid/hermes-engine/build",
+    "!ReactAndroid/src/main/third-party",
+    "!ReactAndroid/src/test",
+    "ReactApple",
+    "ReactCommon",
+    "README.md",
+    "scripts/replace-rncore-version.js",
+    "scripts/bundle.js",
+    "scripts/cocoapods",
+    "scripts/codegen",
+    "scripts/compose-source-maps.js",
+    "scripts/find-node-for-xcode.sh",
+    "scripts/generate-codegen-artifacts.js",
+    "scripts/generate-provider-cli.js",
+    "scripts/generate-specs-cli.js",
+    "scripts/hermes/hermes-utils.js",
+    "scripts/hermes/prepare-hermes-for-build.js",
+    "scripts/ios-configure-glog.sh",
+    "scripts/native_modules.rb",
+    "scripts/node-binary.sh",
+    "scripts/packager-reporter.js",
+    "scripts/packager.sh",
+    "scripts/react_native_pods_utils/script_phases.rb",
+    "scripts/react_native_pods_utils/script_phases.sh",
+    "scripts/react_native_pods.rb",
+    "scripts/react-native-xcode.sh",
+    "scripts/setup-apple-spm.js",
+    "scripts/spm",
+    "scripts/xcode/asset-catalog.sh",
+    "scripts/xcode/ccache-clang.sh",
+    "scripts/xcode/ccache-clang++.sh",
+    "scripts/xcode/ccache.conf",
+    "scripts/xcode/with-environment.sh",
+    "sdks/.hermesv1version",
+    "sdks/hermes-engine",
+    "sdks/hermesc",
+    "settings.gradle.kts",
+    "src",
+    "!src/private/testing",
+    "third-party-podspecs",
+    "types_DEPRECATED",
+    "types_generated",
+    "!**/__docs__/**",
+    "!**/__fixtures__/**",
+    "!**/__flowtests__/**",
+    "!**/__mocks__/**",
+    "!**/__tests__/**",
+    "!**/__typetests__/**"
+  ],
+  "scripts": {
+    "prepack": "node ./scripts/prepack.js",
+    "featureflags": "node ./scripts/featureflags/index.js"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.1.1",
+    "react": "^19.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@react-native/asset-utils": "0.88.0",
+    "@react-native/codegen": "0.88.0",
+    "@react-native/community-cli-plugin": "0.88.0",
+    "@react-native/gradle-plugin": "0.88.0",
+    "@react-native/normalize-colors": "0.88.0",
+    "@react-native/virtualized-lists": "0.88.0",
+    "anser": "^1.4.9",
+    "ansi-regex": "^5.0.0",
+    "flow-parser": "0.327.0",
+    "base64-js": "^1.5.1",
+    "flow-enums-runtime": "^0.0.6",
+    "hermes-compiler": "260318099.0.4",
+    "invariant": "^2.2.4",
+    "memoize-one": "^5.0.0",
+    "metro-runtime": "^0.87.1",
+    "metro-source-map": "^0.87.1",
+    "nullthrows": "^1.1.1",
+    "pretty-format": "^29.7.0",
+    "promise": "^8.3.0",
+    "react-devtools-core": "^6.1.5",
+    "react-refresh": "^0.14.0",
+    "regenerator-runtime": "^0.13.2",
+    "scheduler": "0.28.0",
+    "semver": "^7.1.3",
+    "stacktrace-parser": "^0.1.10",
+    "tinyglobby": "^0.2.15",
+    "whatwg-fetch": "^3.0.0",
+    "ws": "^7.5.10",
+    "yargs": "^17.6.2"
+  },
+  "codegenConfig": {
+    "libraries": [
+      {
+        "name": "FBReactNativeSpec",
+        "type": "all",
+        "ios": {
+          "modules": {
+            "AccessibilityManager": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "Appearance": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "AppState": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "DeviceInfo": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "PlatformConstants": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "SampleTurboModule": {
+              "unstableRequiresMainQueueSetup": true
+            },
+            "StatusBarManager": {
+              "unstableRequiresMainQueueSetup": true
+            }
+          }
+        },
+        "android": {},
+        "jsSrcsDir": "src"
+      }
+    ]
+  }
+}

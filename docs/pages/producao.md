@@ -79,7 +79,8 @@ python scripts/smoke_server.py --token-file /tmp/token --resume "do que falávam
 
 - **Sem chave de LLM:** `python scripts/fake_ollama.py` sobe um Ollama de mentira (ecoa a mensagem). No `.env`, `JUNIPER_LLM__PRIORITY=["ollama"]` e `JUNIPER_LLM__OLLAMA__URL=http://host.docker.internal:11999` (no Linux, o serviço `brain` precisa de `extra_hosts: host.docker.internal:host-gateway`).
 - **Variáveis do compose:** `JUNIPER_IMAGE` (imagem do brain; padrão `juniper-brain:local`, construída ali), `TAILSCALE_IP` (onde publicar a porta; padrão `127.0.0.1`), `JUNIPER_CONFIG_FILE`, `JUNIPER_ENV_FILE` e `JUNIPER_CERTS_DIR` (de onde montar a configuração, o `.env` e a chave do Google, sempre somente leitura).
-- **Os dados ficam nos volumes** (`juniper-mongo-data`, `juniper-state`, `juniper-logs`, `juniper-models`): reiniciar ou reconstruir o brain não perde conversas nem memórias. `down -v` apaga tudo.
+- **Os dados ficam nos volumes** (`juniper-mongo-data`, `juniper-state`, `juniper-logs`, `juniper-models`, `juniper-music`): reiniciar ou reconstruir o brain não perde conversas nem memórias. `down -v` apaga tudo.
+- **A música e a voz guardam o estado em `juniper-music`:** o token de renovação do YouTube, o contador de cota diária e o gasto do mês da voz do Google (`voice-usage.json`). Sem o volume, cada deploy esqueceria o gasto e o teto de US$ 10 não valeria ([Música](musica.html), [Voz por áudio](voz-audio.html#ligar)).
 - O projeto se chama `juniper-prod`, então não mexe no banco do `docker-compose.yml` de desenvolvimento.
 
 ## Agenda do Google na VPS {#google-vps}

@@ -1,0 +1,375 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+package com.facebook.react.common.mapbuffer
+
+import com.facebook.jni.HybridClassBase
+import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.common.annotations.StableReactNativeAPI
+import com.facebook.react.common.mapbuffer.MapBuffer.Companion.KEY_RANGE
+import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
+import java.lang.StringBuilder
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import javax.annotation.concurrent.NotThreadSafe
+
+/**
+ * Read-only implementation of the [MapBuffer], imported from C++ environment. Use
+ * `<react/common/mapbuffer/JReadableMapBuffer.h> to create it.
+ *
+ * See [MapBuffer] documentation for more details
+ */
+@StableReactNativeAPI
+@NotThreadSafe
+@DoNotStrip
+public class ReadableMapBuffer
+@DoNotStrip
+private constructor(
+    // Byte data of the mapBuffer
+    private val buffer: ByteBuffer,
+    // Offset to the start of the MapBuffer
+    private val offsetToMapBuffer: Int,
+) : HybridClassBase(), MapBuffer {
+
+  // Amount of items serialized on the ByteBuffer
+  override var count: Int = 0
+    private set
+
+  // returns the relative offset of the first byte of dynamic data
+  private val offsetForDynamicData: Int
+    get() = getKeyOffsetForBucketIndex(count)
+
+  init {
+    readHeader()
+  }
+
+  private fun cloneWithOffset(offset: Int) =
+      ReadableMapBuffer(buffer.duplicate().apply { position(offset) }, offset)
+
+  private fun readHeader() {
+    // The C++ writer always serializes in little-endian byte order. ByteBuffer
+    // defaults to big-endian and duplicate() resets the order, so set it
+    // explicitly on every instance, including nested clones.
+    buffer.order(ByteOrder.LITTLE_ENDIAN)
+    count = readUnsignedShort(offsetToMapBuffer).toInt()
+  }
+
+  /**
+   * @param intKey Key to search for
+   * @return the "bucket index" for a key or -1 if not found. It uses a binary search algorithm
+   *   (log(n))
+   */
+  private fun getBucketIndexForKey(intKey: Int): Int {
+    if (intKey !in KEY_RANGE) {
+      return -1
+    }
+    val key = intKey.toUShort()
+
+    var lo = 0
+    var hi = count - 1
+    while (lo <= hi) {
+      val mid = lo + hi ushr 1
+      val midVal = readUnsignedShort(getKeyOffsetForBucketIndex(mid))
+      when {
+        midVal < key -> lo = mid + 1
+        midVal > key -> hi = mid - 1
+        else -> return mid
+      }
+    }
+    return -1
+  }
+
+  private fun readDataType(bucketIndex: Int): MapBuffer.DataType {
+    val value = readUnsignedShort(getKeyOffsetForBucketIndex(bucketIndex) + TYPE_OFFSET).toInt()
+    return if (ReactNativeFeatureFlags.enableAndroidTextMeasurementOptimizations()) {
+      DATA_TYPES[value]
+    } else {
+      MapBuffer.DataType.values()[value]
+    }
+  }
+
+  private fun getTypedValueOffsetForKey(key: Int, expected: MapBuffer.DataType): Int {
+    val bucketIndex = getBucketIndexForKey(key)
+    require(bucketIndex != -1) { "Key not found: $key" }
+    val dataType = readDataType(bucketIndex)
+    check(!(dataType !== expected)) { "Expected $expected for key: $key, found $dataType instead." }
+    return getKeyOffsetForBucketIndex(bucketIndex) + VALUE_OFFSET
+  }
+
+  private fun readUnsignedShort(bufferPosition: Int): UShort {
+    return buffer.getShort(bufferPosition).toUShort()
+  }
+
+  private fun readDoubleValue(bufferPosition: Int): Double {
+    return buffer.getDouble(bufferPosition)
+  }
+
+  private fun readIntValue(bufferPosition: Int): Int {
+    return buffer.getInt(bufferPosition)
+  }
+
+  private fun readLongValue(bufferPosition: Int): Long {
+    return buffer.getLong(bufferPosition)
+  }
+
+  private fun readBooleanValue(bufferPosition: Int): Boolean {
+    return readIntValue(bufferPosition) == 1
+  }
+
+  // Dynamic-data entries store [offset][byteLength] in the bucket's 8-byte
+  // value: getInt(bufferPosition) is the offset, getInt(bufferPosition + 4) is
+  // the byte length. The dynamic data section itself carries no length prefix.
+  private fun readStringValue(bufferPosition: Int): String {
+    val offset = offsetForDynamicData + buffer.getInt(bufferPosition)
+    val sizeOfString = buffer.getInt(bufferPosition + Int.SIZE_BYTES)
+    val result = ByteArray(sizeOfString)
+    buffer.position(offset)
+    buffer.get(result, 0, sizeOfString)
+    return String(result)
+  }
+
+  private fun readMapBufferValue(position: Int): ReadableMapBuffer {
+    val offset = offsetForDynamicData + buffer.getInt(position)
+    return cloneWithOffset(offset)
+  }
+
+  private fun readMapBufferListValue(position: Int): List<ReadableMapBuffer> {
+    val readMapBufferList = arrayListOf<ReadableMapBuffer>()
+    val offset = offsetForDynamicData + buffer.getInt(position)
+    val sizeMapBufferList = buffer.getInt(position + Int.SIZE_BYTES)
+    var curLen = 0
+    while (curLen < sizeMapBufferList) {
+      val sizeMapBuffer = buffer.getInt(offset + curLen)
+      curLen += Int.SIZE_BYTES
+      readMapBufferList.add(cloneWithOffset(offset + curLen))
+      curLen += sizeMapBuffer
+    }
+    return readMapBufferList
+  }
+
+  private fun readIntBufferValue(bufferPosition: Int): IntArray {
+    val offset = offsetForDynamicData + buffer.getInt(bufferPosition)
+    val byteLength = buffer.getInt(bufferPosition + Int.SIZE_BYTES)
+    val count = byteLength / Int.SIZE_BYTES
+    val result = IntArray(count)
+    buffer.duplicate().order(buffer.order()).apply { position(offset) }.asIntBuffer().get(result)
+    return result
+  }
+
+  private fun readDoubleBufferValue(bufferPosition: Int): DoubleArray {
+    val offset = offsetForDynamicData + buffer.getInt(bufferPosition)
+    val byteLength = buffer.getInt(bufferPosition + Int.SIZE_BYTES)
+    val count = byteLength / Double.SIZE_BYTES
+    val result = DoubleArray(count)
+    buffer.duplicate().order(buffer.order()).apply { position(offset) }.asDoubleBuffer().get(result)
+    return result
+  }
+
+  private fun getKeyOffsetForBucketIndex(bucketIndex: Int): Int {
+    return offsetToMapBuffer + HEADER_SIZE + BUCKET_SIZE * bucketIndex
+  }
+
+  override fun contains(key: Int): Boolean {
+    // TODO T83483191: Add tests
+    return getBucketIndexForKey(key) != -1
+  }
+
+  override fun getKeyOffset(key: Int): Int = getBucketIndexForKey(key)
+
+  override fun entryAt(offset: Int): MapBuffer.Entry =
+      MapBufferEntry(getKeyOffsetForBucketIndex(offset))
+
+  override fun getType(key: Int): MapBuffer.DataType {
+    val bucketIndex = getBucketIndexForKey(key)
+    require(bucketIndex != -1) { "Key not found: $key" }
+    return readDataType(bucketIndex)
+  }
+
+  override fun getInt(key: Int): Int =
+      readIntValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.INT))
+
+  override fun getLong(key: Int): Long =
+      readLongValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.LONG))
+
+  override fun getDouble(key: Int): Double =
+      readDoubleValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.DOUBLE))
+
+  override fun getString(key: Int): String =
+      readStringValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.STRING))
+
+  override fun getBoolean(key: Int): Boolean =
+      readBooleanValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.BOOL))
+
+  override fun getMapBuffer(key: Int): ReadableMapBuffer =
+      readMapBufferValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.MAP))
+
+  override fun getMapBufferList(key: Int): List<ReadableMapBuffer> =
+      readMapBufferListValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.MAP_BUFFER_LIST))
+
+  override fun getIntBuffer(key: Int): IntArray =
+      readIntBufferValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.INT_BUFFER))
+
+  override fun getDoubleBuffer(key: Int): DoubleArray =
+      readDoubleBufferValue(getTypedValueOffsetForKey(key, MapBuffer.DataType.DOUBLE_BUFFER))
+
+  override fun hashCode(): Int {
+    buffer.rewind()
+    return buffer.hashCode()
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (other !is ReadableMapBuffer) {
+      return false
+    }
+    val thisByteBuffer = buffer
+    val otherByteBuffer = other.buffer
+    if (thisByteBuffer === otherByteBuffer) {
+      return true
+    }
+    thisByteBuffer.rewind()
+    otherByteBuffer.rewind()
+    return thisByteBuffer == otherByteBuffer
+  }
+
+  override fun toString(): String {
+    val builder = StringBuilder("{")
+    joinTo(builder) { entry ->
+      StringBuilder().apply {
+        append(entry.key)
+        append('=')
+        when (entry.type) {
+          MapBuffer.DataType.BOOL -> append(entry.booleanValue)
+          MapBuffer.DataType.INT -> append(entry.intValue)
+          MapBuffer.DataType.LONG -> append(entry.longValue)
+          MapBuffer.DataType.DOUBLE -> append(entry.doubleValue)
+          MapBuffer.DataType.STRING -> {
+            append('"')
+            append(entry.stringValue)
+            append('"')
+          }
+          MapBuffer.DataType.MAP -> append(entry.mapBufferValue.toString())
+          MapBuffer.DataType.INT_BUFFER -> append(entry.intBufferValue.contentToString())
+          MapBuffer.DataType.DOUBLE_BUFFER -> append(entry.doubleBufferValue.contentToString())
+          MapBuffer.DataType.MAP_BUFFER_LIST -> append(entry.mapBufferListValue.toString())
+        }
+      }
+    }
+    builder.append('}')
+    return builder.toString()
+  }
+
+  override fun iterator(): Iterator<MapBuffer.Entry> {
+    return object : Iterator<MapBuffer.Entry> {
+      var current = 0
+      val last = count - 1
+
+      override fun hasNext(): Boolean {
+        return current <= last
+      }
+
+      override fun next(): MapBuffer.Entry {
+        return MapBufferEntry(getKeyOffsetForBucketIndex(current++))
+      }
+    }
+  }
+
+  private inner class MapBufferEntry(private val bucketOffset: Int) : MapBuffer.Entry {
+    private fun assertType(expected: MapBuffer.DataType) {
+      val dataType = type
+      check(!(expected !== dataType)) {
+        ("Expected " +
+            expected +
+            " for key: " +
+            key +
+            " found " +
+            dataType.toString() +
+            " instead.")
+      }
+    }
+
+    override val key: Int
+      get() = readUnsignedShort(bucketOffset).toInt()
+
+    override val type: MapBuffer.DataType
+      get() =
+          if (ReactNativeFeatureFlags.enableAndroidTextMeasurementOptimizations()) {
+            DATA_TYPES[readUnsignedShort(bucketOffset + TYPE_OFFSET).toInt()]
+          } else {
+            MapBuffer.DataType.values()[readUnsignedShort(bucketOffset + TYPE_OFFSET).toInt()]
+          }
+
+    override val doubleValue: Double
+      get() {
+        assertType(MapBuffer.DataType.DOUBLE)
+        return readDoubleValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val intValue: Int
+      get() {
+        assertType(MapBuffer.DataType.INT)
+        return readIntValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val longValue: Long
+      get() {
+        assertType(MapBuffer.DataType.LONG)
+        return readLongValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val booleanValue: Boolean
+      get() {
+        assertType(MapBuffer.DataType.BOOL)
+        return readBooleanValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val stringValue: String
+      get() {
+        assertType(MapBuffer.DataType.STRING)
+        return readStringValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val mapBufferValue: MapBuffer
+      get() {
+        assertType(MapBuffer.DataType.MAP)
+        return readMapBufferValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val intBufferValue: IntArray
+      get() {
+        assertType(MapBuffer.DataType.INT_BUFFER)
+        return readIntBufferValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val doubleBufferValue: DoubleArray
+      get() {
+        assertType(MapBuffer.DataType.DOUBLE_BUFFER)
+        return readDoubleBufferValue(bucketOffset + VALUE_OFFSET)
+      }
+
+    override val mapBufferListValue: List<MapBuffer>
+      get() {
+        assertType(MapBuffer.DataType.MAP_BUFFER_LIST)
+        return readMapBufferListValue(bucketOffset + VALUE_OFFSET)
+      }
+  }
+
+  public companion object {
+    // 2 bytes = 2 (count)
+    private const val HEADER_SIZE = 2
+
+    // 12 bytes = 2 (key) + 2 (type) + 8 (value)
+    private const val BUCKET_SIZE = 12
+
+    // 2 bytes = 2 (key)
+    private const val TYPE_OFFSET = 2
+
+    // 4 bytes = 2 (key) + 2 (type)
+    private const val VALUE_OFFSET = 4
+
+    private val DATA_TYPES = MapBuffer.DataType.values()
+  }
+}

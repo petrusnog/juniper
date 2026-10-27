@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    This manifest file is used only by Gradle to configure debug-only capabilities
+    for React Native Apps.
+   -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
+  <!--
+    On Android 17 (SDK 37) devices, apps that declare this must hold ACCESS_LOCAL_NETWORK
+    to reach the dev server over the local network. Loopback via `adb reverse` is exempt.
+   -->
+  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>
+
+  <application>
+    <activity android:name="com.facebook.react.devsupport.DevSettingsActivity"
+              android:exported="false" />
+  </application>
+
+</manifest>

@@ -1,0 +1,149 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+#pragma once
+
+#include <react/renderer/core/PropsMacros.h>
+#include <react/renderer/core/PropsParserContext.h>
+#include <react/renderer/core/RawProps.h>
+#include <react/renderer/core/ReactPrimitives.h>
+#include <react/renderer/core/Sealable.h>
+#include <react/renderer/debug/DebugStringConvertible.h>
+
+#ifdef ANDROID
+#include <folly/dynamic.h>
+#include <react/renderer/mapbuffer/MapBufferBuilder.h>
+#endif
+
+namespace facebook::react {
+
+/*
+ * Represents the most generic props object.
+ */
+class Props : public virtual Sealable, public virtual DebugStringConvertible {
+ public:
+  using Shared = std::shared_ptr<const Props>;
+
+  Props() = default;
+  Props(
+      const PropsParserContext &context,
+      const Props &sourceProps,
+      const RawProps &rawProps,
+      const std::function<bool(const std::string &)> &filterObjectKeys = nullptr);
+
+#if RN_DEBUG_STRING_CONVERTIBLE
+  virtual ~Props() override = default;
+#else
+  virtual ~Props() = default;
+#endif
+
+  Props(const Props &other) = default;
+  Props &operator=(const Props &other) = delete;
+
+  /**
+   * Set a prop value via iteration (see enableIterator above).
+   * If setProp is defined for a particular props struct, it /must/
+   * be called every time setProp is called on the hierarchy.
+   * For example, ViewProps overrides setProp and so ViewProps must
+   * explicitly call Props::setProp every time ViewProps::setProp is
+   * called. This is because a single prop from JS can be reused
+   * multiple times for different values in the hierarchy. For example, if
+   * ViewProps uses "propX", Props may also use "propX".
+   */
+  void
+  setProp(const PropsParserContext &context, RawPropsPropNameHash hash, const char *propName, const RawValue &value);
+
+  std::string nativeId;
+
+#ifdef RN_SERIALIZABLE_STATE
+  folly::dynamic rawProps = folly::dynamic::object();
+
+  void initializeDynamicProps(
+      const Props &sourceProps,
+      const RawProps &rawProps,
+      [[maybe_unused]] const std::function<bool(const std::string &)> &filterObjectKeys = nullptr);
+
+  virtual ComponentName getDiffPropsImplementationTarget() const;
+
+  virtual folly::dynamic getDiffProps(const Props *prevProps) const
+  {
+    return folly::dynamic::object();
+  }
+#endif
+
+#if RN_DEBUG_STRING_CONVERTIBLE
+
+#pragma mark - DebugStringConvertible (Partial)
+
+  SharedDebugStringConvertibleList getDebugProps() const override;
+
+#endif
+};
+
+namespace detail {
+
+/*
+ * Extracts the class type from a pointer-to-member-function expression.
+ * Used in unevaluated context only.
+ */
+template <typename T, typename C>
+auto memberFunctionClass(T C::*) -> C;
+
+} // namespace detail
+
+/*
+ * Internal: `T` declares its OWN `setProp` (not just inherits one from a
+ * base class). `&T::setProp` resolves to a pointer-to-member-function whose
+ * class part is the level where `setProp` was actually declared — if `T`
+ * inherits without overriding, that class is some base, not `T`.
+ *
+ * Distinguishing own-declaration from inherited-declaration matters because
+ * `setProp` is non-virtual. A subclass that adds fields but forgets to
+ * override `setProp` would silently inherit its parent's switch — and the new
+ * fields would never be reached by the iterator-setter dispatch.
+ */
+template <typename T>
+concept DeclaresOwnSetProp = std::is_same_v<decltype(detail::memberFunctionClass(&T::setProp)), T>;
+
+/*
+ * Internal: `T` exposes a `setProp(ctx, hash, name, value) -> void` callable
+ * with the canonical Props signature, declared on `T` itself.
+ */
+template <typename T>
+concept HasSetProp = DeclaresOwnSetProp<T> &&
+    requires(T &t, const PropsParserContext &ctx, RawPropsPropNameHash hash, const char *name, const RawValue &value) {
+      { t.setProp(ctx, hash, name, value) } -> std::same_as<void>;
+    };
+
+/*
+ * Marks a Props type as supporting the iterator-setter construction path used
+ * by `ConcreteComponentDescriptor::cloneProps` when
+ * `enableCppPropsIteratorSetter` is on. The contract is:
+ *
+ *   1. The type is copy-constructible from a source Props (so `cloneProps`
+ *      can build the new Props by copy and then overwrite individual fields).
+ *   2. The type descends from `Props`, anchoring the `setProp` chain in the
+ *      `Props::setProp` base case.
+ *   3. The type declares its OWN `setProp` with the canonical signature —
+ *      not inherited — so the iterator dispatch reaches every field that the
+ *      type adds beyond its base.
+ *
+ * `setProp` is non-virtual; subclasses chain explicitly via
+ * `Parent::setProp(...)`. The chain integrity beyond `T` is enforced by the
+ * compiler at each level's `setProp` body — if a subclass calls
+ * `Parent::setProp(...)` and `Parent` does not define one, the build fails
+ * at that call site. This concept guards the entry point (`T` itself) and
+ * relies on those per-level calls to keep the chain whole.
+ *
+ * When the concept is NOT satisfied for some `ConcreteProps`,
+ * `cloneProps` falls through to the classic per-field `convertRawProp` path
+ * for that component regardless of the runtime flag.
+ */
+template <typename T>
+concept HasIteratorSetterCtor = std::copy_constructible<T> && std::derived_from<T, Props> && HasSetProp<T>;
+
+} // namespace facebook::react

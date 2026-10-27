@@ -1,0 +1,33 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @noformat
+ * @oncall react_native
+ * @generated SignedSource<<2a65b01eaf687fdce275e97f12dfd3f7>>
+ *
+ * This file was translated from Flow by scripts/generateTypeScriptDefinitions.js
+ * Original file: packages/metro-file-map/src/cache/DiskCacheManager.js
+ * To regenerate, run:
+ *   js1 build metro-ts-defs (internal) OR
+ *   yarn run build-ts-defs (OSS) 
+ */
+
+import type {BuildParameters, CacheData, CacheManager, CacheManagerFactoryOptions, CacheManagerWriteOptions} from '../flow-types';
+
+type AutoSaveOptions = Readonly<{debounceMs: number}>;
+type DiskCacheConfig = Readonly<{
+  autoSave?: Partial<AutoSaveOptions> | boolean | undefined;
+  cacheFilePrefix?: null | undefined | string;
+  cacheDirectory?: null | undefined | string;
+}>;
+export declare class DiskCacheManager implements CacheManager {
+  constructor(opts: CacheManagerFactoryOptions, config: DiskCacheConfig);
+  static getCacheFilePath(buildParameters: BuildParameters, cacheFilePrefix?: null | undefined | string, cacheDirectory?: null | undefined | string): string;
+  getCacheFilePath(): string;
+  read(): Promise<null | undefined | CacheData>;
+  write(getSnapshot: () => CacheData, opts: CacheManagerWriteOptions): Promise<void>;
+  end(): Promise<void>;
+}

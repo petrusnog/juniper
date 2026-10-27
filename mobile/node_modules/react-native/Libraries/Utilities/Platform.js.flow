@@ -1,0 +1,17 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @flow strict
+ * @format
+ */
+
+import type {PlatformType} from './PlatformTypes';
+
+/**
+ * Provides information about the platform the app is running on and utility
+ * methods for platform-specific logic.
+ */
+declare export default PlatformType;
