@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voz por áudio — Livro de bolso Juniper</title>
+<meta name="description" content="Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/voz-audio.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Clientes / Voz por áudio</div>
+<h1>Voz por áudio <span class="tag a">proposto</span></h1>
+<p class="lead">Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página resume o <a href="adr-023.html">ADR-023</a> (proposto). A <a href="voz.html">voz do terminal</a> é outra coisa: são as frases escritas que ela diz ao abrir o CLI.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O áudio <strong>passa pelo cérebro</strong> (<code>brain/voice/</code>), porque a credencial do Google e a trava de orçamento não podem ficar no cliente. O agente continua só com texto: a voz é uma camada em volta dele.</p>
+<pre><code class="lang-text">app ──áudio (PCM 16 kHz)──► cérebro: VAD → STT (Groq) → turno de chat (o de sempre) ──┐
+app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Leda) ◄───────────────┘</code></pre>
+<h2 id="decisoes">Pontos de decisão</h2>
+<ul><li><strong>TTS:</strong> Google Cloud, Chirp 3 HD, voz <code>pt-BR-Chirp3-HD-Leda</code>. A v1 sintetiza <strong>uma frase por vez</strong> e envia o áudio enquanto o LLM ainda escreve a seguinte. URLs, markdown e código <strong>não são lidos</strong>.</li><li><strong>STT:</strong> Whisper da Groq (<code>pt</code>). Falas curtas, sem energia ou iguais a frases conhecidas de alucinação do Whisper são descartadas.</li><li><strong>VAD no cérebro:</strong> detector de energia com piso de ruído adaptativo; o app só transmite áudio. Falar por cima da Juniper a interrompe (<code>barge_in_ms</code>).</li><li><strong>Orçamento:</strong> o cérebro conta os caracteres enviados ao Google por mês; ao atingir o limite (padrão 1.250.000), a voz cai para o TTS do Android e a Juniper avisa uma vez.</li><li><strong>Fallbacks:</strong> limite da Groq → o app usa o STT nativo do Android em pt-BR e manda texto; orçamento ou falha do Google → o app fala o texto com o TTS do Android. A conversa não para.</li><li><strong>Confirmação por voz:</strong> uma única pergunta; o "sim" é a transcrição seguinte, interpretada por <code>consent.py</code> (<a href="agente.html#confirmacao">Agente</a>).</li><li><strong>Encerrar:</strong> botão, comando falado (reconhecido sem LLM) ou silêncio prolongado.</li><li><strong>A voz não autentica:</strong> a sessão herda a autenticação da conexão (<a href="login.html">Login com MFA</a>).</li><li><strong>Dados que saem da máquina:</strong> o áudio do Petrus vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.</li></ul>
+<h2 id="protocolo">Mensagens</h2>
+<p>Extensão compatível do <a href="protocolo.html">protocolo</a> (sem mudar <code>protocol_version</code>). O áudio vai em quadros de <strong>texto</strong> JSON com base64: <code>voice.start</code>, <code>voice.ready</code>, <code>voice.audio</code>, <code>voice.state</code>, <code>voice.transcript</code>, <code>voice.say</code>, <code>voice.fallback</code>, <code>voice.text</code>, <code>voice.interrupt</code>, <code>voice.end</code>; erros <code>voice_unavailable</code> e <code>voice_busy</code>. A lista completa e os campos estão no <a href="adr-023.html#7-protocolo-extensao-compativel-do-adr-012">ADR-023</a>.</p>
+<h2 id="tasks">Tasks</h2>
+<p>T-148 (protocolo), T-149 (texto para fala e sintetizador), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

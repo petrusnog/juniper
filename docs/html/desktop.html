@@ -15,7 +15,8 @@
 <div class="crumb"><a href="index.html">Início</a> / Produção / Cliente desktop</div>
 <h1>Cliente desktop <span class="tag a">proposto</span></h1>
 <p class="lead">O app Electron: stack, estrutura, segurança do renderer, token no cofre do sistema, conexão e empacotamento.</p>
-<div class="callout info"><p><strong>Nota:</strong> esta página resume o <a href="adr-015.html">ADR-015</a> (proposto). A Sprint 3 entrega só o <strong>chat por texto</strong> e o executor com <code>open_url</code>; voz, wake word, bandeja e atalhos globais ficam para a Sprint 4.</p></div>
+<blockquote><p><strong>Substituída:</strong> o cliente desktop foi descartado em favor do <a href="mobile.html">app mobile</a> (<a href="adr-022.html">ADR-022</a>). Esta página fica como registro do plano do Electron.</p>
+<p><strong>Nota:</strong> esta página resume o <a href="adr-015.html">ADR-015</a> (proposto). A Sprint 3 entrega só o <strong>chat por texto</strong> e o executor com <code>open_url</code>; voz, wake word, bandeja e atalhos globais ficam para a Sprint 4.</p></blockquote>
 <h2 id="visao-geral">Visão geral</h2>
 <p>O cliente desktop fala com o cérebro remoto e replica o que o CLI faz hoje, com uma interface gráfica. É um cliente <strong>fino</strong> (<a href="architecture.html#regras">Arquitetura</a>): captura entrada, exibe saída, nunca executa lógica de agente nem acessa o MongoDB. O mesmo app é o <strong>executor</strong> do PC (<a href="executor.html">Executor</a>).</p>
 <h2 id="stack">Stack</h2>
