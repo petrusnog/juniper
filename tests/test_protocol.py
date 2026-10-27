@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -191,6 +192,44 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
             "output": "Abri https://www.youtube.com no navegador.",
         },
     ),
+    # --- voz (ADR-023) ---
+    (
+        "client",
+        {
+            "type": "voice.start",
+            "id": "v-1",
+            "format": {"encoding": "pcm_s16le", "sample_rate": 16000, "channels": 1},
+            "local_stt": True,
+            "local_tts": True,
+        },
+    ),
+    (
+        "server",
+        {
+            "type": "voice.ready",
+            "reply_to": "v-1",
+            "input": {"encoding": "pcm_s16le", "sample_rate": 16000, "channels": 1},
+            "output": {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1},
+            "stt": "cloud",
+            "tts": "cloud",
+        },
+    ),
+    ("client", {"type": "voice.audio", "seq": 7, "data": "AAECAwQF"}),
+    (
+        "server",
+        {"type": "voice.audio", "seq": 0, "data": "AAECAwQF", "turn_id": "t-9", "last": True},
+    ),
+    ("server", {"type": "voice.state", "state": "speaking", "turn_id": "t-9"}),
+    ("server", {"type": "voice.transcript", "text": "toca Djavan", "final": True}),
+    ("server", {"type": "voice.say", "turn_id": "t-9", "text": "Tocando Oceano.", "last": True}),
+    (
+        "server",
+        {"type": "voice.fallback", "component": "stt", "mode": "local", "reason": "quota"},
+    ),
+    ("client", {"type": "voice.text", "id": "v-2", "text": "toca Djavan"}),
+    ("client", {"type": "voice.interrupt"}),
+    ("client", {"type": "voice.end", "reason": "client"}),
+    ("server", {"type": "voice.end", "reason": "silence"}),
 ]
 
 
@@ -357,3 +396,93 @@ def test_resume_accepts_either_target() -> None:
             raw={"type": "hello", "protocol_version": 1, "client": CLIENT, "resume": resume},
         )
         assert isinstance(hello, p.Hello) and hello.resume is not None
+
+
+# --- voz (ADR-023) -------------------------------------------------------------------------
+
+
+def test_voice_audio_travels_both_ways_and_decodes_to_pcm() -> None:
+    pcm = bytes(range(10))
+    frame = {"type": "voice.audio", "seq": 3, "data": base64.b64encode(pcm).decode()}
+    for source in ("client", "server"):
+        message = p.parse_message(json.dumps(frame), source=source)  # type: ignore[arg-type]
+        assert (
+            isinstance(message, p.VoiceAudio) and message.pcm() == pcm and message.turn_id is None
+        )
+
+
+def test_voice_end_travels_both_ways_and_defaults_to_the_client_reason() -> None:
+    assert p.parse_message('{"type":"voice.end"}', source="client") == p.VoiceEnd(reason="client")
+    assert p.parse_message(
+        '{"type":"voice.end","reason":"command"}', source="server"
+    ) == p.VoiceEnd(reason="command")
+
+
+@pytest.mark.parametrize(
+    ("raw", "source"),
+    [
+        (
+            '{"type":"voice.ready","reply_to":"v","input":{"sample_rate":16000},"output":{"sample_rate":24000},"stt":"cloud","tts":"cloud"}',
+            "client",
+        ),
+        ('{"type":"voice.state","state":"idle"}', "client"),
+        ('{"type":"voice.transcript","text":"x"}', "client"),
+        ('{"type":"voice.say","turn_id":"t","text":"x"}', "client"),
+        ('{"type":"voice.fallback","component":"stt","mode":"local","reason":"quota"}', "client"),
+        ('{"type":"voice.start","id":"v","format":{"sample_rate":16000}}', "server"),
+        ('{"type":"voice.text","id":"v","text":"x"}', "server"),
+        ('{"type":"voice.interrupt"}', "server"),
+    ],
+)
+def test_voice_messages_are_only_accepted_in_their_direction(raw: str, source: str) -> None:
+    with pytest.raises(p.InvalidMessageError, match="não é aceito nesta direção"):
+        p.parse_message(raw, source=source)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        {"type": "voice.audio", "seq": 0, "data": "isto não é base64!"},
+        {"type": "voice.audio", "seq": 0, "data": "AAE"},  # bad padding
+        {"type": "voice.audio", "seq": -1, "data": "AAEC"},
+        {"type": "voice.audio", "seq": 0, "data": "A" * 200_004},  # over the frame limit
+        {"type": "voice.audio", "data": "AAEC"},  # no seq
+        {"type": "voice.start", "id": "v", "format": {"sample_rate": 100}},
+        {"type": "voice.start", "id": "v", "format": {"sample_rate": 16000, "channels": 2}},
+        {"type": "voice.start", "id": "v", "format": {"sample_rate": 16000, "encoding": "mp3"}},
+        {"type": "voice.start", "format": {"sample_rate": 16000}},  # no id
+        {"type": "voice.text", "id": "v", "text": "x" * 32_001},
+        {"type": "voice.end", "reason": "porque sim"},
+    ],
+)
+def test_bad_voice_frames_are_refused_with_a_typed_error(frame: dict[str, Any]) -> None:
+    with pytest.raises(p.InvalidMessageError):
+        p.parse_message(frame, source="client")
+
+
+def test_a_voice_frame_stays_inside_the_message_limit() -> None:
+    biggest = {"type": "voice.audio", "seq": 1, "data": "A" * 200_000}
+    message = p.parse_message(biggest, source="client")
+    assert len(p.serialize_message(message).encode()) < p.MAX_MESSAGE_BYTES
+
+
+def test_voice_error_codes_are_not_retryable_and_part_of_the_schema() -> None:
+    for code in ("voice_unavailable", "voice_busy"):
+        assert p.RETRYABLE[code] is False
+        assert p.Error.from_code(code, "x").retryable is False  # type: ignore[arg-type]
+    assert {"voice_unavailable", "voice_busy"} <= set(p.json_schema()["x-error-codes"])
+
+
+def test_protocol_version_did_not_change_with_voice() -> None:
+    assert p.PROTOCOL_VERSION == 1  # compatible extension (ADR-012, section 12)
+    hello = {
+        "type": "hello",
+        "protocol_version": 1,
+        "client": {"kind": "mobile", "version": "0.1.0", "device_id": "d"},
+    }
+    assert p.parse_message(hello, source="client").client.kind == "mobile"  # type: ignore[union-attr]
+
+
+def test_an_old_server_view_still_ignores_unknown_voice_fields() -> None:
+    message = p.parse_message('{"type":"voice.interrupt","novo":1}', source="client")
+    assert isinstance(message, p.VoiceInterrupt)

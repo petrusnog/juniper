@@ -36,4 +36,4 @@ Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_versio
 
 ## Tasks {#tasks}
 
-T-148 (protocolo), T-149 (texto para fala e sintetizador), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
