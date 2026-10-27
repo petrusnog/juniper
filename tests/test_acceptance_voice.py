@@ -200,3 +200,28 @@ async def test_the_spoken_end_command_closes_the_voice_but_not_the_connection(
         assert provider.seen == []  # the LLM was never asked
         reply = await phone.chat("oi")  # the connection and the chat are still there
         assert said(reply) == "Pronto, anotado para você."
+
+
+async def test_a_stop_command_after_the_question_kills_the_pending_action(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    """Review finding: "chega" after "Posso criar...?" must not leave the question armed, or a
+    later "sim" (about anything) would execute it."""
+    provider = FakeProvider(
+        [
+            use("music_playlist_create", "k1", title="Foco", video_ids=[OCEANO]),
+            say("Posso criar a playlist «Foco» com 1 música?"),
+            say("Não tenho nenhuma ação esperando por você."),
+        ]
+    )
+    async with VoiceSetup(tmp_path, provider, "cria a playlist Foco", "chega", "sim") as s:
+        register_music(s)
+        phone = await s.phone()
+        await s.speak(phone)
+        await until_spoken(phone)
+        await s.speak(phone)  # "chega"
+        await phone.until(p.VoiceState)
+        await s.speak(phone)  # "sim"
+        second = await until_spoken(phone)
+        assert "nenhuma ação" in said(second)
+    assert youtube.created == []

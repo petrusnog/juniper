@@ -180,12 +180,23 @@ class _TeeStream(httpx.AsyncByteStream):
             return
 
 
+REDACTED = "<redacted: voice content>"
+
+
 class LoggingTransport(httpx.AsyncBaseTransport):
     """Wraps an httpx transport and logs each exchange under ``service`` (e.g. ``deepinfra``)."""
 
-    def __init__(self, service: str, inner: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        service: str,
+        inner: httpx.AsyncBaseTransport | None = None,
+        *,
+        redact_bodies: bool = False,
+    ) -> None:
         self._service = service
         self._inner = inner or httpx.AsyncHTTPTransport()
+        # Voice providers carry what was said: the log keeps the sizes, never the words.
+        self._redact = redact_bodies
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         if not _enabled():
@@ -204,7 +215,7 @@ class LoggingTransport(httpx.AsyncBaseTransport):
                 request.method,
                 str(request.url),
                 headers,
-                body_view(content, headers.get("content-type", "")),
+                REDACTED if self._redact else body_view(content, headers.get("content-type", "")),
             )
         try:
             response = await self._inner.handle_async_request(request)
@@ -220,7 +231,9 @@ class LoggingTransport(httpx.AsyncBaseTransport):
                 self._service,
                 response.status_code,
                 resp_headers,
-                body_view(
+                REDACTED
+                if self._redact
+                else body_view(
                     tee.captured(),
                     resp_headers.get("content-type", ""),
                     resp_headers.get("content-encoding", ""),
@@ -238,10 +251,16 @@ class LoggingTransport(httpx.AsyncBaseTransport):
 
 
 def logged_transport(
-    service: str, transport: httpx.AsyncBaseTransport | None = None
+    service: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+    *,
+    redact_bodies: bool = False,
 ) -> httpx.AsyncBaseTransport:
-    """The transport a provider should hand to its ``httpx.AsyncClient``."""
-    return LoggingTransport(service, transport)
+    """The transport a provider should hand to its ``httpx.AsyncClient``.
+
+    ``redact_bodies`` keeps the exchange (service, status, sizes, timing) but not the bodies.
+    """
+    return LoggingTransport(service, transport, redact_bodies=redact_bodies)
 
 
 # --- httplib2 (Google API client) -----------------------------------------------------------

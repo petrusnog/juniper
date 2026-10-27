@@ -40,6 +40,7 @@ AUDIO_CHUNK_MS: Final = 100
 SAY_SECONDS_PER_CHAR: Final = 0.07  # how long the device takes to say a character (an estimate)
 CANT_HEAR_MESSAGE = "Não consegui te ouvir agora. Pode repetir?"
 MAX_UTTERANCES_QUEUED: Final = 4
+PLAY_MARGIN_SECONDS: Final = 0.6  # the device may play a bit slower than the estimate
 SETTLE_SECONDS: Final = 0.4  # a pause in the reply this long lets a finished sentence be spoken
 
 Send = Callable[[p.ServerMessage], Awaitable[bool]]
@@ -67,6 +68,7 @@ class VoiceSession:
         cancel_turn: Callable[[], Awaitable[None]],
         turn_active: Callable[[], bool],
         ended: Callable[[], None],
+        clear_pending: Callable[[], None],
         input_rate: int = VAD_RATE,
         local_stt: bool = False,
         local_tts: bool = False,
@@ -81,6 +83,7 @@ class VoiceSession:
         self._cancel_turn = cancel_turn
         self._turn_active = turn_active
         self._ended = ended
+        self._clear_pending = clear_pending
         self._input_rate = input_rate
         self.local_stt = local_stt
         self.local_tts = local_tts
@@ -95,6 +98,8 @@ class VoiceSession:
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._open = False
+        self._closed = False
+        self._broken = False  # the connection stopped taking messages: nothing more to send
         self._out_rate = services.speech.sample_rate or 24_000
         self._settle: asyncio.TimerHandle | None = None
 
@@ -124,18 +129,22 @@ class VoiceSession:
 
     async def end(self, reason: p.VoiceEndReason, *, notify: bool = True) -> None:
         """Close the session (idempotent). ``notify`` tells the client why."""
-        if not self._open:
+        if self._closed:
             return
+        self._closed = True
         self._open = False
         current = asyncio.current_task()
         for task in (self._watchdog, self._worker):
             if task is not None and task is not current:
                 task.cancel()
         self._drop_speech()
-        if reason == "client":
+        # a question left hanging dies with the voice session (ADR-010): a later "sim" must not
+        # execute it; and what he was waiting for stops when he ends the conversation
+        self._clear_pending()
+        if reason not in ("server", "error") and self._turn_active():
             await self._cancel_turn()
-        if notify:
-            await self._send(p.VoiceEnd(reason=reason))
+        if notify and not self._broken:
+            await self._guarded_send(p.VoiceEnd(reason=reason))
         event_log.log("voice", action="end", reason=reason)
         self._ended()
 
@@ -145,6 +154,7 @@ class VoiceSession:
         if not self._open:
             return
         pcm = message.pcm()
+        pcm = pcm[: len(pcm) // 2 * 2]  # a half sample is garbage, and would break the resampler
         if self._input_rate != VAD_RATE:
             pcm = resample(pcm, self._input_rate, VAD_RATE)
         self._refresh_playing()
@@ -171,6 +181,7 @@ class VoiceSession:
     async def interrupt(self) -> None:
         """ "Shut up" from the client (the button, or its own detection)."""
         if self._open:
+            self._clear_pending()
             await self._cut()
             await self._state("listening")
 
@@ -220,7 +231,9 @@ class VoiceSession:
 
     def _refresh_playing(self) -> None:
         playing = (
-            self._turn_active() or self._speech is not None or self._clock() < self._play_until
+            self._turn_active()
+            or self._speech is not None
+            or self._clock() < self._play_until + PLAY_MARGIN_SECONDS
         )
         self._vad.set_playing(playing)
 
@@ -228,9 +241,11 @@ class VoiceSession:
         await self._guarded_send(p.VoiceState(state=state, turn_id=turn_id))
 
     async def _guarded_send(self, message: p.ServerMessage) -> bool:
+        if self._broken:
+            return False
         if not await self._send(message):
-            # the connection is gone: the handler will close us, nothing else to say
-            self._open = False
+            # the connection is gone: stop talking; the handler closes (and cleans) us
+            self._broken = True
             return False
         return True
 
@@ -271,6 +286,8 @@ class VoiceSession:
                 spoken = await self._services.speech.speak(sentence)
                 for notice in spoken.notices:
                     await self._fallback("tts", notice)
+                if spoken.audio is None and not self.local_tts:
+                    continue  # the device said it cannot speak: the caption is all there is
                 if not speech.spoke:
                     speech.spoke = True
                     await self._state("speaking", speech.turn_id)
@@ -330,7 +347,7 @@ class VoiceSession:
                 raise
             except Exception as exc:  # noqa: BLE001 - never end the session for one utterance
                 event_log.log("error", where="voice.listen", type=type(exc).__name__)
-            if not self._open:  # an end command ended the session from inside this very task
+            if self._closed:  # an end command ended the session from inside this very task
                 return
 
     async def _transcribe(self, pcm: bytes) -> None:
@@ -355,6 +372,7 @@ class VoiceSession:
             await self.end("command")
             return
         if is_stop_command(text):
+            self._clear_pending()
             if self._speech is not None or self._turn_active():
                 await self._cut()
             await self._state("listening")
@@ -375,14 +393,21 @@ class VoiceSession:
         """Idle timeout, and the notice that the cloud STT is worth trying again."""
         while True:
             await asyncio.sleep(self._tick)
-            notice = self._services.stt.recovered()
-            if notice is not None:
-                await self._fallback("stt", notice)
-            busy = (
-                self._turn_active() or self._speech is not None or self._clock() < self._play_until
-            )
-            if busy:
-                self._touch()
-            elif self._clock() - self._last_activity >= self._idle:
-                await self.end("silence")
-                return
+            try:
+                notice = self._services.stt.recovered()
+                if notice is not None:
+                    await self._fallback("stt", notice)
+                busy = (
+                    self._turn_active()
+                    or self._speech is not None
+                    or self._clock() < self._play_until
+                )
+                if busy:
+                    self._touch()
+                elif self._clock() - self._last_activity >= self._idle:
+                    await self.end("silence")
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - the idle timeout must keep working
+                event_log.log("error", where="voice.watch", type=type(exc).__name__)

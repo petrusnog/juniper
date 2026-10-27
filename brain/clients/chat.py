@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 TURN_TIMEOUT_SECONDS: Final = 120.0
 """Tempo total de um turno (ADR-012, seção 11). Passou disso, o turno acaba com erro."""
 SHUTDOWN_GRACE_SECONDS: Final = 10.0
+CANCEL_WAIT_SECONDS: Final = 2.0
 DEFAULT_LIST_LIMIT: Final = 50
 
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
@@ -428,11 +429,20 @@ class ChatHandler:
                 f"mensagem(ns) sua(s) e estava livre. Abri o turno {run.turn_id}, avisei o cliente "
                 "com chat.started e passei a sua mensagem ao agente.",
             )
-            await conn.send(
-                p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
-            )
-            if voice is not None:
-                await voice.turn_started(run.turn_id)
+            try:
+                await conn.send(
+                    p.ChatStarted(
+                        reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id
+                    )
+                )
+                if voice is not None:
+                    await voice.turn_started(run.turn_id)
+            except BaseException:
+                # cancelled before the turn task exists (a voice session ending right now):
+                # never leave the conversation "busy" with no task to ever finish it
+                if conversation.turn is run:
+                    conversation.turn = None
+                raise
             run.task = self._start(self._run_turn(conversation, run, message.text))
 
     def _chat_cancel(self, conn: Connection, message: p.ChatCancel) -> None:
@@ -554,12 +564,18 @@ class ChatHandler:
             cancel_turn=lambda: self._cancel_running_turn(conn),
             turn_active=lambda: self._turn_running(conn),
             ended=lambda: self._voice_ended(conn),
+            clear_pending=lambda: self._clear_pending(conn),
             input_rate=message.format.sample_rate,
             local_stt=bool(message.local_stt),
             local_tts=bool(message.local_tts),
         )
         self._voices[conn.id] = session
         await session.start(message.id)
+
+    def _clear_pending(self, conn: Connection) -> None:
+        conversation: Conversation | None = conn.state
+        if conversation is not None:
+            conversation.agent.clear_pending()
 
     def _voice_ended(self, conn: Connection) -> None:
         self._voices.pop(conn.id, None)
@@ -600,7 +616,9 @@ class ChatHandler:
             return
         run.cancelled = True
         run.task.cancel()
-        await asyncio.wait({run.task})
+        # Bounded: this runs in the connection's receive loop, which must keep reading (and
+        # answering pings) even if a tool takes a while to give up.
+        await asyncio.wait({run.task}, timeout=CANCEL_WAIT_SECONDS)
 
     # --- tools ---
 

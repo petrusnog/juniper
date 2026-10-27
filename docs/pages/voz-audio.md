@@ -60,7 +60,7 @@ Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
 - **Cada frase** (`SpeechService.speak`) sai como áudio (`voice.audio`) ou, se o orçamento acabou ou o Google falhou, como texto para o aparelho falar (`voice.say`). Depois de uma falha, o Google fica em paz por 30 s (10 min se o erro foi de cota) antes de outra tentativa.
 - **Aviso uma vez:** cada troca de modo vira um único `voice.fallback` (motivo `budget`, `quota` ou `error`) e outro quando o Google volta (`recovered`, por exemplo na virada do mês). Falha inesperada do provedor também cai no aparelho: nenhuma frase fica sem voz.
 - **Log:** só tamanhos e códigos, nunca o texto.
-- **`juniper voice status`:** mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
+- **`juniper voice status`:** (lê o arquivo de gasto do lugar onde o comando roda; na VPS, rode-o dentro do contêiner do cérebro) mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
 
 ## A sessão de voz no servidor {#sessao}
 
@@ -72,7 +72,8 @@ Implementada no T-152 (`brain/clients/voice_session.py`, ligada ao `ChatHandler`
 4. **Interromper:** falar por cima dela por `barge_in_ms` corta a fala e cancela o turno; a fala nova é transcrita e vira o próximo turno. «Para», «chega» e «silêncio» (ou `voice.interrupt`) calam sem abrir turno.
 5. **Encerrar:** botão (`voice.end`), comando falado («encerrar a conversa», «tchau, Juniper») ou `voice.idle_timeout_seconds` de silêncio. Os comandos são reconhecidos **sem o LLM** e só valem para a frase inteira.
 6. **Confirmação por voz:** uma pergunta, uma resposta («Posso criar a playlist?» → «sim»); o «sim» é a transcrição seguinte, interpretada por `consent.py`. Nada repete a pergunta.
-7. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
+7. **Pergunta pendente morre com a voz:** «para», «chega», o botão de interromper e qualquer fim de sessão descartam a confirmação que estava aberta; um «sim» dito depois não executa a ação antiga. Terminar por voz também cancela o turno em andamento.
+8. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
 
 Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.html#voz).
 
