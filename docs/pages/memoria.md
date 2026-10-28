@@ -1,7 +1,8 @@
 ---
 title: Memória
-group: Memória
-order: 1
+group: Documentação Técnica
+section: Memória
+order: 10
 description: Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
 status: pronta
 tags: memória hipocampo rag sessão longo prazo mongodb embeddings perfil aceite roteiro
@@ -9,14 +10,14 @@ tags: memória hipocampo rag sessão longo prazo mongodb embeddings perfil aceit
 
 ## Visão geral {#visao-geral}
 
-A Juniper lembra em duas camadas (ADR-011):
+A Juniper lembra em duas camadas ([ADR-011](adr-011.html)):
 
 | Camada | O que guarda | Onde | Página |
 |---|---|---|---|
 | **Memória de sessão** (curto prazo) | A conversa atual, dentro de um orçamento de tokens; pode ser retomada com `--resume`. | Arquivos JSON ou MongoDB | [Memória de sessão](memoria-sessao.html) |
 | **Memória de longo prazo** | Fatos duráveis sobre você (preferências, projetos, fatos) e o seu **perfil** (quem você é), achados por significado. | MongoDB (`memories` e `profile`) | [Memória de longo prazo](memoria-longo-prazo.html) |
 
-O marco: a Juniper lembra que você prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, **entre sessões**, e deixa de ser estranha.
+O objetivo: a Juniper lembra que você prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, **entre sessões**, e deixa de ser estranha.
 
 ## Como as peças se encaixam {#fluxo}
 
@@ -33,7 +34,7 @@ sua mensagem ──► recuperação ──► o prompt ganha <perfil> e <memori
 2. **Depois de cada resposta**, um trabalhador em segundo plano ([extração](memoria-longo-prazo.html#extracao)) separa o que vale lembrar, sem duplicar e sem segredos.
 3. **Você controla**: `juniper memory list|search|forget|export|profile` ([CLI](cli.html#memory)) e as tools `remember`, `recall`, `forget` ([tools de memória](memoria-longo-prazo.html#tools-de-memoria)).
 
-Princípios do ADR-011: **memória nunca é editada, só substituída** (a antiga fica `superseded`, para auditoria); **segredos nunca são gravados**; um registro ruim não esconde os bons; uma falha de memória **nunca derruba o chat**.
+Princípios do [ADR-011](adr-011.html): **memória nunca é editada, só substituída** (a antiga fica `superseded`, para auditoria); **segredos nunca são gravados**; um registro ruim não esconde os bons; uma falha de memória **nunca derruba o chat**.
 
 ## Ligar a memória {#ligar}
 
@@ -47,7 +48,7 @@ Detalhes (e como fazer à mão) em [Memória de sessão](memoria-sessao.html#mon
 
 ## Validar na sua máquina {#validar}
 
-O marco da Sprint 2 tem um teste automatizado (`tests/test_acceptance_sprint2.py`, roda no CI) e um roteiro manual com o LLM, o modelo e o banco **reais**.
+O comportamento esperado da memória tem um teste de aceite automatizado (`tests/test_acceptance_sprint2.py`, roda no CI) e um roteiro manual com o LLM, o modelo e o banco **reais**.
 
 ### O teste automatizado {#teste-automatizado}
 
@@ -108,10 +109,10 @@ juniper "que framework o projeto X usa?"             # espera: não lembra
 | Duplicou ou não substituiu a versão antiga | É o "juiz" do LLM (`duplicate`/`supersede`) ou o `extraction.neighbor_threshold` (0.75) que não considerou as duas parecidas. Veja a nota com `memory search`. |
 | Nada foi extraído | Confira `memory.session.store: mongo` e `memory.extraction.enabled: true`. No modo `exit`, Ctrl+C não extrai: use `/sair` ou Ctrl+D. |
 
-Há também um teste com o modelo real de embeddings que imprime as notas das perguntas do marco: `pytest -m integration -s tests/test_acceptance_sprint2.py` (baixa ~120 MB).
+Há também um teste com o modelo real de embeddings que imprime as notas das perguntas do roteiro: `pytest -m integration -s tests/test_acceptance_sprint2.py` (baixa ~120 MB).
 
-> **Atenção:** a Sprint 2 só se considera encerrada depois do roteiro manual passar na sua máquina. Os parâmetros `retrieval.threshold` (0.80) e `extraction.neighbor_threshold` (0.75), e os prompts de extração e de julgamento, ainda não foram calibrados com uso real; a latência real sob carga também não foi medida.
+> **Atenção:** o roteiro manual é o que prova a memória com os componentes reais. Os parâmetros `retrieval.threshold` (0.80) e `extraction.neighbor_threshold` (0.75), e os prompts de extração e de julgamento, ainda não foram calibrados com uso real; a latência real sob carga também não foi medida.
 
-## Próximos passos {#futuro}
+## Além dos fatos {#futuro}
 
-Depois do deploy, o plano é deixar a memória mais fluida e menos engessada, mais próxima da memória cerebral (esquecimento gradual, associações, consolidação). Isso ainda não tem ADR.
+A [Memória V2](memoria-v2.html) ([ADR-017](adr-017.html)), opcional, constrói sobre esta base opiniões, sentimentos, interesses, uma personalidade viva e o refinamento das memórias em lembranças ([ADR-018](adr-018.html)).

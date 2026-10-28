@@ -1,7 +1,8 @@
 ---
 title: Memória de sessão
-group: Memória
-order: 2
+group: Documentação Técnica
+section: Memória
+order: 11
 description: A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).
 status: pronta
 tags: sessão resume sessionstore mongodb docker compose arquivos json conversas retomar

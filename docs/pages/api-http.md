@@ -1,0 +1,91 @@
+---
+title: API HTTP
+group: Referência
+order: 3
+description: As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+status: pronta
+tags: api http rest health dashboard rotas json get login cookie paginação limit offset memories beliefs affects persona interests notes dreams journal sessions search prompt
+---
+
+O cérebro expõe dois servidores HTTP no mesmo processo (`juniper serve`): o do WebSocket, que também responde `/health`, e o do [dashboard](dashboard.html), com uma API JSON **somente leitura**. Para conversar, tocar ferramentas ou mexer na memória, use a [API WebSocket](protocolo.html).
+
+| Servidor | Porta padrão | Configuração |
+|---|---|---|
+| WebSocket + saúde | 8765 | `deployment.server.*` |
+| Dashboard | 8766 | `dashboard.*` ([Configuração](configuracao.html#trace)) |
+
+## Saúde do cérebro {#health}
+
+`GET /health` na porta do WebSocket, **sem autenticação**. É o que o *healthcheck* do Docker e o deploy usam.
+
+```bash
+curl -s http://127.0.0.1:8765/health
+```
+
+```json
+{ "status": "ok", "memory": "ready", "version": "4.0.0" }
+```
+
+| `status` / `memory` | Significado |
+|---|---|
+| `ok` / `ready` | Tudo pronto. |
+| `ok` / `off` | Pronto, sem memória de longo prazo. |
+| `degraded` / `warming_up` | O modelo de embeddings ainda está carregando (ou baixando, na primeira vez). A conversa funciona sem memória. Continua HTTP 200, para o contêiner não ser reiniciado. |
+
+Qualquer outro caminho que não `/health` ou `/v1/ws` responde 404.
+
+## Dashboard {#dashboard}
+
+Todas as rotas aceitam só `GET` (outro método: 405). O cabeçalho `Host` precisa ser um IP, `localhost`, um nome `*.ts.net` ou um host de `dashboard.allowed_hosts`; senão, 421.
+
+### Autenticação {#autenticacao}
+
+| Rota | Autenticação | O que faz |
+|---|---|---|
+| `GET /health` | nenhuma | `{"ok": true, "service": "dashboard"}` |
+| `GET /login` | nenhuma | A página de login. |
+| `GET /api/login` | `Authorization: Bearer <token>` | Confere o token dos clientes e devolve o cookie de sessão (`HttpOnly`, `SameSite=Strict`, `Secure` se `X-Forwarded-Proto: https`), válido por `dashboard.session_hours`. Token errado: 401; cinco erros em cinco minutos: 429. |
+| `GET /api/logout` | nenhuma | Apaga o cookie. |
+| `GET /api/...` | cookie de sessão **ou** `Authorization: Bearer <token>` | As rotas de dados abaixo. Sem credencial: 401 `{"error": "faça login"}`. |
+
+Para scripts, o cabeçalho `Authorization` basta:
+
+```bash
+curl -s -H "Authorization: Bearer $(cat .juniper-dev/state/token)" http://127.0.0.1:8766/api/overview
+```
+
+### Convenções {#convencoes}
+
+- Respostas em JSON UTF-8, `Cache-Control: no-store`.
+- **Paginação** nas listas: `?limit=` (padrão 50, máximo 200) e `?offset=`; a resposta traz `{"total", "offset", "limit", "items"}`.
+- **Segredos mascarados e vetores removidos** de tudo o que sai.
+- **Erros:** `{"error": "<motivo>"}` com 404 (rota ou id inexistente) ou 503 (a camada está desligada: memória de longo prazo ou Memória V2, com o motivo).
+- Nenhuma rota escreve no banco.
+
+### Rotas {#rotas}
+
+| Rota | Filtros e parâmetros | O que entrega |
+|---|---|---|
+| `/api/session` | — | Quais camadas estão ligadas: `{"ok", "v1", "v2"}`. |
+| `/api/overview` | — | Contadores de cada camada, humor e sentimentos de agora, traços e o último sonho. |
+| `/api/memories` | `type`, `status` (`active` padrão, `superseded`, `all`), `reflexao` (`bruta`, `refinada`), `q`, paginação | Os fatos da memória de longo prazo. |
+| `/api/memories/<id>` | — | Um fato, com a lembrança e a linhagem bruta → refinada. |
+| `/api/beliefs` | `status`, `topic`, `q`, `order=confidence`, paginação | Crenças com confiança, faixa, fontes. |
+| `/api/beliefs/<id>` | — | Uma crença com cada evidência. |
+| `/api/affects` | `origin` (`conversa`, `sonho`), `kind`, paginação | Sentimentos. |
+| `/api/affects/<id>` | — | Um sentimento e o rastreio até a fala que o causou. |
+| `/api/mood` | `days` (1 a 90, padrão 14) | A série do humor. |
+| `/api/persona` | — | A personalidade atual e o histórico de versões. |
+| `/api/concerns` | — | As preocupações e os pesos. |
+| `/api/core` | — | O núcleo da persona e o perfil. |
+| `/api/interests` | paginação | Temas de estudo com passo, posição e intensidade. |
+| `/api/interests/<id>` | — | Um tema, as notas por passo e as perguntas em aberto. |
+| `/api/notes` | `interest`, `uncertainty`, `source`, `kind`, `q`, paginação | As notas de estudo. |
+| `/api/dreams` | paginação | As execuções do sonho: fases, tokens, erros. |
+| `/api/journal` | `days` (1 a 3650, padrão 30), `kind` | O diário. |
+| `/api/sessions` | paginação | As conversas (503 com `dashboard.transcripts: false`). |
+| `/api/sessions/<id>` | — | Os turnos de uma conversa; a resposta depois de ferramentas fica de fora. |
+| `/api/search` | `q`, `type` (repetível), `limit` (1 a 20, padrão 8) | Pesquisa em memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado. |
+| `/api/prompt` | `message`, `previous?` | O simulador: os blocos que a Memória V2 acrescentaria ao prompt para aquela mensagem, com a estimativa de tokens. Não grava nada. |
+
+As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `notes`, `dreams` e `journal` dependem da [Memória V2](memoria-v2.html); `memories` depende da [memória de longo prazo](memoria-longo-prazo.html).

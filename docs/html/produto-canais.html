@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onde conversar — Livro de bolso Juniper</title>
+<meta name="description" content="Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-canais.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Onde conversar</div>
+<h1>Onde conversar <span class="tag v">guia</span></h1>
+<p class="lead">Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.</p>
+<p>Todos os canais conversam com <strong>o mesmo cérebro</strong> e a <strong>mesma memória</strong>. Uma conversa começada num lugar pode ser retomada em outro; quando isso acontece, o canal novo assume a conversa e o anterior é avisado (<a href="adr-012.html">ADR-012</a>).</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Canal</th><th>Bom para</th><th>Limites</th></tr></thead><tbody><tr><td><a href="#terminal">Terminal</a></td><td>Quem trabalha no computador: conversa, comandos de memória, git.</td><td>Exige o programa instalado.</td></tr><tr><td><a href="#telegram">Telegram</a></td><td>Falar de qualquer lugar, sem instalar nada além do Telegram.</td><td>Só texto e só conversa.</td></tr><tr><td><a href="#app">App Android</a></td><td>Texto e voz no celular; tocar música no aparelho.</td><td>Só Android.</td></tr><tr><td><a href="#painel">Painel web</a></td><td>Ver a memória, os sentimentos e os estudos dela em gráficos.</td><td>Só leitura.</td></tr></tbody></table></div>
+<h2 id="terminal">Terminal</h2>
+<p>O comando <code>juniper</code> abre uma conversa no terminal do computador. A resposta aparece palavra por palavra, e o terminal também tem comandos para ver e apagar a memória, consultar os registros e retomar a última conversa. Pelo terminal, a Juniper também pode buscar commits e publicar features no repositório em que você está (<a href="produto-integracoes.html#git">Integrações</a>). Técnico: <a href="cli.html">CLI</a>.</p>
+<h2 id="telegram">Telegram</h2>
+<p>Um bot do Telegram leva as suas mensagens ao cérebro. Ele só responde a quem está numa <strong>lista de permissão</strong> (por padrão, ninguém), só em conversa privada, e só entende texto. A resposta chega inteira (o Telegram não mostra o texto aparecendo aos poucos), e as confirmações funcionam igual: um "sim" na mensagem seguinte. Há um limite de mensagens por minuto e a opção de apagar as mensagens depois de algumas horas. As mensagens passam pelos servidores do Telegram, sem criptografia de ponta a ponta (<a href="adr-016.html">ADR-016</a>). Técnico: <a href="telegram.html">Bot do Telegram</a>.</p>
+<h2 id="app">App Android</h2>
+<p>O app tem duas abas (<a href="adr-022.html">ADR-022</a>):</p>
+<ul><li><strong>Texto:</strong> a conversa com a resposta chegando aos poucos, a lista de conversas para retomar e um botão para interromper.</li><li><strong>Voz:</strong> uma conversa contínua, de mãos livres. O microfone fica aberto, a Juniper entende, responde em voz alta e mostra legendas. Dá para interrompê-la falando por cima (com fone) ou com um botão, e a conversa termina com um botão, com "tchau, Juniper" ou depois de um minuto em silêncio. Funciona com a tela apagada.</li></ul>
+<p>Pelo app, um pedido como "toca Oceano do Djavan" <strong>abre o YouTube Music no celular e dá o play</strong>. A voz é sintetizada pelo Google e a fala é transcrita pela Groq; se um desses serviços falhar ou o orçamento mensal acabar, o próprio celular assume e a conversa continua (<a href="adr-023.html">ADR-023</a>). Técnico: <a href="mobile.html">App mobile</a> e <a href="voz-audio.html">Voz por áudio</a>.</p>
+<h2 id="painel">Painel web</h2>
+<p>Um painel no navegador mostra o que a Juniper sabe e sente: as memórias e as lembranças, as opiniões com as evidências, o humor ao longo dos dias, os temas que ela estuda, os sonhos noturnos e as conversas. Ele <strong>só lê</strong>: nada ali altera a memória. O acesso pede o mesmo token dos outros clientes e funciona em qualquer dispositivo da rede privada (<a href="adr-020.html">ADR-020</a>). Técnico: <a href="dashboard.html">Dashboard</a>.</p>
+<h2 id="todos">Em todos os canais</h2>
+<ul><li>A <strong>permissão</strong> é sempre um "sim" na conversa (<a href="produto-ferramentas.html">Ferramentas e permissões</a>).</li><li>Se a conexão cair no meio de uma resposta, o cérebro termina a resposta e a guarda; ao reconectar, ela aparece.</li><li>Sem conexão, o canal avisa que a Juniper está indisponível e não acumula mensagens para enviar depois.</li><li>A Juniper sabe por onde o pedido chegou: no celular ela abre a música; no terminal ou no Telegram, manda o link.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

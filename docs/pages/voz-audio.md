@@ -1,13 +1,14 @@
 ---
 title: Voz por áudio
-group: Clientes
-order: 7
+group: Documentação Técnica
+section: Clientes
+order: 25
 description: Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.
-status: proposto
+status: pronta
 tags: voz audio tts stt google chirp leda groq whisper vad orçamento fallback protocolo voice pcm base64 interrupção encerrar
 ---
 
-> **Nota:** esta página resume o [ADR-023](adr-023.html) (proposto). A [voz do terminal](voz.html) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
+> **Nota:** esta página detalha o [ADR-023](adr-023.html); o backend de voz está implementado e coberto por teste de aceite (`tests/test_acceptance_voice.py`). A [voz do terminal](voz.html) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
 
 ## Visão geral {#visao-geral}
 
@@ -28,11 +29,11 @@ app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Led
 - **Confirmação por voz:** uma única pergunta; o "sim" é a transcrição seguinte, interpretada por `consent.py` ([Agente](agente.html#confirmacao)).
 - **Encerrar:** botão, comando falado (reconhecido sem LLM) ou silêncio prolongado.
 - **A voz não autentica:** a sessão herda a autenticação da conexão ([Login com MFA](login.html)).
-- **Dados que saem da máquina:** o áudio do Petrus vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.
+- **Dados que saem da máquina:** o áudio do usuário vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.
 
 ## Falar: texto preparado e o sintetizador {#falar}
 
-O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice`, T-149):
+O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice`):
 
 - **Texto para fala** (`speech_text`): tira os sinais de markdown, tabelas e linhas de separação; tira emojis e caracteres invisíveis; **nunca lê URL** (um link vira, uma vez por resposta, "O link está na tela."); um bloco de código vira uma frase só ("Deixei o trecho de código na tela.") e o conteúdo dele não é lido.
 - **Frases enquanto o LLM escreve** (`SentenceChunker`): junta os `chat.token` em frases, na ordem, e entrega cada uma assim que fecha, para a primeira ser falada antes de a resposta acabar. Frases com menos de 24 caracteres viajam junto com a seguinte (a entonação não quebra); o ponto de um número decimal ("3.5") não corta a frase; um bloco de código aberto espera fechar. O total falado respeita `voice.max_spoken_chars`: passou disso, o resto fica na tela e ela diz "O resto está na tela." uma vez.
@@ -43,7 +44,7 @@ As opções estão em [Configuração](configuracao.html#voice).
 
 ## Ouvir: detector de fala e transcrição {#ouvir}
 
-Implementado no T-151 (`brain/voice/vad.py` e `stt.py`):
+Em `brain/voice/vad.py` e `stt.py`:
 
 - **Detector de fala** (`Vad`): recebe PCM 16 bits, 16 kHz, mono, em pedaços de qualquer tamanho (quadros de 20 ms; sobra de um pedaço entra no seguinte). A fala começa quando a energia fica acima de 3 vezes o piso de ruído por `voice.vad.speech_start_ms`; termina após `silence_ms` de silêncio ou ao chegar em `max_utterance_seconds` (o que continuar sendo dito vira a fala seguinte). Entram na fala os 300 ms anteriores (para não cortar a primeira sílaba). Falas abaixo de `min_utterance_ms` de voz (um estalo, uma tosse) são descartadas. O piso de ruído acompanha o ambiente: desce rápido e sobe devagar, então uma sala barulhenta deixa de contar como fala, mas a voz continua se destacando.
 - **Interromper** (`set_playing(True)` enquanto ela fala): o limiar sobe (6 vezes o piso, no mínimo 900) e são exigidos `barge_in_ms` de fala contínua. Um sopro ou a própria voz dela vazando no microfone não a corta. O evento é `barge_in`, no lugar de `speech_start`; a fala segue sendo gravada.
@@ -63,7 +64,7 @@ O que **não** dá para garantir sem fone: falar por cima de uma música alta se
 
 ## Orçamento e voz do aparelho {#orcamento}
 
-Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
+Em `brain/voice/budget.py` e `speech.py`:
 
 - **Contagem** (`VoiceBudget`): os caracteres enviados ao Google são somados por mês civil, **no fuso da Juniper** (`agent.timezone`), num arquivo JSON pequeno (`voice.usage_file`, permissão 0600). Funciona sem MongoDB e sobrevive a reinício. Arquivo ausente, corrompido ou de outro mês começa o mês em zero; se o disco recusar a escrita, a contagem continua na memória e a conversa não para.
 - **Reserva e estorno:** o texto é reservado antes da chamada e devolvido se ela falhar (o Google cobra só o que sintetiza). Se sobrar menos que uma frase, o mês é dado como gasto, para a voz não alternar entre Google e aparelho frase a frase. `monthly_chars_limit: 0` desliga a voz do Google.
@@ -74,7 +75,7 @@ Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
 
 ## A sessão de voz no servidor {#sessao}
 
-Implementada no T-152 (`brain/clients/voice_session.py`, ligada ao `ChatHandler`; `voice.enabled: true` liga o conjunto no servidor):
+Em `brain/clients/voice_session.py`, ligada ao `ChatHandler` (`voice.enabled: true` liga o conjunto no servidor):
 
 1. `voice.start` abre a sessão (uma por conexão: a segunda recebe `voice_busy`; sem `voice.enabled` ou sem como ouvir, `voice_unavailable`). O cérebro responde `voice.ready` com os formatos e de onde vêm STT e TTS.
 2. O áudio do microfone passa pelo detector de fala. Cada fala é transcrita (nuvem, ou `voice.text` se o aparelho transcreve) e vira um **turno de chat comum**: o agente, a confirmação ([ADR-010](adr-010.html)) e a memória só veem texto. Quem pediu «toca Djavan» recebe `voice.transcript`, `chat.started`, `chat.token` (a legenda) e o áudio.
@@ -93,9 +94,9 @@ Tudo acima foi verificado com **peças falsas** nas pontas (LLM, Google, Groq, Y
 
 1. **Conta de serviço do Google** (Text-to-Speech ligado no projeto, com faturamento): baixe o JSON e salve em `certs/gcp-voice.json` (a pasta `certs/` é montada só para leitura; o arquivo nunca entra na imagem nem no Git).
 2. **Chave da Groq** em `JUNIPER_GROQ_API_KEY` no `.env`.
-3. **Ligue** no seu config (`docker/config.base.yaml` ou o pessoal): `voice: {enabled: true}`. O gasto do mês fica em `voice-usage.json` no volume `juniper-music` (veja [Produção](producao.html)), então sobrevive a deploys.
+3. **Ligue** no config do servidor (`voice: {enabled: true}`) ou no `.env` (`JUNIPER_VOICE__ENABLED=true`). Em produção o gasto do mês fica em `voice-usage.json` no volume `juniper-music`, então sobrevive a deploys ([Integrações Google Cloud e Groq](integracoes-producao.html#voz)).
 4. **Confira:** `juniper voice status` deve mostrar «Credencial do Google: encontrada», «Chave da Groq: configurada» e o gasto do mês em zero. Ele nunca imprime chaves.
-5. **No aparelho** (quando o app existir, [App mobile](mobile.html)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
+5. **No aparelho** ([App mobile](mobile.html#voz)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
 6. **Ajustes que só o uso mostra:** os limiares do detector (3 vezes o piso para falar, 6 vezes para interromper) e `voice.vad.*`; a qualidade da voz Leda; se o STT da Groq acerta nomes de músicas e artistas.
 7. **Custo:** `juniper voice status` mostra quanto do orçamento de caracteres foi usado; ao esgotar, a voz do aparelho assume sozinha e a Juniper avisa uma vez.
 
@@ -104,7 +105,3 @@ O que ainda **não** foi verificado: o formato real das respostas do Google e da
 ## Mensagens {#protocolo}
 
 Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](adr-023.html#7-protocolo-extensao-compativel-do-adr-012).
-
-## Tasks {#tasks}
-
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite do backend, **pronto**: `tests/test_acceptance_voice.py`). Épica #179.

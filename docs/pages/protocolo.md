@@ -1,38 +1,47 @@
 ---
-title: Protocolo cliente ↔ brain
-group: Produção
+title: API WebSocket
+group: Referência
 order: 2
-description: O contrato do WebSocket entre os clientes e o cérebro: handshake, chat em stream, sessões, memória, erros e reconexão.
-status: proposto
-tags: websocket protocolo mensagens hello welcome chat.send chat.token heartbeat reconexão erros códigos fechamento sessão json envelope
+description: Referência completa do protocolo entre os clientes e o cérebro: conexão, envelope, cada mensagem com os seus campos, erros, códigos de fechamento e reconexão.
+status: pronta
+tags: api websocket protocolo mensagens hello welcome chat.send chat.token chat.end heartbeat sessão memória executor invoke voz erros códigos fechamento json schema protocol_version
 ---
 
-> **Nota:** esta página resume o [ADR-012](adr-012.html) (proposto). O contrato em código (modelos pydantic e JSON Schema, T-074) será a fonte da verdade; em caso de divergência, vale o schema gerado.
+> **Nota:** o contrato vem do [ADR-012](adr-012.html), estendido pelos ADRs [014](adr-014.html) (executor) e [023](adr-023.html) (voz). A fonte da verdade em código são os modelos de `brain/clients/protocol.py`, exportados para o JSON Schema `docs/protocol/schema.json` (`python scripts/export_protocol_schema.py`). Em caso de divergência, vale o schema. Um guia prático para escrever um cliente está em [Integrar com o cérebro](integrar-cliente.html).
 
-## Visão geral {#visao-geral}
+## Conexão {#conexao}
 
-Cada cliente (CLI remoto, app Electron) abre **um único WebSocket** com o cérebro e usa a mesma conexão para chat, sessões, comandos de memória e (se for executor) tools remotas. O cliente é fino: o histórico e a confirmação pendente vivem **no servidor**.
+| Item | Valor |
+|---|---|
+| Endereço | `ws://<host>:<porta>/v1/ws` (porta padrão 8765). Sem TLS: use dentro de uma rede privada cifrada ([ADR-013](adr-013.html)). |
+| Autenticação | Cabeçalho `Authorization: Bearer <token>` no *handshake* HTTP. Sem ele, ou com token errado: HTTP 401 antes do upgrade. |
+| Quadros | Texto, JSON UTF-8, **uma mensagem por quadro**. Quadros binários são recusados. |
+| Tamanho | Até 1 MiB por mensagem; até 32.000 caracteres em `chat.send.text`. |
+| Versão | `protocol_version: 1`. Mudanças compatíveis (mensagens, campos ou códigos novos) não mudam a versão. |
+| Saúde | `GET /health` na mesma porta, sem autenticação ([API HTTP](api-http.html#health)). |
 
-- Endereço: `ws://<host>:<porta>/v1/ws` (dentro do Tailscale; o tráfego já é cifrado).
-- Quadros de texto, JSON UTF-8, **uma mensagem por quadro**.
-- `GET /health` na mesma porta (HTTP, sem autenticação) para o Docker e o deploy.
+O token é gerado pelo servidor no primeiro boot e fica no arquivo `deployment.auth.token_file` ([Servidor WebSocket](servidor.html#iniciar)).
 
 ## Envelope {#envelope}
 
-Toda mensagem tem `type` e, quando faz parte de um pedido, `id` (único, gerado por quem pede). Respostas e eventos levam `reply_to` com o `id` original. Campos desconhecidos são **ignorados**; tipos desconhecidos geram `error` com `code: "bad_request"` sem fechar a conexão. Limites: 1 MiB por mensagem; 32.000 caracteres por `chat.send` *(a confirmar)*.
+Toda mensagem tem `type`. Um pedido do cliente leva um `id` (único, escolhido por quem pede); a resposta e os eventos ligados a ele levam `reply_to` com esse `id`. Campos desconhecidos são **ignorados**; um `type` desconhecido gera `error` com `code: "bad_request"`, sem fechar a conexão.
 
 ```json
 { "type": "chat.send", "id": "c-7f3a", "text": "o que tenho amanhã?" }
 ```
 
-## Conexão e autenticação {#conexao}
+## Handshake {#handshake}
 
-1. O cliente abre o WebSocket com `Authorization: Bearer <token>`. Token ausente ou errado: 401 antes do upgrade, ou fechamento `4401`.
-2. O cliente manda `hello`; o servidor responde `welcome`.
+Depois do upgrade, o cliente manda `hello` e espera `welcome`.
+
+| Direção | `type` | Campos |
+|---|---|---|
+| cliente → servidor | `hello` | `protocol_version` (int), `client` {`kind`, `version`, `device_id`, `device_name?`}, `resume?` {`session_id`} ou {`latest`: true}, `trace?` (bool) |
+| servidor → cliente | `welcome` | `protocol_version`, `server_version`, `heartbeat_seconds`, `session` {`id`, `resumed`, `turns`} |
 
 ```json
 { "type": "hello", "protocol_version": 1,
-  "client": { "kind": "desktop", "version": "0.1.0", "device_id": "a1b2c3", "device_name": "PC do Petrus" },
+  "client": { "kind": "mobile", "version": "0.1.0", "device_id": "mobile-a1b2c3", "device_name": "Celular" },
   "resume": { "latest": true } }
 ```
 
@@ -41,22 +50,29 @@ Toda mensagem tem `type` e, quando faz parte de um pedido, `id` (único, gerado 
   "session": { "id": "20261015-101500-ab12cd", "resumed": true, "turns": 6 } }
 ```
 
-`resume` é opcional (`{"session_id": "..."}` ou `{"latest": true}`). Versão incompatível: `error` com `unsupported_version` e fechamento `4426`. Uma segunda conexão com o mesmo `device_id` **substitui** a primeira (`4409`).
+- `client.kind` identifica o cliente (`cli`, `telegram`, `mobile`...). O servidor usa isso para saber o canal do pedido ([Servidor WebSocket](servidor.html#conversas)).
+- `resume` leva `session_id` **ou** `latest: true`, nunca os dois nem nenhum (`bad_request`). Sem `resume`, o servidor abre uma conversa nova.
+- Versão incompatível: `error` com `unsupported_version` e fechamento `4426`.
+- Uma segunda conexão com o mesmo `device_id` **substitui** a primeira (`4409`).
 
 ## Heartbeat {#heartbeat}
 
-O servidor manda `{"type":"ping"}` a cada 30 s e o cliente responde `{"type":"pong"}` (heartbeat de aplicação, igual em todos os clientes e através de proxies). **90 s sem nenhum sinal**, em qualquer direção, e quem notou fecha a conexão (`4408`).
+| Direção | `type` | Quando |
+|---|---|---|
+| servidor → cliente | `ping` | A cada `heartbeat_seconds` (30 s). |
+| cliente → servidor | `pong` | Em resposta a cada `ping`. |
+
+**90 s sem nenhum sinal**, em qualquer direção, e quem notou fecha a conexão (`4408`).
 
 ## Chat {#chat}
 
-| Direção | Tipo | Campos | Quando |
+| Direção | `type` | Campos | Quando |
 |---|---|---|---|
-| cliente → servidor | `chat.send` | `id`, `text` | Uma mensagem sua. |
+| cliente → servidor | `chat.send` | `id`, `text` | Uma mensagem do usuário. |
 | servidor → cliente | `chat.started` | `reply_to`, `turn_id`, `session_id` | O turno começou. |
-| servidor → cliente | `chat.token` | `turn_id`, `text` | Um pedaço da resposta (em ordem). |
+| servidor → cliente | `chat.token` | `turn_id`, `text` | Um pedaço da resposta, em ordem. |
 | servidor → cliente | `chat.end` | `turn_id`, `finish`, `usage?`, `timing?` | O turno terminou. |
 | cliente → servidor | `chat.cancel` | `turn_id` | Interrompe o turno em andamento. |
-| servidor → cliente | `error` | `reply_to?`, `code`, `message`, `retryable` | Qualquer falha. |
 
 `finish` é `ok`, `cancelled`, `max_iterations` ou `error`.
 
@@ -67,105 +83,147 @@ O servidor manda `{"type":"ping"}` a cada 30 s e o cliente responde `{"type":"po
 ```
 
 - **Um turno por vez por conversa:** `chat.send` durante um turno recebe `turn_in_progress`.
-- **Confirmação:** o cliente não tem estado de confirmação. A Juniper pergunta em palavras e o "sim" é só o próximo `chat.send`; o sistema o interpreta ([Agente](agente.html#confirmacao)).
+- **Confirmação:** o cliente não tem estado de confirmação. A Juniper pergunta em palavras dentro de `chat.token`, e o "sim" é só o próximo `chat.send`, interpretado pelo cérebro ([ADR-010](adr-010.html)).
+- **Queda no meio do turno:** o turno termina no servidor e a conversa é salva com a resposta; os tokens não lidos são descartados. Ao retomar, `session.state.history` traz a resposta completa.
 
 ## Sessões {#sessoes}
 
-| Tipo | Efeito |
-|---|---|
-| `session.new` | Abre uma conversa nova (a atual fica salva). |
-| `session.resume` (`session_id` ou `latest`) | Retoma uma conversa; responde `session.state` com `turns` e o `history` (só `role` e `text`) para o cliente redesenhar a tela. |
-| `session.list` | Responde `session.listed` com as conversas (`id`, `updated_at`, `turns`, `preview`). |
-| `session.detached` (servidor → cliente) | Outra conexão assumiu esta conversa. |
+| Direção | `type` | Campos | Efeito |
+|---|---|---|---|
+| cliente → servidor | `session.new` | `id` | Abre uma conversa nova (a atual fica salva). Responde `session.state`. |
+| cliente → servidor | `session.resume` | `id`, `session_id` ou `latest` | Retoma uma conversa. Responde `session.state`. |
+| servidor → cliente | `session.state` | `reply_to`, `session_id`, `turns`, `history?` [{`role`, `text`}], `note?` | O estado da conversa, para o cliente redesenhar a tela. |
+| cliente → servidor | `session.list` | `id`, `limit?` | Pede a lista de conversas. |
+| servidor → cliente | `session.listed` | `reply_to`, `sessions` [{`id`, `updated_at`, `turns`, `preview`}] | As conversas, mais recentes primeiro. |
+| servidor → cliente | `session.detached` | `session_id`, `reason` | Outra conexão assumiu esta conversa. |
 
-Uma conversa fica ligada a **uma conexão** por vez *(a confirmar)*. Uma **confirmação pendente não sobrevive** a uma queda, a um `session.resume` (inclusive da conversa em que a conexão já está) nem a outra conexão assumir a conversa: depois de retomar, nada executa sem um novo "sim". A retomada (`resume` no `hello` e `session.resume`) leva `session_id` **ou** `latest: true`, nunca os dois nem nenhum (`bad_request`).
+Uma conversa fica ligada a **uma conexão** por vez. A confirmação pendente **não sobrevive** a uma queda, a um `session.resume` (inclusive da própria conversa) nem a outra conexão assumir a conversa.
 
 ## Tools do servidor {#tools}
 
-`tools.request` (`id`) responde `tools.listed` (`reply_to`, `tools[]` com `name`, `description`, `tier` e `locality`): as tools do servidor mais as dos executores conectados. É o que o `juniper tools` mostra no modo `server`. Mensagem nova e compatível: não muda `protocol_version`.
+| Direção | `type` | Campos |
+|---|---|---|
+| cliente → servidor | `tools.request` | `id` |
+| servidor → cliente | `tools.listed` | `reply_to`, `tools` [{`name`, `description`, `tier`, `locality`}] |
 
-## Diário de mensagens {#trace}
+A lista inclui as tools dos executores conectados. É o que `juniper tools` mostra no modo servidor.
 
-Se o `hello` leva `"trace": true` **e** o servidor tem `trace.enabled`, o servidor manda mensagens `trace` (`layer`, `text`, `at`) intercaladas com a resposta, para o cliente escrever no seu `message.log`. Desligado por padrão: o texto das conversas passa por aí. Também compatível: não muda `protocol_version`.
+## Memória {#memoria}
 
-## Comandos de memória {#memoria}
+| Direção | `type` | Campos |
+|---|---|---|
+| cliente → servidor | `memory.request` | `id`, `op`, `args` |
+| servidor → cliente | `memory.result` | `reply_to`, `ok`, `data` |
 
 ```json
 { "type": "memory.request", "id": "m-1", "op": "search", "args": { "query": "framework php", "limit": 5 } }
 { "type": "memory.result", "reply_to": "m-1", "ok": true, "data": { "results": [ { "id": "mem_...", "text": "O projeto X usa Laravel 11.", "score": 0.86 } ] } }
 ```
 
-| `op` | `args` | Resultado |
+| `op` | `args` | `data` |
 |---|---|---|
 | `list` | `type?`, `all?` | `memories[]` |
 | `search` | `query`, `limit?`, `threshold?` | `results[]` com `score` |
-| `forget` | `id` | `deleted` (a confirmação "Pode apagar?" é feita pelo **cliente** antes de enviar) |
+| `forget` | `id` | `deleted` (a pergunta "Pode apagar?" é feita pelo **cliente** antes de enviar) |
 | `export` | `vectors?` | `profile` e `memories[]` |
-| `profile.get`, `profile.set`, `profile.forget` | — | o perfil |
+| `profile.get` | — | o perfil |
+| `profile.set` | `text?`, `name?`, `birth_date?`, `nationality?`, `gender?` | o perfil |
+| `profile.forget` | — | o perfil apagado |
 
-`memory reindex` é administrativo e local ao servidor.
+Sem memória de longo prazo no servidor, o pedido recebe `error` com `memory_unavailable`. `memory reindex` e os comandos da Memória V2 são administrativos e só rodam no servidor.
+
+## Executor {#executor}
+
+Um cliente que cumpre tools no dispositivo ([Executor](executor.html)) usa a mesma conexão.
+
+| Direção | `type` | Campos |
+|---|---|---|
+| cliente → servidor | `register` | `tools` [{`name`, `description`, `parameters?` (JSON Schema), `tier`}] |
+| servidor → cliente | `registered` | `tools` (as aceitas) |
+| servidor → cliente | `invoke` | `call_id`, `tool_name`, `arguments`, `tier?`, `timeout_ms` |
+| cliente → servidor | `result` | `call_id`, `success`, `output?`, `error?`, `metadata?` |
+
+```json
+{ "type": "invoke", "call_id": "k-9", "tool_name": "open_url",
+  "arguments": { "url": "https://music.youtube.com/watch?v=abc" }, "tier": "write", "timeout_ms": 10000 }
+{ "type": "result", "call_id": "k-9", "success": true, "output": "Abri o link." }
+```
+
+- O registro é **por conexão**: some quando a conexão cai, e o executor se registra de novo ao reconectar (a cada `welcome`).
+- O cérebro não escala tier: recusa registrar uma tool com tier mais permissivo do que a política que ele já tem para ela, e uma tool desconhecida do servidor tem piso `WRITE` ([ADR-014](adr-014.html)).
+- O cliente **revalida** cada `invoke` (catálogo, schema, tier, política) e responde `result` com `success: false` e `metadata.code` (`unknown_tool`, `invalid_args`, `tier_mismatch`, `policy_denied`, `os_error`) quando recusa.
+- Um `result` que chega depois do `timeout_ms` é ignorado.
+
+## Voz {#voz}
+
+Extensão compatível do [ADR-023](adr-023.html): uma sessão de voz por conexão. O áudio vai em **quadros de texto JSON com base64** (PCM 16 bits *little-endian*, mono; `seq` crescente; de 20 a 100 ms por quadro). Cada fala transcrita vira um turno de chat comum, então a resposta também chega como `chat.started`, `chat.token` (a legenda) e `chat.end` ([Voz por áudio](voz-audio.html)).
+
+| Direção | `type` | Campos | Quando |
+|---|---|---|---|
+| cliente → servidor | `voice.start` | `id`, `format` {`encoding`: `pcm_s16le`, `sample_rate` (8000–48000), `channels`: 1}, `local_stt?`, `local_tts?`, `route?` (`speaker`, `headset`) | Abre a sessão; `format` é o do microfone (prefira 16 kHz). |
+| servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: formatos e se STT e TTS são `cloud` ou `local`. |
+| ambos | `voice.audio` | `seq`, `data`, `turn_id?`, `last?` | Do cliente: o microfone. Do servidor: a fala do turno; `last` fecha a fala. |
+| servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo. `listening` **com** `turn_id` = descarte o áudio daquele turno (foi cortado). |
+| servidor → cliente | `voice.transcript` | `text`, `final` | O que o usuário disse, como foi entendido. |
+| servidor → cliente | `voice.say` | `turn_id`, `text`, `last?` | Fallback de TTS: o aparelho fala o texto. |
+| servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
+| cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
+| cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
+| cliente → servidor | `voice.route` | `route` | A saída de áudio mudou (fone ligado ou desligado). |
+| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
+
+`voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Base64 inválido ou `seq` fora do limite também é `bad_request`. Em `route: speaker`, o servidor ignora o microfone enquanto a Juniper fala (e por 1 s depois).
+
+## Diário de mensagens {#trace}
+
+| Direção | `type` | Campos |
+|---|---|---|
+| servidor → cliente | `trace` | `layer`, `text`, `at` |
+
+Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.enabled`. O cliente escreve as linhas no seu `message.log` ([Observabilidade](observabilidade.html#message-log)).
 
 ## Erros {#erros}
 
-`{"type":"error","reply_to":"...","code":"...","message":"...","retryable":true}`. `message` é o texto amigável em PT-BR; `code` é para o programa decidir.
+```json
+{ "type": "error", "reply_to": "c-7f3a", "code": "llm_unavailable", "message": "Não consegui falar com nenhum LLM agora.", "retryable": true }
+```
+
+`message` é o texto amigável em português; `code` é para o programa decidir. A conexão **continua aberta** depois de qualquer erro de pedido; um erro de turno também fecha o turno com `chat.end` (`finish: "error"`).
 
 | `code` | Quando | `retryable` |
 |---|---|---|
 | `unauthorized` | Token ausente ou inválido. | não |
 | `unsupported_version` | `protocol_version` incompatível. | não |
-| `bad_request` | Mensagem malformada ou tipo desconhecido. | não |
+| `bad_request` | Mensagem malformada, tipo desconhecido ou direção errada. | não |
 | `turn_in_progress` | `chat.send` com um turno em andamento. | sim |
 | `session_not_found` | `session.resume` de um id inexistente. | não |
-| `llm_auth` / `llm_rate_limit` / `llm_unavailable` / `llm_timeout` / `llm_error` | Falhas de LLM (hierarquia de [LLM](llm.html#erros)). | só as 3 do meio |
-| `memory_unavailable` | MongoDB fora do ar. | sim |
+| `llm_auth` | Nenhum provedor aceitou as credenciais. | não |
+| `llm_rate_limit` | Limite de uso dos provedores. | sim |
+| `llm_unavailable` | Provedores fora do ar. | sim |
+| `llm_timeout` | Provedores não responderam a tempo. | sim |
+| `llm_error` | Outro erro de LLM (pedido inválido, modelo inexistente). | não |
+| `memory_unavailable` | MongoDB fora do ar ou memória desligada. | sim |
 | `not_found` | Id de memória inexistente. | não |
-| `executor_unavailable` | A tool roda num dispositivo desconectado. | sim |
-| `voice_unavailable` | A voz está desligada (`voice.enabled: false`) ou sem provedor configurado. | não |
+| `executor_unavailable` | A tool roda num dispositivo que não está conectado. | sim |
+| `voice_unavailable` | Voz desligada (`voice.enabled: false`) ou sem provedor configurado. | não |
 | `voice_busy` | Já existe uma sessão de voz nesta conexão. | não |
 | `internal` | Falha inesperada (o detalhe vai ao log, nunca ao cliente). | sim |
 
-A conexão **continua aberta** depois de qualquer erro de pedido; um erro de turno também fecha o turno com `chat.end` (`finish: "error"`).
+## Códigos de fechamento {#fechamento}
 
-**Códigos de fechamento:** `4400` protocolo violado, `4401` não autorizado, `4408` sem sinal de vida, `4409` substituída, `4426` versão incompatível; `1001` servidor saindo, `1012` servidor **reiniciando** (deploys).
+| Código | Significado | O que o cliente faz |
+|---|---|---|
+| `1001` | Servidor saindo. | Reconecta com recuo. |
+| `1011` | Erro interno na conexão. | Reconecta com recuo. |
+| `1012` | Servidor **reiniciando** (deploy). | Reconecta quase na hora. |
+| `4400` | Protocolo violado. | Corrige o cliente. |
+| `4401` | Não autorizado. | Para e pede um token novo. |
+| `4408` | Sem sinal de vida. | Reconecta. |
+| `4409` | Substituída por outra conexão com o mesmo `device_id`. | Para. |
+| `4426` | Versão incompatível. | Para e pede atualização. |
 
-## Executor {#executor}
+## Reconexão {#reconexao}
 
-As mensagens `register`, `registered`, `invoke` e `result` do ADR-007 viajam na **mesma conexão**. Veja [Executor](executor.html).
-
-## Voz {#voz}
-
-Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.html): uma sessão de voz contínua por conexão. O ADR-012 recusa quadros binários, então o áudio vai em **quadros de texto JSON com base64** (PCM 16 bits, little-endian, mono; `seq` em ordem, até ~150 KB por quadro, e o app manda de 20 a 100 ms por vez). O cérebro detecta onde cada fala termina, transcreve e responde: o turno é o **mesmo** de `chat.send`, então a resposta também chega como `chat.started`, `chat.token` (a legenda) e `chat.end`. Veja [Voz por áudio](voz-audio.html).
-
-| Direção | Tipo | Campos | Quando |
-|---|---|---|---|
-| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?`, `route?` | Abre a sessão; `format` é o do microfone. |
-| servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: o formato do áudio de saída e se STT e TTS são `cloud` ou `local`. |
-| cliente → servidor | `voice.audio` | `seq`, `data` | Áudio do microfone. |
-| servidor → cliente | `voice.audio` | `seq`, `data`, `turn_id`, `last?` | Áudio da resposta; `last` fecha a fala do turno. |
-| servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo, para a tela. |
-| servidor → cliente | `voice.transcript` | `text`, `final` | O que o Petrus disse, como a Juniper entendeu. |
-| servidor → cliente | `voice.say` | `turn_id`, `text`, `last?` | Fallback de TTS: o aparelho fala o texto. |
-| servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
-| cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
-| cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
-| cliente → servidor | `voice.route` | `route` (`speaker`, `headset`) | A saída de áudio mudou no meio da conversa (fone ligado ou desligado). |
-| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
-
-`voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Um quadro de áudio com base64 inválido, `seq` negativo ou acima do limite é recusado como `bad_request`. Os erros `voice_unavailable` e `voice_busy` estão na [tabela de erros](#erros). `hello.client.kind` passa a documentar também `mobile`.
-
-**Cortar a fala.** Quando o Petrus fala por cima dela, diz «silêncio» ou o app manda `voice.interrupt`, o cérebro para de enviar áudio e manda `voice.state` com `state: listening` **e o `turn_id` do turno cortado**: é a ordem para o app **descartar na hora o áudio daquele turno** que ainda não tocou. O mesmo `listening` **sem** `turn_id` é o fim natural: o app deixa tocar o que já recebeu. Em seguida o turno é cancelado (`chat.end` com `finish: cancelled`).
-
-**Viva-voz e fone (`route`).** O app diz em `voice.start` por onde a voz toca: `speaker` (viva-voz) ou `headset` (fone), e avisa com `voice.route` se isso mudar no meio. Em `speaker` o microfone ouve a própria Juniper, então o cérebro **ignora o microfone enquanto ela fala** (e por 1 segundo depois): não há como interromper falando por cima, só pelo botão (`voice.interrupt`). Em `headset` (ou sem o campo) o corte por voz continua. O campo é opcional: um app antigo funciona como antes.
-
-**Formato de entrada.** O cérebro analisa o áudio a 16 kHz; se o app mandar outra taxa em `voice.start`, o cérebro reamostra cada pedaço (prefira 16 kHz). A taxa do áudio que sai vem em `voice.ready.output`.
-
-## Reconexão e queda do cliente {#reconexao}
-
-- **Backoff exponencial com jitter:** 1, 2, 4, 8, 16 e depois 30 s (±20%); zera depois de uma conexão estável por 30 s. Em `1012` (deploy), reconecta quase na hora. `4401` e `4426` param e mostram o motivo.
+- **Recuo exponencial com variação:** 1, 2, 4, 8, 16 e depois 30 s (±20%); zera depois de 30 s de conexão estável. Em `1012`, reconecta quase na hora. `4401`, `4409` e `4426` param e mostram o motivo.
 - Ao reconectar, manda `hello` com a conversa que estava aberta e, se for executor, repete o `register`.
-- Offline, o cliente **não enfileira** mensagens: mostra "Juniper indisponível no momento" e deixa o texto na caixa.
-- **Se a conexão cai no meio de um turno,** o turno **termina no servidor** (limitado por `agent.max_iterations` e por um tempo total de 120 s, *a confirmar*), a conversa é salva com a resposta e os tokens que ninguém leu são descartados. Ao retomar, `session.state.history` traz a resposta completa. A [extração de memória](memoria-longo-prazo.html#backgroundextractor) pertence à conversa, não à conexão, e conclui mesmo com o cliente fora.
-
-## Tasks da Sprint 3 {#tasks}
-
-T-074 (modelos e JSON Schema), T-075 (servidor, auth, heartbeat), T-076 (chat, sessões), T-077 (memória), T-078 (executores), T-086 (CLI remoto), T-088 a T-090 (Electron).
+- Offline, o cliente **não enfileira** mensagens: avisa que a Juniper está indisponível e mantém o texto digitado.

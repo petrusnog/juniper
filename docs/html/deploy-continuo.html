@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploy contínuo — Livro de bolso Juniper</title>
+<meta name="description" content="Cada merge em master vira deploy: imagem no registro de contêineres, entrada temporária do CI na rede privada, SSH, backup, troca de versão, healthcheck e rollback automático.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/deploy-continuo.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Deploy contínuo</div>
+<h1>Deploy contínuo <span class="tag v">guia</span></h1>
+<p class="lead">Cada merge em master vira deploy: imagem no registro de contêineres, entrada temporária do CI na rede privada, SSH, backup, troca de versão, healthcheck e rollback automático.</p>
+<p>Com o servidor de pé (<a href="deploy-vps.html">Deploy do cérebro numa VPS</a>), o deploy contínuo leva cada merge em <code>master</code> para a produção sem passo manual (<a href="adr-013.html">ADR-013</a>, seção 5). É opcional: sem ele, atualize à mão (<a href="operacao.html#atualizar">Operação</a>).</p>
+<h2 id="fluxo">Como funciona</h2>
+<pre><code class="lang-text">PR mergeado em master
+  → tests.yml verde no mesmo commit
+  → deploy.yml: build da imagem (alvo prod) e push para ghcr.io/&lt;owner&gt;/juniper:&lt;sha&gt;
+  → o runner entra na rede privada como nó temporário (tag:ci)
+  → SSH na VPS: ./scripts/deploy.sh &lt;sha&gt;
+       → git: atualiza os arquivos do repositório para o commit (.env, config.yaml e certs/ ficam)
+       → backup da memória (se o MongoDB estiver de pé); se o backup falhar, o deploy é cancelado
+       → grava JUNIPER_IMAGE=&lt;imagem do sha&gt; no .env (o valor anterior é o destino do rollback)
+       → docker compose pull &amp;&amp; docker compose up -d        (nunca down -v)
+       → espera o brain ficar &quot;healthy&quot; (até 90 s)
+            ok     → fim
+            falhou → volta para a imagem anterior; o job falha</code></pre>
+<ul><li><strong>Gatilho seguro:</strong> só roda depois que o <code>pytest</code> passou no mesmo commit (<code>workflow_run</code> do <code>tests.yml</code>); também pode ser disparado à mão (<em>Run workflow</em>).</li><li><strong>Um deploy por vez:</strong> o workflow e o próprio script serializam.</li><li><strong>O banco não é tocado:</strong> volumes nunca são apagados, e mudanças de esquema precisam ser compatíveis para trás (o rollback usa os dados como estão).</li><li><strong>Conexões abertas:</strong> ao reiniciar, o cérebro fecha as conexões com o código <code>1012</code> e os clientes reconectam sozinhos.</li></ul>
+<p>Os arquivos: <code>.github/workflows/deploy.yml</code> (build e chamada remota) e <code>scripts/deploy.sh</code> (o que roda na VPS, testado com <code>git</code> e <code>docker</code> falsos em <code>tests/test_deploy_script.py</code>).</p>
+<h2 id="credenciais">Credenciais do CI</h2>
+<p>São duas credenciais independentes, ambas só em <strong>GitHub Secrets</strong> (<em>Settings → Secrets and variables → Actions → New repository secret</em>). Use <strong>repository secrets</strong>, não <em>environment secrets</em>: o workflow não declara <code>environment:</code>.</p>
+<h3 id="ci-rede">1. Entrada na rede privada</h3>
+<p>Com o Tailscale, o runner entra como um nó <strong>efêmero</strong> a cada execução, por um cliente OAuth (que não expira, ao contrário de uma chave de autenticação comum):</p>
+<ol><li>Painel do Tailscale → <em>Settings → Trust credentials</em> (em versões antigas, <em>OAuth clients</em>) → nova credencial OAuth.</li><li>Escopos: <strong>Keys → Auth Keys → Write</strong> e <strong>Devices → Core → Write</strong>. Nenhum outro.</li><li>Etiqueta: <code>tag:ci</code> (a política do <a href="deploy-vps.html#rede">passo 5.2</a> já permite que ela alcance o SSH da VPS).</li><li>Crie os segredos <code>TS_OAUTH_CLIENT_ID</code> e <code>TS_OAUTH_SECRET</code>.</li></ol>
+<p>Com outra VPN, troque o passo <em>Entra na tailnet</em> do <code>deploy.yml</code> pelo equivalente da sua VPN; o resto não muda.</p>
+<h3 id="ci-ssh">2. Chave SSH exclusiva</h3>
+<p>Uma chave só para o CI, separada da sua, para poder revogá-la sem mexer no seu acesso. Na VPS, como <code>deploy</code>:</p>
+<pre><code class="lang-bash">ssh-keygen -t ed25519 -f ~/juniper-ci -N &quot;&quot; -C &quot;juniper-ci&quot;
+cat ~/juniper-ci.pub &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys
+cat ~/juniper-ci          # copie TUDO (com BEGIN e END) para o segredo DEPLOY_SSH_KEY
+shred -u ~/juniper-ci ~/juniper-ci.pub
+echo &quot;$(tailscale ip -4) $(cut -d&#x27; &#x27; -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)&quot;   # vira DEPLOY_KNOWN_HOSTS</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Segredo</th><th>Valor</th></tr></thead><tbody><tr><td><code>DEPLOY_SSH_KEY</code></td><td>A chave <strong>privada</strong> <code>juniper-ci</code>, com uma linha em branco no final.</td></tr><tr><td><code>DEPLOY_HOST</code></td><td>O <code>&lt;IP-PRIVADO&gt;</code> da VPS (um IP é mais robusto que um nome dentro do runner).</td></tr><tr><td><code>DEPLOY_USER</code></td><td><code>deploy</code></td></tr><tr><td><code>DEPLOY_KNOWN_HOSTS</code></td><td>A linha <code>&lt;IP-PRIVADO&gt; ssh-ed25519 AAAA...</code> impressa acima. Ela precisa começar pelo <strong>mesmo texto</strong> de <code>DEPLOY_HOST</code>.</td></tr></tbody></table></div>
+<h2 id="fork">Imagem num fork</h2>
+<p>O workflow publica a imagem em <code>ghcr.io/&lt;owner&gt;/juniper</code>, onde <code>&lt;owner&gt;</code> é o dono do repositório que roda o CI. O <code>scripts/deploy.sh</code> monta o nome da imagem a partir da variável <code>JUNIPER_REPO_IMAGE</code>; o valor padrão aponta para o repositório original. <strong>Num fork</strong>, ajuste o padrão em <code>scripts/deploy.sh</code> para <code>ghcr.io/&lt;owner&gt;/juniper</code> (é uma linha), ou exporte <code>JUNIPER_REPO_IMAGE</code> no ambiente em que o script roda.</p>
+<h2 id="primeiro-deploy">Primeiro deploy</h2>
+<p>O <code>workflow_run</code> só vale para workflows que já estão em <code>master</code>, e o CI chama um script que precisa estar na VPS. Por isso a primeira vez é manual:</p>
+<ol><li>Garanta que <code>deploy.yml</code> e <code>scripts/deploy.sh</code> estão em <code>master</code> (e o ajuste do <a href="#fork">fork</a>, se for o caso).</li><li>Na VPS, como <code>deploy</code>: <code>cd ~/juniper &amp;&amp; git pull origin master</code>.</li><li>No GitHub: <em>Actions → Deploy → Run workflow</em>, na branch <code>master</code>.</li><li>O pacote do GHCR nasce <strong>privado</strong>: o primeiro <code>pull</code> na VPS falha com <code>unauthorized</code>. Em <em>Packages → juniper → Package settings → Change visibility</em>, torne-o público (a imagem não tem segredos) ou faça <code>docker login ghcr.io</code> na VPS com um token de leitura de pacotes. Rode o workflow de novo.</li><li>Na VPS: <code>docker compose -f docker-compose.prod.yml ps</code> (brain <code>healthy</code>) e <code>grep JUNIPER_IMAGE .env</code> (o SHA novo).</li><li>Em <em>Settings → Branches</em>, exija o check <strong>pytest</strong> em <code>master</code>: com deploy automático, um merge com teste vermelho iria direto para a produção.</li></ol>
+<p>A partir daí, cada merge em <code>master</code> faz o deploy sozinho (a aba <em>Actions</em> mostra o andamento).</p>
+<h2 id="rollback">Rollback manual</h2>
+<p>O rollback automático só cobre o que derruba o <em>healthcheck</em>. Para voltar a uma versão específica, na VPS:</p>
+<pre><code class="lang-bash">cd ~/juniper &amp;&amp; ./scripts/deploy.sh &lt;sha-completo-de-40-caracteres&gt;</code></pre>
+<p>O script faz o mesmo ciclo (backup, troca, <em>healthcheck</em>) para o SHA pedido.</p>
+<h2 id="girar">Girar as credenciais</h2>
+<p>Gere um novo cliente OAuth (ou uma nova chave SSH), atualize o segredo no GitHub, rode um deploy manual (<em>Run workflow</em>) e só então revogue o antigo (no Tailscale, em <em>Trust credentials</em>; na VPS, removendo a linha de <code>~/.ssh/authorized_keys</code>).</p>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td>O CI não entra na rede privada</td><td>Escopo ou etiqueta do cliente OAuth errados, ou <code>tag:ci</code> ausente no <code>tagOwners</code>.</td></tr><tr><td><code>DEPLOY_KNOWN_HOSTS não tem uma linha...</code></td><td>O início da linha não é o mesmo texto de <code>DEPLOY_HOST</code>. Use o mesmo IP nos dois.</td></tr><tr><td><code>invalid format</code> na chave SSH</td><td>Falta a linha em branco no final do segredo, ou faltou copiar <code>BEGIN</code>/<code>END</code>.</td></tr><tr><td><code>unauthorized</code> no <code>docker compose pull</code></td><td>O pacote do GHCR é privado (passo 4), ou o nome da imagem aponta para outro dono (<a href="#fork">fork</a>).</td></tr><tr><td><code>já existe um deploy em andamento</code></td><td>Outro deploy (do CI ou manual) está rodando; espere.</td></tr><tr><td>O deploy voltou para a versão anterior</td><td>O cérebro novo não ficou saudável em 90 s: <code>docker compose -f docker-compose.prod.yml logs brain</code>.</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

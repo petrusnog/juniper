@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ambiente mobile — Livro de bolso Juniper</title>
+<meta name="description" content="Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/mobile-dev.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Ambiente Local / Ambiente mobile</div>
+<h1>Ambiente mobile <span class="tag v">guia</span></h1>
+<p class="lead">Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.</p>
+<p>O app da Juniper fica em <code>mobile/</code>: React Native com TypeScript, Android apenas (<code>minSdk</code> 26), com módulos nativos em Kotlin (<a href="mobile.html">App mobile</a>). Esta página prepara a máquina para desenvolvê-lo. Para ligá-lo ao cérebro local, siga <a href="primeiros-passos.html#android">Primeiros passos</a>.</p>
+<h2 id="sdk">Ferramentas</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Ferramenta</th><th>Versão</th></tr></thead><tbody><tr><td>Node</td><td>22 ou superior</td></tr><tr><td>JDK</td><td>17</td></tr><tr><td>Android SDK</td><td>plataforma, <em>build tools</em> e NDK nas versões de <code>mobile/android/build.gradle</code> (<code>compileSdkVersion</code>, <code>buildToolsVersion</code>, <code>ndkVersion</code>)</td></tr></tbody></table></div>
+<p><strong>Com Android Studio</strong> (o caminho mais simples, e o necessário para usar o emulador com interface gráfica): instale o Android Studio, abra o <em>SDK Manager</em> e instale a plataforma, as <em>build tools</em> e o NDK das versões acima, mais o <em>Android Emulator</em> e o <em>Platform-Tools</em>. Aponte <code>ANDROID_HOME</code> para a pasta do SDK.</p>
+<p><strong>Só com a linha de comando</strong> (bom para WSL ou servidores de build, quando você vai usar um celular físico):</p>
+<pre><code class="lang-bash">sudo apt update &amp;&amp; sudo apt install -y openjdk-17-jdk unzip curl
+mkdir -p ~/android-sdk/cmdline-tools &amp;&amp; cd ~/android-sdk/cmdline-tools
+# o nome do arquivo muda com a versão; para achar o mais novo:
+#   curl -s https://dl.google.com/android/repository/repository2-3.xml | grep -o &#x27;commandlinetools-linux-[0-9]*_latest.zip&#x27; | sort -u | tail -1
+curl -L -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+unzip cmdtools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdtools.zip
+chmod +x latest/bin/*</code></pre>
+<p>Variáveis de ambiente (no <code>~/.bashrc</code> ou <code>~/.zshrc</code>, depois <code>source</code>):</p>
+<pre><code class="lang-bash">export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export ANDROID_HOME=$HOME/android-sdk
+export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator</code></pre>
+<p>Licenças e pacotes (confira as versões em <code>mobile/android/build.gradle</code>):</p>
+<pre><code class="lang-bash">yes | sdkmanager --licenses
+sdkmanager &quot;platform-tools&quot; &quot;platforms;android-37.0&quot; &quot;build-tools;37.0.0&quot; &quot;ndk;27.1.12297006&quot;</code></pre>
+<div class="callout warn"><p><strong>Atenção:</strong> o nome da plataforma pode ter ponto (<code>android-37.0</code>); <code>sdkmanager --list</code> mostra os nomes exatos.</p></div>
+<h2 id="aparelho">Emulador ou celular</h2>
+<p><strong>Emulador.</strong> No Android Studio, <em>Device Manager → Create device</em>, uma imagem de sistema recente (x86_64 com Google APIs). Pela linha de comando:</p>
+<pre><code class="lang-bash">sdkmanager &quot;emulator&quot; &quot;system-images;android-36;google_apis;x86_64&quot;
+avdmanager create avd -n juniper -k &quot;system-images;android-36;google_apis;x86_64&quot;
+emulator -avd juniper</code></pre>
+<p>O emulador enxerga o computador no endereço <code>10.0.2.2</code>. No WSL 2, o emulador precisa de aceleração de hardware, que nem sempre está disponível: nesse caso use um celular.</p>
+<p><strong>Celular.</strong> Ative as <em>Opções do desenvolvedor</em> (toque sete vezes em «Número da versão») e a <em>Depuração USB</em>, ligue o cabo e autorize o computador. Para o celular alcançar o cérebro e o Metro da sua máquina:</p>
+<pre><code class="lang-bash">adb reverse tcp:8765 tcp:8765    # o cérebro (endereço 127.0.0.1 no app)
+adb reverse tcp:8081 tcp:8081    # o Metro (o run-android já faz isto)</code></pre>
+<p><code>adb devices</code> deve listar o aparelho como <code>device</code>.</p>
+<h2 id="rodar">Rodar com recarga ao vivo</h2>
+<pre><code class="lang-bash">cd mobile
+npm install
+npx react-native run-android      # build de debug, instala no aparelho e abre o Metro</code></pre>
+<p>O Metro serve o JavaScript do app: ao salvar um arquivo de <code>mobile/src/</code>, o <em>Fast Refresh</em> atualiza a tela sem reinstalar. Se o Metro já estiver fechado, <code>npx react-native start</code> o abre de novo; no app, sacudir o aparelho (ou <kbd>Ctrl</kbd>+<kbd>M</kbd> no emulador) abre o menu de desenvolvimento, com <em>Reload</em>. Mudanças em Kotlin, no <code>AndroidManifest.xml</code> ou em dependências nativas exigem um novo <code>run-android</code>.</p>
+<h2 id="estrutura">Estrutura do código</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Pasta</th><th>O que tem</th></tr></thead><tbody><tr><td><code>src/connection/</code></td><td>O WebSocket com o cérebro: handshake, heartbeat, reconexão (<a href="mobile.html#conexao">App mobile</a>).</td></tr><tr><td><code>src/protocol/</code></td><td>Tipos gerados do schema do protocolo e funções de parse e serialização.</td></tr><tr><td><code>src/chat/</code></td><td>O estado e o controlador do chat de texto.</td></tr><tr><td><code>src/voice/</code></td><td>O controlador da conversa por voz e as pontes para os módulos nativos de áudio, STT e TTS.</td></tr><tr><td><code>src/executor/</code></td><td>O executor <code>open_url</code>, a política de URL e o autoplay.</td></tr><tr><td><code>src/storage/</code></td><td>Endereço, porta e token no Android Keystore.</td></tr><tr><td><code>src/ui/</code></td><td>As telas: configuração, chat de texto e voz.</td></tr><tr><td><code>android/app/src/main/java/.../</code></td><td>Os módulos Kotlin: áudio, serviço de voz em primeiro plano, reconhecimento de fala, voz do aparelho e autoplay de mídia.</td></tr></tbody></table></div>
+<h2 id="testes">Testes e qualidade</h2>
+<pre><code class="lang-bash">cd mobile
+npm test                  # Jest: protocolo, conexão, chat, voz, executor, política de URL, telas
+npm run typecheck         # tsc --noEmit
+npx eslint .
+npm run check:protocol    # falha se os tipos do protocolo estiverem velhos</code></pre>
+<p>O workflow <code>Mobile</code> do CI roda tudo isso quando <code>mobile/</code> ou o schema do protocolo mudam. Os casos da política de URL (<code>tests/fixtures/url_policy_cases.json</code>) rodam no Jest e no pytest, para as duas implementações não se afastarem.</p>
+<h2 id="protocolo">Tipos do protocolo</h2>
+<p>Os tipos TypeScript das mensagens saem do schema que o cérebro gera. Quando o protocolo mudar no lado Python:</p>
+<pre><code class="lang-bash">python scripts/export_protocol_schema.py     # regenera docs/protocol/schema.json
+cd mobile &amp;&amp; npm run gen:protocol             # regenera src/protocol/types.generated.ts</code></pre>
+<p>A referência das mensagens está em <a href="protocolo.html">API WebSocket</a>.</p>
+<h2 id="apk">Gerar um APK</h2>
+<p>Para instalar sem o Metro (um build de <em>release</em>, com o JavaScript embutido):</p>
+<ol><li><strong>Chave de assinatura</strong>, uma vez (guarde o arquivo e as senhas: sem eles não é possível atualizar o app por cima, só desinstalar e reinstalar): <code>bash keytool -genkeypair -v -keystore ~/juniper-release.keystore -alias juniper -keyalg RSA -keysize 2048 -validity 10000</code></li><li><strong><code>mobile/android/keystore.properties</code></strong> (fora do Git): <code>text storeFile=/home/SEU_USUARIO/juniper-release.keystore storePassword=... keyAlias=juniper keyPassword=...</code> Sem esse arquivo o APK sai assinado com a chave de depuração: serve para testar, não para manter.</li><li><strong>Compilar:</strong> <code>bash cd mobile &amp;&amp; npm install cd android &amp;&amp; ./gradlew assembleRelease</code> O APK sai em <code>mobile/android/app/build/outputs/apk/release/app-release.apk</code>. A instalação no celular está em <a href="clientes-producao.html#app">Clientes em produção</a>.</li></ol>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td><code>permission denied: sdkmanager</code></td><td>O zip foi extraído sem permissão de execução: <code>chmod +x ~/android-sdk/cmdline-tools/latest/bin/*</code>.</td></tr><tr><td><code>sdkmanager: command not found</code></td><td>As variáveis não foram carregadas (<code>source ~/.bashrc</code>) ou a pasta não se chama <code>latest</code>.</td></tr><tr><td><code>Failed to find package &#x27;platforms;android-NN&#x27;</code></td><td>O nome tem ponto: veja <code>sdkmanager --list</code>.</td></tr><tr><td><code>Error reading Zip content</code> ao instalar o NDK</td><td>Download cortado: <code>rm -rf ~/android-sdk/.temp ~/android-sdk/ndk</code> e repita.</td></tr><tr><td>Erros de compilação Kotlin (linhas <code>e:</code>)</td><td>Leia as linhas que começam com <code>e:</code>; costumam apontar o arquivo e a linha.</td></tr><tr><td>O Gradle fica sem memória no WSL</td><td>Crie <code>C:\Users\SEU_USUARIO\.wslconfig</code> com <code>[wsl2]</code> e <code>memory=6GB</code> e rode <code>wsl --shutdown</code>.</td></tr><tr><td>Tela vermelha «Unable to load script»</td><td>O Metro não está rodando ou o aparelho não o alcança: <code>npx react-native start</code> e <code>adb reverse tcp:8081 tcp:8081</code>.</td></tr><tr><td><code>INSTALL_FAILED_UPDATE_INCOMPATIBLE</code></td><td>O app instalado foi assinado com outra chave: desinstale antes.</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

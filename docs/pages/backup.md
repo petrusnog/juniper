@@ -1,7 +1,7 @@
 ---
 title: Backup da memória
 group: Produção
-order: 3
+order: 5
 description: Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.
 status: guia
 tags: backup restauração memória mongodb mongodump age criptografia git github repositório privado cron deploy amnésia chave
@@ -21,7 +21,7 @@ Tudo que a Juniper sabe (conversas, memórias, perfil) está no **MongoDB** da V
 ```
 
 - **Quando roda:** antes de cada deploy (`scripts/deploy.sh`) e todo dia por um cron da VPS ([Agendar](#agendar)).
-- **Onde fica o repositório:** dentro da pasta do projeto, em `~/juniper/backups/repo/`, mas é um repositório **separado** (o git do projeto o ignora). O repositório do projeto é público; o de backup nunca pode ser.
+- **Onde fica o repositório:** dentro da pasta do projeto, em `~/juniper/backups/repo/`, mas é um repositório **separado** (o git do projeto o ignora). Mesmo que o repositório do código seja público, o de backup nunca pode ser.
 - **Criptografia:** com a chave pública do `age`, a VPS só consegue **cifrar**. A chave privada, que decifra, fica com você, fora do servidor: quem invadir a VPS ou o GitHub vê só bytes ilegíveis.
 - **Sem criptografia, nada vai ao GitHub.** Sem `BACKUP_AGE_RECIPIENT`, o arquivo fica só numa cópia local (`backups/local/`, as 5 últimas, permissão `600`). Mandar em claro exige pedir: `BACKUP_ALLOW_PLAINTEXT=1`.
 
@@ -95,7 +95,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 30 2 * * * cd $HOME/juniper && ./scripts/backup_memory.sh daily >> $HOME/juniper/backups/backup.log 2>&1
 ```
 
-Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes de uma eventual algoritmo de sonho da [Memória V2](adr-017.html), prevista para as 03:00. Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
+Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes do sonho da [Memória V2](memoria-v2.html#passada-noturna), às 03:00 (no fuso do agente; ajuste o horário do cron se a VPS estiver em outro fuso). Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
 
 ## Códigos de saída {#saida}
 
@@ -119,7 +119,7 @@ cd ~/juniper
 scp seu-pc:juniper-backup.key /dev/shm/juniper-backup.key
 ./scripts/restore_memory.sh --identity /dev/shm/juniper-backup.key --yes
 shred -u /dev/shm/juniper-backup.key
-juniper memory list                      # confira
+juniper memory list                      # confira (com o atalho da página Operação)
 ```
 
 - **Uma versão específica:** `--commit <sha>` (veja `git -C backups/repo log`). Sem isso, restaura o mais recente.
@@ -131,7 +131,7 @@ Um backup que nunca foi restaurado não conta. O CI faz uma **ida e volta** a ca
 
 ## O que o backup não leva {#fora}
 
-- **Segredos:** `.env`, chave do Google e o `backup.env`. Ficam só na VPS (e no seu gerenciador de senhas); refaça-os num servidor novo pelo [runbook](runbook-vps.html).
+- **Segredos:** `.env`, chave do Google e o `backup.env`. Ficam só na VPS (e no seu gerenciador de senhas); refaça-os num servidor novo pelo [tutorial de deploy](deploy-vps.html).
 - **O token dos clientes** (`juniper-state`): é recriado no primeiro boot, e os clientes precisam do novo.
 - **Logs** e o **modelo de embeddings** (`juniper-logs`, `juniper-models`): o modelo baixa de novo e os logs vivem só 3 dias.
 - Só o banco `juniper`: os usuários do Mongo vêm do `.env`.

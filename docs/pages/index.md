@@ -1,8 +1,8 @@
 ---
 title: Livro de bolso da Juniper
-group: Começando
+group: Introdução
 order: 0
-description: Documentação técnica da Juniper, organizada por tópico.
+description: Documentação da Juniper, organizada por trilhas de leitura.
 tags: início documentação home
 ---
 
@@ -10,17 +10,18 @@ tags: início documentação home
 <div class="hero"><img class="logo" src="assets/juniper.png" alt="Juniper: ilustração em preto e branco de uma mulher de óculos, com rabo de cavalo e blazer, sorrindo" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
 ```
 
-A Juniper é uma assistente autônoma pessoal: você fala em linguagem natural e ela decide quais ferramentas usar (agenda do Google, comandos git, memória), com failover entre provedores de LLM. Este livro é a referência técnica: o que cada peça é, como se encaixa e como usar.
+A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (pelo terminal, pelo Telegram, por um app Android ou por voz) e ela decide quais ferramentas usar para resolver o pedido, como a agenda do Google, a música do YouTube, comandos git e a própria memória. Este livro reúne tudo o que é preciso para entender, desenvolver, integrar e implantar a Juniper.
 
-> **Dica:** aperte <kbd>Ctrl</kbd>+<kbd>K</kbd> (ou <kbd>/</kbd>) em qualquer página para buscar por termo: nomes de classes (`Dispatcher`), opções do `config.yaml` (`retrieval.threshold`), comandos (`juniper memory`) ou assuntos (`deploy`).
+> **Dica:** aperte <kbd>Ctrl</kbd>+<kbd>K</kbd> (ou <kbd>/</kbd>) em qualquer página para buscar por termo: nomes de classes (`Dispatcher`), opções do `config.yaml` (`retrieval.threshold`), comandos (`juniper memory`), mensagens do protocolo (`chat.send`) ou assuntos (`deploy`).
 
 ## Por onde começar {#comecar}
 
-- **Instalar e conversar:** [Instalação](install.html), depois o [CLI](cli.html).
-- **Entender o desenho:** [Arquitetura](architecture.html) e o [Agente](agente.html).
-- **Procurar uma classe ou tool:** o [índice de Entidades](entidades.html).
-- **Saber o porquê de uma escolha:** as [Decisões (ADRs)](adr.html).
-- **O que vem a seguir (produção, protocolo, desktop):** as páginas do grupo *Produção*, marcadas como `proposto`.
+- **Primeiro contato:** a [Introdução](introducao.html) explica o que a Juniper é, o que ela faz e quais trilhas seguir.
+- **Entender o produto, sem código:** a trilha [Produto](produto.html) explica, para qualquer pessoa, como ela conversa, age, lembra e protege os seus dados.
+- **Desenvolver uma feature:** a trilha [Ambiente Local](primeiros-passos.html) monta o ambiente completo e termina com a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- **Entender a arquitetura:** a [Documentação Técnica](architecture.html) cobre cada camada: núcleo, memória, clientes e integrações.
+- **Consultar contratos e decisões:** a [Referência](adr.html) traz os ADRs, a [API WebSocket](protocolo.html), a [API HTTP](api-http.html) e todas as [opções de configuração](configuracao.html).
+- **Colocar no ar:** a trilha [Produção](producao.html) ensina a implantar o cérebro numa VPS qualquer, ligar as integrações e conectar os clientes.
 
 ## Todas as páginas {#paginas}
 
@@ -37,4 +38,4 @@ python scripts/build_docs.py          # regenera tudo
 python scripts/build_docs.py --check  # só confere se está em dia (o CI roda isto)
 ```
 
-Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831).
+Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `section`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O comando `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831). Detalhes em [Como contribuir](contribuindo.html#documentacao).

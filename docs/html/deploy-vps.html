@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploy do cérebro numa VPS — Livro de bolso Juniper</title>
+<meta name="description" content="Tutorial completo para levar o cérebro a uma VPS de qualquer provedor: acesso e SSH, sistema, Docker, rede privada, firewall, segredos, subida, verificação e varredura de portas.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/deploy-vps.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Deploy do cérebro numa VPS</div>
+<h1>Deploy do cérebro numa VPS <span class="tag v">guia</span></h1>
+<p class="lead">Tutorial completo para levar o cérebro a uma VPS de qualquer provedor: acesso e SSH, sistema, Docker, rede privada, firewall, segredos, subida, verificação e varredura de portas.</p>
+<p>Este tutorial parte de uma VPS recém-criada e termina com o cérebro saudável, alcançável pelos seus dispositivos e <strong>sem nenhuma porta da Juniper aberta para a internet</strong> (<a href="producao.html">Visão geral da produção</a>, <a href="adr-013.html">ADR-013</a>). Os comandos assumem Ubuntu LTS; em outra distribuição, troque o gerenciador de pacotes. A rede privada dos exemplos é o Tailscale; com outra VPN, veja a <a href="#outra-vpn">nota</a>.</p>
+<p>Convenções usadas abaixo:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Marcador</th><th>O que é</th></tr></thead><tbody><tr><td><code>&lt;IP-PUBLICO&gt;</code></td><td>O IP público da VPS, do painel do provedor.</td></tr><tr><td><code>deploy</code></td><td>O usuário sem privilégio que vai operar a Juniper.</td></tr><tr><td><code>&lt;IP-PRIVADO&gt;</code></td><td>O IP da VPS dentro da rede privada (no Tailscale, <code>100.x.y.z</code>).</td></tr><tr><td><code>juniper-brain</code></td><td>O nome da VPS na rede privada.</td></tr><tr><td><code>&lt;owner&gt;</code></td><td>O dono do repositório (o seu fork, ou o original).</td></tr></tbody></table></div>
+<div class="callout warn"><p><strong>Atenção:</strong> em cada passo que mexe no SSH ou no firewall, <strong>não feche a sessão atual antes de testar o acesso numa segunda</strong>. Se ficar trancado de fora, use o console web do provedor (VNC, serial ou modo de recuperação), que não depende de rede.</p></div>
+<h2 id="criar">1. Criar a VPS</h2>
+<p>No provedor de sua escolha, crie uma VPS x86_64 com Ubuntu LTS, de preferência com <strong>4 vCPU e 8 GB</strong> (o mínimo é 2 vCPU e 4 GB; veja os <a href="producao.html#requisitos">requisitos</a>). Cadastre a sua chave SSH pública na criação, se o provedor permitir. Prefira cobrança mensal até validar o servidor (<a href="#dimensionar">Dimensionar</a>).</p>
+<h2 id="usuario">2. Usuário de deploy e SSH</h2>
+<p>Entre como <code>root</code> (<code>ssh root@&lt;IP-PUBLICO&gt;</code>) e crie o usuário de operação:</p>
+<pre><code class="lang-bash">apt update &amp;&amp; apt -y upgrade
+
+# O uid 10001 é de propósito: é o mesmo uid do usuário dentro do contêiner, então os arquivos
+# montados (.env, credenciais do Google) ficam em 600 e legíveis pelos dois.
+adduser --disabled-password --gecos &quot;&quot; --uid 10001 deploy
+
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys     # copie; não mova ainda
+chown deploy:deploy /home/deploy/.ssh/authorized_keys &amp;&amp; chmod 600 /home/deploy/.ssh/authorized_keys</code></pre>
+<p>Se o uid 10001 já estiver em uso, <code>getent passwd 10001</code> mostra por quem; veja a <a href="#diretorios">nota sobre permissões</a>.</p>
+<p>Agora, <strong>só chave, sem senha e sem root remoto</strong>. O arquivo começa com <code>00-</code>: o <code>sshd</code> usa o <strong>primeiro</strong> valor que lê, e imagens de nuvem costumam trazer um <code>50-cloud-init.conf</code> com <code>PasswordAuthentication yes</code>.</p>
+<pre><code class="lang-bash">cat &gt; /etc/ssh/sshd_config.d/00-juniper.conf &lt;&lt;&#x27;EOF&#x27;
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+EOF
+sshd -t &amp;&amp; systemctl restart ssh
+sshd -T | grep -Ei &#x27;passwordauthentication|permitrootlogin|kbdinteractive&#x27;   # tudo `no`</code></pre>
+<p>Num <strong>segundo terminal</strong>: <code>ssh deploy@&lt;IP-PUBLICO&gt;</code> deve entrar e <code>ssh root@&lt;IP-PUBLICO&gt;</code> deve ser recusado. Só então feche a sessão de root. O usuário <code>deploy</code> não precisa de <code>sudo</code> para o deploy (só do grupo <code>docker</code>); dê <code>sudo</code> com senha se for administrar o servidor por ele.</p>
+<h2 id="sistema">3. Sistema: atualizações, relógio e swap</h2>
+<pre><code class="lang-bash">sudo apt -y install unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades                  # responda &quot;Sim&quot;
+echo &#x27;Unattended-Upgrade::Automatic-Reboot &quot;true&quot;;
+Unattended-Upgrade::Automatic-Reboot-Time &quot;05:00&quot;;&#x27; | sudo tee /etc/apt/apt.conf.d/52juniper-reboot
+
+sudo timedatectl set-ntp true &amp;&amp; timedatectl                     # &quot;System clock synchronized: yes&quot;
+
+# 2 GB de swap, se a VPS não vem com nenhum
+sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo &#x27;/swapfile none swap sw 0 0&#x27; | sudo tee -a /etc/fstab
+free -h</code></pre>
+<h2 id="docker">4. Docker</h2>
+<pre><code class="lang-bash">curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker deploy      # o grupo docker equivale a root: só o usuário de operação</code></pre>
+<p>Saia e entre de novo como <code>deploy</code> e confira com <code>docker ps</code>.</p>
+<h2 id="rede">5. Rede privada</h2>
+<p><strong>5.1 Instale e entre na rede</strong> (Tailscale):</p>
+<pre><code class="lang-bash">curl -fsSL https://tailscale.com/install.sh | sudo sh
+sudo tailscale up --hostname=juniper-brain --advertise-tags=tag:juniper-server
+tailscale ip -4          # o &lt;IP-PRIVADO&gt;</code></pre>
+<p>O comando imprime uma URL: abra-a, entre na sua conta e aprove o dispositivo. O <code>--advertise-tags</code> só funciona depois que a etiqueta existir na política de acesso (5.2); se der erro, faça a política e repita.</p>
+<p><strong>5.2 Política de acesso.</strong> No painel do Tailscale (<em>Access controls</em>), deixe só os seus dispositivos (e, se for usar, o CI) alcançarem a VPS, e só nas portas necessárias. Mescle com a política que já existe:</p>
+<pre><code class="lang-json">{
+  &quot;tagOwners&quot;: {
+    &quot;tag:juniper-server&quot;: [&quot;autogroup:admin&quot;],
+    &quot;tag:juniper-client&quot;: [&quot;autogroup:admin&quot;],
+    &quot;tag:ci&quot;:             [&quot;autogroup:admin&quot;]
+  },
+  &quot;grants&quot;: [
+    { &quot;src&quot;: [&quot;tag:juniper-client&quot;], &quot;dst&quot;: [&quot;tag:juniper-server&quot;], &quot;ip&quot;: [&quot;tcp:22&quot;, &quot;tcp:8765&quot;, &quot;tcp:8766&quot;] },
+    { &quot;src&quot;: [&quot;tag:ci&quot;],             &quot;dst&quot;: [&quot;tag:juniper-server&quot;], &quot;ip&quot;: [&quot;tcp:22&quot;] }
+  ]
+}</code></pre>
+<p>Os seus dispositivos precisam da etiqueta <code>tag:juniper-client</code>; se preferir não etiquetá-los, troque o <code>src</code> por <code>autogroup:member</code>. A 8766 é o <a href="dashboard.html">dashboard</a>; tire-a se não for usá-lo. Teste em <em>Preview rules</em> antes de salvar.</p>
+<p><strong>5.3 Ordem no boot.</strong> O Docker só consegue publicar uma porta no IP da VPN se a interface já existir quando ele sobe:</p>
+<pre><code class="lang-bash">sudo systemctl edit docker      # adicione:
+# [Unit]
+# After=tailscaled.service
+# Wants=tailscaled.service</code></pre>
+<h3 id="outra-vpn">Outra VPN</h3>
+<p>Com WireGuard (ou outra VPN), o resto do tutorial é igual: use o IP do servidor na VPN como <code>&lt;IP-PRIVADO&gt;</code>, troque <code>tailscale0</code> pelo nome da interface da VPN (por exemplo, <code>wg0</code>) no firewall e garanta que a VPN suba antes do Docker. Se os clientes usarem um nome DNS que não seja <code>*.ts.net</code>, inclua-o em <code>dashboard.allowed_hosts</code>.</p>
+<h2 id="firewall">6. Firewall</h2>
+<pre><code class="lang-bash">sudo apt -y install ufw
+sudo ufw default deny incoming &amp;&amp; sudo ufw default allow outgoing
+sudo ufw allow in on tailscale0
+sudo ufw allow 22/tcp            # TEMPORÁRIO, até confirmar o SSH pela rede privada
+sudo ufw --force enable</code></pre>
+<p>Do seu computador, com a VPN ligada: <code>ssh deploy@juniper-brain</code> (ou <code>ssh deploy@&lt;IP-PRIVADO&gt;</code>). Funcionou? Feche o SSH público:</p>
+<pre><code class="lang-bash">sudo ufw delete allow 22/tcp
+sudo ufw status verbose          # só &quot;Anywhere on tailscale0 ALLOW IN&quot;</code></pre>
+<p>Se o provedor oferece um firewall de borda, deixe-o <strong>sem nenhuma regra de entrada</strong>: a VPN conversa de dentro para fora.</p>
+<div class="callout warn"><p><strong>Atenção:</strong> o Docker publica portas por fora do <code>ufw</code> (escreve as próprias regras de <code>iptables</code>). Por isso o compose publica as portas <strong>só no IP da VPN</strong> (<code>TAILSCALE_IP</code>) e o MongoDB não publica porta nenhuma. A <a href="#varredura">varredura</a> é a prova.</p></div>
+<h2 id="diretorios">7. Código, segredos e permissões</h2>
+<p>Como <code>deploy</code>:</p>
+<pre><code class="lang-bash">git clone https://github.com/&lt;owner&gt;/juniper.git ~/juniper &amp;&amp; cd ~/juniper
+install -d -m 700 certs
+cp .env.example .env
+chmod 600 .env
+echo &quot;TAILSCALE_IP=$(tailscale ip -4)&quot; &gt;&gt; .env</code></pre>
+<p>Edite o <code>.env</code> (<code>nano .env</code>) e preencha pelo menos:</p>
+<pre><code class="lang-bash">JUNIPER_MEMORY__MONGO__USERNAME=juniper
+JUNIPER_MEMORY__MONGO__PASSWORD=&lt;uma senha longa e aleatória&gt;     # openssl rand -base64 32
+JUNIPER_DEEPINFRA_API_KEY=...        # e/ou
+JUNIPER_GROQ_API_KEY=...</code></pre>
+<p>Opcional: a sua configuração pessoal (agendas do Google, música, voz, Memória V2) como camada base. Copie-a do seu computador e aponte no <code>.env</code>:</p>
+<pre><code class="lang-bash"># no seu computador, com a VPN ligada
+scp ~/.juniper/config.yaml deploy@juniper-brain:~/juniper/config.yaml
+# na VPS
+chmod 600 config.yaml &amp;&amp; echo &quot;JUNIPER_BASE_CONFIG_FILE=./config.yaml&quot; &gt;&gt; .env</code></pre>
+<p>As credenciais do Google entram em <code>certs/</code> (<a href="integracoes-producao.html">Integrações Google Cloud e Groq</a>). O resultado esperado:</p>
+<pre><code class="lang-text">~/juniper/                  deploy:deploy  755   (o repositório: compose, docker/, scripts/)
+├── .env                    deploy (10001) 600   senha do MongoDB, chaves, TAILSCALE_IP
+├── config.yaml             deploy (10001) 600   configuração pessoal (opcional)
+└── certs/                  deploy (10001) 700
+    ├── gcp-key.json        deploy (10001) 600   agenda do Google (opcional)
+    └── gcp-voice.json      deploy (10001) 600   voz do Google (opcional)</code></pre>
+<pre><code class="lang-bash">stat -c &#x27;%a %u %n&#x27; .env config.yaml certs certs/* 2&gt;/dev/null    # 600/700 e uid 10001
+git status --short                                               # .env, config.yaml e certs/ NÃO aparecem</code></pre>
+<div class="callout info"><p><strong>Nota:</strong> como o <code>deploy</code> tem o mesmo uid (10001) do usuário do contêiner, um só dono resolve os dois lados. Se o seu usuário tiver outro uid, deixe os arquivos com dono <code>10001:10001</code> e <code>600</code> e rode o <code>docker compose</code> com <code>sudo</code>. Nunca afrouxe para <code>644</code>: o <code>.env</code> tem a senha do banco.</p></div>
+<h2 id="subir">8. Subir</h2>
+<pre><code class="lang-bash">cd ~/juniper
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps               # brain e mongo &quot;healthy&quot;
+docker compose -f docker-compose.prod.yml logs --tail=30 brain</code></pre>
+<p>O primeiro <code>up</code> constrói a imagem na própria VPS (com o <a href="deploy-continuo.html">deploy contínuo</a>, a imagem passa a vir pronta de um registro). Na primeira subida o cérebro baixa o modelo de embeddings: até terminar, o <code>/health</code> diz <code>degraded</code> / <code>warming_up</code>.</p>
+<p>Do seu computador, com a VPN ligada:</p>
+<pre><code class="lang-bash">curl -s http://juniper-brain:8765/health        # {&quot;status&quot;: &quot;ok&quot;, &quot;memory&quot;: &quot;ready&quot;, ...}</code></pre>
+<p>O token dos clientes nasce no primeiro boot, dentro do volume <code>juniper-state</code>:</p>
+<pre><code class="lang-bash">docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token</code></pre>
+<p>Guarde-o num gerenciador de senhas: todos os clientes precisam dele (<a href="clientes-producao.html">Clientes em produção</a>).</p>
+<h2 id="varredura">9. Varredura de portas</h2>
+<p>A prova de que <strong>nenhuma porta da Juniper está aberta na internet</strong>. A varredura tem de partir de <strong>fora da rede privada</strong> (o seu computador com a VPN desligada, o celular em dados móveis, ou outra máquina):</p>
+<pre><code class="lang-bash">nmap -Pn -p- -T4 &lt;IP-PUBLICO&gt;                     # todas as portas TCP
+sudo nmap -Pn -sU --top-ports 100 &lt;IP-PUBLICO&gt;    # as UDP mais comuns (lento)</code></pre>
+<p>Esperado: <strong>todas</strong> <code>filtered</code> ou <code>closed</code>, nenhuma <code>open</code> (a 22 também <code>filtered</code>). Sem <code>nmap</code>: <code>nc -zv -w 3 &lt;IP-PUBLICO&gt; 22 8765 8766 27017</code>, cada uma deve dar <em>timeout</em>.</p>
+<p>De dentro da rede privada, o esperado é o contrário:</p>
+<pre><code class="lang-bash">nmap -Pn -p 22,8765,8766,27017 juniper-brain
+# 22/tcp open · 8765/tcp open · 8766/tcp open · 27017/tcp closed|filtered (o MongoDB nunca é publicado)</code></pre>
+<p>Na VPS, confirme a causa:</p>
+<pre><code class="lang-bash">sudo ss -tulpn
+docker ps --format &#x27;{{.Names}}\t{{.Ports}}&#x27;</code></pre>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Esperado</th><th>Alerta</th></tr></thead><tbody><tr><td><code>8765</code> e <code>8766</code> em <code>&lt;IP-PRIVADO&gt;</code></td><td><code>0.0.0.0:8765</code> ou <code>[::]:8765</code>: o <code>TAILSCALE_IP</code> está vazio no <code>.env</code>.</td></tr><tr><td><code>mongo</code> sem porta publicada</td><td><code>27017</code> publicada: alguém adicionou <code>ports:</code> ao serviço.</td></tr><tr><td><code>22</code> do <code>sshd</code> (barrada pelo firewall)</td><td>Qualquer porta de contêiner em <code>0.0.0.0</code>.</td></tr></tbody></table></div>
+<p>Repita a varredura depois de cada mudança no compose, no firewall ou na política da VPN.</p>
+<h2 id="aceite">Verificação final</h2>
+<ul><li>[ ] A varredura de fora não mostra nenhuma porta <code>open</code>.</li><li>[ ] <code>ssh deploy@juniper-brain</code> e <code>curl http://juniper-brain:8765/health</code> funcionam pela rede privada.</li><li>[ ] <code>sshd -T</code> mostra <code>passwordauthentication no</code> e <code>permitrootlogin no</code>; <code>ssh root@&lt;IP-PUBLICO&gt;</code> é recusado.</li><li>[ ] <code>.env</code>, <code>config.yaml</code> e <code>certs/*</code> estão em <code>600</code> (pasta <code>700</code>) e fora do <code>git status</code>.</li><li>[ ] O token está guardado num gerenciador de senhas.</li></ul>
+<p>Próximos passos: <a href="integracoes-producao.html">Integrações Google Cloud e Groq</a>, <a href="clientes-producao.html">Clientes em produção</a> e <a href="backup.html">Backup da memória</a>.</p>
+<h2 id="dimensionar">Dimensionar a VPS</h2>
+<p>Para medir se uma VPS candidata comporta a Juniper (e quão rápida ela fica), rode <code>scripts/bench_server.py</code> <strong>na VPS</strong> (usa só a biblioteca padrão do Python):</p>
+<pre><code class="lang-bash">JUNIPER_DEEPINFRA_API_KEY=... python3 scripts/bench_server.py --rounds 5 --llm --stack --out ~/bench-1.json</code></pre>
+<p>Rode uma vez com a pilha parada (sem <code>--stack</code>) e outra com a pilha de pé e uma conversa em andamento, em horários diferentes. A chave só vai pelo ambiente e não é gravada no resultado.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>Sinal de alerta</th></tr></thead><tbody><tr><td>CPU: variação entre rodadas e <em>steal</em></td><td>variação acima de ~20% ou <em>steal</em> acima de ~5%</td></tr><tr><td>Disco: <code>fsync</code></td><td>mediana acima de ~10 ms</td></tr><tr><td>Memória livre com a pilha de pé</td><td>menos de ~1 GB</td></tr><tr><td>Rede até o provedor de LLM</td><td>RTT acima de ~100 ms</td></tr><tr><td>LLM: primeiro token</td><td>bem acima do que o provedor entrega de perto</td></tr></tbody></table></div>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td>Fiquei sem acesso SSH</td><td>Use o console web do provedor. Confira <code>sudo ufw status</code> e <code>tailscale status</code>.</td></tr><tr><td><code>tailscale up</code> recusa <code>--advertise-tags</code></td><td>A etiqueta não está no <code>tagOwners</code> da política. Corrija e repita.</td></tr><tr><td>A 8765 não responde pela rede privada</td><td><code>TAILSCALE_IP</code> errado ou vazio; o Docker subiu antes da VPN (veja 5.3); a política não inclui o seu dispositivo.</td></tr><tr><td><code>cannot assign requested address</code> ao subir</td><td>O Docker tentou publicar no IP da VPN antes de a interface existir: <code>sudo systemctl restart docker</code> e suba de novo.</td></tr><tr><td><code>Permission denied</code> ao ler <code>.env</code> ou uma credencial</td><td>O dono do arquivo não é o uid 10001: <code>sudo chown 10001:10001 &lt;arquivo&gt;</code>.</td></tr><tr><td>O Docker criou uma <strong>pasta</strong> no lugar de um arquivo</td><td>O arquivo montado não existia na hora do <code>up</code>. Apague a pasta, crie o arquivo e suba de novo.</td></tr><tr><td><code>Temporary failure in name resolution</code> com <code>juniper-brain</code></td><td>O nó tem outro nome na VPN: <code>sudo tailscale set --hostname=juniper-brain</code>, ou use o IP.</td></tr><tr><td><code>unhealthy</code>, ou o cérebro não conecta ao MongoDB</td><td><code>logs brain</code> mostra o motivo; quase sempre o usuário ou a senha do MongoDB mudaram depois de o volume ser criado.</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

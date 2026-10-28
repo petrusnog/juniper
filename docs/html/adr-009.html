@@ -14,7 +14,7 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-009</div>
 <h1>ADR-009 — DeepInfra como provider principal e nova ordem do failover</h1>
-<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-001 (providers), ADR-002 (tools), ADR-003 (config), T-011, T-013, T-015, T-016</dd></dl>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-001 (providers), ADR-002 (tools), ADR-003 (config), T-011, T-013, T-015, T-016</dd></dl>
 <h2 id="contexto">Contexto</h2>
 <p>A Juniper falava com dois LLMs: Groq (nuvem, primário) e Ollama (local, reserva). Na prática, o limite do plano gratuito da Groq e o Ollama em CPU (lento, com pouca RAM) deixaram a experiência frágil: quando a Groq cai, o fallback leva minutos para o primeiro token.</p>
 <p>A DeepInfra oferece uma API compatível com a da OpenAI (<code>https://api.deepinfra.com/v1/openai</code>), com streaming SSE e tool calling, o que encaixa no contrato <code>LLMProvider</code> sem mudar o resto do cérebro.</p>
@@ -31,7 +31,7 @@
 <p>Somente o Ollama (CPU) recebe a persona curta e as descrições de tool enxutas (<code>compact_prompt</code>). DeepInfra e Groq recebem o prompt completo.</p>
 <hr>
 <h2 id="consequencias">Consequências</h2>
-<ul><li>Uma chave a mais no <code>.env</code> (o instalador pergunta; Enter pula). Sem a chave, o failover simplesmente começa na Groq.</li><li>Os avisos de failover (<code>A DeepInfra recusou as credenciais. Vou tentar a Groq.</code>) e as dicas de erro passam a citar o provider certo.</li><li>O log estruturado mascara também a chave da DeepInfra.</li><li>Se a DeepInfra mudar o formato de erro ou de stream, só <code>deepinfra_provider.py</code> e seus testes mudam.</li><li>Não validado ao vivo neste ADR: os testes usam transporte HTTP falso; a primeira chamada real depende da chave do Petrus.</li></ul>
+<ul><li>Uma chave a mais no <code>.env</code> (o instalador pergunta; Enter pula). Sem a chave, o failover simplesmente começa na Groq.</li><li>Os avisos de failover (<code>A DeepInfra recusou as credenciais. Vou tentar a Groq.</code>) e as dicas de erro passam a citar o provider certo.</li><li>O log estruturado mascara também a chave da DeepInfra.</li><li>Se a DeepInfra mudar o formato de erro ou de stream, só <code>deepinfra_provider.py</code> e seus testes mudam.</li><li>Não validado ao vivo neste ADR: os testes usam transporte HTTP falso; a primeira chamada real depende da chave do usuário.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

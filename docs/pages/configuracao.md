@@ -1,7 +1,7 @@
 ---
 title: Configuração
-group: Núcleo
-order: 5
+group: Referência
+order: 4
 description: Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
 status: pronta
 tags: config yaml env variáveis ambiente settings pydantic JUNIPER_ opções
@@ -71,7 +71,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 
 | Opção | Padrão | O que faz |
 |---|---|---|
-| `deployment.mode` | `local` | `local` (o cérebro roda dentro do CLI) ou `server` (cérebro remoto; [Produção](producao.html)). |
+| `deployment.mode` | `local` | `local` (o cérebro roda dentro do CLI) ou `server` (cérebro remoto; [Servidor WebSocket](servidor.html)). |
 | `deployment.server.host` | `127.0.0.1` | Onde o servidor escuta. |
 | `deployment.server.port` | `8765` | Porta. |
 | `deployment.auth.token_file` | `~/.juniper/token` | Arquivo do token estático dos clientes. |
@@ -84,7 +84,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
 | `dashboard.enabled` | `true` | Sobe o dashboard web junto do servidor (`juniper serve`). Somente leitura ([Dashboard](dashboard.html)). |
 | `dashboard.host` | vazio | Endereço do dashboard; vazio usa o mesmo do servidor (`deployment.server.host`). |
-| `dashboard.port` | `8766` | Porta do dashboard. Na VPS, publicada só no IP da tailnet. |
+| `dashboard.port` | `8766` | Porta do dashboard. Em produção, publicada só no endereço da rede privada. |
 | `dashboard.transcripts` | `true` | Mostra as conversas (com segredos mascarados) no dashboard. |
 | `dashboard.session_hours` | `12` | Quanto tempo vale o login antes de pedir o token de novo. |
 | `dashboard.allowed_hosts` | vazio | Nomes de host aceitos além de IPs, `localhost` e `*.ts.net` (defesa contra DNS rebinding). |
@@ -98,21 +98,21 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
 | `memory.v2.beliefs.max_new_per_night` | `10` | Teto de crenças novas por noite. |
 | `memory.v2.opinions.always_on` | `2` | Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto com 3 fontes ou mais) entram em toda conversa, como visão geral, além das que tocam o assunto. 0 desliga; nunca no modo de acolher. |
-| `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do Petrus, honestidade, curiosidade, capricho e autonomia do Petrus. É carregado no banco na primeira vez; depois quem manda é o Petrus (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
-| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O Petrus não tem teto. |
+| `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do usuário, honestidade, curiosidade, capricho e autonomia do usuário. É carregado no banco na primeira vez; depois quem manda é o usuário (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
+| `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O usuário não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
 | `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
-| `memory.v2.interests.max_seeds_per_night` | `5` | Temas novos que a noite pode semear a partir do que o Petrus escreveu (só o tema, nunca a opinião dele). |
+| `memory.v2.interests.max_seeds_per_night` | `5` | Temas novos que a noite pode semear a partir do que o usuário escreveu (só o tema, nunca a opinião dele). |
 | `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
 | `memory.v2.interests.study_gap_hours` | `18` | Intervalo mínimo entre dois passos do estudo do mesmo tema (um passo por tema por noite). |
 | `memory.v2.interests.max_notes_per_topic` | `40` | Notas de afirmação por tema; passando disso, saem as mais antigas e incertas. |
 | `memory.v2.interests.max_open_questions` | `5` | Perguntas em aberto que um passo deixa para o seguinte. |
-| `memory.v2.interests.excluded_terms` | lista | Palavras de temas técnicos (código, ferramentas, sistemas) que não viram tema de estudo noturno. O ensino explícito do Petrus não passa por essa regra. |
+| `memory.v2.interests.excluded_terms` | lista | Palavras de temas técnicos (código, ferramentas, sistemas) que não viram tema de estudo noturno. O ensino explícito do usuário não passa por essa regra. |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
 | `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
 | `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
-| `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o Petrus voltar a conversar ou pedir desculpas. |
+| `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o usuário voltar a conversar ou pedir desculpas. |
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
 | `memory.v2.affect.live` | `true` | Liga as reações em tempo real: depois de cada mensagem, em segundo plano, o modelo barato julga se ela provoca uma reação intensa; mensagem comum não gera nada. |
 | `memory.v2.affect.live_max_intensity` | `0.3` | Teto da intensidade de uma reação nascida na conversa (sutil). Só o sonho chega a 1,0. O dial `affect.intensity` continua escalando. |

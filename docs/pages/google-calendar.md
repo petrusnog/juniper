@@ -1,7 +1,8 @@
 ---
 title: Agenda Google
-group: Integrações
-order: 1
+group: Documentação Técnica
+section: Integrações
+order: 30
 description: Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
 status: pronta
 tags: calendar agenda google evento compromisso conta de serviço conflito list_events create_event update_event delete_event

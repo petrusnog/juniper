@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Produção — Livro de bolso Juniper</title>
-<meta name="description" content="Como a Juniper vai rodar numa VPS: topologia, Tailscale, deploy automático com rollback, backup e custos.">
+<title>Visão geral da produção — Livro de bolso Juniper</title>
+<meta name="description" content="Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/juniper.png">
 <script src="assets/theme.js"></script>
@@ -12,144 +12,45 @@
 </head>
 <body>
 <main id="content">
-<div class="crumb"><a href="index.html">Início</a> / Produção / Produção</div>
-<h1>Produção <span class="tag a">proposto</span></h1>
-<p class="lead">Como a Juniper vai rodar numa VPS: topologia, Tailscale, deploy automático com rollback, backup e custos.</p>
-<div class="callout info"><p><strong>Nota:</strong> esta página descreve o que está <strong>proposto</strong> (Sprint 3, <a href="adr-013.html">ADR-013</a> e <a href="adr-007.html">ADR-007</a>). Nada disto está em produção ainda: o cérebro hoje roda dentro do CLI. Itens marcados <em>a confirmar</em> dependem de decisão ou de medição (T-081).</p></div>
-<h2 id="visao-geral">Visão geral</h2>
-<p>O cérebro roda numa <strong>VPS</strong> sempre ligada e os clientes (CLI remoto, app desktop) falam com ele por um único WebSocket (<a href="protocolo.html">Protocolo</a>). A VPS <strong>não expõe nenhuma porta pública</strong>: o acesso é pela rede privada do <strong>Tailscale</strong>. O que fica no servidor (conversas, memórias, perfil) é pessoal, então cada passo prioriza segurança e recuperação.</p>
-<pre><code class="lang-text">   PC (Electron + executor)  ──┐                            ┌─ DeepInfra / Groq (LLM, EUA)
-   CLI remoto                ──┼── Tailscale (WebSocket) ──►│  VPS Contabo, US East
-   (futuro: celular, voz)    ──┘                            │   ├─ brain  (Docker)
-                                                            │   └─ mongo  (Docker, volume)
-   GitHub Actions ── merge no master ── deploy (SSH pela tailnet) ──┘</code></pre>
-<h2 id="hospedagem">Hospedagem</h2>
-<ul><li><strong>Contabo Cloud VPS 4, US East (Carlstadt, NJ), x86:</strong> 4 vCPU, 8 GB de RAM, 100 GB de SSD, Ubuntu 24.04 (<a href="adr-013.html">ADR-013, adendo da T-081</a>). O cérebro chama o LLM várias vezes por turno e o cliente só uma, então a VPS fica nos EUA, perto do LLM. A medição deu ~51 ms até a DeepInfra e primeiro token do LLM em ~0,5 s. A Hetzner em Ashburn custava de US$ 20 a 73 por mês e ficou de fora.</li><li><strong>Tamanho:</strong> ponto de partida de 2 vCPU e 4 GB de RAM (Mongo + embeddings + brain somam 1,5 a 2 GB). O tipo exato é fixado depois da T-081.</li><li><strong>Custo:</strong> <strong>US$ 8,50 por mês</strong> (US$ 6,60 + US$ 1,90 da região), cobrado por mês, mais o armazenamento de backups <em>(a confirmar)</em>. O DeepInfra é cobrado por uso.</li><li>Ubuntu LTS; acesso de emergência pelo console VNC do painel do Contabo.</li></ul>
-<h2 id="compose">Composição (Docker Compose)</h2>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Serviço</th><th>Imagem</th><th>Notas</th></tr></thead><tbody><tr><td><code>brain</code></td><td><code>ghcr.io/petrusnog/juniper:&lt;sha&gt;</code></td><td>Python 3.12, usuário sem privilégio, <code>juniper serve</code>, reinício automático, <em>healthcheck</em> em <code>GET /health</code>.</td></tr><tr><td><code>telegram</code></td><td>a mesma imagem do brain</td><td><strong>Opt-in</strong> (<code>--profile telegram</code>). O bot do Telegram, um cliente do brain: não publica porta, não recebe o <code>.env</code>, só lê o token dos clientes (<a href="telegram.html#vps">Telegram</a>).</td></tr><tr><td><code>mongo</code></td><td><code>mongo:7</code></td><td>Só na rede interna do compose (sem porta publicada), volume nomeado <code>juniper-mongo-data</code>, usuário e senha do <code>.env</code>.</td></tr></tbody></table></div>
-<p>A porta <code>8765</code> do brain é publicada <strong>apenas no endereço Tailscale</strong> da VPS, nunca em <code>0.0.0.0</code>. O <code>.env</code> e a chave do Google são montados do servidor (somente leitura); <strong>segredos nunca entram na imagem</strong>. O modelo de embeddings fica no volume <code>juniper-models</code> (baixa uma vez). O modo é <code>deployment.mode: server</code> (<a href="configuracao.html#deployment">Configuração</a>).</p>
-<h2 id="dev">Ambiente de desenvolvimento (Docker)</h2>
-<blockquote><p><strong>Passo a passo:</strong> o <a href="dev-docker.html">tutorial do ambiente de desenvolvimento</a> tem os comandos completos, do <code>./scripts/dev_setup.sh</code> ao CLI remoto, e os problemas comuns.</p></blockquote>
-<p>Para desenvolver, o <code>docker-compose.dev.yml</code> sobe a <strong>mesma topologia da produção</strong> (brain e Mongo em contêineres na mesma rede, o mesmo <code>Dockerfile</code>, a mesma configuração) com o <strong>código montado por volume</strong>: mexeu em <code>brain/</code> ou <code>prompts/</code>, o servidor reinicia sozinho (watchfiles) e os clientes reconectam. Não há <code>build</code> a cada mudança.</p>
-<pre><code class="lang-bash">./scripts/dev_setup.sh                                    # cria .juniper-dev/, .env e config.yaml (rode antes do primeiro up)
-docker compose -f docker-compose.dev.yml up -d --build   # precisa do .env com JUNIPER_MEMORY__MONGO__USERNAME/PASSWORD
-docker compose -f docker-compose.dev.yml logs -f brain   # mostra cada reinício
-python scripts/smoke_server.py --token-file .juniper-dev/state/token &quot;oi&quot;</code></pre>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Serviço</th><th>O que é</th></tr></thead><tbody><tr><td><code>brain</code></td><td>Alvo <code>dev</code> do <code>Dockerfile</code>: sem o código na imagem, <code>watchfiles</code> reiniciando <code>juniper serve</code>. Porta <code>127.0.0.1:8765</code>.</td></tr><tr><td><code>mongo</code></td><td>O mesmo <code>mongo:7</code> da produção, com volume próprio. Publicado em <code>127.0.0.1:27018</code> (para <code>mongosh</code>/Compass).</td></tr><tr><td><code>fake-llm</code></td><td>LLM de mentira (<code>scripts/fake_ollama.py</code>), o <strong>último da fila de failover</strong>: sem chave de LLM o ambiente ainda responde (ecoando). Com chaves no <code>.env</code>, DeepInfra e Groq respondem primeiro.</td></tr></tbody></table></div>
-<ul><li><strong>Estado no host:</strong> o token dos clientes e os logs ficam em <code>.juniper-dev/</code> (fora do git), com o seu usuário como dono: o CLI remoto lê o token dali.</li><li><strong>Não reinicia sozinho:</strong> <code>requirements.txt</code> (use <code>up -d --build</code>), <code>docker/config.dev.yaml</code> e <code>.env</code> (use <code>restart brain</code>).</li><li><strong>O que a produção tem a mais</strong> (Tailscale, GitHub Actions, backup) não faz sentido numa máquina só e fica de fora. O projeto se chama <code>juniper-dev</code>: não encosta nos volumes de produção nem no Mongo do <code>docker-compose.yml</code>.</li></ul>
-<h2 id="local">Produção na sua máquina</h2>
-<p>O mesmo <code>docker-compose.prod.yml</code> da VPS roda no seu computador, com a porta publicada só em <code>127.0.0.1</code>. Serve para testar a arquitetura real (brain e Mongo em contêineres, cliente de fora) antes do deploy. Os arquivos: <code>Dockerfile</code>, <code>.dockerignore</code>, <code>docker-compose.prod.yml</code> e <code>docker/config.prod.yaml</code> (a configuração do contêiner, sem segredos).</p>
-<pre><code class="lang-bash"># .env com JUNIPER_MEMORY__MONGO__USERNAME e JUNIPER_MEMORY__MONGO__PASSWORD (e as chaves de LLM)
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps        # o brain fica &quot;healthy&quot;
-
-# o token dos clientes é criado no primeiro boot, dentro do volume juniper-state
-docker exec juniper-brain cat /home/juniper/.juniper/state/token &gt; /tmp/token
-python scripts/smoke_server.py --health
-python scripts/smoke_server.py --token-file /tmp/token &quot;oi, tudo bem?&quot;
-python scripts/smoke_server.py --token-file /tmp/token --resume &quot;do que falávamos?&quot;</code></pre>
-<ul><li><strong>Sem chave de LLM:</strong> <code>python scripts/fake_ollama.py</code> sobe um Ollama de mentira (ecoa a mensagem). No <code>.env</code>, <code>JUNIPER_LLM__PRIORITY=[&quot;ollama&quot;]</code> e <code>JUNIPER_LLM__OLLAMA__URL=http://host.docker.internal:11999</code> (no Linux, o serviço <code>brain</code> precisa de <code>extra_hosts: host.docker.internal:host-gateway</code>).</li><li><strong>Variáveis do compose:</strong> <code>JUNIPER_IMAGE</code> (imagem do brain; padrão <code>juniper-brain:local</code>, construída ali), <code>TAILSCALE_IP</code> (onde publicar a porta; padrão <code>127.0.0.1</code>), <code>JUNIPER_CONFIG_FILE</code>, <code>JUNIPER_ENV_FILE</code> e <code>JUNIPER_CERTS_DIR</code> (de onde montar a configuração, o <code>.env</code> e a chave do Google, sempre somente leitura).</li><li><strong>Os dados ficam nos volumes</strong> (<code>juniper-mongo-data</code>, <code>juniper-state</code>, <code>juniper-logs</code>, <code>juniper-models</code>, <code>juniper-music</code>): reiniciar ou reconstruir o brain não perde conversas nem memórias. <code>down -v</code> apaga tudo.</li><li><strong>A música e a voz guardam o estado em <code>juniper-music</code>:</strong> o token de renovação do YouTube, o contador de cota diária e o gasto do mês da voz do Google (<code>voice-usage.json</code>). Sem o volume, cada deploy esqueceria o gasto e o teto de US$ 10 não valeria (<a href="musica.html">Música</a>, <a href="voz-audio.html#ligar">Voz por áudio</a>).</li><li>O projeto se chama <code>juniper-prod</code>, então não mexe no banco do <code>docker-compose.yml</code> de desenvolvimento.</li></ul>
-<h2 id="google-vps">Agenda do Google na VPS</h2>
-<p>As tools do Google Calendar rodam <strong>no cérebro</strong>, então qualquer cliente (CLI, Telegram, desktop) as usa. Na VPS faltam dois arquivos seus, que <strong>nunca</strong> vão para o repositório nem para a imagem: a <strong>chave da conta de serviço</strong> (<a href="google-calendar.html">Google Calendar</a>) e a <strong>configuração pessoal</strong> com os IDs das agendas.</p>
-<p>O compose monta o seu <code>config.yaml</code> como uma <strong>camada base</strong>: ele só completa o que o <code>config.prod.yaml</code> não define. O que a produção define (<code>deployment</code>, <code>memory</code>, <code>llm.priority</code>) sempre vence, mesmo que o seu arquivo diga outra coisa.</p>
-<p>No seu computador (WSL), com o IP da VPS no Tailscale:</p>
-<pre><code class="lang-bash">scp ~/.juniper/certs/gcp-key.json root@100.x.y.z:~/juniper/certs/gcp-key.json
-scp ~/.juniper/config.yaml root@100.x.y.z:~/juniper/config.yaml</code></pre>
-<p>Na VPS, dentro de <code>~/juniper</code>:</p>
-<pre><code class="lang-bash"># o contêiner roda como o uid 10001: sem isto ele não consegue LER os arquivos (mesmo com modo 600)
-chown 10001:10001 certs/gcp-key.json config.yaml
-chmod 600 certs/gcp-key.json config.yaml
-echo &quot;JUNIPER_BASE_CONFIG_FILE=./config.yaml&quot; &gt;&gt; .env
-docker compose -f docker-compose.prod.yml up -d      # recria o brain com a nova camada
-docker compose -f docker-compose.prod.yml logs --tail=20 brain</code></pre>
-<p>Teste pelo CLI remoto (no seu computador): <code>juniper &quot;o que tenho amanhã na agenda?&quot;</code>.</p>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td><code>Permission denied</code> ao ler a chave ou o <code>.env</code></td><td>O dono do arquivo não é o uid 10001. Rode o <code>chown 10001:10001</code> acima.</td></tr><tr><td>A Juniper diz que não tem agenda configurada</td><td>O <code>config.yaml</code> não chegou: confira <code>JUNIPER_BASE_CONFIG_FILE</code> no <code>.env</code> e se o arquivo é um <strong>arquivo</strong> (se o Docker criou uma pasta, apague-a e copie de novo).</td></tr><tr><td>Erro de acesso à agenda</td><td>A agenda não está compartilhada com a conta de serviço (veja <a href="google-calendar.html">Google Calendar</a>).</td></tr><tr><td>Horário errado nos eventos</td><td><code>agent.timezone</code> vem do <code>config.prod.yaml</code> (<code>America/Sao_Paulo</code>).</td></tr></tbody></table></div>
-<h2 id="capacidade">Teste de capacidade (T-081)</h2>
-<p>Antes de fixar a VPS, a T-081 mede se a Juniper cabe nela e quão rápida ela fica. O alvo é o menor tamanho que roda brain, MongoDB e o modelo de embeddings com folga. O script é o <code>scripts/bench_server.py</code> (só biblioteca padrão) e roda <strong>na VPS</strong>.</p>
-<div class="callout info"><p><strong>Nota:</strong> o provedor escolhido (Contabo, US East) e os números medidos estão no adendo da T-081 do <a href="adr-013.html">ADR-013</a>. Este roteiro vale para qualquer VPS Ubuntu.</p></div>
-<h3 id="preparar-vps">Preparar a VPS</h3>
-<p>No seu computador, com o IP da VPS (o Contabo envia a senha de root por e-mail):</p>
-<pre><code class="lang-bash">ssh-copy-id root@&lt;IP&gt;          # copia a sua chave pública
-ssh root@&lt;IP&gt;</code></pre>
-<p>Na VPS, nesta ordem (<strong>não feche a primeira sessão antes de testar a chave em outra</strong>):</p>
-<pre><code class="lang-bash">apt update &amp;&amp; apt -y upgrade
-
-# 1. Só chave, sem senha. O arquivo se chama 00-: o sshd vale o PRIMEIRO valor que lê, e imagens de nuvem
-#    trazem um 50-cloud-init.conf com `PasswordAuthentication yes` (um 99- perderia para ele)
-printf &#x27;PasswordAuthentication no\nPermitRootLogin prohibit-password\n&#x27; &gt; /etc/ssh/sshd_config.d/00-juniper.conf
-sshd -t &amp;&amp; systemctl restart ssh      # teste `ssh root@&lt;IP&gt;` em OUTRO terminal antes de seguir
-sshd -T | grep -Ei &#x27;passwordauthentication|permitrootlogin&#x27;   # deve mostrar `no` e `without-password`
-
-# 2. Docker e Tailscale (instaladores oficiais)
-curl -fsSL https://get.docker.com | sh
-curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --hostname=juniper-brain      # abre uma URL: entre na sua conta Tailscale
-
-# 3. Firewall: nada de entrada pública; só o que vem pelo Tailscale
-apt -y install ufw
-ufw default deny incoming &amp;&amp; ufw default allow outgoing
-ufw allow in on tailscale0
-ufw allow 22/tcp               # temporário
-ufw --force enable</code></pre>
-<p>Com o Tailscale também no seu computador, confira <code>ssh root@juniper-brain</code> (ou o IP <code>100.x.y.z</code>). Só então feche o SSH público: <code>ufw delete allow 22/tcp</code>. O Docker publica portas por fora do <code>ufw</code>: por isso o compose publica a 8765 <strong>só no IP do Tailscale</strong> (<code>TAILSCALE_IP</code>) e o Mongo não publica porta nenhuma.</p>
-<h3 id="subir-vps">Subir a Juniper</h3>
-<pre><code class="lang-bash">git clone https://github.com/petrusnog/juniper.git &amp;&amp; cd juniper    # repositório privado? use scp ou um token só de leitura
-cp .env.example .env
-# edite o .env: JUNIPER_MEMORY__MONGO__USERNAME/PASSWORD e a chave do DeepInfra (temporária)
-echo &quot;TAILSCALE_IP=$(tailscale ip -4)&quot; &gt;&gt; .env
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps        # o brain fica &quot;healthy&quot;</code></pre>
-<h3 id="medir">Medir</h3>
-<pre><code class="lang-bash">JUNIPER_DEEPINFRA_API_KEY=... python3 scripts/bench_server.py --rounds 5 --llm --stack --out ~/bench-1.json</code></pre>
-<p>Faça <strong>uma vez com a pilha parada</strong> (sem <code>--stack</code>), <strong>outra com a pilha de pé e uma conversa em andamento</strong>, e repita em horários diferentes (manhã, tarde, noite). O que o script mede:</p>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>O que responde</th><th>Sinal de alerta</th></tr></thead><tbody><tr><td>CPU: variação entre rodadas e <em>steal</em></td><td>O desempenho é previsível numa VPS compartilhada?</td><td>variação acima de ~20% ou <em>steal</em> acima de ~5%</td></tr><tr><td>Disco: escrita e <code>fsync</code></td><td>O Mongo grava sem engasgar?</td><td><code>fsync</code> com mediana acima de ~10 ms</td></tr><tr><td>Memória livre com a pilha de pé</td><td>Cabe com folga?</td><td>menos de ~1 GB livre</td></tr><tr><td>Rede até DeepInfra e Groq</td><td>O trajeto até o LLM é curto?</td><td>RTT acima de ~100 ms</td></tr><tr><td>LLM: primeiro token e tempo total</td><td>Quanto a localização custa numa resposta real?</td><td>primeiro token bem acima do que o DeepInfra entrega de perto</td></tr></tbody></table></div>
-<p>A chave do LLM só vai pelo ambiente (nunca por argumento) e não é gravada no resultado. Ao terminar, mande o conteúdo dos <code>bench-*.json</code>: o veredito (tamanho e provedor) sai deles.</p>
-<h2 id="tailscale">Tailscale</h2>
-<p>O Tailscale é uma <strong>rede privada entre os seus dispositivos</strong>: a VPS e o seu PC recebem endereços privados (e nomes, como <code>juniper-brain.&lt;tailnet&gt;.ts.net</code>) e o tráfego é cifrado. Para o usuário: instale o Tailscale e entre na mesma conta em cada dispositivo.</p>
-<ul><li><strong>Etiquetas e ACL:</strong> a VPS é <code>tag:juniper-server</code>, os clientes <code>tag:juniper-client</code>, o runner do CI <code>tag:ci</code>; a política só deixa clientes e CI alcançarem o servidor na porta <code>8765</code> e no SSH. Para o <a href="dashboard.html">dashboard</a>, libere também a <code>8766</code> para os seus dispositivos.</li><li><strong>Firewall no servidor (<code>ufw</code>):</strong> <code>default deny incoming</code> e <code>allow in on tailscale0</code>; a porta 22 pública fechada. O SSH só pela tailnet.</li><li><strong>Autenticação:</strong> o token estático do ADR-007 por cima da rede: duas travas independentes.</li><li><strong>Limite:</strong> dispositivos que não aceitam instalar o Tailscale (TV, carro) não alcançam a VPS; é um problema de futuro.</li></ul>
-<h2 id="deploy">Deploy automático</h2>
-<p>Cada PR mergeado no <code>master</code> vira deploy, sem passo manual (<code>.github/workflows/deploy.yml</code>):</p>
-<pre><code class="lang-text">PR mergeado no master
-  → pytest verde (tests.yml)
-  → build da imagem e push para o GHCR (tag = SHA)
-  → o runner entra na tailnet com uma chave temporária (nó efêmero, tag:ci)
-  → SSH na VPS → mongodump de segurança
-  → grava o SHA atual como &quot;anterior&quot; e troca para o novo
-  → docker compose pull &amp;&amp; docker compose up -d      (nunca down -v)
-  → espera o healthcheck (até 90 s)
-       ok     → fim
-       falhou → volta para a imagem anterior; o job falha e avisa</code></pre>
-<ul><li><strong>Gatilho seguro:</strong> só roda depois que o <code>pytest</code> passou no mesmo commit.</li><li><strong>Um deploy por vez;</strong> um novo merge espera a vez.</li><li><strong>Rollback automático</strong> para o SHA anterior; <strong>manual</strong> para um SHA específico (<code>JUNIPER_IMAGE=...:&lt;sha&gt; docker compose up -d</code>).</li><li><strong>O banco não é tocado:</strong> o deploy nunca apaga volumes, e mudanças de esquema precisam ser compatíveis para trás (o rollback usa os dados como estão).</li><li><strong>Conexões abertas:</strong> ao reiniciar, o brain fecha as conexões com o código <code>1012</code> e os clientes reconectam sozinhos (<a href="protocolo.html#reconexao">Protocolo</a>).</li><li><strong>Como é feito:</strong> o workflow <code>.github/workflows/deploy.yml</code> constrói e publica a imagem; quem faz o deploy na VPS é o <code>scripts/deploy.sh &lt;sha&gt;</code> (versionado, testado com <code>git</code> e <code>docker</code> falsos em <code>tests/test_deploy_script.py</code>). Ele serve também para rodar à mão: <code>cd ~/juniper &amp;&amp; ./scripts/deploy.sh &lt;sha-completo&gt;</code>.</li><li><strong>Backup antes de trocar:</strong> se o Mongo está de pé, o script faz um <code>mongodump</code> em <code>~/juniper/backups/</code> (<code>600</code>, só os 5 últimos ficam). Se o dump falhar, o deploy é <strong>cancelado</strong> antes de mexer em qualquer coisa. No primeiro deploy, sem Mongo rodando, não há o que copiar.</li><li><strong>A imagem fica no <code>.env</code>:</strong> o script grava <code>JUNIPER_IMAGE=ghcr.io/petrusnog/juniper:&lt;sha&gt;</code> no <code>.env</code> da VPS, então um <code>docker compose up -d</code> manual depois usa a mesma imagem. O valor anterior é o destino do rollback.</li></ul>
-<h3 id="primeiro-deploy">Primeiro deploy</h3>
-<p>O <code>workflow_run</code> só vale para workflows que já estão no <code>master</code>, e o CI chama um script que precisa estar na VPS. Por isso a primeira vez é manual:</p>
-<ol><li>Mergeie no <code>master</code> a PR que traz o <code>deploy.yml</code> e o <code>scripts/deploy.sh</code>.</li><li>Na VPS, como <code>deploy</code>: <code>cd ~/juniper &amp;&amp; git pull origin master</code> (traz o script).</li><li>No GitHub: <strong>Actions → Deploy → Run workflow</strong>, na branch <code>master</code>.</li><li>O pacote do GHCR nasce <strong>privado</strong>: o primeiro <code>pull</code> na VPS falha com <code>unauthorized</code>. Em <em>Packages → juniper → Package settings → Change visibility → Public</em> (a imagem não tem segredos) e rode o workflow de novo.</li><li>Confira na VPS: <code>docker compose -f docker-compose.prod.yml ps</code> (brain <code>healthy</code>) e <code>grep JUNIPER_IMAGE .env</code> (o SHA novo).</li><li>Em <em>Settings → Branches</em>, exija o check <code>pytest</code> no <code>master</code>: com deploy automático, um merge com teste vermelho iria direto para a produção.</li></ol>
-<p>A partir daí, cada merge no <code>master</code> faz o deploy sozinho (a aba <em>Actions</em> mostra o andamento).</p>
-<h3 id="usar-na-vps">Usar a Juniper na VPS</h3>
-<p>Na VPS o comando <code>juniper</code> <strong>não existe</strong>: a imagem leva o código, não instala o pacote, e tudo roda dentro do contêiner <code>brain</code> (o entrypoint é <code>python -m brain</code>). Por isso <code>juniper: command not found</code> no servidor. Duas formas de usar:</p>
-<p><strong>1. Do seu computador (o uso do dia a dia).</strong> O CLI é um cliente fino: com o Tailscale ligado, aponte o <code>config.yaml</code> local para a VPS (<a href="cli.html#server">Modo server</a>) e use <code>juniper</code> normalmente. O token fica no servidor: <code>docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token</code>.</p>
-<p><strong>2. Dentro da própria VPS, pelo contêiner.</strong> Rode os comandos com <code>exec</code>; para não digitar tudo, crie um atalho no <code>~/.bashrc</code> do <code>deploy</code>:</p>
-<pre><code class="lang-bash">echo &quot;alias juniper=&#x27;docker compose -f ~/juniper/docker-compose.prod.yml exec brain python -m brain&#x27;&quot; &gt;&gt; ~/.bashrc
-source ~/.bashrc
-
-juniper logs -f           # o log técnico ao vivo
-juniper logs --errors     # só falhas
-juniper memory list       # a memória do servidor
-juniper tools             # as tools do servidor
-juniper &quot;o que tenho amanhã?&quot;   # uma mensagem isolada (o chat abre um cliente no contêiner)</code></pre>
-<p>Comandos que mexem no ambiente do seu computador (<code>install</code>, <code>deploy</code>, <code>docs</code>) não fazem sentido dentro do contêiner. Sem terminal interativo (um script, o CI), use <code>exec -T</code>.</p>
-<h3 id="segredos">Segredos</h3>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Segredo</th><th>Onde fica</th></tr></thead><tbody><tr><td>Chaves de LLM, usuário e senha do Mongo</td><td><code>.env</code> no servidor (<code>600</code>)</td></tr><tr><td>Chave da conta de serviço do Google</td><td><code>certs/gcp-key.json</code> no servidor (<code>600</code>)</td></tr><tr><td>Token dos clientes</td><td><code>~/.juniper/token</code> no servidor; cofre do sistema no cliente</td></tr><tr><td>Chave SSH de deploy, credenciais OAuth do Tailscale</td><td>GitHub Secrets (<code>DEPLOY_SSH_KEY</code>, <code>TS_OAUTH_CLIENT_ID</code>, <code>TS_OAUTH_SECRET</code>)</td></tr></tbody></table></div>
-<h2 id="passada-noturna">O algoritmo de sonho da Memória V2</h2>
-<p>Com <code>memory.v2.enabled: true</code>, o servidor roda todo dia, em <code>memory.v2.night.at</code> (03:00 no fuso do agente), o algoritmo de sonho da <a href="memoria-v2.html">Memória V2</a>: ela lê as conversas novas, reflete e atualiza as camadas, dentro de um orçamento de tokens e de minutos. Roda depois do backup das 02:30, então uma noite ruim sempre tem a cópia da véspera. Falha em uma fase não derruba o servidor nem a conversa, e a noite seguinte recomeça de onde parou. Para testar sem gravar: <code>juniper memory dream --dry-run</code> no contêiner. Para ensinar a partir de um texto: <code>docker compose exec -T &lt;serviço&gt; juniper study add - --topic &quot;Tema&quot; &lt; texto.txt</code> (até 100 KB; veja o <a href="memoria-v2.html#ensinar">livro da Memória V2</a>). Os comandos de auditoria (<code>memory beliefs</code>, <code>persona show</code>...) também rodam ali.</p>
-<h2 id="backup">Dados: backup e restauração</h2>
-<p>O banco <code>juniper</code> é copiado com <code>mongodump</code>, <strong>criptografado com <code>age</code></strong> e versionado como <strong>um único arquivo</strong> num repositório git <strong>privado</strong> do GitHub (um commit por backup), antes de cada deploy e todo dia por um cron. A chave que decifra fica com você, fora da VPS. Passo a passo, restauração, o que fica de fora e os limites: <a href="backup.html">Backup da memória</a>.</p>
-<ul><li><strong>Cópia local sempre:</strong> as 5 últimas em <code>backups/local/</code> (<code>600</code>); sem criptografia configurada, nada vai ao GitHub.</li><li><strong>Restauração testada de verdade:</strong> o CI faz uma ida e volta (backup, apagar o dado, restaurar, conferir) com Mongo e <code>age</code> reais. Faça também uma vez na prática: um backup que nunca foi restaurado não conta.</li></ul>
-<h2 id="observabilidade-producao">Observabilidade</h2>
-<p><code>GET /health</code> distingue <em>saudável</em>, <em>degradado</em> (ex.: Mongo fora, o brain opera só com a sessão) e <em>fora</em>. Desde o T-086 ele já informa a memória: <code>{&quot;status&quot;: &quot;ok&quot;, &quot;memory&quot;: &quot;ready&quot;}</code> e, enquanto o modelo de embeddings baixa, <code>{&quot;status&quot;: &quot;degraded&quot;, &quot;memory&quot;: &quot;warming_up&quot;}</code> (ainda com HTTP 200, para o <em>healthcheck</em> não reiniciar o contêiner). Os logs JSONL (<a href="observabilidade.html#log-tecnico">Observabilidade</a>) ficam num volume, um arquivo por dia com todas as sessões, incluindo as requisições HTTP aos provedores e à agenda. O próprio servidor compacta os de ontem e apaga os com mais de 3 dias, todo dia às 00:10 (<a href="observabilidade.html#rotacao">rotação</a>). Para ver: <code>juniper logs -f</code> com o atalho de <a href="#usar-na-vps">Usar a Juniper na VPS</a>. Alertas ativos ficam fora da Sprint 3.</p>
+<div class="crumb"><a href="index.html">Início</a> / Produção / Visão geral da produção</div>
+<h1>Visão geral da produção <span class="tag v">guia</span></h1>
+<p class="lead">Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.</p>
+<p>Esta trilha ensina a implantar o ecossistema da Juniper no <strong>seu</strong> servidor: o cérebro numa VPS, as integrações com o Google Cloud e a Groq, e os clientes (terminal, Telegram, app Android e dashboard). Nada aqui depende de um provedor específico: qualquer VPS com Linux e Docker serve.</p>
+<h2 id="topologia">Topologia</h2>
+<pre><code class="lang-text">  Seus dispositivos (na rede privada)                 Servidor (VPS)
+ ┌──────────────────────────────┐                   ┌──────────────────────────────────────┐
+ │ Terminal (juniper, modo      │                   │ docker compose (projeto juniper-prod)│
+ │   server)                    │── WebSocket ────► │   brain    :8765 (WS + /health)      │
+ │ App Android (texto, voz,     │   ws://:8765      │            :8766 (dashboard)         │
+ │   executor)                  │                   │   mongo    (sem porta publicada)     │
+ │ Navegador (dashboard)        │── HTTP :8766 ───► │   telegram (opcional, sem porta)     │
+ └──────────────────────────────┘                   └──────────────────────────────────────┘
+                                                        │ saída HTTPS
+           Telegram (nuvem) ◄── long polling ───────────┤
+                                                        ├──► DeepInfra / Groq (LLM, STT)
+                                                        ├──► Google Calendar, YouTube, Text-to-Speech
+           CI (GitHub Actions) ── SSH pela rede privada ┘     (opcional: deploy contínuo)</code></pre>
+<ul><li>O <strong>cérebro</strong> (<code>brain</code>) e o <strong>MongoDB</strong> rodam em contêineres, pelo <code>docker-compose.prod.yml</code>. O bot do <strong>Telegram</strong> é um terceiro contêiner, opcional.</li><li>Os clientes chegam ao servidor por uma <strong>rede privada</strong> cifrada. Para a internet, o servidor não responde em nenhuma porta da Juniper (<a href="adr-013.html">ADR-013</a>).</li><li>O servidor só faz conexões <strong>de saída</strong>: para os provedores de LLM, para o Google, para o Telegram.</li></ul>
+<h2 id="requisitos">Requisitos</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>Mínimo</th><th>Recomendado</th></tr></thead><tbody><tr><td>Servidor</td><td>VPS x86_64, 2 vCPU, 4 GB de RAM, 20 GB de disco</td><td>4 vCPU, 8 GB de RAM, SSD</td></tr><tr><td>Sistema</td><td>Linux com Docker e o plugin Compose v2</td><td>Ubuntu LTS</td></tr><tr><td>Região</td><td>Qualquer uma</td><td>Perto do provedor de LLM (para DeepInfra e Groq, os EUA): o cérebro chama o modelo várias vezes por turno, e o cliente só uma</td></tr><tr><td>Rede privada</td><td>Uma VPN entre o servidor e os seus dispositivos</td><td>Tailscale (usado nos exemplos) ou WireGuard</td></tr><tr><td>Contas</td><td>Uma chave de LLM (DeepInfra ou Groq)</td><td>Google Cloud (agenda, música, voz), Groq (voz), Telegram (bot), GitHub (deploy contínuo e backup)</td></tr></tbody></table></div>
+<p>A pilha usa cerca de 1,5 GB de memória com tudo de pé (o cérebro, o MongoDB e o modelo de embeddings). Para medir uma VPS candidata antes de decidir, use <code>scripts/bench_server.py</code> (<a href="deploy-vps.html#dimensionar">Dimensionar</a>).</p>
+<h2 id="rede">Rede privada</h2>
+<p>O protocolo usa <code>ws://</code>, sem TLS, porque a cifra vem da rede: os clientes só alcançam o servidor por uma VPN. O <code>docker-compose.prod.yml</code> publica as portas 8765 e 8766 <strong>só no endereço do servidor dentro da VPN</strong> (a variável <code>TAILSCALE_IP</code> do <code>.env</code>, que aceita o IP de qualquer VPN), nunca em <code>0.0.0.0</code>; sem a variável, publica em <code>127.0.0.1</code>.</p>
+<ul><li><strong>Tailscale</strong> (o caminho dos exemplos): cada dispositivo instala o Tailscale e entra na mesma conta; o servidor recebe um IP <code>100.x.y.z</code> e um nome. O dashboard aceita nomes <code>*.ts.net</code> por padrão.</li><li><strong>WireGuard ou outra VPN:</strong> funciona igual. Ponha o IP do servidor na VPN em <code>TAILSCALE_IP</code>, inclua o nome que os clientes usam em <code>dashboard.allowed_hosts</code> (se não for um IP) e libere as portas 8765 e 8766 na interface da VPN.</li></ul>
+<p>Um cliente que não consiga entrar na VPN (uma TV, um carro) não alcança o servidor; o bot do Telegram contorna isso porque roda no próprio servidor.</p>
+<h2 id="seguranca">Segurança</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Trava</th><th>Como</th></tr></thead><tbody><tr><td>Nenhuma porta pública</td><td>Portas publicadas só no IP da VPN; MongoDB sem porta; firewall com <code>default deny incoming</code>; SSH só pela VPN.</td></tr><tr><td>Token em cada conexão</td><td>O cérebro gera o token dos clientes no primeiro boot; WebSocket e dashboard o exigem. Rede e token são duas travas independentes.</td></tr><tr><td>Segredos fora da imagem</td><td><code>.env</code>, <code>config.yaml</code> e <code>certs/</code> ficam no servidor e são montados <strong>somente leitura</strong>; a imagem não tem segredo nenhum.</td></tr><tr><td>Menor privilégio</td><td>O contêiner roda como um usuário sem privilégio (uid 10001); o bot do Telegram não recebe o <code>.env</code>, não publica porta e descarta capacidades do kernel.</td></tr><tr><td>Deploy seguro</td><td>O deploy nunca apaga volumes, faz backup antes e volta sozinho para a versão anterior se o novo cérebro não ficar saudável (<a href="deploy-continuo.html">Deploy contínuo</a>).</td></tr><tr><td>Dados recuperáveis</td><td>Backup diário criptografado, fora do servidor (<a href="backup.html">Backup da memória</a>).</td></tr></tbody></table></div>
+<h2 id="configuracao">Configuração em camadas</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Arquivo no servidor</th><th>Montado como</th><th>O que define</th></tr></thead><tbody><tr><td><code>docker/config.prod.yaml</code> (versionado)</td><td><code>~/.juniper/config.yaml</code></td><td>A infraestrutura: modo <code>server</code>, MongoDB, <code>llm.priority</code>, fuso, onde fica o gasto da voz. <strong>Sempre vence.</strong></td></tr><tr><td><code>config.yaml</code> (seu, fora do Git)</td><td>camada base</td><td>O que é pessoal: agendas do Google, música, voz, Memória V2. Só completa o que o <code>config.prod.yaml</code> não define. Aponte com <code>JUNIPER_BASE_CONFIG_FILE=./config.yaml</code> no <code>.env</code>.</td></tr><tr><td><code>.env</code> (fora do Git, <code>600</code>)</td><td><code>~/.juniper/.env</code></td><td>Segredos e ajustes por variável (<code>JUNIPER_*</code>) (<a href="configuracao.html#variaveis">Configuração</a>).</td></tr><tr><td><code>certs/</code> (fora do Git, <code>700</code>)</td><td><code>~/.juniper/certs</code></td><td>As contas de serviço do Google.</td></tr></tbody></table></div>
+<p>Ajuste o fuso do agente (<code>agent.timezone</code>) no <code>config.prod.yaml</code> do seu fork, ou por <code>JUNIPER_AGENT__TIMEZONE</code> no <code>.env</code>.</p>
+<h2 id="dados">Dados</h2>
+<p>Volumes nomeados do projeto <code>juniper-prod</code>; reiniciar ou reconstruir o cérebro não perde nada, e o deploy nunca roda <code>down -v</code>.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Volume</th><th>Conteúdo</th></tr></thead><tbody><tr><td><code>juniper-mongo-data</code></td><td>Conversas, memórias, perfil e Memória V2. <strong>É o que o backup copia.</strong></td></tr><tr><td><code>juniper-state</code></td><td>O token dos clientes.</td></tr><tr><td><code>juniper-logs</code></td><td>Os logs JSONL (rotação diária, 3 dias).</td></tr><tr><td><code>juniper-models</code></td><td>O modelo de embeddings (baixa uma vez).</td></tr><tr><td><code>juniper-music</code></td><td>O login do YouTube, a cota diária da música e o gasto mensal da voz.</td></tr></tbody></table></div>
+<h2 id="roteiro">O roteiro</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>#</th><th>Página</th><th>Resultado</th></tr></thead><tbody><tr><td>1</td><td><a href="deploy-vps.html">Deploy do cérebro numa VPS</a></td><td>Servidor endurecido, na rede privada, com o cérebro saudável e nenhuma porta pública.</td></tr><tr><td>2</td><td><a href="integracoes-producao.html">Integrações Google Cloud e Groq</a></td><td>Agenda, música e voz ligadas.</td></tr><tr><td>3</td><td><a href="clientes-producao.html">Clientes em produção</a></td><td>Terminal, Telegram, app Android e dashboard conectados.</td></tr><tr><td>4</td><td><a href="backup.html">Backup da memória</a></td><td>Cópia diária criptografada fora do servidor.</td></tr><tr><td>5</td><td><a href="deploy-continuo.html">Deploy contínuo</a></td><td>Cada merge em <code>master</code> vira deploy, com rollback. Opcional.</td></tr><tr><td>6</td><td><a href="operacao.html">Operação e manutenção</a></td><td>O dia a dia: logs, comandos administrativos, atualização, recuperação.</td></tr></tbody></table></div>
+<p>Para escrever um cliente próprio ou integrar outro sistema ao cérebro, veja <a href="integrar-cliente.html">Integrar com o cérebro</a>.</p>
 <h2 id="riscos">Riscos aceitos</h2>
-<ul><li>Servidor único, sem alta disponibilidade (rebuild pelo runbook + restauração do backup).</li><li>Dependência do Tailscale, do DeepInfra e do GitHub (mitigada pelo failover de LLM e pelo deploy manual).</li><li>Dados pessoais numa VPS: nenhuma porta pública, token, usuário sem privilégio, permissões restritas. Criptografia em repouso <em>(a avaliar)</em>.</li><li>Deploy sem revisão humana no último passo: <code>pytest</code> obrigatório, <em>healthcheck</em>, rollback e backup pré-deploy.</li></ul>
-<h2 id="tasks">Tasks da Sprint 3</h2>
-<div class="tablewrap"><table class="tbl"><thead><tr><th>Task</th><th>O que entrega</th></tr></thead><tbody><tr><td>T-080</td><td><code>Dockerfile</code> do brain e compose de produção</td></tr><tr><td>T-081</td><td>Teste de capacidade e latência; fixa o tipo da VPS</td></tr><tr><td>T-082</td><td>Provisionamento, hardening, Tailscale e <a href="runbook-vps.html">runbook</a></td></tr><tr><td>T-083</td><td>Backup e restauração do Mongo</td></tr><tr><td>T-084</td><td><code>deploy.yml</code> com rollback</td></tr><tr><td>T-085</td><td>Saúde e logs em produção</td></tr></tbody></table></div>
+<ul><li><strong>Servidor único</strong>, sem alta disponibilidade: se cair, a Juniper fica fora até ser recriada pelo <a href="deploy-vps.html">roteiro</a> e restaurada pelo <a href="backup.html#restaurar">backup</a>.</li><li><strong>Dependências externas</strong> (a VPN, os provedores de LLM, o GitHub para o CI), mitigadas pelo failover de LLM e pelo deploy manual.</li><li><strong>Dados pessoais num servidor:</strong> mitigados por nenhuma porta pública, token, usuário sem privilégio, permissões restritas e backup criptografado. O disco do servidor em si não é criptografado pela Juniper.</li><li><strong>Deploy automático sem revisão humana no último passo:</strong> mitigado por testes obrigatórios, <em>healthcheck</em>, rollback e backup pré-deploy.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

@@ -1,7 +1,8 @@
 ---
 title: Tools
-group: Núcleo
-order: 3
+group: Documentação Técnica
+section: Núcleo
+order: 4
 description: Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
 status: pronta
 tags: ferramenta registry register_tool schema function calling precheck confirm
@@ -9,7 +10,7 @@ tags: ferramenta registry register_tool schema function calling precheck confirm
 
 ## Visão geral {#visao-geral}
 
-Uma **tool** é uma capacidade que o LLM pode escolher usar (consultar a agenda, buscar commits, guardar uma memória). Cada tool é uma classe que declara o que faz, que parâmetros recebe e que nível de segurança tem. Para criar uma nova basta **um arquivo novo** em `brain/tools/`: ela se registra sozinha e nada no cérebro muda.
+Uma **tool** é uma capacidade que o LLM pode escolher usar ([ADR-002](adr-002.html)) (consultar a agenda, buscar commits, guardar uma memória). Cada tool é uma classe que declara o que faz, que parâmetros recebe e que nível de segurança tem. Para criar uma nova basta **um arquivo novo** em `brain/tools/`: ela se registra sozinha e nada no cérebro muda.
 
 O fluxo: o arquivo da tool tem `@register_tool` na classe → o [registry](#toolregistry) guarda nome → classe → o [Dispatcher](agente.html#dispatcher) pega a classe pelo nome e executa → o LLM só enxerga o que `registry.schemas()` devolve.
 
@@ -95,7 +96,7 @@ Uma tool sem classificação é tratada como `WRITE`, para forçar uma revisão 
 
 ## Locality {#locality kind=classe file=brain/tools/base.py}
 
-Onde a tool roda (ADR-007): `CLOUD` (no cérebro: agenda, memória, web) ou `EXECUTOR` (no dispositivo do usuário: git local, abrir uma URL). Hoje tudo roda no mesmo processo; com o cérebro na VPS, as de `EXECUTOR` passam a ser enviadas ao dispositivo ([Executor](executor.html)).
+Onde a tool roda ([ADR-007](adr-007.html)): `CLOUD` (no cérebro: agenda, memória, música) ou `EXECUTOR` (no dispositivo do usuário: git local, abrir uma URL). No modo local tudo roda no mesmo processo; no modo servidor, as de `EXECUTOR` são enviadas ao dispositivo conectado que as registrou ([Executor](executor.html), [ADR-014](adr-014.html)).
 
 ## ToolRegistry {#toolregistry kind=classe file=brain/tools/registry.py}
 
@@ -142,7 +143,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.html#playlists) |
 | `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.html#playlists) |
 | `music_playlist_add` | WRITE | CLOUD | Adiciona músicas a uma playlist existente (até 25 por vez). | [Música](musica.html#playlists) |
-| `music_feedback` | WRITE (sem confirmar) | CLOUD | Anota o gosto musical a partir do que o Petrus pede e comenta (precisa de MongoDB). | [Música](musica.html#gosto) |
+| `music_feedback` | WRITE (sem confirmar) | CLOUD | Anota o gosto musical a partir do que o usuário pede e comenta (precisa de MongoDB). | [Música](musica.html#gosto) |
 | `open_url` | WRITE (sem perguntar em domínio de confiança) | EXECUTOR | Abre um link no dispositivo (no celular, o app que trata o endereço, como o YouTube Music). | [Executor](executor.html#open-url) |
 | `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |

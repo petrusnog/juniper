@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integrações — Livro de bolso Juniper</title>
+<meta name="description" content="O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-integracoes.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Integrações</div>
+<h1>Integrações <span class="tag v">guia</span></h1>
+<p class="lead">O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.</p>
+<h2 id="agenda">Agenda do Google</h2>
+<p>A Juniper lê, marca, altera e desmarca compromissos no Google Calendar (<a href="adr-008.html">ADR-008</a>, <a href="adr-010.html">ADR-010</a>).</p>
+<ul><li><strong>Marcar:</strong> "marca dentista amanhã às 16h". Ela calcula a data, confere conflitos em todas as agendas e pergunta antes de criar. Se houver algo no horário, conta o que é e pergunta o que fazer.</li><li><strong>Consultar:</strong> "o que tenho na sexta?". Ela conta de forma natural, sem despejar uma lista.</li><li><strong>Alterar e desmarcar:</strong> "passa o dentista para as 17h", "desmarca o café de amanhã". Apagar avisa que é irreversível.</li><li><strong>Quais agendas:</strong> ela tem uma agenda própria e pode gerenciar as suas agendas que você compartilhar com ela; outras agendas podem ser só lidas, para checar conflitos.</li></ul>
+<p>Cada evento criado leva um lembrete e a assinatura "Agendado pela Juniper". Eventos de dia inteiro (feriados, aniversários) não bloqueiam horários. Os títulos e horários lidos vão ao modelo de linguagem como texto.</p>
+<p>O que precisa: um projeto no Google Cloud com uma <strong>conta de serviço</strong> e as agendas compartilhadas com ela (<a href="integracoes-producao.html#calendar">Integrações Google Cloud e Groq</a>). Técnico: <a href="google-calendar.html">Agenda Google</a>.</p>
+<h2 id="musica">Música</h2>
+<p>A Juniper procura músicas pela API oficial do YouTube e toca no <strong>YouTube Music do celular</strong> (<a href="adr-024.html">ADR-024</a>).</p>
+<ul><li><strong>Tocar:</strong> "toca Oceano do Djavan". Ela busca, escolhe a versão oficial e, se o pedido veio do app, abre e dá o play sozinha. De outros canais, manda o link.</li><li><strong>Mostrar opções:</strong> "procura músicas do Djavan" devolve uma lista com links.</li><li><strong>Playlists:</strong> "cria uma playlist Foco com essas músicas". Ela pergunta uma vez e cria a playlist sempre <strong>privada</strong>. Precisa de um login no Google, feito uma vez.</li><li><strong>Gosto musical:</strong> quando você diz "gostei dessa" ou "pula essa", ela anota em silêncio. Por enquanto o gosto só é registrado; ainda não muda as sugestões.</li></ul>
+<p>A API do YouTube tem uma cota diária gratuita; a Juniper conta o que gasta e avisa quando acaba, sem inventar resultados. Técnico: <a href="musica.html">Música</a>.</p>
+<h2 id="git">Git</h2>
+<p>Para quem desenvolve, a Juniper usa dois comandos sobre o repositório em que o terminal está:</p>
+<ul><li><strong>Buscar commits:</strong> "busca os commits da feature 1339".</li><li><strong>Publicar uma feature:</strong> "faz o deploy da 4911" leva os commits da feature para as branches <code>develop</code> e <code>stage</code> (cherry-pick e push). Como envia código para o servidor, é uma ação <strong>destrutiva</strong>: ela sempre pergunta, com aviso.</li></ul>
+<p>Essas ações rodam <strong>no seu computador</strong>, não no servidor. Hoje funcionam com a Juniper instalada no próprio computador (modo local); com o cérebro num servidor, dependem de o terminal se registrar como executor, o que está planejado (<a href="adr-014.html">ADR-014</a>). Técnico: <a href="git.html">Comandos git</a>.</p>
+<h2 id="futuras">Integrações futuras</h2>
+<p>Cada integração nova é uma ou mais ferramentas, com nível de risco, testes e, quando muda a arquitetura, um ADR. Busca na web, comandos no computador e abrir aplicativos estão previstos no modelo de segurança (<a href="adr-006.html">ADR-006</a>), mas ainda não existem.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
