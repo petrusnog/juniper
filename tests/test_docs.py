@@ -243,7 +243,15 @@ def _option_keys(model: type[BaseModel], prefix: str = "") -> list[str]:
 def test_every_config_option_is_documented() -> None:
     from brain.config import Settings
 
-    secrets_and_computed = {"groq_api_key", "deepinfra_api_key", "telegram_bot_token", "paths"}
+    secrets_and_computed = {
+        "groq_api_key",
+        "deepinfra_api_key",
+        "youtube_api_key",
+        "youtube_client_id",
+        "youtube_client_secret",
+        "telegram_bot_token",
+        "paths",
+    }
     keys = [key for key in _option_keys(Settings) if key.split(".")[0] not in secrets_and_computed]
     assert len(keys) > 30  # sanidade: a varredura achou as opções aninhadas
     page = (ROOT / "docs" / "pages" / "configuracao.md").read_text(encoding="utf-8")

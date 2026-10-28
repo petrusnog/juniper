@@ -23,6 +23,7 @@ from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
 from brain.clients.server import Connection
+from brain.clients.voice_session import VoiceSession
 from brain.config import settings
 from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent, ContextProvider
 from brain.core.dispatcher import Dispatcher
@@ -43,17 +44,25 @@ from brain.trace import message_trace, quote
 
 if TYPE_CHECKING:
     from brain.memory.v2.context import V2Context
+    from brain.voice.services import VoiceServices
 
 logger = logging.getLogger(__name__)
 
 TURN_TIMEOUT_SECONDS: Final = 120.0
 """Tempo total de um turno (ADR-012, seção 11). Passou disso, o turno acaba com erro."""
 SHUTDOWN_GRACE_SECONDS: Final = 10.0
+CANCEL_WAIT_SECONDS: Final = 2.0
 DEFAULT_LIST_LIMIT: Final = 50
 
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
 UNEXPECTED_MESSAGE = "Algo deu errado aqui dentro. Tenta de novo daqui a pouco?"
 TIMEOUT_MESSAGE = "A resposta demorou demais e parei por aqui. Tenta de novo?"
+VOICE_OFF_MESSAGE = "A voz está desligada neste servidor."
+VOICE_NO_EARS_MESSAGE = (
+    "Não tenho como te ouvir: falta a chave da Groq no servidor e o aparelho não transcreve."
+)
+VOICE_BUSY_MESSAGE = "Já existe uma conversa de voz nesta conexão."
+VOICE_FIRST_MESSAGE = "Abra a conversa de voz primeiro (voice.start)."
 NO_CONVERSATION_MESSAGE = (
     "Esta conexão não tem uma conversa (outra conexão assumiu). Use session.new ou session.resume."
 )
@@ -69,6 +78,7 @@ class TurnRun:
     owner: Connection
     task: asyncio.Task[None] | None = None
     cancelled: bool = False
+    voice: VoiceSession | None = None  # set when the turn was started by a voice utterance
 
 
 @dataclass
@@ -140,8 +150,11 @@ class ChatHandler:
         executors: ExecutorHub | None = None,
         turn_sink: Callable[[str, Turn], Any] | None = None,
         v2_context: V2Context | None = None,
+        voice: VoiceServices | None = None,
     ) -> None:
         self._store = store
+        self._voice = voice
+        self._voices: dict[str, VoiceSession] = {}
         self._provider = provider
         self._memory = memory
         self._turn_sink = turn_sink
@@ -203,6 +216,10 @@ class ChatHandler:
             await conn.send(p.Registered(tools=accepted))
         elif isinstance(message, p.Result):
             self.executors.handle_result(conn, message)
+        elif isinstance(message, p.VoiceStart):
+            await self._voice_start(conn, message)
+        elif isinstance(message, (p.VoiceAudio, p.VoiceText, p.VoiceInterrupt, p.VoiceEnd)):
+            await self._voice_message(conn, message)
         elif message.type == "memory.request":
             # Pode demorar (o 1º uso carrega o modelo de embeddings): não trava o heartbeat.
             conn.spawn(self._memory_request(conn, message))
@@ -214,6 +231,9 @@ class ChatHandler:
 
     async def close(self, conn: Connection) -> None:
         self.executors.unregister(conn)
+        session = self._voices.pop(conn.id, None)
+        if session is not None:
+            await session.end("server", notify=False)
         await self._release(conn)
 
     async def warm_up(self, retry_seconds: float = 30.0) -> None:
@@ -251,6 +271,8 @@ class ChatHandler:
 
     async def shutdown(self) -> None:
         """Servidor saindo: dá um tempo para os turnos acabarem e conclui a extração."""
+        for session in list(self._voices.values()):
+            await session.end("server")
         running = [c.turn.task for c in self._live.values() if c.turn and c.turn.task]
         pending = [t for t in running if not t.done()]
         if pending:
@@ -364,16 +386,24 @@ class ChatHandler:
 
     # --- chat ---
 
-    async def _chat_send(self, conn: Connection, message: p.ChatSend) -> None:
+    async def _chat_send(
+        self, conn: Connection, message: p.ChatSend, voice: VoiceSession | None = None
+    ) -> None:
         # Os passos deste turno vão para o message.log do cliente (se ele pediu). A tarefa do turno
         # é criada dentro do bloco e herda a ligação.
         with message_trace.bound(conn.trace):
             message_trace.step(
                 "Servidor · WebSocket",
-                f"Recebi o quadro chat.send da conexão {conn.id} (dispositivo "
-                f"{conn.device_name or conn.device_id}), com {conn.frame_bytes} bytes. Conferi o "
-                f"JSON contra o protocolo versão {p.PROTOCOL_VERSION}: id {message.id}, "
-                f"{len(message.text)} caracteres. Entreguei ao tratador de chat.",
+                (
+                    f"Ouvi uma fala na conexão {conn.id} (dispositivo "
+                    f"{conn.device_name or conn.device_id}) e a transformei em texto: id "
+                    f"{message.id}, {len(message.text)} caracteres. Entreguei ao tratador de chat."
+                    if voice is not None
+                    else f"Recebi o quadro chat.send da conexão {conn.id} (dispositivo "
+                    f"{conn.device_name or conn.device_id}), com {conn.frame_bytes} bytes. "
+                    f"Conferi o JSON contra o protocolo versão {p.PROTOCOL_VERSION}: id "
+                    f"{message.id}, {len(message.text)} caracteres. Entreguei ao tratador de chat."
+                ),
             )
             conversation: Conversation | None = conn.state
             if conversation is None:
@@ -389,7 +419,9 @@ class ChatHandler:
                 )
                 await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
                 return
-            run = TurnRun(turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn)
+            run = TurnRun(
+                turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn, voice=voice
+            )
             conversation.turn = run  # a partir daqui a conversa está ocupada
             message_trace.step(
                 "Servidor · conversa",
@@ -397,9 +429,20 @@ class ChatHandler:
                 f"mensagem(ns) sua(s) e estava livre. Abri o turno {run.turn_id}, avisei o cliente "
                 "com chat.started e passei a sua mensagem ao agente.",
             )
-            await conn.send(
-                p.ChatStarted(reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id)
-            )
+            try:
+                await conn.send(
+                    p.ChatStarted(
+                        reply_to=message.id, turn_id=run.turn_id, session_id=conversation.id
+                    )
+                )
+                if voice is not None:
+                    await voice.turn_started(run.turn_id)
+            except BaseException:
+                # cancelled before the turn task exists (a voice session ending right now):
+                # never leave the conversation "busy" with no task to ever finish it
+                if conversation.turn is run:
+                    conversation.turn = None
+                raise
             run.task = self._start(self._run_turn(conversation, run, message.text))
 
     def _chat_cancel(self, conn: Connection, message: p.ChatCancel) -> None:
@@ -426,6 +469,8 @@ class ChatHandler:
         async def on_token(piece: str) -> None:
             nonlocal pieces
             pieces += 1
+            if run.voice is not None and conversation.owner is run.owner:
+                run.voice.token(run.turn_id, piece)
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
         current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
@@ -463,6 +508,8 @@ class ChatHandler:
                 p.ChatEnd(turn_id=run.turn_id, finish=finish, timing=self._timing(conversation)),
             )
         finally:
+            if run.voice is not None:
+                run.voice.turn_finished(run.turn_id)
             self._turn_done(conversation, run)
 
     def _timing(self, conversation: Conversation) -> dict[str, object] | None:
@@ -476,6 +523,8 @@ class ChatHandler:
         self, conversation: Conversation, run: TurnRun, code: p.ErrorCode, message: str
     ) -> None:
         await self._deliver(conversation, run, p.Error.from_code(code, message, run.reply_to))
+        if run.voice is not None and conversation.owner is run.owner:
+            run.voice.token(run.turn_id, message)  # she says the problem too, not only shows it
 
     def _turn_done(self, conversation: Conversation, run: TurnRun) -> None:
         if conversation.turn is run:
@@ -492,6 +541,84 @@ class ChatHandler:
                 )
         if conversation.owner is None:  # o cliente caiu durante o turno
             self._retire(conversation)
+
+    # --- voice (ADR-023) ---
+
+    async def _voice_start(self, conn: Connection, message: p.VoiceStart) -> None:
+        services = self._voice
+        if services is None:
+            await conn.send(p.Error.from_code("voice_unavailable", VOICE_OFF_MESSAGE, message.id))
+            return
+        if conn.id in self._voices:
+            await conn.send(p.Error.from_code("voice_busy", VOICE_BUSY_MESSAGE, message.id))
+            return
+        if not services.stt.cloud and not message.local_stt:
+            await conn.send(
+                p.Error.from_code("voice_unavailable", VOICE_NO_EARS_MESSAGE, message.id)
+            )
+            return
+        session = VoiceSession(
+            services,
+            send=conn.send,
+            submit=lambda text: self._voice_turn(conn, text),
+            cancel_turn=lambda: self._cancel_running_turn(conn),
+            turn_active=lambda: self._turn_running(conn),
+            ended=lambda: self._voice_ended(conn),
+            clear_pending=lambda: self._clear_pending(conn),
+            input_rate=message.format.sample_rate,
+            local_stt=bool(message.local_stt),
+            local_tts=bool(message.local_tts),
+        )
+        self._voices[conn.id] = session
+        await session.start(message.id)
+
+    def _clear_pending(self, conn: Connection) -> None:
+        conversation: Conversation | None = conn.state
+        if conversation is not None:
+            conversation.agent.clear_pending()
+
+    def _voice_ended(self, conn: Connection) -> None:
+        self._voices.pop(conn.id, None)
+
+    async def _voice_message(self, conn: Connection, message: p.ClientMessage) -> None:
+        session = self._voices.get(conn.id)
+        if session is None:
+            if isinstance(message, p.VoiceText):  # this one had a question behind it
+                await conn.send(
+                    p.Error.from_code("voice_unavailable", VOICE_FIRST_MESSAGE, message.id)
+                )
+            return  # audio or an end that arrives after the session closed is just late
+        if isinstance(message, p.VoiceAudio):
+            await session.audio(message)
+        elif isinstance(message, p.VoiceText):
+            await session.text(message)
+        elif isinstance(message, p.VoiceInterrupt):
+            await session.interrupt()
+        elif isinstance(message, p.VoiceEnd):
+            await session.end("client", notify=False)
+
+    async def _voice_turn(self, conn: Connection, text: str) -> None:
+        """An utterance becomes a normal chat turn (the answer is spoken as it is written)."""
+        session = self._voices.get(conn.id)
+        if session is None:
+            return
+        message = p.ChatSend(id=f"v-{secrets.token_hex(4)}", text=text[: p.MAX_CHAT_TEXT_CHARS])
+        await self._chat_send(conn, message, voice=session)
+
+    def _turn_running(self, conn: Connection) -> bool:
+        conversation: Conversation | None = conn.state
+        return conversation is not None and conversation.busy
+
+    async def _cancel_running_turn(self, conn: Connection) -> None:
+        conversation: Conversation | None = conn.state
+        run = conversation.turn if conversation is not None else None
+        if run is None or run.task is None or run.task.done():
+            return
+        run.cancelled = True
+        run.task.cancel()
+        # Bounded: this runs in the connection's receive loop, which must keep reading (and
+        # answering pings) even if a tool takes a while to give up.
+        await asyncio.wait({run.task}, timeout=CANCEL_WAIT_SECONDS)
 
     # --- tools ---
 
@@ -620,7 +747,9 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.memory.stores import close_session_store, open_session_store
     from brain.memory.v2 import open_v2_runtime
     from brain.tools import memory as memory_tools
+    from brain.tools import music as music_tools
     from brain.tools.registry import registry
+    from brain.voice.services import open_voice_services
 
     registry.discover()
     store = open_session_store()
@@ -647,6 +776,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     memory_tools.bind(memory)
     # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
     v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
+    voice_services = open_voice_services() if settings.voice.enabled else None
     handler = ChatHandler(
         store,
         router,
@@ -655,6 +785,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         commands_memory=commands,
         turn_sink=v2.sink if v2 else None,
         v2_context=v2.context if v2 else None,
+        voice=voice_services,
     )
     from brain.dashboard.sources import Sources
 
@@ -673,6 +804,9 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         if v2 is not None:
             v2.close()
         memory_tools.bind(None)
+        await music_tools.close()
+        if voice_services is not None:
+            await voice_services.aclose()
         if memory is not None:
             memory.close()
         if commands is not None and commands is not memory:

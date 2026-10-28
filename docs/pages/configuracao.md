@@ -35,6 +35,8 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `JUNIPER_DEEPINFRA_API_KEY` | Chave da DeepInfra (deepinfra.com/dash/api_keys). |
 | `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.html)). |
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
+| `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.html#login)). |
+| `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.html)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
 | `JUNIPER_CONFIG_PATH` | Caminho do `config.yaml`. |
@@ -153,6 +155,48 @@ O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token 
 | `tools.security.shell_require_confirmation` | `true` | Exige confirmação para a `run_shell`. |
 | `tools.security.confirmation_timeout` | `60` | Segundos que o modo de confirmação por callback espera (1 a 600). |
 | `tools.open_url.trusted_domains` | `music.youtube.com` | Domínios (e subdomínios) cujos links a `open_url` abre **sem perguntar**. Não afrouxa a política de URL; entradas que não são um domínio (com `/`, `:`, `@` ou um IP) falham ao carregar a configuração. Veja [Executor](executor.html#confianca). |
+
+## music {#music}
+
+A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `music.enabled` | `false` | Liga as tools de música (precisa de `JUNIPER_YOUTUBE_API_KEY`). |
+| `music.daily_quota_limit` | `9000` | Unidades da cota diária que o cérebro aceita gastar; o Google dá 10.000 por dia (busca 100, escrita 50) e zera à meia-noite no horário do Pacífico. Ao chegar, a busca devolve `quota_exhausted` sem chamar a API (100 a 1.000.000). |
+| `music.search_limit` | `5` | Máximo de resultados por busca (1 a 5). |
+| `music.region` | `BR` | Código de região de duas letras da busca. |
+| `music.quota_file` | `~/.juniper/music/quota.json` | Onde o contador de cota é guardado (por dia do Pacífico). |
+| `music.oauth_file` | `~/.juniper/music/oauth.json` | Onde fica o token de renovação do login no YouTube (modo 600, fora do git). Na VPS, o diretório é o volume `juniper-music`, não um arquivo montado. |
+
+## voice {#voice}
+
+A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.html)). **Desligada por padrão**: nada muda para quem não usa.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `voice.enabled` | `false` | Liga a sessão de voz (`voice.start`); desligada, o cérebro responde `voice_unavailable`. |
+| `voice.max_spoken_chars` | `800` | Quanto de uma resposta é lido em voz alta (100 a 5.000); o resto fica só na tela e a Juniper avisa. Também poupa o orçamento. |
+| `voice.idle_timeout_seconds` | `60` | Silêncio (ninguém falando) que encerra a conversa de voz (10 a 3.600). |
+| `voice.usage_file` | `~/.juniper/voice/usage.json` | Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício. Na VPS, ponha num volume (como a pasta `music`). |
+| `voice.tts.provider` | `google` | Quem fala: Google Cloud Text-to-Speech. |
+| `voice.tts.voice` | `pt-BR-Chirp3-HD-Leda` | A voz (Chirp 3 HD). |
+| `voice.tts.language` | `pt-BR` | Código do idioma enviado ao Google. |
+| `voice.tts.speaking_rate` | `0.95` | Velocidade da fala (0,5 a 2,0). Mais devagar ajuda a entender. |
+| `voice.tts.sample_rate` | `24000` | Taxa do áudio que sai, em Hz (PCM 16 bits mono); se o Google devolver outra, o cérebro reamostra. |
+| `voice.tts.credentials_file` | `~/.juniper/certs/gcp-voice.json` | Conta de serviço do projeto de voz. **Arquivo montado** (na VPS, a pasta `certs` já é montada), nunca na imagem nem no git. |
+| `voice.tts.monthly_chars_limit` | `1250000` | Teto mensal de caracteres enviados ao Google (o 1 milhão gratuito mais o que cabe em ~US$ 8, sob o teto de US$ 10). `0` desliga a nuvem. |
+| `voice.tts.timeout` | `15.0` | Segundos de espera por uma resposta do Google (1 a 60). |
+| `voice.stt.provider` | `groq` | Quem ouve: o Whisper da Groq. |
+| `voice.stt.model` | `whisper-large-v3-turbo` | O modelo de transcrição. |
+| `voice.stt.language` | `pt` | O idioma esperado. |
+| `voice.stt.cooldown_seconds` | `3600` | Quanto a nuvem fica de molho depois de um limite de uso sem `retry-after` (60 a 86.400). |
+| `voice.stt.timeout` | `20.0` | Segundos de espera por uma transcrição (1 a 120). |
+| `voice.vad.speech_start_ms` | `120` | Fala contínua necessária para contar como início de fala. |
+| `voice.vad.silence_ms` | `700` | Silêncio que encerra uma fala. |
+| `voice.vad.barge_in_ms` | `300` | Fala contínua, enquanto a Juniper fala, que a interrompe. |
+| `voice.vad.min_utterance_ms` | `300` | Falas menores que isso são descartadas (ruído). |
+| `voice.vad.max_utterance_seconds` | `30` | Uma fala é cortada nesse limite. |
 
 ## google {#google}
 

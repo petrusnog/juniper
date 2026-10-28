@@ -187,6 +187,100 @@ class SecuritySettings(BaseModel):
     confirmation_timeout: int = Field(default=60, ge=1, le=600)
 
 
+class VoiceTTSSettings(BaseModel):
+    """Falar: Google Cloud Text-to-Speech, Chirp 3 HD (ver ADR-023)."""
+
+    provider: Literal["google"] = "google"
+    voice: str = "pt-BR-Chirp3-HD-Leda"
+    language: str = "pt-BR"
+    speaking_rate: float = Field(default=0.95, ge=0.5, le=2.0)
+    # Taxa do áudio que sai (PCM 16 bits mono); se o Google devolver outra, o cérebro reamostra.
+    sample_rate: int = Field(default=24_000, ge=8_000, le=48_000)
+    # Conta de serviço do projeto de voz: arquivo montado, nunca na imagem (regra 6).
+    credentials_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "certs" / "gcp-voice.json"
+    )
+    # Teto mensal de caracteres enviados ao Google (o 1 milhão gratuito mais ~US$ 8 a US$ 30 por
+    # milhão, sob o teto de US$ 10). 0 desliga a nuvem: só o TTS do aparelho.
+    monthly_chars_limit: int = Field(default=1_250_000, ge=0)
+    timeout: float = Field(default=15.0, ge=1.0, le=60.0)
+
+    @field_validator("credentials_file")
+    @classmethod
+    def _expand_credentials(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
+class VoiceSTTSettings(BaseModel):
+    """Ouvir: Whisper da Groq (ver ADR-023)."""
+
+    provider: Literal["groq"] = "groq"
+    model: str = "whisper-large-v3-turbo"
+    language: str = "pt"
+    # Quanto tempo a nuvem fica de molho depois de um limite de uso (429) sem retry-after.
+    cooldown_seconds: int = Field(default=3600, ge=60, le=86_400)
+    timeout: float = Field(default=20.0, ge=1.0, le=120.0)
+
+
+class VoiceVADSettings(BaseModel):
+    """Detecção de fala por energia, no cérebro (ver ADR-023, seção 6)."""
+
+    speech_start_ms: int = Field(default=120, ge=20, le=2000)
+    silence_ms: int = Field(default=700, ge=100, le=5000)
+    barge_in_ms: int = Field(default=300, ge=60, le=3000)
+    min_utterance_ms: int = Field(default=300, ge=60, le=5000)
+    max_utterance_seconds: int = Field(default=30, ge=3, le=120)
+
+
+class VoiceSettings(BaseModel):
+    """Voz por áudio, pelo cérebro (ver ADR-023). Desligada por padrão."""
+
+    enabled: bool = False
+    # Quanto de uma resposta é lido em voz alta; o resto fica só na tela.
+    max_spoken_chars: int = Field(default=800, ge=100, le=5000)
+    # Silêncio (sem ninguém falar) que encerra a conversa de voz.
+    idle_timeout_seconds: int = Field(default=60, ge=10, le=3600)
+    # Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício.
+    usage_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "voice" / "usage.json"
+    )
+    tts: VoiceTTSSettings = Field(default_factory=VoiceTTSSettings)
+    stt: VoiceSTTSettings = Field(default_factory=VoiceSTTSettings)
+    vad: VoiceVADSettings = Field(default_factory=VoiceVADSettings)
+
+    @field_validator("usage_file")
+    @classmethod
+    def _expand_usage(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
+class MusicSettings(BaseModel):
+    """Música pela YouTube Data API (ver ADR-024)."""
+
+    enabled: bool = False
+    # Unidades da cota diária que o cérebro aceita gastar (o Google dá 10.000; margem de segurança).
+    daily_quota_limit: int = Field(default=9000, ge=100, le=1_000_000)
+    search_limit: int = Field(default=5, ge=1, le=5)
+    region: str = Field(default="BR", pattern=r"^[A-Za-z]{2}$")
+    quota_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "music" / "quota.json"
+    )
+    # Token de renovação do login no Google (playlists); fica fora do git, modo 600.
+    oauth_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "music" / "oauth.json"
+    )
+
+    @field_validator("region")
+    @classmethod
+    def _upper_region(cls, v: str) -> str:
+        return v.upper()
+
+    @field_validator("quota_file", "oauth_file")
+    @classmethod
+    def _expand_paths(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
 class OpenUrlSettings(BaseModel):
     """Política da tool `open_url` (ver ADR-014)."""
 
@@ -721,6 +815,8 @@ class Settings(BaseSettings):
     deployment: DeploymentSettings = Field(default_factory=DeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     google: GoogleSettings = Field(default_factory=GoogleSettings)
+    music: MusicSettings = Field(default_factory=MusicSettings)
+    voice: VoiceSettings = Field(default_factory=VoiceSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
@@ -730,6 +826,11 @@ class Settings(BaseSettings):
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
+    youtube_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_YOUTUBE_API_KEY")
+    youtube_client_id: str | None = Field(default=None, alias="JUNIPER_YOUTUBE_CLIENT_ID")
+    youtube_client_secret: SecretStr | None = Field(
+        default=None, alias="JUNIPER_YOUTUBE_CLIENT_SECRET"
+    )
     telegram_bot_token: SecretStr | None = Field(default=None, alias="JUNIPER_TELEGRAM_BOT_TOKEN")
 
     # Paths (calculados no model_post_init)

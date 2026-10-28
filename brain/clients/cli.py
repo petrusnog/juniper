@@ -1090,6 +1090,14 @@ from brain.clients import memory_v2_cli  # noqa: E402
 
 memory_v2_cli.install(app, memory_app, console)
 
+from brain.clients import music_cli  # noqa: E402
+
+music_cli.install(app, console)
+
+from brain.clients import voice_admin_cli  # noqa: E402
+
+voice_admin_cli.install(app, console)
+
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
     invoke_without_command=True,

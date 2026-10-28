@@ -120,6 +120,8 @@ Se o `hello` leva `"trace": true` **e** o servidor tem `trace.enabled`, o servid
 | `memory_unavailable` | MongoDB fora do ar. | sim |
 | `not_found` | Id de memória inexistente. | não |
 | `executor_unavailable` | A tool roda num dispositivo desconectado. | sim |
+| `voice_unavailable` | A voz está desligada (`voice.enabled: false`) ou sem provedor configurado. | não |
+| `voice_busy` | Já existe uma sessão de voz nesta conexão. | não |
 | `internal` | Falha inesperada (o detalhe vai ao log, nunca ao cliente). | sim |
 
 A conexão **continua aberta** depois de qualquer erro de pedido; um erro de turno também fecha o turno com `chat.end` (`finish: "error"`).
@@ -129,6 +131,30 @@ A conexão **continua aberta** depois de qualquer erro de pedido; um erro de tur
 ## Executor {#executor}
 
 As mensagens `register`, `registered`, `invoke` e `result` do ADR-007 viajam na **mesma conexão**. Veja [Executor](executor.html).
+
+## Voz {#voz}
+
+Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.html): uma sessão de voz contínua por conexão. O ADR-012 recusa quadros binários, então o áudio vai em **quadros de texto JSON com base64** (PCM 16 bits, little-endian, mono; `seq` em ordem, até ~150 KB por quadro, e o app manda de 20 a 100 ms por vez). O cérebro detecta onde cada fala termina, transcreve e responde: o turno é o **mesmo** de `chat.send`, então a resposta também chega como `chat.started`, `chat.token` (a legenda) e `chat.end`. Veja [Voz por áudio](voz-audio.html).
+
+| Direção | Tipo | Campos | Quando |
+|---|---|---|---|
+| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?` | Abre a sessão; `format` é o do microfone. |
+| servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: o formato do áudio de saída e se STT e TTS são `cloud` ou `local`. |
+| cliente → servidor | `voice.audio` | `seq`, `data` | Áudio do microfone. |
+| servidor → cliente | `voice.audio` | `seq`, `data`, `turn_id`, `last?` | Áudio da resposta; `last` fecha a fala do turno. |
+| servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo, para a tela. |
+| servidor → cliente | `voice.transcript` | `text`, `final` | O que o Petrus disse, como a Juniper entendeu. |
+| servidor → cliente | `voice.say` | `turn_id`, `text`, `last?` | Fallback de TTS: o aparelho fala o texto. |
+| servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
+| cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
+| cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
+| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
+
+`voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Um quadro de áudio com base64 inválido, `seq` negativo ou acima do limite é recusado como `bad_request`. Os erros `voice_unavailable` e `voice_busy` estão na [tabela de erros](#erros). `hello.client.kind` passa a documentar também `mobile`.
+
+**Cortar a fala.** Quando o Petrus fala por cima dela, diz «silêncio» ou o app manda `voice.interrupt`, o cérebro para de enviar áudio e manda `voice.state` com `state: listening` **e o `turn_id` do turno cortado**: é a ordem para o app **descartar na hora o áudio daquele turno** que ainda não tocou. O mesmo `listening` **sem** `turn_id` é o fim natural: o app deixa tocar o que já recebeu. Em seguida o turno é cancelado (`chat.end` com `finish: cancelled`).
+
+**Formato de entrada.** O cérebro analisa o áudio a 16 kHz; se o app mandar outra taxa em `voice.start`, o cérebro reamostra cada pedaço (prefira 16 kHz). A taxa do áudio que sai vem em `voice.ready.output`.
 
 ## Reconexão e queda do cliente {#reconexao}
 

@@ -23,3 +23,8 @@ memory:
     store: mongo
   mongo:
     uri: mongodb://mongo:27017  # o serviço `mongo` do compose; usuário e senha vêm do .env
+
+voice:
+  # O gasto do mês da voz do Google fica no volume da música: sobrevive a deploys. Sem isso, cada
+  # contêiner novo recomeçaria o mês do zero e o teto de US$ 10 deixaria de valer.
+  usage_file: /home/juniper/.juniper/music/voice-usage.json

@@ -10,6 +10,8 @@ Este módulo só descreve e valida mensagens: não abre conexão nem conhece o a
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from typing import Annotated, Any, Final, Literal, cast
 
@@ -29,6 +31,8 @@ PROTOCOL_VERSION: Final = 1
 
 MAX_MESSAGE_BYTES: Final = 1024 * 1024
 MAX_CHAT_TEXT_CHARS: Final = 32_000
+MAX_AUDIO_B64_CHARS: Final = 200_000
+"""Um quadro de `voice.audio`: até ~150 KB de PCM (uns 5 s a 16 kHz); o app manda de 20 a 100 ms."""
 
 # ---------------------------------------------------------------------------------------------
 # Códigos de erro e de fechamento
@@ -48,6 +52,8 @@ ErrorCode = Literal[
     "memory_unavailable",
     "not_found",
     "executor_unavailable",
+    "voice_unavailable",
+    "voice_busy",
     "internal",
 ]
 
@@ -65,6 +71,8 @@ RETRYABLE: Final[dict[str, bool]] = {
     "memory_unavailable": True,
     "not_found": False,
     "executor_unavailable": True,
+    "voice_unavailable": False,
+    "voice_busy": False,
     "internal": True,
 }
 
@@ -154,7 +162,7 @@ def _require_one_target(session_id: str | None, latest: bool | None) -> None:
 
 class ClientInfo(_Message):
     kind: str
-    """`cli` ou `desktop`; novos tipos entram sem quebrar nada."""
+    """`cli`, `desktop` ou `mobile`; novos tipos entram sem quebrar nada."""
     version: str
     device_id: str
     device_name: str | None = None
@@ -491,6 +499,125 @@ class ToolsListed(_Message):
 
 
 # ---------------------------------------------------------------------------------------------
+# Voz (ADR-023)
+# ---------------------------------------------------------------------------------------------
+
+
+class VoiceFormat(_Message):
+    """Formato do áudio: PCM 16 bits little-endian, mono. A taxa vem de quem produz o áudio."""
+
+    encoding: Literal["pcm_s16le"] = "pcm_s16le"
+    sample_rate: int = Field(ge=8_000, le=48_000)
+    channels: Literal[1] = 1
+
+
+class VoiceStart(_Message):
+    """Abre a sessão de voz da conexão. `format` descreve o áudio que o microfone vai mandar."""
+
+    type: Literal["voice.start"] = "voice.start"
+    id: str
+    format: VoiceFormat
+    local_stt: bool | None = None
+    """O aparelho sabe transcrever (STT nativo): pode assumir se a nuvem acabar."""
+    local_tts: bool | None = None
+    """O aparelho sabe falar (TTS nativo): pode assumir se a nuvem acabar ou o orçamento acabar."""
+
+
+class VoiceReady(_Message):
+    type: Literal["voice.ready"] = "voice.ready"
+    reply_to: str
+    input: VoiceFormat
+    output: VoiceFormat
+    stt: Literal["cloud", "local"]
+    tts: Literal["cloud", "local"]
+
+
+def _check_base64(value: str) -> str:
+    try:
+        base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("'data' não é base64 válido") from exc
+    return value
+
+
+class VoiceAudio(_Message):
+    """Um pedaço de áudio, nos dois sentidos: o microfone (cliente → servidor, sem `turn_id`) e a
+    voz da Juniper (servidor → cliente, com o `turn_id` do turno que ela está falando)."""
+
+    type: Literal["voice.audio"] = "voice.audio"
+    seq: int = Field(ge=0)
+    data: str = Field(max_length=MAX_AUDIO_B64_CHARS)
+    turn_id: str | None = None
+    last: bool | None = None
+    """Só servidor → cliente: o último pedaço da fala desse turno."""
+
+    @model_validator(mode="after")
+    def _valid_data(self) -> VoiceAudio:
+        _check_base64(self.data)
+        return self
+
+    def pcm(self) -> bytes:
+        return base64.b64decode(self.data)
+
+
+VoiceStateName = Literal["listening", "thinking", "speaking", "idle"]
+
+
+class VoiceState(_Message):
+    type: Literal["voice.state"] = "voice.state"
+    state: VoiceStateName
+    turn_id: str | None = None
+
+
+class VoiceTranscript(_Message):
+    """O que o cérebro entendeu que o Petrus disse (a legenda dele)."""
+
+    type: Literal["voice.transcript"] = "voice.transcript"
+    text: str
+    final: bool = True
+
+
+class VoiceSay(_Message):
+    """Fallback de TTS: o aparelho fala o `text` com a voz dele."""
+
+    type: Literal["voice.say"] = "voice.say"
+    turn_id: str
+    text: str
+    last: bool | None = None
+
+
+class VoiceFallback(_Message):
+    """Troca de provedor: `local` = o aparelho assume; `cloud` = a nuvem voltou."""
+
+    type: Literal["voice.fallback"] = "voice.fallback"
+    component: Literal["stt", "tts"]
+    mode: Literal["local", "cloud"]
+    reason: Literal["quota", "budget", "error", "recovered"]
+
+
+class VoiceText(_Message):
+    """Fala já transcrita no aparelho (fallback de STT): vira um turno falado."""
+
+    type: Literal["voice.text"] = "voice.text"
+    id: str
+    text: str = Field(max_length=MAX_CHAT_TEXT_CHARS)
+
+
+class VoiceInterrupt(_Message):
+    type: Literal["voice.interrupt"] = "voice.interrupt"
+
+
+VoiceEndReason = Literal["client", "command", "silence", "error", "server"]
+
+
+class VoiceEnd(_Message):
+    """Encerra a sessão de voz, de qualquer lado."""
+
+    type: Literal["voice.end"] = "voice.end"
+    reason: VoiceEndReason = "client"
+
+
+# ---------------------------------------------------------------------------------------------
 # Uniões e (de)serialização
 # ---------------------------------------------------------------------------------------------
 
@@ -506,6 +633,11 @@ ClientMessage = (
     | Register
     | Result
     | ToolsRequest
+    | VoiceStart
+    | VoiceAudio
+    | VoiceText
+    | VoiceInterrupt
+    | VoiceEnd
 )
 ServerMessage = (
     Welcome
@@ -522,6 +654,13 @@ ServerMessage = (
     | Invoke
     | ToolsListed
     | Trace
+    | VoiceReady
+    | VoiceAudio
+    | VoiceState
+    | VoiceTranscript
+    | VoiceSay
+    | VoiceFallback
+    | VoiceEnd
 )
 Message = Annotated[ClientMessage | ServerMessage, Field(discriminator="type")]
 """Todas as mensagens, discriminadas por `type` (e `memory.request` também por `op`)."""
@@ -541,6 +680,11 @@ _CLIENT_TYPES: Final = frozenset(
         "register",
         "result",
         "tools.request",
+        "voice.start",
+        "voice.audio",
+        "voice.text",
+        "voice.interrupt",
+        "voice.end",
     }
 )
 _SERVER_TYPES: Final = frozenset(
@@ -559,6 +703,13 @@ _SERVER_TYPES: Final = frozenset(
         "invoke",
         "tools.listed",
         "trace",
+        "voice.ready",
+        "voice.audio",
+        "voice.state",
+        "voice.transcript",
+        "voice.say",
+        "voice.fallback",
+        "voice.end",
     }
 )
 

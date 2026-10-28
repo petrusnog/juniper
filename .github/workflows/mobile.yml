@@ -1,0 +1,40 @@
+name: Mobile
+
+# O app React Native (ADR-022): tipos do protocolo em dia, TypeScript, lint e Jest. Só roda quando
+# o app ou o schema do protocolo mudam. O APK e o comportamento no aparelho não passam por aqui
+# (build local, roteiro manual em docs/pages/mobile.md).
+on:
+  pull_request:
+    branches: [master]
+    paths: ["mobile/**", "docs/protocol/schema.json", ".github/workflows/mobile.yml"]
+  push:
+    branches: [master]
+    paths: ["mobile/**", "docs/protocol/schema.json", ".github/workflows/mobile.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: app (tsc, lint, jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - name: Tipos do protocolo em dia
+        run: npm run check:protocol
+      - run: npm run typecheck
+      - run: npx eslint .
+      - run: npx jest
