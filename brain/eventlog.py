@@ -51,6 +51,15 @@ _SECRET_VALUE = re.compile(
 )
 
 
+# A secret carried in a URL query (`?token=...`, `&code=...`): the key rule only sees dict keys.
+_SECRET_QUERY = re.compile(
+    r"([?&](?:[\w.-]*[_.-])?"
+    r"(?:api[_-]?key|token|secret|password|passwd|auth|authorization|signature|sig|code|key)"
+    r"(?:[_.-][\w.-]*)?=)[^&#\s]*",
+    re.I,
+)
+
+
 def redact(value: Any, _key: str = "", limit: int = MAX_VALUE_CHARS) -> Any:
     """A JSON-safe copy of ``value``: secrets masked, strings cut at ``limit`` characters."""
     if _key and _SECRET_KEY.search(_key):
@@ -60,7 +69,9 @@ def redact(value: Any, _key: str = "", limit: int = MAX_VALUE_CHARS) -> Any:
     if isinstance(value, list | tuple | set):
         return [redact(v, limit=limit) for v in value]
     if isinstance(value, str):
-        text = _mask_known_key(_SECRET_VALUE.sub(REDACTED, value))
+        text = _mask_known_key(
+            _SECRET_VALUE.sub(REDACTED, _SECRET_QUERY.sub(rf"\1{REDACTED}", value))
+        )
         if len(text) > limit:
             text = f"{text[:limit]}…[+{len(text) - limit} chars]"
         return text

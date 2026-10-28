@@ -30,6 +30,8 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from brain.tools.url_policy import normalise_domain
+
 # --- Submodelos -------------------------------------------------------
 
 
@@ -185,10 +187,31 @@ class SecuritySettings(BaseModel):
     confirmation_timeout: int = Field(default=60, ge=1, le=600)
 
 
+class OpenUrlSettings(BaseModel):
+    """Política da tool `open_url` (ver ADR-014)."""
+
+    # Domínios (e seus subdomínios) cujos links abrem sem perguntar. Não afrouxa a política de URL:
+    # esquemas, credenciais e endereços privados continuam recusados.
+    trusted_domains: list[str] = Field(default_factory=lambda: ["music.youtube.com"])
+
+    @field_validator("trusted_domains")
+    @classmethod
+    def _validate_trusted_domains(cls, v: list[str]) -> list[str]:
+        domains: list[str] = []
+        for entry in v:
+            domain = normalise_domain(entry)
+            if domain is None:
+                raise ValueError(f"tools.open_url.trusted_domains: {entry!r} não é um domínio")
+            if domain not in domains:
+                domains.append(domain)
+        return domains
+
+
 class ToolsSettings(BaseModel):
     """Configuração agregada das tools."""
 
     security: SecuritySettings = Field(default_factory=SecuritySettings)
+    open_url: OpenUrlSettings = Field(default_factory=OpenUrlSettings)
 
 
 class GoogleSettings(BaseModel):
