@@ -38,7 +38,15 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 - **Conexão** (`src/connection/BrainConnection.ts`): WebSocket com `Authorization: Bearer` no handshake, `hello` como cliente `mobile`, `pong` para cada `ping`, retomada da conversa aberta, reconexão com recuo de 1, 2, 4, 8, 16 e 30 s (±20%), zerado depois de 30 s estáveis; `1012` (deploy) reconecta em 0,5 s; `4401`, `4426` e `4409` param de tentar e viram os estados `unauthorized`, `incompatible` e `replaced`. Não enfileira mensagens offline (ADR-012): `send` devolve `false`. Um quadro malformado ou binário é ignorado sem derrubar a conexão.
 - **Credenciais** (`src/storage/credentials.ts`): endereço, porta, token e identificador do aparelho num único item do **Android Keystore** (Keychain, `WHEN_UNLOCKED_THIS_DEVICE_ONLY`); o token nunca vai a log nem a nenhuma mensagem. A tela de configuração valida o endereço (sem `http://` nem porta no campo) e esconde o token.
 - **Tema** (`src/theme/tokens.ts`): a paleta clara e escura do livro de bolso, seguindo o tema do sistema.
-- **Testes** (`npm test`, 45 testes): protocolo, conexão com um WebSocket falso (token, hello, ping/pong, backoff, códigos de fechamento, quadros ruins), credenciais com o Keychain simulado, tela de configuração. Mais `npm run typecheck` e `npx eslint .`; o workflow `Mobile` roda tudo isso quando `mobile/` ou o schema mudam.
+- **Testes** (`npm test`): protocolo, conexão com um WebSocket falso (token, hello, ping/pong, backoff, códigos de fechamento, quadros ruins), credenciais com o Keychain simulado, tela de configuração. Mais `npm run typecheck` e `npx eslint .`; o workflow `Mobile` roda tudo isso quando `mobile/` ou o schema mudam.
+
+**T-144, chat de texto** (`mobile/src/chat`, `mobile/src/ui/ChatScreen.tsx`):
+
+- **Estado como reducer puro** (`state.ts`): espelha o que o cérebro mandou (mensagens, o turno em andamento, a lista de conversas). O app **não guarda estado de confirmação**: o «sim» de «Posso apagar?» é uma mensagem comum ([ADR-010](adr-010.html)).
+- **Controlador** (`ChatController.ts`, TypeScript sem React): `send` (recusa vazio, recusa enquanto ela responde e, **sem conexão, não envia nem enfileira, avisa e devolve `false` para a tela manter o texto**), `cancel` (`chat.cancel` do turno ativo), nova conversa, retomar, listar. Ao conectar, retoma a conversa aberta (ou a última, na primeira vez) e, se o cérebro disser que retomou, pede `session.resume` para trazer o histórico.
+- **Streaming:** cada `chat.token` cresce a bolha da resposta; uma resposta cancelada sem texto some e uma com texto fica marcada «(interrompida)». Erro tipado do cérebro aparece na conversa e libera o campo de envio. `session.detached` avisa que outro aparelho assumiu a conversa.
+- **Tela:** lista de mensagens, campo de texto, botão «Enviar» que vira «Parar» enquanto ela responde, e «Conversas» (lista com prévia, retomar, nova conversa). A linha de estado da conexão fica sempre no topo.
+- 22 testes novos (reducer, controlador com conexão falsa, tela).
 
 Para rodar na sua máquina (JDK 17, Android SDK e Node 22 ou superior): `cd mobile && npm install && npx react-native run-android` (celular com depuração USB ou emulador). Para um APK: crie uma chave local, ponha os dados em `mobile/android/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; o arquivo e a chave **não** vão para o Git) e rode `cd mobile/android && ./gradlew assembleRelease`; o APK sai em `app/build/outputs/apk/release/`. Sem `keystore.properties` o APK sai assinado com a chave de depuração: serve para testar, não para manter.
 
@@ -50,4 +58,4 @@ Jest cobre a lógica (conexão, conversas, política de URL, tipos). Áudio, ser
 
 ## Tasks {#tasks}
 
-T-143 (base do app, **pronto**), T-144 (chat de texto), T-145 (executor e autoplay), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.
+T-143 (base do app, **pronto**), T-144 (chat de texto, **pronto**), T-145 (executor e autoplay), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.
