@@ -41,6 +41,16 @@ O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice
 
 As opções estão em [Configuração](configuracao.html#voice).
 
+## Ouvir: detector de fala e transcrição {#ouvir}
+
+Implementado no T-151 (`brain/voice/vad.py` e `stt.py`):
+
+- **Detector de fala** (`Vad`): recebe PCM 16 bits, 16 kHz, mono, em pedaços de qualquer tamanho (quadros de 20 ms; sobra de um pedaço entra no seguinte). A fala começa quando a energia fica acima de 3 vezes o piso de ruído por `voice.vad.speech_start_ms`; termina após `silence_ms` de silêncio ou ao chegar em `max_utterance_seconds` (o que continuar sendo dito vira a fala seguinte). Entram na fala os 300 ms anteriores (para não cortar a primeira sílaba). Falas abaixo de `min_utterance_ms` de voz (um estalo, uma tosse) são descartadas. O piso de ruído acompanha o ambiente: desce rápido e sobe devagar, então uma sala barulhenta deixa de contar como fala, mas a voz continua se destacando.
+- **Interromper** (`set_playing(True)` enquanto ela fala): o limiar sobe (6 vezes o piso, no mínimo 900) e são exigidos `barge_in_ms` de fala contínua. Um sopro ou a própria voz dela vazando no microfone não a corta. O evento é `barge_in`, no lugar de `speech_start`; a fala segue sendo gravada.
+- **Transcrição** (`GroqTranscriber`): cada fala vai como WAV mono para `/audio/transcriptions` (`whisper-large-v3-turbo`, `pt`, temperatura 0) com a chave `JUNIPER_GROQ_API_KEY` (cabeçalho `authorization`, que o log mascara). Erros tipados, sem a resposta crua do provedor: 429 vira `quota` (com o `retry-after`, se for razoável), 401/403 `not_configured`, 400/413/422 `invalid_audio`, o resto `api_error`/`network_error`. Fala acima de 24 MB nem é enviada.
+- **Alucinações** (`is_hallucination`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
+- **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
+
 ## Orçamento e voz do aparelho {#orcamento}
 
 Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
@@ -58,4 +68,4 @@ Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_versio
 
 ## Tasks {#tasks}
 
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
