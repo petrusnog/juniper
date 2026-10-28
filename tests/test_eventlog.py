@@ -41,6 +41,23 @@ def test_redact_masks_secret_keys_and_values() -> None:
     assert "texto" in out and REDACTED in out
 
 
+def test_redact_masks_secrets_carried_in_a_url_query() -> None:
+    out = redact(
+        {
+            "a": "https://example.com/cb?token=abc123&x=1",
+            "b": "https://example.com/cb?access_token=zzz#frag",
+            "c": "https://example.com/?apikey=k&q=oi",
+            "d": "https://music.youtube.com/watch?v=abc123&list=RDAMVMabc",
+            "e": "https://example.com/?keyword=musica",
+        }
+    )
+    assert out["a"] == f"https://example.com/cb?token={REDACTED}&x=1"
+    assert out["b"] == f"https://example.com/cb?access_token={REDACTED}#frag"
+    assert out["c"] == f"https://example.com/?apikey={REDACTED}&q=oi"
+    assert out["d"] == "https://music.youtube.com/watch?v=abc123&list=RDAMVMabc"
+    assert out["e"] == "https://example.com/?keyword=musica"  # "key" inside a word is not a key
+
+
 def test_redact_masks_the_configured_groq_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "groq_api_key", SecretStr("minha-chave-secreta-9"))
     assert "minha-chave" not in json.dumps(redact({"msg": "erro com minha-chave-secreta-9 ali"}))
