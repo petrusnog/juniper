@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154). Login, playlists e gosto musical ainda são desenho.
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) e o login no YouTube (T-155). Playlists e gosto musical ainda são desenho.
 
 ## Como funciona {#como-funciona}
 
@@ -39,7 +39,22 @@ A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro
 
 ## Playlists e login {#login}
 
-Criar playlists exige o login do Petrus no Google, pelo fluxo de **código de dispositivo** (`juniper music login`); o token de renovação fica em `~/.juniper/music/oauth.json` (modo 600). Se o app OAuth estiver em modo de teste, o Google pode expirar o token a cada 7 dias *(a confirmar)*.
+Criar playlists exige o login do Petrus no Google, pelo fluxo de **código de dispositivo**. Uma vez:
+
+1. No Google Cloud, crie um **cliente OAuth** do tipo "TVs e dispositivos de entrada limitada" (no projeto da YouTube Data API) e ponha o ID e a chave no `.env` do cérebro: `JUNIPER_YOUTUBE_CLIENT_ID` e `JUNIPER_YOUTUBE_CLIENT_SECRET`. Se o app estiver em modo de teste, adicione o seu Gmail aos usuários de teste.
+2. Rode **`juniper music login`**. Ele mostra um link e um código; abra o link em qualquer navegador, entre com a conta do YouTube Music e autorize. O comando espera, respeitando o intervalo do Google, e grava o token.
+3. **`juniper music status`** mostra o que está configurado (sem revelar nenhuma chave ou token), a cota de hoje e se há login.
+
+O token de renovação fica em `music.oauth_file` (`~/.juniper/music/oauth.json`, modo 600, fora do git; na VPS, um arquivo montado). O acesso **se renova sozinho**, uma vez só mesmo com várias chamadas ao mesmo tempo. Nada é apagado por conta própria.
+
+| Situação | Código |
+|---|---|
+| Nunca fez login | `auth_required`: "rode `juniper music login`" |
+| Acesso expirado ou revogado | `auth_expired` ("rode `juniper music login` de novo") |
+| Faltam o ID ou a chave do cliente, ou o Google recusou o cliente | `not_configured` |
+| O código do login expirou, foi negado ou o Google falhou | `auth_expired`, `auth_required` ou `api_error` |
+
+Se o app OAuth estiver em modo de teste, o Google pode expirar o token de renovação a cada 7 dias *(a confirmar a regra vigente)*; publicar o app (em produção, sem verificação, uso pessoal) evita isso.
 
 ## Gosto musical {#gosto}
 

@@ -247,6 +247,8 @@ def test_every_config_option_is_documented() -> None:
         "groq_api_key",
         "deepinfra_api_key",
         "youtube_api_key",
+        "youtube_client_id",
+        "youtube_client_secret",
         "telegram_bot_token",
         "paths",
     }

@@ -35,6 +35,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `JUNIPER_DEEPINFRA_API_KEY` | Chave da DeepInfra (deepinfra.com/dash/api_keys). |
 | `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.html)). |
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
+| `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.html#login)). |
 | `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.html)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
@@ -166,6 +167,7 @@ A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
 | `music.search_limit` | `5` | Máximo de resultados por busca (1 a 5). |
 | `music.region` | `BR` | Código de região de duas letras da busca. |
 | `music.quota_file` | `~/.juniper/music/quota.json` | Onde o contador de cota é guardado (por dia do Pacífico). |
+| `music.oauth_file` | `~/.juniper/music/oauth.json` | Onde fica o token de renovação do login no YouTube (modo 600, fora do git; na VPS, um arquivo montado). |
 
 ## google {#google}
 
