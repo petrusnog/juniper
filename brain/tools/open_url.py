@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from brain.config import settings
 from brain.tools import music as music_tools
 from brain.tools.base import Locality, Tier, Tool, ToolResult
+from brain.tools.channel import link_only
 from brain.tools.registry import register_tool
 from brain.tools.url_policy import check_url, is_trusted
 
@@ -72,6 +73,16 @@ class OpenUrl(Tool):
         result = check_url(kwargs.get("url"))
         if not result.ok:
             return _denied(result.reason)
+        if link_only():
+            # From the terminal, Telegram... nothing is opened on the phone: the link is the answer.
+            return ToolResult(
+                success=True,
+                output=(
+                    "Esta conversa não é do aplicativo do celular, então não abri nada. Mande "
+                    f"este link na resposta: {result.url}"
+                ),
+                metadata={"url": result.url, "opened": False},
+            )
         if music_tools.enabled() and _is_search_page(result.url or "", result.host):
             # The model likes to "search" by building a results-page link, which opens a list and
             # plays nothing (and may carry a typo). Send it to the tool that finds the track.

@@ -19,6 +19,7 @@ from brain.clients.server import BrainServer
 from brain.llm.base import LLMProvider
 from brain.llm.types import LLMResponse, Message, StreamChunk
 from brain.memory.session import FileSessionStore
+from brain.tools.open_url import OpenUrl
 from brain.voice.budget import VoiceBudget
 from brain.voice.errors import VoiceError
 from brain.voice.services import VoiceServices
@@ -622,3 +623,99 @@ async def test_odd_sized_audio_at_another_rate_is_not_an_error(tmp_path: Path) -
         assert rig.handler._voices  # still open, and no `error` came back
         messages = await client.chat("oi")  # the chat still works: nothing was broken
         assert texts(messages) == "oi" and not of(messages, p.Error)
+
+
+async def test_the_model_is_told_the_turn_came_by_voice(tmp_path: Path) -> None:
+    from brain.clients.executors import ExecutorHub
+
+    provider = FakeProvider([say(LONG)])
+    async with Rig(tmp_path, provider, cloud_stt=False) as rig:
+        # The phone: a mobile client that registered open_url (so the app can open links).
+        client = await connect_client(rig.server, "celular", "mobile")
+        await client.send(
+            type="register",
+            tools=[
+                {
+                    "name": "open_url",
+                    "description": "Abre um link no celular.",
+                    "parameters": OpenUrl.parameters,
+                    "tier": "write",
+                }
+            ],
+        )
+        await client.until(p.Registered)
+        await start(client, local_stt=True)
+        await client.send(type="voice.text", id="t-1", text="toca Djavan")
+        await client.until(p.ChatEnd)
+        assert isinstance(rig.handler.executors, ExecutorHub)
+    note = next(
+        m.content or ""
+        for m in provider.seen[0]
+        if m.role == "system" and "Canal:" in (m.content or "")
+    )
+    assert "aplicativo do celular (voz)" in note
+
+
+# --- speakerphone: half-duplex (ignore the microphone while she speaks) ----------------------
+
+
+async def test_on_the_speaker_her_own_echo_never_cuts_her_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.clients import voice_session
+
+    monkeypatch.setattr(voice_session, "ECHO_TAIL_SECONDS", 0.2)
+    provider = Gated("Resposta nova depois do eco.")
+    async with Rig(tmp_path, provider, stt=FakeStt("primeira", "de novo")) as rig:
+        client, _ = await rig.open(route="speaker")
+        await say_phrase(client)
+        await client.until(p.VoiceAudio)  # she is talking
+        # her voice coming back into the microphone: loud and long, like speech
+        seq = await stream_audio(client, tone(900, 7000), 1000)
+        await stream_audio(client, quiet(900), seq)
+        await asyncio.sleep(0.2)
+        assert provider.calls == 1  # no barge-in: the turn was not cut
+        assert rig.stt.texts == ["de novo"]  # and the echo was never transcribed
+
+
+async def test_on_the_speaker_he_can_still_cut_her_with_the_button(tmp_path: Path) -> None:
+    provider = Gated()
+    async with Rig(tmp_path, provider, cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True, route="speaker")
+        await client.send(type="voice.text", id="t-1", text="fala bastante")
+        await client.until(p.VoiceAudio)
+        await client.send(type="voice.interrupt")
+        end = await client.until(p.ChatEnd)
+        assert end[-1].finish == "cancelled"  # type: ignore[union-attr]
+
+
+async def test_on_the_speaker_he_is_heard_again_once_she_has_finished(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.clients import voice_session
+
+    monkeypatch.setattr(voice_session, "ECHO_TAIL_SECONDS", 0.2)
+    provider = FakeProvider([say(LONG), say("Segunda resposta tranquila, sem pressa.")])
+    async with Rig(tmp_path, provider, stt=FakeStt("primeira", "segunda")) as rig:
+        client, _ = await rig.open(route="speaker")
+        await say_phrase(client)
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+        await asyncio.sleep(0.8)  # her audio (0.2 s) and the tail are over
+        await say_phrase(client)
+        messages = await collect(client, p.ChatEnd)
+        assert "Segunda resposta" in texts(messages)
+
+
+async def test_a_route_change_in_the_middle_switches_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = Gated("Depois do fone.")
+    async with Rig(tmp_path, provider, stt=FakeStt("primeira", "por cima")) as rig:
+        client, _ = await rig.open(route="speaker")
+        await say_phrase(client)
+        await client.until(p.VoiceAudio)
+        await client.send(type="voice.route", route="headset")  # headphones plugged in
+        seq = await stream_audio(client, tone(900, 7000), 1000)
+        await stream_audio(client, quiet(900), seq)
+        end = await client.until(p.ChatEnd)  # with headphones, barge-in works again
+        assert end[-1].finish == "cancelled"  # type: ignore[union-attr]

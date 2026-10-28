@@ -101,8 +101,10 @@ class Setup:
     async def __aexit__(self, *exc: object) -> None:
         await self.server.stop()
 
-    async def executor(self, device: str, *tools: dict[str, Any]) -> tuple[Client, p.Registered]:
-        client = await connect_client(self.server, device)
+    async def executor(
+        self, device: str, *tools: dict[str, Any], kind: str = "mobile"
+    ) -> tuple[Client, p.Registered]:
+        client = await connect_client(self.server, device, kind)
         await client.send(type="register", tools=list(tools))
         registered = (await client.until(p.Registered))[-1]
         assert isinstance(registered, p.Registered)

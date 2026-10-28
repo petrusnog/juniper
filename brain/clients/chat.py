@@ -38,6 +38,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
 from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
+from brain.tools.channel import DEVICE_KINDS, Channel, channel_note, current_channel
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 from brain.trace import message_trace, quote
@@ -218,7 +219,9 @@ class ChatHandler:
             self.executors.handle_result(conn, message)
         elif isinstance(message, p.VoiceStart):
             await self._voice_start(conn, message)
-        elif isinstance(message, (p.VoiceAudio, p.VoiceText, p.VoiceInterrupt, p.VoiceEnd)):
+        elif isinstance(
+            message, (p.VoiceAudio, p.VoiceText, p.VoiceInterrupt, p.VoiceRoute, p.VoiceEnd)
+        ):
             await self._voice_message(conn, message)
         elif message.type == "memory.request":
             # Pode demorar (o 1º uso carrega o modelo de embeddings): não trava o heartbeat.
@@ -474,6 +477,15 @@ class ChatHandler:
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
         current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
+        channel = Channel(
+            kind=run.owner.kind,
+            voice=run.voice is not None,
+            can_open=run.owner.kind in DEVICE_KINDS
+            and self.executors.offers(run.owner, "open_url"),
+            gateway=self.executors,
+        )
+        current_channel.set(channel)
+        conversation.agent.channel_note = channel_note(channel)
         try:
             try:
                 async with asyncio.timeout(self._turn_timeout):
@@ -568,6 +580,7 @@ class ChatHandler:
             input_rate=message.format.sample_rate,
             local_stt=bool(message.local_stt),
             local_tts=bool(message.local_tts),
+            route=message.route,
         )
         self._voices[conn.id] = session
         await session.start(message.id)
@@ -594,6 +607,8 @@ class ChatHandler:
             await session.text(message)
         elif isinstance(message, p.VoiceInterrupt):
             await session.interrupt()
+        elif isinstance(message, p.VoiceRoute):
+            session.set_route(message.route)
         elif isinstance(message, p.VoiceEnd):
             await session.end("client", notify=False)
 

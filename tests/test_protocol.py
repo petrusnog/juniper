@@ -228,6 +228,7 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
     ),
     ("client", {"type": "voice.text", "id": "v-2", "text": "toca Djavan"}),
     ("client", {"type": "voice.interrupt"}),
+    ("client", {"type": "voice.route", "route": "headset"}),
     ("client", {"type": "voice.end", "reason": "client"}),
     ("server", {"type": "voice.end", "reason": "silence"}),
 ]
@@ -432,6 +433,7 @@ def test_voice_end_travels_both_ways_and_defaults_to_the_client_reason() -> None
         ('{"type":"voice.start","id":"v","format":{"sample_rate":16000}}', "server"),
         ('{"type":"voice.text","id":"v","text":"x"}', "server"),
         ('{"type":"voice.interrupt"}', "server"),
+        ('{"type":"voice.route","route":"speaker"}', "server"),
     ],
 )
 def test_voice_messages_are_only_accepted_in_their_direction(raw: str, source: str) -> None:
@@ -486,3 +488,17 @@ def test_protocol_version_did_not_change_with_voice() -> None:
 def test_an_old_server_view_still_ignores_unknown_voice_fields() -> None:
     message = p.parse_message('{"type":"voice.interrupt","novo":1}', source="client")
     assert isinstance(message, p.VoiceInterrupt)
+
+
+def test_voice_start_may_say_where_the_voice_plays_and_refuses_other_routes() -> None:
+    base = '{"type":"voice.start","id":"v","format":{"sample_rate":16000},"route":"%s"}'
+    message = p.parse_message(base % "speaker", source="client")
+    assert isinstance(message, p.VoiceStart) and message.route == "speaker"
+    old = p.parse_message(
+        '{"type":"voice.start","id":"v","format":{"sample_rate":16000}}', source="client"
+    )
+    assert isinstance(old, p.VoiceStart) and old.route is None  # compatible: the field is optional
+    with pytest.raises(p.InvalidMessageError):
+        p.parse_message(base % "earpiece", source="client")
+    with pytest.raises(p.InvalidMessageError):
+        p.parse_message('{"type":"voice.route","route":"earpiece"}', source="client")

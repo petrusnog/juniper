@@ -511,6 +511,9 @@ class VoiceFormat(_Message):
     channels: Literal[1] = 1
 
 
+VoiceRouteName = Literal["speaker", "headset"]
+
+
 class VoiceStart(_Message):
     """Abre a sessão de voz da conexão. `format` descreve o áudio que o microfone vai mandar."""
 
@@ -521,6 +524,9 @@ class VoiceStart(_Message):
     """O aparelho sabe transcrever (STT nativo): pode assumir se a nuvem acabar."""
     local_tts: bool | None = None
     """O aparelho sabe falar (TTS nativo): pode assumir se a nuvem acabar ou o orçamento acabar."""
+    route: VoiceRouteName | None = None
+    """Por onde o aparelho toca a voz: `speaker` (viva-voz, o microfone ouve a própria Juniper) ou
+    `headset` (fone, sem eco). Em `speaker` o cérebro ignora o microfone enquanto ela fala."""
 
 
 class VoiceReady(_Message):
@@ -603,6 +609,13 @@ class VoiceText(_Message):
     text: str = Field(max_length=MAX_CHAT_TEXT_CHARS)
 
 
+class VoiceRoute(_Message):
+    """A saída de áudio mudou no meio da conversa (o fone foi ligado ou desligado)."""
+
+    type: Literal["voice.route"] = "voice.route"
+    route: VoiceRouteName
+
+
 class VoiceInterrupt(_Message):
     type: Literal["voice.interrupt"] = "voice.interrupt"
 
@@ -637,6 +650,7 @@ ClientMessage = (
     | VoiceAudio
     | VoiceText
     | VoiceInterrupt
+    | VoiceRoute
     | VoiceEnd
 )
 ServerMessage = (
@@ -684,6 +698,7 @@ _CLIENT_TYPES: Final = frozenset(
         "voice.audio",
         "voice.text",
         "voice.interrupt",
+        "voice.route",
         "voice.end",
     }
 )

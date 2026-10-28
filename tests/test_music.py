@@ -369,10 +369,10 @@ def test_declaration() -> None:
     assert tool.tier is Tier.READ and tool.locality is Locality.CLOUD
     assert tool.parameters["required"] == ["query"]
     assert tool.parameters["properties"]["mode"]["enum"] == ["track", "radio"]
-    assert "open_url" in tool.description
+    assert "play_music" in tool.description  # to play, the model is sent to the other tool
 
 
-async def test_run_lists_results_with_links_and_points_to_open_url() -> None:
+async def test_run_lists_results_with_links_and_points_to_play_music() -> None:
     fake = FakeMusic(
         [TRACK, Track("ccccccccccc", "Oceano ao vivo", "Fulano", track_url("ccccccccccc"))]
     )
@@ -388,7 +388,7 @@ async def test_run_lists_results_with_links_and_points_to_open_url() -> None:
         "2. Oceano ao vivo — Fulano | https://music.youtube.com/watch?v=ccccccccccc"
         in result.output
     )
-    assert "open_url" in result.output
+    assert "play_music" in result.output
     assert fake.calls == [("Djavan Oceano", 5, "track")]
 
 
