@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.88.0",
+    "punycode": "^2.3.1",
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-keychain": "^10.0.0",
@@ -32,6 +33,7 @@
     "@react-native/typescript-config": "0.88.0",
     "@types/jest": "^29.5.13",
     "@types/node": "^22.20.5",
+    "@types/punycode": "^2.1.4",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^8.19.0",

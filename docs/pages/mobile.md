@@ -48,6 +48,14 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 - **Tela:** lista de mensagens, campo de texto, botão «Enviar» que vira «Parar» enquanto ela responde, e «Conversas» (lista com prévia, retomar, nova conversa). A linha de estado da conexão fica sempre no topo.
 - 22 testes novos (reducer, controlador com conexão falsa, tela).
 
+**T-145, executor `open_url` e autoplay** (`mobile/src/executor`, `android/.../media`):
+
+- **Registro:** a cada `welcome` o app manda `register` com `open_url` (tier `write`). Para cada `invoke` o resultado é sempre uma mensagem tipada, nunca uma exceção: ferramenta desconhecida (`unknown_tool`), endereço recusado (`policy_denied`), o Android não abriu (`os_error`).
+- **O celular revalida tudo** (`urlPolicy.ts`, porta de `brain/tools/url_policy.py`): só `http` e `https`; recusa `file:`, `javascript:`, `intent:`, usuário e senha no endereço, `\\`, nomes inválidos, `localhost`, redes privadas, Tailscale (`100.64.0.0/10`) e formas numéricas de IPv4 (`2130706433`, `0x7f.1`, `127.1`), inclusive IPv4 embutido em IPv6; o link aberto é o **normalizado**. Os **74 casos de URL e 14 de confiança** de `tests/fixtures/url_policy_cases.json` rodam no pytest e no Jest, então as duas implementações não se afastam. Diferença conhecida: a conversão de nomes internacionais (IDNA) no app é NFKC + minúsculas + punycode, mais simples que a do Python; como o cérebro já manda o endereço normalizado em ASCII, isso só importa para endereços que cheguem ao app sem passar por ele.
+- **Autoplay** (`MediaAutoplayModule.kt`, atrás da interface `MediaAutoplay`): abre o link com uma `Intent` `VIEW` (o Android escolhe o app que trata `music.youtube.com`), espera `waitMs` (3 s) e manda a tecla **play** de mídia até `attempts` (3) vezes, confirmando por `AudioManager.isMusicActive`. O resultado volta ao LLM: «a música começou a tocar», ou «abri, mas não consegui dar play sozinha» (`autoplay: false`, **que não é erro**: o link abriu e basta tocar no play).
+- **Histórico local** das últimas 50 aberturas e recusas, só em memória.
+- **Roteiro no aparelho (não verificado aqui):** (1) com a tela acesa, peça «toca Oceano do Djavan» e veja se o YouTube Music abre e toca sozinho; (2) repita com a tela apagada: o Android 10+ pode recusar abrir uma tela com o app em segundo plano (`blocked_by_android`); se acontecer, a saída é conceder «exibir sobre outros apps» ao app, ou aceitar um toque; (3) peça um link recusado («abre file:///etc/passwd») e confira que nada abre; (4) mude `waitMs`/`attempts` se o play chegar cedo demais.
+
 Para rodar na sua máquina (JDK 17, Android SDK e Node 22 ou superior): `cd mobile && npm install && npx react-native run-android` (celular com depuração USB ou emulador). Para um APK: crie uma chave local, ponha os dados em `mobile/android/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; o arquivo e a chave **não** vão para o Git) e rode `cd mobile/android && ./gradlew assembleRelease`; o APK sai em `app/build/outputs/apk/release/`. Sem `keystore.properties` o APK sai assinado com a chave de depuração: serve para testar, não para manter.
 
 **Não verificado:** o build do APK e a execução no aparelho (o ambiente de desenvolvimento do Claude não tem Android SDK). Os testes acima provam a lógica em JavaScript.
@@ -58,4 +66,4 @@ Jest cobre a lógica (conexão, conversas, política de URL, tipos). Áudio, ser
 
 ## Tasks {#tasks}
 
-T-143 (base do app, **pronto**), T-144 (chat de texto, **pronto**), T-145 (executor e autoplay), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.
+T-143 (base do app, **pronto**), T-144 (chat de texto, **pronto**), T-145 (executor e autoplay, **pronto**: o autoplay só se confirma no aparelho), T-146 (chat de voz), T-147 (documentação e aceite). Épica #178.

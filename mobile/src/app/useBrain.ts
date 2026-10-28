@@ -4,6 +4,8 @@ import {
   BrainConnection,
   ConnectionState,
 } from '../connection/BrainConnection';
+import { nativeMediaAutoplay } from '../executor/MediaAutoplay';
+import { OpenUrlExecutor } from '../executor/OpenUrlExecutor';
 import { Credentials, serverUrl } from '../storage/credentials';
 
 export const APP_VERSION = '0.1.0';
@@ -33,6 +35,8 @@ export function useBrain(credentials: Credentials | null) {
     const chat = new ChatController(connection);
     holder.chat = chat;
     chat.start();
+    const executor = new OpenUrlExecutor(connection, nativeMediaAutoplay);
+    executor.start();
     ref.current = connection;
     setLive({ connection, chat });
     const off = connection.onState(setState);
@@ -40,6 +44,7 @@ export function useBrain(credentials: Credentials | null) {
     return () => {
       off();
       chat.stop();
+      executor.stop();
       connection.close();
       ref.current = null;
       setLive(null);
