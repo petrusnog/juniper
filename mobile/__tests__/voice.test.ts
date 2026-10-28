@@ -65,6 +65,12 @@ class FakeAudio implements AudioDevice {
       this.stopRequested = null;
     };
   }
+  async pauseCapture() {
+    this.log.push('pause');
+  }
+  async resumeCapture() {
+    this.log.push('resume');
+  }
   async openPlayer(rate: number) {
     this.log.push(`player:${rate}`);
   }
@@ -281,14 +287,17 @@ test('the device voice speaks voice.say when the cloud voice is gone', async () 
 
 test('the cloud STT running out hands over to the device recognizer and sends voice.text', async () => {
   const { connection, audio, stt, voice } = await open();
+  const tick = () => new Promise(resolve => setImmediate(resolve));
   connection.receive({
     type: 'voice.fallback',
     component: 'stt',
     mode: 'local',
     reason: 'quota',
   });
+  await tick();
   expect(voice.state.stt).toBe('local');
   expect(stt.starts).toBe(1);
+  expect(audio.log).toContain('pause'); // the recognizer gets the microphone to itself
   audio.chunk?.('AAAA'); // no more audio to the brain
   expect(connection.sentOfType('voice.audio')).toEqual([]);
   stt.onText?.('  toca Oceano ');
@@ -301,7 +310,9 @@ test('the cloud STT running out hands over to the device recognizer and sends vo
     mode: 'cloud',
     reason: 'recovered',
   });
+  await tick();
   expect(stt.stops).toBeGreaterThan(0);
+  expect(audio.log).toContain('resume');
   audio.chunk?.('BBBB');
   expect(connection.sentOfType('voice.audio').map(m => m.data)).toEqual([
     'BBBB',
@@ -309,8 +320,9 @@ test('the cloud STT running out hands over to the device recognizer and sends vo
 });
 
 test('a session that opens with the STT already local uses the device recognizer', async () => {
-  const { stt } = await open('local');
+  const { stt, audio } = await open('local');
   expect(stt.starts).toBe(1);
+  expect(audio.log).toContain('pause');
 });
 
 test('the person ends it: the brain is told once and everything is released', async () => {
@@ -413,4 +425,17 @@ test('a second start while active does nothing', async () => {
   const { voice, connection } = await open();
   expect(await voice.start()).toBe(false);
   expect(connection.sentOfType('voice.start')).toHaveLength(1);
+});
+
+test('if the device recognizer cannot start, the microphone goes back to the brain', async () => {
+  const s = setup();
+  s.stt.start = async () => {
+    throw new Error('no engine');
+  };
+  await s.voice.start();
+  s.connection.receive(READY('local'));
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  expect(s.audio.log).toEqual(expect.arrayContaining(['pause', 'resume']));
+  expect(s.voice.state.notice).toContain('reconhecimento de voz do aparelho');
 });

@@ -39,6 +39,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   override fun getName(): String = "JuniperAudio"
 
   @Volatile private var recording = false
+  private var captureRate = 0
   private var record: AudioRecord? = null
   private var captureThread: Thread? = null
   private var effects: List<android.media.audiofx.AudioEffect> = emptyList()
@@ -73,62 +74,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
       ContextCompat.startForegroundService(
           reactContext, Intent(reactContext, VoiceService::class.java))
       registerStopReceiver()
-
-      val channel = AudioFormat.CHANNEL_IN_MONO
-      val encoding = AudioFormat.ENCODING_PCM_16BIT
-      val chunkBytes = sampleRate / 10 * 2 // 100 ms
-      val minBuffer = AudioRecord.getMinBufferSize(sampleRate, channel, encoding)
-      val recorder =
-          AudioRecord(
-              MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-              sampleRate,
-              channel,
-              encoding,
-              maxOf(minBuffer, chunkBytes * 4),
-          )
-      if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-        recorder.release()
-        throw IllegalStateException("microphone_unavailable")
-      }
-      effects = buildList {
-        if (AcousticEchoCanceler.isAvailable())
-            AcousticEchoCanceler.create(recorder.audioSessionId)?.let {
-              it.enabled = true
-              add(it)
-            }
-        if (NoiseSuppressor.isAvailable())
-            NoiseSuppressor.create(recorder.audioSessionId)?.let {
-              it.enabled = true
-              add(it)
-            }
-        if (AutomaticGainControl.isAvailable())
-            AutomaticGainControl.create(recorder.audioSessionId)?.let {
-              it.enabled = true
-              add(it)
-            }
-      }
-      record = recorder
-      recorder.startRecording()
-      recording = true
-      captureThread =
-          Thread {
-                val buffer = ByteArray(chunkBytes)
-                while (recording) {
-                  var filled = 0
-                  while (recording && filled < chunkBytes) {
-                    val n = recorder.read(buffer, filled, chunkBytes - filled)
-                    if (n <= 0) break
-                    filled += n
-                  }
-                  if (recording && filled == chunkBytes) {
-                    emit("juniperAudioChunk", Base64.encodeToString(buffer, Base64.NO_WRAP))
-                  }
-                }
-              }
-              .also {
-                it.name = "juniper-capture"
-                it.start()
-              }
+      beginCapture(sampleRate)
       promise.resolve(null)
     } catch (e: Exception) {
       stopCapture()
@@ -136,9 +82,94 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Releases the microphone without ending the session (the service and the player stay): the
+   * speech recognizer fallback needs the microphone to itself while the cloud STT is out.
+   */
+  @ReactMethod
+  fun pauseCapture(promise: Promise) {
+    stopCapture()
+    promise.resolve(null)
+  }
+
+  @ReactMethod
+  fun resumeCapture(promise: Promise) {
+    if (recording || captureRate == 0) {
+      promise.resolve(null)
+      return
+    }
+    try {
+      beginCapture(captureRate)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      stopCapture()
+      promise.reject("audio_resume_failed", e.message ?: "audio_resume_failed")
+    }
+  }
+
+  private fun beginCapture(sampleRate: Int) {
+    captureRate = sampleRate
+    val channel = AudioFormat.CHANNEL_IN_MONO
+    val encoding = AudioFormat.ENCODING_PCM_16BIT
+    val chunkBytes = sampleRate / 10 * 2 // 100 ms
+    val minBuffer = AudioRecord.getMinBufferSize(sampleRate, channel, encoding)
+    val recorder =
+        AudioRecord(
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            sampleRate,
+            channel,
+            encoding,
+            maxOf(minBuffer, chunkBytes * 4),
+        )
+    if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+      recorder.release()
+      throw IllegalStateException("microphone_unavailable")
+    }
+    effects = buildList {
+      if (AcousticEchoCanceler.isAvailable())
+          AcousticEchoCanceler.create(recorder.audioSessionId)?.let {
+            it.enabled = true
+            add(it)
+          }
+      if (NoiseSuppressor.isAvailable())
+          NoiseSuppressor.create(recorder.audioSessionId)?.let {
+            it.enabled = true
+            add(it)
+          }
+      if (AutomaticGainControl.isAvailable())
+          AutomaticGainControl.create(recorder.audioSessionId)?.let {
+            it.enabled = true
+            add(it)
+          }
+    }
+    record = recorder
+    recorder.startRecording()
+    recording = true
+    captureThread =
+        Thread {
+              val buffer = ByteArray(chunkBytes)
+              while (recording) {
+                var filled = 0
+                while (recording && filled < chunkBytes) {
+                  val n = recorder.read(buffer, filled, chunkBytes - filled)
+                  if (n <= 0) break
+                  filled += n
+                }
+                if (recording && filled == chunkBytes) {
+                  emit("juniperAudioChunk", Base64.encodeToString(buffer, Base64.NO_WRAP))
+                }
+              }
+            }
+            .also {
+              it.name = "juniper-capture"
+              it.start()
+            }
+  }
+
   @ReactMethod
   fun stop(promise: Promise) {
     stopCapture()
+    captureRate = 0
     reactContext.startService(
         Intent(reactContext, VoiceService::class.java).setAction(VoiceService.ACTION_STOP_SERVICE))
     unregisterStopReceiver()

@@ -12,7 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-native-voice/voice": "^3.2.4",
     "@react-native/new-app-screen": "0.88.0",
     "punycode": "^2.3.1",
     "react": "19.3.0",
