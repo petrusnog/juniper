@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from brain.metadocs.index import excerpt, get_index  # noqa: E402
 
+LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 HEADING = re.compile(r"^(#{1,3})\s+(.*?)(?:\s*\{#([\w-]+)[^}]*\})?\s*$")
 
 
@@ -48,9 +49,8 @@ def outline(name: str) -> int:
         match = None if fence else HEADING.match(line)
         if match:
             level = len(match.group(1))
-            print(
-                f"{number:>5}  {'  ' * (level - 1)}{re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', match.group(2))}"
-            )
+            title = LINK.sub(r"\1", match.group(2))
+            print(f"{number:>5}  {'  ' * (level - 1)}{title}")
     return 0
 
 
