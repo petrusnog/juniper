@@ -113,6 +113,25 @@ class Tool(ABC):
         """
         return None
 
+    async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
+        """The arguments in the one form the tool checks, shows, logs and sends (after precheck).
+
+        Lets a tool put equivalent spellings in a single canonical form (a URL), so the call the
+        user approves is byte for byte the call that runs, and a device never re-parses what the
+        brain only normalised. The default keeps the arguments as they came. A failure here is
+        ignored: the original arguments are used.
+        """
+        return dict(kwargs)
+
+    async def requires_confirmation(self, **kwargs: Any) -> bool:
+        """Whether THIS call asks the user first (ADR-014: confirmation that depends on the call).
+
+        The default follows the class ``confirm`` flag. A WRITE tool may answer ``False`` for
+        calls that are safe by their own arguments (a link to a trusted domain). The dispatcher
+        ignores the answer for DESTRUCTIVE tools and treats a failing hook as "ask".
+        """
+        return type(self).confirm
+
     async def describe(self, **kwargs: Any) -> str | None:
         """Optional one-line summary of what the call will do, shown when asking to confirm.
 

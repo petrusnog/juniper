@@ -56,6 +56,11 @@ tools:
       - tail
     shell_require_confirmation: true
     confirmation_timeout: 60
+  open_url:
+    # Links desses domínios (e subdomínios) abrem no dispositivo sem perguntar. A política de URL
+    # (só http/https, sem endereços privados) vale sempre.
+    trusted_domains:
+      - music.youtube.com
 
 google:
   # Conta de serviço (ADR-008). A chave fica em certs/ (ignorada pelo git).
