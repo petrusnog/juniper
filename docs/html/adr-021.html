@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-021 — Login global com MFA — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-021 — Login global com MFA">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-021.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-021</div>
+<h1>ADR-021 — Login global com MFA</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (itens marcados <strong>[a confirmar]</strong> aguardam decisão do Petrus; o merge deste ADR é a aprovação). <strong>Nada aqui liga o MFA por padrão.</strong></dd><dt>Data</dt><dd>2026-10-27</dd><dt>Autor</dt><dd>Petrus Rennan</dd><dt>Contexto do Sprint</dt><dd>Segurança (épica #177)</dd><dt>Relaciona-se com</dt><dd>ADR-006 (tiers), ADR-007 (token e deployment), ADR-010 (confirmação), ADR-012 (protocolo), ADR-013 (Tailscale), ADR-014 (executor), ADR-016 (Telegram), ADR-020 (dashboard), ADR-022 (app mobile), ADR-023 (voz)</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>Hoje a Juniper sabe "quem está falando" por três caminhos diferentes e fracos:</p>
+<ul><li><strong>WebSocket (CLI, app mobile):</strong> um token estático (ADR-007), o mesmo para todo dispositivo, sem prazo e sem segundo fator.</li><li><strong>Dashboard:</strong> o mesmo token, trocado por um cookie assinado (ADR-020).</li><li><strong>Telegram:</strong> só a lista de IDs permitidos (ADR-016). Quem controlar a conta do Telegram (SIM swap, sessão roubada, celular desbloqueado na mão de outra pessoa) fala com a Juniper com <strong>todas</strong> as tools do servidor.</li></ul>
+<p>O Petrus decidiu que o Telegram <strong>mantém as mesmas funcionalidades</strong> e que o que se fortalece é a garantia de que é ele quem fala: um <strong>login global com MFA</strong>, uma única identidade e um único fluxo para <strong>todo</strong> cliente (CLI, Telegram, dashboard, app mobile, voz e o que vier). Com a rede privada (Tailscale, ADR-013), ficam duas camadas independentes.</p>
+<h2 id="decisao">Decisão</h2>
+<h3 id="1-um-servico-de-identidade-unico">1. Um serviço de identidade único</h3>
+<p>Um módulo novo, <strong><code>brain/auth/</code></strong>, é o único lugar que decide se uma conexão está autenticada. <code>brain/core</code> não importa <code>brain/clients</code>; os clientes só levam a credencial e mostram o resultado (regra 2). O LLM <strong>nunca</strong> vê segredos, códigos de MFA nem tokens de sessão, e a autenticação acontece <strong>antes</strong> do agente.</p>
+<h3 id="2-segundo-fator-totp">2. Segundo fator: TOTP</h3>
+<p><strong>TOTP</strong> (RFC 6238: HMAC-SHA1, 6 dígitos, passo de 30 s) com qualquer app autenticador. Tolerância de <strong>±1 passo</strong>; um código <strong>já usado não vale de novo</strong> (o contador do último passo aceito fica guardado). WebAuthn/passkey fica como evolução para o dashboard e o app, não agora.</p>
+<h3 id="3-papel-do-token-estatico">3. Papel do token estático</h3>
+<p>O token do ADR-007 <strong>continua</strong> e passa a significar "este <strong>dispositivo</strong> é meu" (credencial de transporte). Com o MFA ligado, o token sozinho <strong>não basta</strong>: falta abrir a sessão com o código. Assim um token vazado, ou uma conta do Telegram comprometida, sozinhos não dão acesso.</p>
+<h3 id="4-sessao">4. Sessão</h3>
+<ul><li>O serviço emite um <strong>token de sessão</strong> opaco (32 bytes aleatórios), guardado só como <strong>hash SHA-256</strong>, com prazo, vinculado ao dispositivo e ao canal e <strong>revogável</strong>.</li><li>Prazos propostos <strong>[a confirmar]</strong>: CLI e dashboard 12 horas (como o cookie de hoje); app mobile 30 dias; Telegram 12 horas de <strong>inatividade</strong>. Renovação por atividade, com teto absoluto de 30 dias.</li><li>Trocar ou resetar a credencial <strong>derruba todas as sessões</strong>.</li><li>Armazenamento em <strong>arquivos</strong> sob <code>~/.juniper/auth/</code> (modo 600, fora do git), sem depender do MongoDB: o login precisa funcionar quando o banco está fora.</li></ul>
+<h3 id="5-cadastro-e-recuperacao">5. Cadastro e recuperação</h3>
+<ul><li><code>juniper auth enroll</code> (só local, na VPS ou no PC com o cérebro): gera o segredo TOTP, mostra o QR e o texto do segredo <strong>uma vez</strong>, pede um código para confirmar e gera <strong>10 códigos de recuperação</strong> de uso único (guardados só como hash, mostrados uma vez).</li><li>O segredo TOTP fica <strong>cifrado em repouso</strong> com uma chave derivada do segredo do servidor (arquivo de chave separado), nunca em texto claro no log ou no backup sem proteção; o backup do ADR-017 já é criptografado.</li><li><strong>Emergência:</strong> quem tem acesso por SSH à VPS roda <code>juniper auth reset</code>, que apaga o cadastro e as sessões (e registra o evento). Não existe "esqueci o código" remoto: isso seria uma porta dos fundos.</li><li>Limites: 5 tentativas erradas por 5 minutos por cliente e por conta, com bloqueio progressivo.</li></ul>
+<h3 id="6-cliente-a-cliente">6. Cliente a cliente</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Como autentica</th></tr></thead><tbody><tr><td><strong>WebSocket (CLI, app mobile)</strong></td><td>O handshake continua com <code>Authorization: Bearer</code>. Se o MFA estiver ligado, o <code>welcome</code> informa <code>auth: {required: true, state: &quot;locked&quot;}</code> e o servidor <strong>só aceita</strong> <code>auth.login</code> (e ping/pong) até chegar um código válido ou um <code>session_token</code> válido (também aceito em <code>hello.auth</code>). Depois o servidor responde <code>auth.ok</code> com <code>session_token</code> e <code>expires_at</code>.</td></tr><tr><td><strong>Telegram</strong></td><td>A lista de IDs continua como filtro <strong>prévio</strong>, não como autenticação. Sem sessão, o bot só responde "faça login". <code>/login &lt;código&gt;</code> abre a sessão ligada ao <code>user_id</code> e ao chat; o bot <strong>apaga a mensagem</strong> com o código. <code>/sair</code> encerra. A sessão expira por inatividade.</td></tr><tr><td><strong>Dashboard</strong></td><td>A tela de login pede o token <strong>e</strong> o código; o cookie passa a carregar o token de sessão do serviço de identidade, com as mesmas defesas de hoje (<code>HttpOnly</code>, <code>SameSite=Strict</code>, limite de tentativas, <code>Host</code> validado).</td></tr><tr><td><strong>Executor</strong></td><td>A conexão do executor faz parte da conexão do cliente (ADR-012 §9): vale a sessão desse cliente. O cliente continua <strong>revalidando</strong> tudo (ADR-014).</td></tr><tr><td><strong>Voz</strong></td><td>Herda a autenticação da conexão; <strong>reconhecimento de voz nunca é fator</strong> (ADR-023).</td></tr></tbody></table></div>
+<h3 id="7-protocolo-extensao-compativel-do-adr-012">7. Protocolo (extensão compatível do ADR-012)</h3>
+<p>Sem mudar <code>protocol_version</code>: <code>auth.login {code | recovery_code}</code>, <code>auth.ok {session_token, expires_at}</code>, <code>auth.logout</code>, e os erros <code>auth_required</code> e <code>auth_failed</code> (este com <code>retry_after_seconds</code> quando houver bloqueio). Clientes antigos que ignoram os campos novos continuam funcionando <strong>enquanto o MFA estiver desligado</strong> (<code>auth.mfa.enabled: false</code>, o padrão).</p>
+<h3 id="8-regras-que-nao-mudam">8. Regras que não mudam</h3>
+<ul><li><strong>MFA não substitui a confirmação (ADR-010):</strong> uma sessão válida não autoriza uma ação <code>WRITE</code>/<code>DESTRUCTIVE</code> sem o "sim" em palavras.</li><li>Falha de autenticação é <strong>resultado tipado</strong> (<code>error</code> do protocolo); nenhuma derruba o servidor nem outras conexões.</li><li>Segredos só em arquivo e <code>.env</code> (regra 6); códigos e tokens de sessão <strong>mascarados</strong> no log; auditoria no log estruturado (<code>auth</code>: login, falha, bloqueio, logout, revogação, reset), sem segredos, com dispositivo e canal.</li><li>SMS, e-mail e login social ficam <strong>descartados</strong>; multiusuário e papéis também (a Juniper é de um usuário só).</li></ul>
+<h3 id="9-migracao-sem-trancar-o-petrus">9. Migração sem trancar o Petrus</h3>
+<ol><li>O código do serviço entra com <code>auth.mfa.enabled: false</code>. Nada muda para ninguém.</li><li>O Petrus roda <code>juniper auth enroll</code> e confere o app autenticador <strong>com o MFA ainda desligado</strong>.</li><li>Liga <code>auth.mfa.enabled: true</code>; cada cliente passa a pedir o código. Os códigos de recuperação e o <code>reset</code> por SSH existem antes dessa chave.</li><li>Desligar é editar o <code>config.yaml</code> (por SSH) e reiniciar.</li></ol>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Duas camadas independentes: rede privada e identidade com segundo fator.</li><li>Um fluxo só, para todos os clientes de hoje e de amanhã.</li><li>O Telegram mantém todas as tools, como o Petrus quis.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>Um passo a mais ao abrir cada cliente (mitigado por sessões longas no app).</li><li>Perder o autenticador e os códigos de recuperação exige acesso à VPS.</li><li>Mais uma peça crítica de segurança para manter; por isso arquivos simples e testes pesados.</li><li>O TOTP protege contra token vazado, não contra um celular já desbloqueado <strong>com a sessão aberta</strong>.</li></ul>
+<h2 id="alternativas-descartadas">Alternativas descartadas</h2>
+<ol><li><strong>Limitar tools por canal</strong> (a mitigação do ADR-016): descartada pelo Petrus.</li><li><strong>Só trocar o token por um mais forte:</strong> continua sendo um único fator.</li><li><strong>SMS ou e-mail como segundo fator:</strong> é o elo fraco que a decisão quer evitar.</li><li><strong>WebAuthn já:</strong> bom, mas pesa no CLI e no Telegram; entra depois.</li><li><strong>Sessões no MongoDB:</strong> acopla o login a um banco que pode estar fora.</li></ol>
+<h2 id="roadmap-impactado">Roadmap impactado</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Task</th><th>O que entrega</th></tr></thead><tbody><tr><td>T-159</td><td>Núcleo <code>brain/auth/</code>: TOTP, recuperação, sessões, limites e armazenamento (sem ligar em nada).</td></tr><tr><td>T-160</td><td><code>juniper auth</code> (<code>enroll</code>, <code>status</code>, <code>sessions</code>, <code>revoke</code>, <code>reset</code>) e auditoria.</td></tr><tr><td>T-161</td><td>WebSocket: <code>auth.login</code>/<code>auth.ok</code>, estado "locked" e erros, atrás de <code>auth.mfa.enabled</code>.</td></tr><tr><td>T-162</td><td>Telegram e dashboard no login global.</td></tr><tr><td>T-163</td><td>Documentação, aceite e roteiro de ativação.</td></tr></tbody></table></div>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-007 — Arquitetura de deployment (token)</li><li>ADR-010 — Confirmação na conversa</li><li>ADR-012 — Protocolo cliente ↔ brain</li><li>ADR-016 — Cliente de mensageria (Telegram)</li><li>ADR-020 — Dashboard</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -7,6 +7,8 @@ status: proposto
 tags: electron typescript desktop app renderer preload safestorage vitest electron-builder react vite csp token tailscale interface
 ---
 
+> **Substituída:** o cliente desktop foi descartado em favor do [app mobile](mobile.html) ([ADR-022](adr-022.html)). Esta página fica como registro do plano do Electron.
+>
 > **Nota:** esta página resume o [ADR-015](adr-015.html) (proposto). A Sprint 3 entrega só o **chat por texto** e o executor com `open_url`; voz, wake word, bandeja e atalhos globais ficam para a Sprint 4.
 
 ## Visão geral {#visao-geral}
