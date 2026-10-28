@@ -1,6 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <queries>
+      <!-- The STT fallback (@react-native-voice/voice) looks for a speech recognizer service -->
+      <intent>
+        <action android:name="android.speech.RecognitionService" />
+      </intent>
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Voice chat: microphone, kept alive with the screen off by a foreground service -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- usesCleartextTraffic="true": the brain speaks ws:// and is only reachable inside the
          Tailscale tunnel (WireGuard), which encrypts the traffic (ADR-013, ADR-022). -->
@@ -26,5 +39,9 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+      <service
+        android:name=".voice.VoiceService"
+        android:exported="false"
+        android:foregroundServiceType="microphone" />
     </application>
 </manifest>
