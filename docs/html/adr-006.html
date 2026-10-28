@@ -14,7 +14,7 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-006</div>
 <h1>ADR-006 — Política de Segurança para Execução de Comandos</h1>
-<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan + Lead Architect (Juniper)</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-006, T-023 (run_shell), T-031 (logging estruturado)</dd></dl>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-006, T-023 (run_shell), T-031 (logging estruturado)</dd></dl>
 <h2 id="contexto">Contexto</h2>
 <p>O agente Juniper v3 executa ações no sistema operacional do usuário por decisão de um LLM. Isso introduz uma superfície de risco: o LLM pode interpretar mal a intenção do usuário, ou pode ser induzido (via prompt injection em conteúdo lido por <code>web_fetch</code>) a executar comandos destrutivos.</p>
 <p>Precisamos de uma política clara, implementável e auditável que defina:</p>

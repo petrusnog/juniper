@@ -1,7 +1,8 @@
 ---
 title: Comandos git
-group: Integrações
-order: 2
+group: Documentação Técnica
+section: Integrações
+order: 32
 description: search e deploy no terminal e pelo agente (git_search e git_deploy).
 status: pronta
 tags: git search deploy cherry-pick commits legado shell zsh feature develop stage git_search git_deploy
@@ -67,7 +68,7 @@ O script `deploy` pergunta coisas (criar branch? como resolver conflito?). Quand
 - O repositório é o diretório atual.
 - A saída do `deploy` (cortada em 20 KB) volta inteira ao LLM, que gasta tokens para resumi-la.
 - Depende do `zsh` instalado, como na v2.
-- Com o cérebro na VPS, essas tools precisam rodar **na sua máquina**: o CLI remoto as registra como executor enquanto estiver conectado ([Executor](executor.html#cli-executor)).
+- As tools são `EXECUTOR`: precisam rodar **na sua máquina**. No modo servidor elas dependem de o CLI se registrar como executor, o que ainda não foi implementado ([Executor](executor.html#cli-executor)); hoje funcionam no modo local.
 
 ## Testes {#testes}
 

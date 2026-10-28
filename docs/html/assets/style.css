@@ -91,6 +91,8 @@ body{display:block}
 .side .brand{display:block;font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}
 .side .sub{color:var(--muted);font-size:.82em;margin-bottom:16px}
 .side h4{margin:16px 0 4px;font-size:.72em;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.side h5{margin:8px 0 2px 8px;font-size:.78em;font-weight:600;color:var(--muted)}
+.cardsec{margin:18px 0 0;font-size:1em;color:var(--muted)}
 .side a.item{display:block;padding:5px 8px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:.92em}
 .side a.item:hover{background:var(--bg)}
 .side a.item.active{background:var(--blue-bg);color:var(--blue);font-weight:600}

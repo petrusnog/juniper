@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Introdução — Livro de bolso Juniper</title>
+<meta name="description" content="O que é a Juniper, o que ela sabe fazer hoje, como é construída e quais trilhas seguir para aprender mais.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/introducao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Introdução / Introdução</div>
+<h1>Introdução</h1>
+<p class="lead">O que é a Juniper, o que ela sabe fazer hoje, como é construída e quais trilhas seguir para aprender mais.</p>
+<h2 id="o-que-e">O que é a Juniper</h2>
+<p>A Juniper é uma <strong>agente autônoma pessoal</strong>. Você escreve (ou fala) em linguagem natural, como falaria com uma pessoa, e ela entende o pedido, decide se precisa de alguma ferramenta, age e responde. "Marca dentista amanhã às 16h" vira um evento na agenda do Google; "toca Oceano do Djavan" abre a música no celular; "do que a gente falou ontem?" é respondido com a memória dela.</p>
+<p>Três ideias guiam o projeto:</p>
+<ul><li><strong>Um cérebro, vários corpos.</strong> Um único cérebro (o <em>brain</em>) pensa, lembra e decide. Os clientes (terminal, bot do Telegram, app Android, painel web) são finos: levam o que você diz e mostram a resposta. Por isso a mesma Juniper, com a mesma memória, atende em qualquer lugar.</li><li><strong>Agir com permissão.</strong> A Juniper age no mundo real, mas o que altera algo só acontece depois de um "sim" seu, dado na própria conversa. O que é irreversível vem com aviso. O que é proibido nunca executa.</li><li><strong>Memória que é sua.</strong> Ela lembra de preferências, projetos e fatos sobre você entre conversas, e tudo o que ela guarda pode ser visto, exportado e apagado.</li></ul>
+<h2 id="capacidades">O que ela sabe fazer hoje</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Área</th><th>O que ela faz</th><th>Saiba mais</th></tr></thead><tbody><tr><td>Conversa</td><td>Responde em português, com personalidade própria, em texto (com a resposta chegando aos poucos) ou por voz.</td><td><a href="produto.html">Como funciona</a></td></tr><tr><td>Agenda</td><td>Lê, marca, altera e desmarca compromissos no Google Calendar, checando conflitos antes de perguntar.</td><td><a href="produto-integracoes.html#agenda">Integrações</a></td></tr><tr><td>Música</td><td>Procura e toca músicas no YouTube Music do celular, cria playlists e anota o seu gosto musical.</td><td><a href="produto-integracoes.html#musica">Integrações</a></td></tr><tr><td>Git</td><td>Busca commits e faz o deploy de uma feature (cherry-pick em <code>develop</code> e <code>stage</code>) no repositório local.</td><td><a href="produto-integracoes.html#git">Integrações</a></td></tr><tr><td>Memória</td><td>Lembra da conversa atual, de fatos duráveis sobre você e do seu perfil; opcionalmente forma opiniões, sentimentos, interesses e uma personalidade que evolui.</td><td><a href="produto-memoria.html">Memória</a>, <a href="produto-personalidade.html">Personalidade</a></td></tr><tr><td>Canais</td><td>Terminal (<code>juniper</code>), bot do Telegram, app Android com chat de texto e de voz, e um painel web somente leitura.</td><td><a href="produto-canais.html">Onde conversar</a></td></tr><tr><td>Autoconhecimento</td><td>Responde sobre a própria arquitetura e funcionamento consultando esta documentação, com uma busca local que não gasta tokens à toa.</td><td><a href="produto.html#autoconhecimento">Como funciona</a></td></tr><tr><td>Resiliência</td><td>Usa vários provedores de modelo de linguagem: se um falhar, o próximo assume sem interromper a conversa.</td><td><a href="produto-llm.html">Modelos de linguagem</a></td></tr></tbody></table></div>
+<h2 id="construcao">Como ela é construída, em um minuto</h2>
+<ul><li>O <strong>cérebro</strong> é escrito em Python (pasta <code>brain/</code>). Ele roda o <em>agente</em> (o laço que conversa com o modelo de linguagem e chama ferramentas), guarda a memória no <strong>MongoDB</strong> e expõe um <strong>servidor WebSocket</strong> para os clientes.</li><li>Os <strong>modelos de linguagem</strong> vêm de provedores intercambiáveis (DeepInfra, Groq e Ollama), com troca automática em caso de falha.</li><li>As <strong>ferramentas</strong> (<em>tools</em>) são plugins: cada capacidade nova é um arquivo novo, com um esquema e um nível de segurança.</li><li>Os <strong>clientes</strong> falam com o cérebro por um protocolo único e versionado. O app Android é escrito em React Native.</li><li>Em <strong>produção</strong>, o cérebro roda em contêineres Docker numa VPS, sem nenhuma porta aberta para a internet: os clientes chegam por uma rede privada.</li></ul>
+<p>O desenho completo está em <a href="architecture.html">Arquitetura</a> e cada escolha tem o seu registro nas <a href="adr.html">Decisões (ADRs)</a>.</p>
+<h2 id="proximos-passos">Próximos passos</h2>
+<p>Escolha a trilha que combina com o seu objetivo:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Se você quer...</th><th>Siga a trilha</th><th>Comece por</th></tr></thead><tbody><tr><td>Entender o produto, sem precisar ler código</td><td><strong>Produto</strong></td><td><a href="produto.html">Como a Juniper funciona</a></td></tr><tr><td>Desenvolver features e contribuir</td><td><strong>Ambiente Local</strong></td><td><a href="contribuindo.html">Como contribuir</a> e <a href="primeiros-passos.html">Primeiros passos</a></td></tr><tr><td>Entender como cada componente funciona por dentro</td><td><strong>Documentação Técnica</strong></td><td><a href="architecture.html">Visão geral da arquitetura</a></td></tr><tr><td>Consultar contratos, opções e o porquê das decisões</td><td><strong>Referência</strong></td><td><a href="protocolo.html">API WebSocket</a>, <a href="configuracao.html">Configuração</a>, <a href="adr.html">ADRs</a></td></tr><tr><td>Implantar a Juniper no seu próprio servidor</td><td><strong>Produção</strong></td><td><a href="producao.html">Visão geral da produção</a></td></tr><tr><td>Escrever um cliente ou integrar outro sistema ao cérebro</td><td><strong>Produção</strong> e <strong>Referência</strong></td><td><a href="integrar-cliente.html">Integrar com o cérebro</a></td></tr></tbody></table></div>
+<div class="callout info"><p><strong>Nota:</strong> a Juniper é um sistema de <strong>um único usuário</strong>: um cérebro serve a uma pessoa, em vários dispositivos. Não há contas nem separação de dados entre pessoas diferentes.</p></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

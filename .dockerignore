@@ -32,7 +32,10 @@ __pycache__/
 
 # Não é necessário para rodar
 tests/
-docs/
+# Só as fontes da documentação entram: a Juniper consulta a própria documentação (ADR-025).
+docs/*
+!docs/pages/
+!docs/decisions/
 scripts/
 shell/
 docker/

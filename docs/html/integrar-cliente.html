@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integrar com o cérebro — Livro de bolso Juniper</title>
+<meta name="description" content="Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/integrar-cliente.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Integrar com o cérebro</div>
+<h1>Integrar com o cérebro <span class="tag v">guia</span></h1>
+<p class="lead">Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.</p>
+<p>O cérebro não tem SDK: qualquer programa que fale WebSocket e JSON pode ser um cliente. Os clientes oficiais (o <a href="cli.html">CLI</a>, o <a href="telegram.html">bot do Telegram</a> e o <a href="mobile.html">app Android</a>) usam exatamente o contrato descrito na <a href="protocolo.html">API WebSocket</a>. Este guia mostra o essencial para começar.</p>
+<h2 id="regras">Regras de um bom cliente</h2>
+<p>Um cliente da Juniper é <strong>fino</strong> (<a href="adr-012.html">ADR-012</a>):</p>
+<ul><li>Só envia o que o usuário escreveu e mostra o que o cérebro devolve. Não decide nada, não guarda memória, não acessa o MongoDB.</li><li><strong>Não interpreta confirmações.</strong> Quando a Juniper pergunta "Posso marcar?", a resposta do usuário é só o próximo <code>chat.send</code>; quem decide se é um "sim" é o cérebro (<a href="adr-010.html">ADR-010</a>). Nunca mande um "sim" automático.</li><li>Não enfileira mensagens offline: se a conexão caiu, avise e deixe o usuário reenviar.</li><li>Guarda o token como segredo (cofre do sistema, variável de ambiente, arquivo <code>600</code>); nunca em código, URL ou log.</li><li>Usa um <code>device_id</code> estável por instalação (uma segunda conexão com o mesmo <code>device_id</code> derruba a primeira).</li></ul>
+<h2 id="python">Exemplo mínimo em Python</h2>
+<p>Requer <code>pip install websockets</code>. O cliente conecta, faz o handshake, responde ao heartbeat, manda uma mensagem e imprime a resposta conforme ela chega.</p>
+<pre><code class="lang-python">import asyncio
+import json
+import os
+import uuid
+
+from websockets.asyncio.client import connect
+
+URL = os.environ.get(&quot;JUNIPER_URL&quot;, &quot;ws://127.0.0.1:8765/v1/ws&quot;)
+TOKEN = os.environ[&quot;JUNIPER_TOKEN&quot;]          # o token dos clientes
+
+
+async def ask(text: str) -&gt; None:
+    headers = {&quot;Authorization&quot;: f&quot;Bearer {TOKEN}&quot;}
+    async with connect(URL, additional_headers=headers, max_size=1 &lt;&lt; 20) as ws:
+        await ws.send(json.dumps({
+            &quot;type&quot;: &quot;hello&quot;,
+            &quot;protocol_version&quot;: 1,
+            &quot;client&quot;: {&quot;kind&quot;: &quot;script&quot;, &quot;version&quot;: &quot;0.1.0&quot;, &quot;device_id&quot;: &quot;script-exemplo&quot;},
+            &quot;resume&quot;: {&quot;latest&quot;: True},
+        }))
+        welcome = json.loads(await ws.recv())
+        if welcome[&quot;type&quot;] != &quot;welcome&quot;:
+            raise RuntimeError(welcome.get(&quot;message&quot;, welcome))
+
+        request_id = f&quot;c-{uuid.uuid4().hex[:8]}&quot;
+        await ws.send(json.dumps({&quot;type&quot;: &quot;chat.send&quot;, &quot;id&quot;: request_id, &quot;text&quot;: text}))
+
+        async for raw in ws:
+            msg = json.loads(raw)
+            kind = msg[&quot;type&quot;]
+            if kind == &quot;ping&quot;:
+                await ws.send(json.dumps({&quot;type&quot;: &quot;pong&quot;}))
+            elif kind == &quot;chat.token&quot;:
+                print(msg[&quot;text&quot;], end=&quot;&quot;, flush=True)
+            elif kind == &quot;chat.end&quot;:
+                print(f&quot;\n[fim: {msg[&#x27;finish&#x27;]}]&quot;)
+                return
+            elif kind == &quot;error&quot;:
+                print(f&quot;\n[erro {msg[&#x27;code&#x27;]}: {msg[&#x27;message&#x27;]}]&quot;)
+                if msg.get(&quot;reply_to&quot;) == request_id:
+                    return
+
+
+asyncio.run(ask(&quot;o que tenho amanhã na agenda?&quot;))</code></pre>
+<p>Para testar contra o ambiente de desenvolvimento: <code>JUNIPER_TOKEN=&quot;$(cat .juniper-dev/state/token)&quot; python exemplo.py</code> (<a href="primeiros-passos.html">Primeiros passos</a>). O repositório traz um cliente de teste parecido, <code>scripts/smoke_server.py</code>, que também mostra <code>--resume</code> e <code>--health</code>.</p>
+<h2 id="confirmacoes">Confirmações</h2>
+<p>Uma ação que altera algo termina o turno com uma pergunta, em texto, dentro de <code>chat.token</code>:</p>
+<pre><code class="lang-text">→ chat.send   &quot;marca dentista amanhã às 16h&quot;
+← chat.token  &quot;Posso marcar «Dentista», amanhã das 16h às 17h?&quot;
+← chat.end    finish: ok
+→ chat.send   &quot;sim&quot;                         (o que o usuário respondeu)
+← chat.token  &quot;Pronto, marquei.&quot;</code></pre>
+<p>Mostre a pergunta ao usuário e mande a resposta dele como um <code>chat.send</code> comum. A pergunta pendente morre se a conexão cair ou se o cliente trocar de conversa (<a href="protocolo.html#sessoes">API WebSocket</a>).</p>
+<h2 id="conversas">Conversas</h2>
+<ul><li><code>hello.resume</code> com <code>{&quot;latest&quot;: true}</code> retoma a conversa mais recente; sem <code>resume</code>, abre uma nova.</li><li><code>session.list</code> → <code>session.listed</code> lista as conversas; <code>session.resume</code> → <code>session.state</code> traz o histórico (<code>role</code> e <code>text</code>) para redesenhar a tela.</li><li>Se outro cliente assumir a conversa, chega <code>session.detached</code>.</li></ul>
+<h2 id="reconexao">Reconexão</h2>
+<p>Implemente o recuo da <a href="protocolo.html#reconexao">API WebSocket</a>: 1, 2, 4, 8, 16 e depois 30 s, com variação de ±20%, zerando depois de 30 s estáveis. Trate os códigos de fechamento: <code>1012</code> (o servidor está reiniciando, por exemplo num deploy) reconecta quase na hora; <code>4401</code> (token), <code>4409</code> (substituída) e <code>4426</code> (versão) param e avisam. Ao reconectar, mande <code>hello</code> com o <code>session_id</code> da conversa que estava aberta.</p>
+<h2 id="executor">Expor capacidades do dispositivo (executor)</h2>
+<p>Um cliente também pode oferecer tools que rodam no dispositivo dele (<a href="executor.html">Executor</a>, <a href="adr-014.html">ADR-014</a>). Depois de cada <code>welcome</code>, registre:</p>
+<pre><code class="lang-json">{ &quot;type&quot;: &quot;register&quot;, &quot;tools&quot;: [ {
+    &quot;name&quot;: &quot;open_url&quot;,
+    &quot;description&quot;: &quot;Abre um link no dispositivo.&quot;,
+    &quot;parameters&quot;: { &quot;type&quot;: &quot;object&quot;, &quot;properties&quot;: { &quot;url&quot;: { &quot;type&quot;: &quot;string&quot; } }, &quot;required&quot;: [&quot;url&quot;] },
+    &quot;tier&quot;: &quot;write&quot; } ] }</code></pre>
+<p>O cérebro responde <code>registered</code> com as tools aceitas e, quando o modelo usar uma delas (e a confirmação, se houver, for dada), manda <code>invoke</code>. Responda sempre com um <code>result</code> (<code>success</code>, <code>output</code> ou <code>error</code>), nunca deixe um <code>invoke</code> sem resposta, e <strong>revalide</strong> os argumentos antes de executar: o cliente não confia no cérebro. Uma tool que o servidor não conhece é tratada como no mínimo <code>WRITE</code>, e uma tool que o servidor já declara não pode ser registrada com um tier mais permissivo.</p>
+<h2 id="tipos">Gerar tipos</h2>
+<p>O contrato completo está em <code>docs/protocol/schema.json</code> (JSON Schema, gerado de <code>brain/clients/protocol.py</code>). Use-o para gerar tipos na linguagem do seu cliente, como o app Android faz para TypeScript (<code>mobile/scripts/gen-protocol-types.js</code>). Campos desconhecidos devem ser ignorados: novas versões compatíveis acrescentam campos e mensagens sem mudar <code>protocol_version</code>.</p>
+<h2 id="http">Ler dados sem conversar</h2>
+<p>Para um painel, um relatório ou uma automação que só lê, a <a href="api-http.html">API HTTP</a> do dashboard entrega a memória em JSON, com <code>Authorization: Bearer &lt;token&gt;</code>:</p>
+<pre><code class="lang-bash">curl -s -H &quot;Authorization: Bearer $JUNIPER_TOKEN&quot; &quot;http://&lt;servidor&gt;:8766/api/memories?limit=10&quot;
+curl -s &quot;http://&lt;servidor&gt;:8765/health&quot;</code></pre>
+<p>Ela é somente leitura. Mudanças na memória passam pelo WebSocket (<code>memory.request</code>) ou pela própria conversa.</p>
+<h2 id="seguranca">Segurança</h2>
+<ul><li>Conecte só por uma rede privada cifrada: o protocolo é <code>ws://</code> (<a href="producao.html#rede">Visão geral da produção</a>).</li><li>Um cliente com o token tem o mesmo poder de qualquer outro: todas as tools, com confirmação. Dê o token só a programas em que você confia.</li><li>Trate todo texto que vem do cérebro como <strong>texto</strong>: nunca o interprete como HTML ou comando.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

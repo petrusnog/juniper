@@ -1,7 +1,8 @@
 ---
 title: LLM
-group: Núcleo
-order: 2
+group: Documentação Técnica
+section: Núcleo
+order: 3
 description: O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
 status: pronta
 tags: provider deepinfra groq ollama router failover streaming erros tipos mensagem sse

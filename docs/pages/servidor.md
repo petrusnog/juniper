@@ -1,0 +1,80 @@
+---
+title: Servidor WebSocket
+group: Documentação Técnica
+section: Clientes
+order: 20
+description: Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+status: pronta
+tags: servidor websocket juniper serve brainserver chathandler conversa turno conexão health shutdown 1012 executor voz scheduler canal
+---
+
+No modo `server`, o comando `juniper serve` sobe o cérebro como um processo próprio que atende os clientes por um único WebSocket ([ADR-012](adr-012.html)). O contrato das mensagens está na [API WebSocket](protocolo.html); esta página explica como o servidor se organiza por dentro.
+
+## Peças {#pecas}
+
+| Peça | Arquivo | Responsabilidade |
+|---|---|---|
+| `BrainServer` | `brain/clients/server.py` | Escuta, autentica antes do upgrade, faz o handshake, mantém o heartbeat e o ciclo de vida de cada conexão. |
+| `ChatHandler` | `brain/clients/chat.py` | O que acontece dentro de uma conexão: chat, sessões, tools, memória e voz. Roda o `Agent`. |
+| `ExecutorHub` | `brain/clients/executors.py` | O catálogo das tools que os dispositivos registram e o roteamento de cada `invoke` ([Executor](executor.html)). |
+| Serviço de memória | `brain/clients/memory_service.py` | Atende `memory.request` com as mesmas operações do `juniper memory`. |
+| Sessão de voz | `brain/clients/voice_session.py` | Uma conversa por voz por conexão ([Voz por áudio](voz-audio.html#sessao)). |
+| Protocolo | `brain/clients/protocol.py` | Os modelos pydantic de cada mensagem; geram `docs/protocol/schema.json`. |
+| Dashboard | `brain/dashboard/` | Um segundo servidor HTTP, só leitura, no mesmo processo ([Dashboard](dashboard.html)). |
+
+## Conexão {#conexao kind=classe file=brain/clients/server.py}
+
+1. **HTTP antes do upgrade.** `GET /health` responde sem autenticação. Qualquer outro caminho que não `/v1/ws` recebe 404. Em `/v1/ws`, o cabeçalho `Authorization: Bearer <token>` é comparado em tempo constante com o token do servidor; sem ele, 401 e nada de WebSocket.
+2. **Handshake.** O cliente manda `hello` com `protocol_version` e a identificação (`client.kind`, `device_id`); o servidor responde `welcome` com a conversa aberta ou retomada. Versão incompatível fecha com `4426`; uma segunda conexão com o mesmo `device_id` substitui a primeira (`4409`).
+3. **Heartbeat.** O servidor manda `ping` a cada 30 s; 90 s sem nenhum sinal fecham a conexão (`4408`).
+4. **Mensagens.** Cada quadro é validado contra o protocolo; um quadro malformado recebe `error` com `bad_request`, sem fechar a conexão. O handler precisa **voltar logo**: trabalho longo (um turno do agente) roda numa tarefa acompanhada pela conexão, para o servidor continuar lendo `pong` e `chat.cancel`.
+5. **Fim.** Quando a conexão acaba, as tarefas dela são canceladas, o catálogo do executor é removido e a conversa é desligada da conexão.
+
+Um bug numa conexão nunca derruba o servidor: a exceção vai ao log e a conexão fecha com `1011`.
+
+## Conversas e turnos {#conversas kind=classe file=brain/clients/chat.py}
+
+- **Uma conversa, uma conexão.** Uma `Conversation` (histórico, confirmação pendente) fica ligada a uma conexão por vez. Se outra conexão a retoma, a anterior recebe `session.detached`. A confirmação pendente **não sobrevive** a essa troca, a uma queda nem a um `session.resume` ([ADR-010](adr-010.html)).
+- **Um turno por vez.** Um `chat.send` com um turno em andamento recebe `turn_in_progress`.
+- **O turno pertence à conversa, não à conexão.** Se o cliente cai no meio, o turno termina no servidor, a conversa é salva com a resposta e a extração de memória conclui. Ao retomar, `session.state.history` traz a resposta completa.
+- **Tempo máximo.** Um turno tem até 120 s, além do limite de voltas do agente (`agent.max_iterations`).
+- **Canal do pedido.** A cada turno o servidor diz ao modelo por onde o pedido chegou ("Canal: aplicativo do celular (voz)", "Canal: telegram") e deixa isso disponível às tools (`brain/tools/channel.py`). É assim que `play_music` abre a música no celular quando o pedido veio do app e devolve o link quando veio do terminal ou do Telegram ([Música](musica.html#play-music)).
+
+## Memória ao subir {#aquecimento}
+
+Com a memória de longo prazo ligada, o servidor aquece o modelo de embeddings em segundo plano ao subir (na primeira vez, ele é baixado). Enquanto isso, as conversas funcionam sem consultar a memória e o `/health` responde `{"status": "degraded", "memory": "warming_up"}`, ainda com HTTP 200, para o *healthcheck* do Docker não reiniciar o contêiner. Pronto, vira `{"status": "ok", "memory": "ready"}` (ou `"memory": "off"` sem memória de longo prazo). A resposta também traz a versão do cérebro.
+
+## Tarefas diárias {#agendador kind=módulo file=brain/scheduler.py}
+
+Não há cron dentro do contêiner: o próprio servidor agenda as tarefas no fuso do agente (`brain/scheduler.py`).
+
+| Tarefa | Quando | O que faz |
+|---|---|---|
+| Rotação de logs | `logging.rotate_at` (00:10) e uma vez ao subir | Compacta os logs de dias anteriores e apaga os vencidos ([Observabilidade](observabilidade.html#rotacao)). |
+| Sonho da Memória V2 | `memory.v2.night.at` (03:00), só com a V2 ligada | Relê o dia e atualiza as camadas da V2 ([Memória V2](memoria-v2.html#passada-noturna)). |
+
+## Desligamento {#desligamento}
+
+Ao receber `SIGTERM` (um deploy, um `docker compose up` com imagem nova, o `watchfiles` em desenvolvimento), o servidor fecha as conexões com o código `1012` ("reiniciando"), dá um tempo para os turnos em andamento acabarem e conclui a extração de memória. Os clientes reconhecem o `1012` e reconectam quase na hora. `SIGINT` fecha com `1001`. O compose dá 30 s de margem (`stop_grace_period`).
+
+## Iniciar {#iniciar}
+
+```bash
+juniper serve        # com deployment.mode: server
+```
+
+| Opção | Efeito |
+|---|---|
+| `deployment.server.host` / `port` | Onde escutar (no contêiner, `0.0.0.0:8765`; quem restringe é a publicação da porta no compose). |
+| `deployment.auth.token_file` | Onde fica o token dos clientes. Se o arquivo não existe, o servidor gera um token aleatório no primeiro boot e o grava com permissão `600`. |
+| `dashboard.*` | O painel web, na porta 8766 ([Dashboard](dashboard.html)). |
+
+A referência das opções está em [Configuração](configuracao.html#deployment).
+
+## Testes {#testes}
+
+```bash
+pytest tests/test_server.py tests/test_chat_server.py -v
+```
+
+Cobrem autenticação, handshake, heartbeat, códigos de fechamento, turnos, cancelamento, retomada, troca de conexão, queda no meio do turno e desligamento.

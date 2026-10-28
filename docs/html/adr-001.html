@@ -14,7 +14,7 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-001</div>
 <h1>ADR-001 — Idioma, Providers de LLM e Camada HMI</h1>
-<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Petrus Rennan + Lead Architect (Juniper)</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-001, T-010, T-011, T-012, T-013, T-040, T-041</dd></dl>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-09-19</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>T-001, T-010, T-011, T-012, T-013, T-040, T-041</dd></dl>
 <h2 id="contexto">Contexto</h2>
 <p>O Juniper v2 usava <code>commands/chat.sh</code> para conversar com o Ollama via <code>curl</code> + <code>jq</code>. Essa abordagem é <em>stateless</em>, frágil para streaming de tokens, e não suporta <em>tool calling</em> — que é o pilar da v3.</p>
 <p>A v3 precisa de:</p>

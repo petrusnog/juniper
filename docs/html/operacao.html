@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operação e manutenção — Livro de bolso Juniper</title>
+<meta name="description" content="O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/operacao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Operação e manutenção</div>
+<h1>Operação e manutenção <span class="tag v">guia</span></h1>
+<p class="lead">O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.</p>
+<h2 id="atalho">Usar a Juniper no servidor</h2>
+<p>Na VPS o comando <code>juniper</code> <strong>não existe</strong> fora do contêiner: a imagem leva o código e tudo roda dentro do serviço <code>brain</code> (o <em>entrypoint</em> é <code>python -m brain</code>). Crie um atalho no <code>~/.bashrc</code> do <code>deploy</code>:</p>
+<pre><code class="lang-bash">echo &quot;alias juniper=&#x27;docker compose -f ~/juniper/docker-compose.prod.yml exec brain python -m brain&#x27;&quot; &gt;&gt; ~/.bashrc
+source ~/.bashrc</code></pre>
+<pre><code class="lang-bash">juniper logs -f               # o log técnico ao vivo
+juniper logs --errors         # só falhas
+juniper memory list           # a memória do servidor
+juniper tools                 # as tools do servidor
+juniper voice status          # a voz: credenciais e gasto do mês
+juniper music status          # a música: chave, cota e login</code></pre>
+<p>Sem terminal interativo (um script, o cron, o CI), use <code>exec -T</code>. Comandos que mexem no ambiente de um computador (<code>install</code>, <code>docs</code>, <code>deploy</code> do git) não fazem sentido no contêiner. O uso do dia a dia é pelos clientes (<a href="clientes-producao.html">Clientes em produção</a>).</p>
+<h2 id="saude">Saúde e logs</h2>
+<pre><code class="lang-bash">docker compose -f docker-compose.prod.yml ps                 # brain e mongo &quot;healthy&quot;
+docker compose -f docker-compose.prod.yml logs --tail=50 brain
+curl -s http://&lt;IP-PRIVADO&gt;:8765/health                      # de um dispositivo na rede privada</code></pre>
+<ul><li>O <code>/health</code> distingue <code>ok</code> e <code>degraded</code> (o modelo de embeddings carregando) (<a href="api-http.html#health">API HTTP</a>).</li><li>Os logs JSONL ficam no volume <code>juniper-logs</code>, um arquivo por dia, com segredos mascarados; o próprio servidor compacta os de ontem e apaga os com mais de <code>logging.retention_days</code> (3) às <code>logging.rotate_at</code> (00:10) (<a href="observabilidade.html">Observabilidade</a>).</li><li>Os logs dos contêineres usam o driver <code>json-file</code> com limite de tamanho.</li><li>Não há alertas ativos: acompanhe a aba <em>Actions</em> (se usa o <a href="deploy-continuo.html">deploy contínuo</a>) e o <code>ps</code>.</li></ul>
+<h2 id="memoria">Administração da memória</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tarefa</th><th>Comando</th></tr></thead><tbody><tr><td>Ver, buscar, exportar, esquecer</td><td><code>juniper memory list</code>, <code>search</code>, <code>export -o arquivo.json</code>, <code>forget &lt;id&gt;</code></td></tr><tr><td>Refazer os vetores (depois de trocar o modelo de embeddings)</td><td><code>juniper memory reindex</code></td></tr><tr><td>Testar o sonho da Memória V2 sem gravar</td><td><code>juniper memory dream --dry-run</code></td></tr><tr><td>Rodar o sonho à mão (recuperar uma noite)</td><td><code>juniper memory dream</code></td></tr><tr><td>Ensinar um texto à Juniper</td><td><code>docker compose -f docker-compose.prod.yml exec -T brain python -m brain study add - --topic &quot;Tema&quot; &lt; texto.txt</code></td></tr><tr><td>Auditar a Memória V2</td><td><code>juniper memory beliefs</code>, <code>memory affect</code>, <code>memory journal</code>, <code>persona show</code></td></tr><tr><td>Ver o que a V2 acrescenta ao prompt</td><td><code>juniper memory prompt &quot;&lt;mensagem&gt;&quot;</code></td></tr></tbody></table></div>
+<p>O sonho roda sozinho às <code>memory.v2.night.at</code> (03:00) quando a V2 está ligada, depois do backup diário (<a href="memoria-v2.html">Memória V2</a>, <a href="backup.html">Backup da memória</a>).</p>
+<h2 id="atualizar">Atualizar</h2>
+<p>Com o <a href="deploy-continuo.html">deploy contínuo</a>, um merge em <code>master</code> basta. À mão, com a mesma segurança (backup, <em>healthcheck</em>, rollback), na VPS:</p>
+<pre><code class="lang-bash">cd ~/juniper &amp;&amp; git fetch origin master
+./scripts/deploy.sh &quot;$(git rev-parse origin/master)&quot;    # exige a imagem desse SHA no registro</code></pre>
+<p>Sem registro de imagens (construindo na própria VPS):</p>
+<pre><code class="lang-bash">cd ~/juniper &amp;&amp; git pull
+./scripts/backup_memory.sh manual
+docker compose -f docker-compose.prod.yml up -d --build</code></pre>
+<p>Mudou só o <code>.env</code>, o <code>config.yaml</code> ou <code>certs/</code>? Basta <code>docker compose -f docker-compose.prod.yml up -d</code>.</p>
+<h2 id="segredos">Trocar segredos</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Segredo</th><th>Como trocar</th></tr></thead><tbody><tr><td>Token dos clientes</td><td>Apague <code>/home/juniper/.juniper/state/token</code> no contêiner e reinicie o <code>brain</code>; atualize todos os clientes (<a href="clientes-producao.html">Clientes em produção</a>).</td></tr><tr><td>Chaves de LLM, YouTube, Groq</td><td>Gere a nova no painel do provedor, troque no <code>.env</code>, <code>up -d</code> e revogue a antiga.</td></tr><tr><td>Contas de serviço do Google</td><td>Crie uma chave nova na conta, substitua o JSON em <code>certs/</code>, <code>up -d</code> e exclua a antiga no Google Cloud.</td></tr><tr><td>Senha do MongoDB</td><td>O MongoDB só lê a senha ao criar o volume. Faça backup, restaure num volume novo com a senha nova (ou altere o usuário pelo <code>mongosh</code> e depois o <code>.env</code>).</td></tr><tr><td>Token do bot do Telegram</td><td><code>/revoke</code> no <code>@BotFather</code>, troque no <code>.env</code>, <code>up -d telegram</code>.</td></tr><tr><td>Credenciais do CI</td><td><a href="deploy-continuo.html#girar">Deploy contínuo → Girar as credenciais</a>.</td></tr></tbody></table></div>
+<h2 id="recriar">Recomeçar do zero</h2>
+<p>O servidor é descartável: o que importa (a memória) está no backup fora dele. Para recriar:</p>
+<ol><li>Reinstale a imagem do sistema no painel do provedor (ou crie uma VPS nova).</li><li>Siga <a href="deploy-vps.html">Deploy do cérebro numa VPS</a> de cima para baixo e refaça os segredos (eles não estão no backup).</li><li>Restaure a memória: <a href="backup.html#restaurar">Backup da memória → Restaurar</a>.</li><li>Remova o nó antigo da rede privada (no Tailscale, em <em>Machines</em>), para o novo reaproveitar o nome.</li><li>Se usa deploy contínuo, atualize <code>DEPLOY_HOST</code> e <code>DEPLOY_KNOWN_HOSTS</code> com o IP e a chave do servidor novo.</li></ol>
+<div class="callout warn"><p><strong>Atenção:</strong> nunca rode <code>docker compose ... down -v</code> num servidor cujos dados não tenham backup: o <code>-v</code> apaga os volumes, inclusive a memória.</p></div>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Onde olhar</th></tr></thead><tbody><tr><td>Os clientes não conectam</td><td><code>ps</code> (o <code>brain</code> está <code>healthy</code>?), a VPN do dispositivo e a <a href="deploy-vps.html#varredura">varredura</a> de dentro da rede privada.</td></tr><tr><td>O cérebro reinicia sem parar</td><td><code>logs brain</code>: credenciais do MongoDB, <code>.env</code> ilegível (uid) ou um arquivo montado que virou pasta.</td></tr><tr><td>Respostas lentas</td><td>Os tempos por etapa no log (<code>timing</code>) e o failover de LLM (<code>failover</code>) (<a href="observabilidade.html#tempos">Observabilidade</a>).</td></tr><tr><td>A memória não lembra</td><td><code>juniper memory list</code> e <code>juniper memory search &quot;...&quot; --threshold -1</code> (<a href="memoria.html#diagnostico">Memória</a>).</td></tr><tr><td>Disco cheio</td><td><code>docker system df</code>; imagens antigas: <code>docker image prune</code>. Nunca apague volumes sem backup.</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

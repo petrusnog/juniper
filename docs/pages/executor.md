@@ -1,17 +1,18 @@
 ---
 title: Executor
-group: Produção
-order: 3
+group: Documentação Técnica
+section: Clientes
+order: 26
 description: O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
-status: proposto
-tags: executor invoke register result open_url url política domínios confiança roteamento revalidação desktop cli
+status: pronta
+tags: executor invoke register result open_url url política domínios confiança roteamento revalidação celular cli
 ---
 
-> **Nota:** esta página resume o [ADR-014](adr-014.html) (proposto). A primeira tool de executor, `open_url`, já existe no cérebro (T-139); as outras (`media_play`, `open_app`, `run_shell`) vêm depois. O cliente que a cumpre é o app do celular (substitui o desktop do ADR-015).
+> **Nota:** esta página detalha o [ADR-014](adr-014.html). O protocolo de executor (`register`, `invoke`, `result`) e a tool `open_url` estão implementados, e o executor em uso é o [app Android](mobile.html#executor). Outras tools de executor (`open_app`, `run_shell`) são planos.
 
 ## Visão geral {#visao-geral}
 
-Com o cérebro na VPS, o que a Juniper faz **na sua máquina** (abrir uma página, rodar um comando git) não pode rodar no servidor. O **executor** é o processo no dispositivo que anuncia suas capacidades como tools remotas (`locality = EXECUTOR`, [Tools](tools.html#locality)) e cumpre os pedidos do cérebro. O executor do PC roda **dentro do app Electron** ([Desktop](desktop.html)); o CLI remoto também pode ser executor.
+Com o cérebro num servidor, o que a Juniper faz **no seu dispositivo** (abrir uma página no celular, rodar um comando git no computador) não pode rodar no servidor. O **executor** é o processo no dispositivo que anuncia suas capacidades como tools remotas (`locality = EXECUTOR`, [Tools](tools.html#locality)) e cumpre os pedidos do cérebro. Hoje o executor é o app Android; o código fica em `brain/clients/executors.py` (o `ExecutorHub`) e `brain/core/dispatcher.py` (a entrega pelo *gateway*).
 
 ## Comandos estruturados {#comandos}
 
@@ -86,12 +87,8 @@ Um `result` que chegar **depois** do timeout é ignorado e registrado. O executo
 
 ## O CLI como executor {#cli-executor}
 
-No modo `server`, o CLI registra, enquanto estiver conectado, as tools que dependem da máquina local: `git_search` (`READ`) e `git_deploy` (`DESTRUCTIVE`), com os mesmos schemas e tiers de hoje ([Comandos git](git.html)). Ao receber `invoke`, revalida (schema e as validações já existentes) e chama o código de `brain/tools/juniper_cmds.py`. A confirmação do `git_deploy` continua sendo a conversa. Sem o CLI conectado, as tools não existem para o cérebro.
+**Planejado, ainda não implementado.** No modo `server`, o CLI registraria, enquanto estivesse conectado, as tools que dependem da máquina local: `git_search` (`READ`) e `git_deploy` (`DESTRUCTIVE`), com os mesmos schemas e tiers de hoje ([Comandos git](git.html)). Ao receber `invoke`, revalidaria (schema e as validações já existentes) e chamaria o código de `brain/tools/juniper_cmds.py`. Enquanto isso não existe, as tools de git só funcionam no modo local; no modo servidor, uma chamada a elas devolve `executor_unavailable`.
 
-## Evolução: tocar música {#evolucao}
+## Música {#musica}
 
-Não decidido. Opções para "toca *She Said She Said*": (1) o cérebro acha a **URL direta** (precisa de uma tool de busca) e o cliente só abre o link; (2) o cliente abre a **página de busca** e você clica; (3) o Electron carrega o serviço numa **janela própria que ele controla** por script (mais confiável, mais trabalho). Cada tool nova passa por: schema, tier, política de revalidação, ADR curto e testes nos dois lados.
-
-## Tasks da Sprint 3 {#tasks}
-
-T-078 (`register`/`invoke`/`result` e roteamento no brain), T-139 (a tool `open_url` no cérebro, retomando a T-079), T-087 (CLI como executor); o executor do celular vem na épica do app mobile (o do Electron, T-090, foi descartado).
+Tocar música usa este mesmo caminho: a tool `play_music` do cérebro busca a faixa e entrega a URL `music.youtube.com/watch?v=...` ao `open_url` do celular, que abre o YouTube Music e tenta dar o play ([Música](musica.html#play-music), [ADR-024](adr-024.html)). Cada tool nova de executor passa por: schema, tier, política de revalidação, ADR curto e testes nos dois lados.

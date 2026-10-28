@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Instalação — Livro de bolso Juniper</title>
-<meta name="description" content="Instalar a Juniper e as dependências de desenvolvimento, a partir de uma máquina limpa.">
+<title>Instalação sem Docker (modo local) — Livro de bolso Juniper</title>
+<meta name="description" content="O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/juniper.png">
 <script src="assets/theme.js"></script>
@@ -12,12 +12,13 @@
 </head>
 <body>
 <main id="content">
-<div class="crumb"><a href="index.html">Início</a> / Começando / Instalação</div>
-<h1>Instalação <span class="tag v">guia</span></h1>
-<p class="lead">Instalar a Juniper e as dependências de desenvolvimento, a partir de uma máquina limpa.</p>
+<div class="crumb"><a href="index.html">Início</a> / Ambiente Local / Instalação sem Docker (modo local)</div>
+<h1>Instalação sem Docker (modo local) <span class="tag v">guia</span></h1>
+<p class="lead">O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.</p>
 <h2 id="rapida">Instalação rápida</h2>
-<p>Como instalar a Juniper e todas as dependências de desenvolvimento, a partir de uma máquina limpa. Não precisa ter Python instalado e nada é instalado no sistema: tudo fica dentro de <code>~/.juniper</code>, num ambiente virtual. Você precisa só de <code>git</code>, <code>bash</code> e <code>curl</code> (ou <code>wget</code>).</p>
-<pre><code class="lang-bash">git clone git@github.com:petrusnog/juniper.git ~/.juniper
+<p>Além do <a href="primeiros-passos.html">ambiente Docker</a>, a Juniper pode rodar inteira dentro do processo do terminal: o <strong>modo local</strong> (<code>deployment.mode: local</code>), em que o cérebro, a memória e as ferramentas rodam no próprio comando <code>juniper</code>, sem servidor. É o jeito mais rápido de usar a Juniper sozinho numa máquina, e é o que o instalador monta. Os clientes remotos (Telegram, app) precisam do modo servidor e ficam de fora.</p>
+<p>O instalador monta a Juniper e as dependências a partir de uma máquina limpa. Não precisa ter Python instalado e nada é instalado no sistema: tudo fica dentro de <code>~/.juniper</code>, num ambiente virtual. Você precisa só de <code>git</code>, <code>bash</code> e <code>curl</code> (ou <code>wget</code>).</p>
+<pre><code class="lang-bash">git clone https://github.com/&lt;owner&gt;/juniper.git ~/.juniper
 bash ~/.juniper/scripts/install.sh</code></pre>
 <p>No final aparece "Juniper instalada e pronta para uso". Abra um terminal novo e rode <code>juniper</code>. Depois da primeira instalação o comando também existe dentro do shell: <code>juniper install</code> faz o mesmo (<a href="#opcoes">opções</a>).</p>
 <p>Durante a instalação ela pede só o que não tem como descobrir sozinha:</p>
@@ -40,13 +41,13 @@ bash ~/.juniper/scripts/install.sh</code></pre>
 <pre><code class="lang-bash">juniper install --dev                      # dentro do shell (zsh), ou:
 bash ~/.juniper/scripts/install.sh --dev</code></pre>
 <h2 id="dev">Ambiente de desenvolvimento</h2>
-<blockquote><p><strong>Docker:</strong> para subir o brain e o MongoDB em contêineres, com o código montado por volume, veja o <a href="dev-docker.html">tutorial do ambiente de desenvolvimento com Docker</a>.</p></blockquote>
+<blockquote><p><strong>Docker:</strong> para subir o cérebro e o MongoDB em contêineres, com o código montado por volume e os clientes remotos, siga <a href="primeiros-passos.html">Primeiros passos</a>.</p></blockquote>
 <pre><code class="lang-bash">bash ~/.juniper/scripts/install.sh --dev
 source ~/.juniper/.venv/bin/activate
 pytest tests/ -v            # testes (não usam rede nem chave real)
 ruff check brain/ tests/    # lint
 mypy brain/                 # tipos (strict)</code></pre>
-<p>Uma task só está pronta quando os três passam (Definition of Done em <code>docs/JUNIPER.md</code>).</p>
+<p>Uma tarefa só está pronta quando os três passam (<a href="contribuindo.html#dod">Definition of Done</a>).</p>
 <p>Sem o instalador (manual):</p>
 <pre><code class="lang-bash">python3 -m venv ~/.juniper/.venv
 ~/.juniper/.venv/bin/pip install -e &quot;~/.juniper[dev]&quot;
@@ -56,7 +57,7 @@ cp ~/.juniper/.env.example ~/.juniper/.env      # preencha as chaves</code></pre
 <div class="tablewrap"><table class="tbl"><thead><tr><th>Onde</th><th>O quê</th></tr></thead><tbody><tr><td><code>~/.juniper/.venv/</code></td><td>Ambiente virtual com as dependências.</td></tr><tr><td><code>~/.juniper/.tools/</code></td><td><code>uv</code> e Python isolado (só se não havia Python utilizável).</td></tr><tr><td><code>~/.juniper/config.yaml</code>, <code>.env</code></td><td>Configuração (o <code>.env</code> fica com permissão <code>600</code>).</td></tr><tr><td><code>~/.juniper/certs/gcp-key.json</code></td><td>Chave da conta de serviço do GCP (pasta <code>700</code>, arquivo <code>600</code>; fora do git).</td></tr><tr><td><code>~/.juniper/.env</code> (só com MongoDB)</td><td>Usuário (<code>juniper</code>) e uma senha aleatória do banco, gerados na hora e válidos só nesta máquina.</td></tr><tr><td>Docker (só com MongoDB)</td><td>Um container <code>juniper-mongo</code> (imagem <code>mongo:7</code>, ~700 MB) e o volume <code>juniper_juniper-mongo-data</code>. A porta 27017 só escuta em <code>127.0.0.1</code>.</td></tr><tr><td><code>~/.local/bin/juniper</code></td><td>Atalho para o executável.</td></tr><tr><td><code>~/.zshrc</code></td><td>Linha que carrega os comandos do shell (<code>search</code>, <code>deploy</code>...). Troca a linha antiga pela nova.</td></tr><tr><td><code>~/.zshrc</code>, <code>~/.bashrc</code></td><td>Inclui <code>~/.local/bin</code> no PATH, se ainda não estiver.</td></tr><tr><td><code>~/.juniper/logs/</code></td><td>Log da instalação e os <a href="observabilidade.html">logs de uso</a>.</td></tr></tbody></table></div>
 <p>Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado dele (<code>.zshrc.juniper.bak</code>). Para desfazer tudo: <code>bash ~/.juniper/scripts/uninstall.sh</code>.</p>
 <h2 id="gcp">Conta de serviço no GCP</h2>
-<p>A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda (<a href="google-calendar.html">Agenda Google</a>). Passo a passo no console:</p>
+<p>A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda (<a href="google-calendar.html">Agenda Google</a>); a mesma configuração vale para o servidor (<a href="integracoes-producao.html#calendar">Integrações Google Cloud e Groq</a>). Passo a passo no console:</p>
 <ol><li><strong>Projeto.</strong> Em console.cloud.google.com, abra o seletor de projetos (topo da página) e escolha um projeto ou crie um novo. Confirme que ele está ativo.</li><li><strong>Ativar a API.</strong> Menu ☰ → APIs e serviços → Biblioteca, procure <strong>Google Calendar API</strong> e clique em Ativar.</li><li><strong>Criar a conta de serviço.</strong> Menu ☰ → IAM e administrador → Contas de serviço → <strong>+ Criar conta de serviço</strong>. Dê um nome (ex.: <code>juniper</code>) e clique em Criar e continuar. Não é preciso conceder papel de projeto: o acesso é dado <strong>compartilhando a agenda</strong> com o e-mail da conta. Clique em Concluir.</li><li><strong>Gerar a chave JSON.</strong> Na lista, abra a conta criada → aba Chaves → Adicionar chave → Criar nova chave → tipo <strong>JSON</strong> → Criar. O navegador baixa um arquivo como <code>meu-projeto-a1b2c3.json</code>; essa é a <strong>única vez</strong> que a chave aparece. Informe o caminho dele ao instalador (o nome pode ser qualquer um).</li><li><strong>Conferir.</strong></li></ol>
 <pre><code class="lang-bash">ls -l ~/.juniper/certs/gcp-key.json     # -rw------- (600)
 python scripts/check_google.py</code></pre>

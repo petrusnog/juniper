@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clientes em produção — Livro de bolso Juniper</title>
+<meta name="description" content="Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/clientes-producao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produção / Clientes em produção</div>
+<h1>Clientes em produção <span class="tag v">guia</span></h1>
+<p class="lead">Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.</p>
+<p>Todo cliente precisa de duas coisas: <strong>alcançar o servidor pela rede privada</strong> e o <strong>token dos clientes</strong>. O token nasce no primeiro boot do cérebro; para lê-lo, na VPS:</p>
+<pre><code class="lang-bash">cd ~/juniper &amp;&amp; docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token</code></pre>
+<p>Trate-o como uma senha. Se ele vazar, apague o arquivo (<code>docker compose -f docker-compose.prod.yml exec brain rm /home/juniper/.juniper/state/token</code>) e reinicie o cérebro: um token novo é gerado e todos os clientes precisam dele.</p>
+<p>Cada dispositivo (computador, celular, navegador) precisa estar na rede privada: no Tailscale, instale o app e entre na mesma conta (com a etiqueta <code>tag:juniper-client</code>, se a política exigir; veja o <a href="deploy-vps.html#rede">passo 5.2</a>).</p>
+<h2 id="cli">Terminal</h2>
+<p>No seu computador, com a Juniper instalada (<a href="install.html">Instalação sem Docker</a> ou <code>pip install -e .</code> num clone):</p>
+<pre><code class="lang-bash">mkdir -p ~/.juniper &amp;&amp; umask 077
+printf &#x27;%s&#x27; &#x27;&lt;token&gt;&#x27; &gt; ~/.juniper/token</code></pre>
+<p>No <code>~/.juniper/config.yaml</code>:</p>
+<pre><code class="lang-yaml">deployment:
+  mode: server
+  server:
+    host: juniper-brain      # o nome ou o IP do servidor na rede privada
+    port: 8765
+  auth:
+    token_file: ~/.juniper/token</code></pre>
+<p>Teste: <code>juniper &quot;oi&quot;</code>, <code>juniper</code> (conversa), <code>juniper --resume</code>, <code>juniper tools</code>, <code>juniper memory list</code>. Se o endereço for público (fora de uma rede privada), o CLI avisa antes de conectar, porque <code>ws://</code> não cifra. Detalhes: <a href="cli.html#server">CLI</a>.</p>
+<h2 id="telegram">Telegram</h2>
+<p>O bot é um serviço <strong>opcional</strong> do compose de produção (perfil <code>telegram</code>). Ele roda no próprio servidor, fala com o cérebro pela rede interna do Docker e <strong>busca</strong> as mensagens no Telegram, então o celular não precisa estar na rede privada (<a href="adr-016.html">ADR-016</a>).</p>
+<ol><li><strong>Crie o bot:</strong> no Telegram, <code>@BotFather</code> (o oficial tem o selo azul) → <code>/newbot</code>. Guarde o token. Desligue grupos: <code>/mybots</code> → o bot → <em>Bot Settings</em> → <em>Allow Groups?</em> → <em>Turn groups off</em>. Ative a verificação em duas etapas na sua conta do Telegram.</li><li><strong>Na VPS</strong>, em <code>~/juniper</code>: <code>bash read -rsp &quot;Token do bot: &quot; T; echo echo &quot;JUNIPER_TELEGRAM_BOT_TOKEN=$T&quot; &gt;&gt; .env &amp;&amp; unset T echo &quot;COMPOSE_PROFILES=telegram&quot; &gt;&gt; .env docker compose -f docker-compose.prod.yml up -d docker compose -f docker-compose.prod.yml ps          # o telegram fica &quot;healthy&quot; em ~1 min</code></li><li><strong>Descubra o seu ID numérico:</strong> espere <code>escutando mensagens</code> no log, mande uma mensagem ao bot e leia: <code>bash docker compose -f docker-compose.prod.yml logs --tail=20 telegram #   ...Telegram: mensagem de usuário não autorizado (id=123456789)</code></li><li><strong>Autorize</strong> e recrie o bot: <code>bash echo &quot;JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]&quot; &gt;&gt; .env docker compose -f docker-compose.prod.yml up -d telegram</code></li></ol>
+<p>Mande "oi" ao bot. Para desligar: tire <code>COMPOSE_PROFILES=telegram</code> do <code>.env</code> e rode <code>docker compose -f docker-compose.prod.yml up -d --remove-orphans</code>.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td>O contêiner reinicia sem parar</td><td>Falta o token, ou o Telegram o recusou (o log diz qual; o token nunca aparece no log).</td></tr><tr><td>A mensagem não aparece no log</td><td>Foi enviada antes de o bot subir (as pendentes são descartadas): mande de novo. <code>Conflict</code> no log = outro processo usa o mesmo token.</td></tr><tr><td>O bot não responde</td><td>O seu ID não está na lista, ou você escreveu num grupo.</td></tr><tr><td>"Não consegui falar com o servidor"</td><td>O cérebro não está saudável: <code>ps</code> e <code>logs brain</code>.</td></tr></tbody></table></div>
+<p>Opções (<code>telegram.rate_limit_per_minute</code>, <code>telegram.delete_after_hours</code>) em <a href="configuracao.html#telegram-config">Configuração</a>; comportamento em <a href="telegram.html">Bot do Telegram</a>.</p>
+<h2 id="app">App Android</h2>
+<ol><li><strong>Gere o APK</strong> no seu computador (nunca na VPS), assinado com uma chave sua: <a href="mobile-dev.html#apk">Ambiente mobile → Gerar um APK</a>. Guarde a chave e as senhas: sem elas não dá para atualizar o app por cima.</li><li><strong>Leve ao celular</strong> pelo meio mais fácil: o compartilhamento de arquivos da sua VPN (no Tailscale, o Taildrop), um cabo, e-mail ou um serviço de arquivos privado. O arquivo é <code>mobile/android/app/build/outputs/apk/release/app-release.apk</code>.</li><li><strong>Instale:</strong> abra o arquivo no celular e permita "instalar apps desta origem" quando o Android pedir (a permissão é do app que abriu o arquivo; dá para desligá-la depois).</li><li><strong>Ligue a VPN no celular</strong> e abra o app. Na configuração, informe:<ul><li><strong>Endereço:</strong> o nome ou o IP do servidor na rede privada, sem <code>http://</code> e sem porta;</li><li><strong>Porta:</strong> <code>8765</code>;</li><li><strong>Token:</strong> o token dos clientes. O token fica no Android Keystore. A linha do topo deve mostrar <strong>Conectada</strong>.</li></ul></li><li><strong>Permissões:</strong> microfone e notificações (na primeira conversa por voz) e, para a música abrir com o app em segundo plano, <strong>«Exibir sobre outros apps»</strong> (a aba Voz mostra um botão «Permitir agora»).</li><li><strong>Teste</strong> pelo <a href="mobile.html#aceite">roteiro de aceite</a>: texto, «toca Oceano do Djavan» (exige a <a href="integracoes-producao.html#musica">música</a> ligada e o YouTube Music instalado), voz (exige a <a href="integracoes-producao.html#voz">voz</a> ligada).</li></ol>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td>«o servidor recusou o token»</td><td>Token errado ou trocado: copie de novo.</td></tr><tr><td>«sem conexão»</td><td>VPN desligada no celular, endereço errado ou a política da VPN não inclui o aparelho.</td></tr><tr><td>Música: «o dispositivo não está conectado»</td><td>O app não está aberto e conectado (ele é o executor que abre a música).</td></tr><tr><td>A música só abre com o app na frente</td><td>Falta «Exibir sobre outros apps».</td></tr><tr><td>Quero chamar sem tocar na tela</td><td>Palavra de chamada: AccessKey da Picovoice, palavra «Juniper» treinada (Android) salva em <code>mobile/android/app/src/main/assets/juniper.ppn</code>, APK novo e a chave em Configurar (<a href="voz-audio.html#wake">Voz por áudio</a>).</td></tr><tr><td>Pedi um álbum e tocou só uma faixa</td><td>Peça «toca o álbum X»; playlists suas tocam pelo nome.</td></tr><tr><td>Ela ouve a própria voz e se responde</td><td>Sem fone, use o botão «Segurar para falar», ou fone.</td></tr></tbody></table></div>
+<h2 id="dashboard">Dashboard</h2>
+<ol><li>Libere a porta <strong>8766</strong> na política da VPN para os seus dispositivos (a política do <a href="deploy-vps.html#rede">passo 5.2</a> já inclui).</li><li>No navegador de um dispositivo na rede privada: <code>http://&lt;endereço-do-servidor&gt;:8766/</code>.</li><li>Entre com o token dos clientes. O login vale 12 horas (<code>dashboard.session_hours</code>) e o token nunca vai na URL.</li></ol>
+<p>Para HTTPS (por exemplo, para "instalar" o painel no celular), ponha na frente um proxy que termine TLS dentro da rede privada (no Tailscale, <code>tailscale serve --bg http://&lt;IP-PRIVADO&gt;:8766</code>) e inclua o nome usado em <code>dashboard.allowed_hosts</code> se ele não for <code>*.ts.net</code>. Detalhes e problemas: <a href="dashboard.html#acesso">Dashboard</a>.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 ---
 title: CLI
-group: Clientes
-order: 1
+group: Documentação Técnica
+section: Clientes
+order: 21
 description: O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.
 status: pronta
 tags: juniper comando terminal chat repl provider resume memory tools docs install version exit typer rich
@@ -9,7 +10,7 @@ tags: juniper comando terminal chat repl provider resume memory tools docs insta
 
 ## Visão geral {#visao-geral}
 
-O CLI é o cliente atual da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Por padrão o cérebro roda dentro do mesmo processo (`deployment.mode: local`); no modo `server` o CLI fala com o brain remoto ([Modo server](#server), [Produção](producao.html), [Protocolo](protocolo.html)).
+O CLI é o cliente de terminal da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Por padrão o cérebro roda dentro do mesmo processo (`deployment.mode: local`); no modo `server` o CLI fala com o brain remoto ([Modo server](#server), [Servidor WebSocket](servidor.html), [API WebSocket](protocolo.html)).
 
 Tudo que o terminal diz segue o padrão de [Voz no terminal](voz.html).
 
@@ -56,15 +57,15 @@ Com `deployment.mode: server`, o `juniper` não monta o `Agent` no próprio proc
 deployment:
   mode: server
   server:
-    host: 127.0.0.1          # o nome do servidor na rede (na VPS, o nome Tailscale)
+    host: 127.0.0.1          # o endereço do servidor na rede privada
     port: 8765
   auth:
     token_file: ~/.juniper/token   # o token que o servidor criou no primeiro boot
 ```
 
-O endereço é `ws://` (sem TLS): o token e a conversa só ficam protegidos dentro do Tailscale ou de uma rede privada. Se `deployment.server.host` for um endereço público, o CLI avisa antes de conectar.
+O endereço é `ws://` (sem TLS): o token e a conversa só ficam protegidos dentro de uma rede privada cifrada (como o Tailscale ou o WireGuard; [Visão geral da produção](producao.html#rede)). Se `deployment.server.host` for um endereço público, o CLI avisa antes de conectar.
 
-No ambiente Docker de desenvolvimento ([Produção](producao.html#dev)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
+No ambiente Docker de desenvolvimento ([Primeiros passos](primeiros-passos.html#terminal)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
 
 - **Ctrl+C** durante uma resposta **cancela o turno** (o chat continua); no prompt, sai.
 - **Queda de conexão:** o cliente reconecta sozinho (1, 2, 4, 8, 16 e depois 30 s, com variação; logo depois de um deploy, em até 2 s) e retoma a conversa. Se cair no meio de uma resposta, o turno termina no servidor e, ao reconectar, o CLI mostra a resposta que ficou salva. Sem servidor: "Juniper indisponível no momento".
@@ -109,7 +110,7 @@ Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provi
 | `juniper music status` · `juniper music login` | Estado da configuração de música (sem revelar chaves) e login no YouTube para playlists ([Música](musica.html#login)). |
 | `juniper voice status` | Estado da voz: ligada ou não, gasto de caracteres do mês, credenciais presentes (sem revelar chaves) ([Voz por áudio](voz-audio.html#orcamento)). |
 | `juniper music taste [clear]` | O gosto musical anotado e como apagar tudo ([Música](musica.html#gosto)). |
-| `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Produção](producao.html)). |
+| `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Servidor WebSocket](servidor.html)). |
 | `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.html)). `--health` sai com 0 se o bot está vivo. |
 
 ### juniper memory {#memory kind=comando file=brain/clients/cli.py}

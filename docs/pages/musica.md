@@ -1,13 +1,14 @@
 ---
 title: Música
-group: Integrações
-order: 5
+group: Documentação Técnica
+section: Integrações
+order: 31
 description: Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
-status: proposto
+status: pronta
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **O backend de música está pronto e coberto por teste de aceite** (T-154 a T-158: busca e cota, login, playlists, gosto musical); o que falta para tocar de ponta a ponta é o [app do celular](mobile.html) com o autoplay.
+> **Nota:** esta página detalha o [ADR-024](adr-024.html). A música funciona de ponta a ponta: busca e cota, tocar no celular pelo [app Android](mobile.html) com autoplay, login, playlists e gosto musical, cobertos por teste de aceite. O código fica em `brain/music/` e `brain/tools/music.py`.
 
 ## Como funciona {#como-funciona}
 
@@ -37,11 +38,11 @@ A pergunta de confirmação continua valendo para endereços fora da lista de co
 
 | Tool | Tier | O que faz |
 |---|---|---|
-| `music_search` | READ | Busca faixas e devolve links (modo `radio` devolve o link de mix). **Pronta (T-154).** |
-| `music_playlists` | READ | Lista as playlists do Petrus (nome, quantidade e id). **Pronta (T-156).** |
-| `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. **Pronta (T-156).** |
-| `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. **Pronta (T-156).** |
-| `music_feedback` | WRITE (sem confirmar) | Registra "gostei", "não gostei", "pulei" ou "pediu para tocar". **Pronta (T-157).** |
+| `music_search` | READ | Busca faixas e devolve links (modo `radio` devolve o link de mix). |
+| `music_playlists` | READ | Lista as playlists do usuário (nome, quantidade e id). |
+| `music_playlist_create` | WRITE | Cria uma playlist **privada**, com confirmação em palavras. |
+| `music_playlist_add` | WRITE | Adiciona faixas a uma playlist, com confirmação. |
+| `music_feedback` | WRITE (sem confirmar) | Registra "gostei", "não gostei", "pulei" ou "pediu para tocar". |
 
 Apagar playlist não existe na v1.
 
@@ -55,7 +56,7 @@ A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro
 
 ## Playlists e login {#login}
 
-Criar playlists exige o login do Petrus no Google, pelo fluxo de **código de dispositivo**. Uma vez:
+Criar playlists exige o login do usuário no Google, pelo fluxo de **código de dispositivo**. Uma vez:
 
 1. No Google Cloud, crie um **cliente OAuth** do tipo "TVs e dispositivos de entrada limitada" (no projeto da YouTube Data API) e ponha o ID e a chave no `.env` do cérebro: `JUNIPER_YOUTUBE_CLIENT_ID` e `JUNIPER_YOUTUBE_CLIENT_SECRET`. Se o app estiver em modo de teste, adicione o seu Gmail aos usuários de teste.
 2. Rode **`juniper music login`**. Ele mostra um link e um código; abra o link em qualquer navegador, entre com a conta do YouTube Music e autorize. O comando espera, respeitando o intervalo do Google, e grava o token.
@@ -76,8 +77,8 @@ Se o app OAuth estiver em modo de teste, o Google pode expirar o token de renova
 
 As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAuth configurado (a chave de API sozinha não loga ninguém); sem o login feito, elas respondem `auth_required` com a instrução, em vez de falhar calado.
 
-- **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso é decisão do Petrus) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.html#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
-- **`music_playlist_add`** (`playlist_id`, `video_ids`): adiciona a uma playlist existente; o id vem de `music_playlists`. **Antes de perguntar**, a Juniper confere o id entre as playlists do Petrus (1 unidade de cota) e a pergunta usa o **nome verdadeiro** dessa playlist, não um nome escolhido pelo LLM; um id que não é dele é recusado. Um título curto demais (menos de 3 caracteres) não vale como "sim" em contexto: ela pergunta de novo.
+- **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso exige uma decisão registrada em ADR) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.html#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
+- **`music_playlist_add`** (`playlist_id`, `video_ids`): adiciona a uma playlist existente; o id vem de `music_playlists`. **Antes de perguntar**, a Juniper confere o id entre as playlists do usuário (1 unidade de cota) e a pergunta usa o **nome verdadeiro** dessa playlist, não um nome escolhido pelo LLM; um id que não é dele é recusado. Um título curto demais (menos de 3 caracteres) não vale como "sim" em contexto: ela pergunta de novo.
 - **O que é recusado antes de perguntar:** título vazio, com mais de 150 caracteres ou com `<` ou `>`; ids ou links que não são do YouTube; mais de 25 faixas; playlist inválida. Você nunca é perguntado sobre algo que vai falhar.
 
 **Custo de cota:** criar custa 50 unidades e **cada faixa adicionada também custa 50**, então uma playlist de 10 faixas gasta 550 do limite diário. O cérebro **reserva o custo inteiro antes de criar qualquer coisa**, para nunca deixar uma playlist pela metade por falta de cota.
@@ -86,9 +87,9 @@ As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAut
 
 ## Gosto musical {#gosto}
 
-A API oficial não dá o histórico de reprodução, então o gosto vem **do que o Petrus diz**: "toca Djavan" (`played`) e as reações dele ("gostei dessa" `like`, "não curto" `dislike`, "pula essa" `skip`). A tool **`music_feedback`** anota isso, em silêncio (como `remember`), com título e/ou artista, o id do vídeo quando houver e a conversa de onde veio.
+A API oficial não dá o histórico de reprodução, então o gosto vem **do que o usuário diz**: "toca Djavan" (`played`) e as reações dele ("gostei dessa" `like`, "não curto" `dislike`, "pula essa" `skip`). A tool **`music_feedback`** anota isso, em silêncio (como `remember`), com título e/ou artista, o id do vídeo quando houver e a conversa de onde veio.
 
-**A regra do [ADR-017](adr-017.html) e o que ela garante de verdade:** o código garante que a **busca nunca escreve** e que a única porta de escrita é a `music_feedback`. Mas **quem decide chamá-la é o LLM**, e ela é silenciosa; então a regra "só o que o Petrus escreveu" depende da instrução da tool, e o registro guarda **a citação das palavras dele** (`quote`, até 160 caracteres) para auditoria: um registro sem citação, ou cuja citação não é dele, aparece em `juniper music taste`. Texto com cara de segredo é recusado; título e artista passam por limpeza (caracteres de controle e de direção são removidos) e têm até 200 caracteres. Para um laço do LLM não encher o banco: a mesma reação repetida em até 1 minuto vale uma só, no máximo **30 registros por conversa** e **5.000 no total** (acima disso a tool diz para rodar `juniper music taste clear`).
+**A regra do [ADR-017](adr-017.html) e o que ela garante de verdade:** o código garante que a **busca nunca escreve** e que a única porta de escrita é a `music_feedback`. Mas **quem decide chamá-la é o LLM**, e ela é silenciosa; então a regra "só o que o usuário escreveu" depende da instrução da tool, e o registro guarda **a citação das palavras dele** (`quote`, até 160 caracteres) para auditoria: um registro sem citação, ou cuja citação não é dele, aparece em `juniper music taste`. Texto com cara de segredo é recusado; título e artista passam por limpeza (caracteres de controle e de direção são removidos) e têm até 200 caracteres. Para um laço do LLM não encher o banco: a mesma reação repetida em até 1 minuto vale uma só, no máximo **30 registros por conversa** e **5.000 no total** (acima disso a tool diz para rodar `juniper music taste clear`).
 
 Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.session.store: mongo`; sem isso a tool nem aparece). Para ver e apagar:
 
@@ -97,7 +98,7 @@ Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.ses
 | `juniper music taste [-n 15]` | Resumo (por sinal e **artistas em alta**, com pontos: gostei +2, pedi +1, pulei −1, não gostei −2) e os últimos registros. |
 | `juniper music taste clear [--yes]` | Apaga **tudo**, depois de perguntar. Não dá para desfazer. |
 
-Nesta versão o gosto **só é registrado**: ainda não influencia a conversa nem as sugestões. Que o sonho noturno leia esses eventos e forme crenças sobre o gosto (e que a Juniper sugira algo fora da "bolha") é um passo seguinte que muda o ADR-017, e depende da decisão do Petrus. A coleção `music_taste` não entra na exclusão em cascata da Memória V2: quem apaga é o `juniper music taste clear`.
+Nesta versão o gosto **só é registrado**: ainda não influencia a conversa nem as sugestões. Que o sonho noturno leia esses eventos e forme crenças sobre o gosto (e que a Juniper sugira algo fora da "bolha") é um passo seguinte que muda o ADR-017, e exige revisar o ADR-017. A coleção `music_taste` não entra na exclusão em cascata da Memória V2: quem apaga é o `juniper music taste clear`.
 
 ## Aceite {#aceite}
 
@@ -108,7 +109,7 @@ Nesta versão o gosto **só é registrado**: ainda não influencia a conversa ne
 - Cota esgotada aparece como erro tipado, sem inventar resultado.
 - **Defesas:** um título de resultado que manda abrir outro site é perguntado em palavras, com o endereço exato, e nada chega ao celular antes do "sim"; o truque `evil.example\.music.youtube.com` nunca chega ao celular.
 - Playlist: a Juniper pergunta **uma vez** em palavras ("Posso criar a playlist «Foco» com 2 músicas?"), nada é criado antes do "sim", um "não" não cria nada, um pedido inválido é recusado antes de perguntar, e o link da playlist abre no celular.
-- Gosto: a reação do Petrus ("gostei dessa") é anotada em silêncio; uma busca sozinha não grava nada.
+- Gosto: a reação do usuário ("gostei dessa") é anotada em silêncio; uma busca sozinha não grava nada.
 
 **O que só se verifica no aparelho** (roteiro manual depois do app e da chave):
 
@@ -122,6 +123,3 @@ Nesta versão o gosto **só é registrado**: ainda não influencia a conversa ne
 
 Uma POC com a biblioteca não oficial autenticou, mas recebeu HTTP 403 em tudo com um token OAuth próprio. Ela fica fora do caminho crítico e pode voltar atrás da mesma interface.
 
-## Tasks {#tasks}
-
-T-154 (provider, cota e busca), T-155 (login OAuth), T-156 (playlists), T-157 (gosto musical), T-158 (aceite ponta a ponta). Épica #180.

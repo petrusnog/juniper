@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-025 — Metadocumentação: a Juniper responde sobre si mesma — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-025 — Metadocumentação: a Juniper responde sobre si mesma">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-025.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-025</div>
+<h1>ADR-025 — Metadocumentação: a Juniper responde sobre si mesma</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (o merge deste ADR é a aprovação)</dd><dt>Data</dt><dd>2026-10-28</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Metadocumentação</dd><dt>Relaciona-se com</dt><dd>ADR-002 (tools), ADR-006 (tiers), ADR-011 (memória como dado), ADR-013 (imagem e segredos)</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>Perguntas sobre a própria Juniper ("como funciona a sua memória?", "por que você pergunta antes de apagar?") eram respondidas com o que o modelo supunha: a persona descreve o comportamento, não a arquitetura. A documentação (<code>docs/pages</code> e <code>docs/decisions</code>) já descreve tudo, em português, por seções.</p>
+<p>O objetivo é que ela responda com base nessa documentação, gastando o mínimo de tokens.</p>
+<h2 id="decisao">Decisão</h2>
+<ol><li><strong>Busca estatística e local.</strong> As seções da documentação são indexadas com BM25 sobre palavras sem acento, sem palavras vazias e com um <em>stemming</em> leve do português, mais uma pequena tabela de sinônimos de leigo para técnico. Nada de LLM, embeddings ou rede para achar o trecho.</li><li><strong>Detector por palavras-chave.</strong> Uma mensagem com forma de pergunta que cite algo próprio da Juniper (arquitetura, dispatcher, ADR...) ou que se dirija a ela e fale de um tema do funcionamento dela (memória, ferramentas, confirmação...) é tratada como pergunta sobre ela mesma.</li><li><strong>Contexto automático.</strong> Detectada a pergunta, e se a melhor seção passar de um piso de pontuação, até <code>metadocs.top_k</code> trechos (no máximo <code>metadocs.max_chars</code> caracteres) entram como mensagem de sistema antes da mensagem, só naquele turno. Assim a resposta sai numa chamada só, sem a volta extra de uma tool (que reenviaria o prompt inteiro).</li><li><strong>Tool <code>docs_search</code></strong> (<code>READ</code>, <code>CLOUD</code>, só o parâmetro <code>query</code>) para acompanhamento e para o que o detector não pegar.</li><li><strong>Segredos.</strong> Só os arquivos versionados da documentação são lidos, resolvidos dentro de <code>docs/</code>; nenhum caminho vem de fora. Todo trecho passa pelo filtro de segredos, e o bloco proíbe revelar valores de tokens, senhas e chaves. A imagem de produção passa a levar <code>docs/pages</code> e <code>docs/decisions</code> (sem segredos).</li><li><strong>Dado, não ordem.</strong> O bloco é rotulado como dado, como as memórias (ADR-011).</li></ol>
+<h2 id="consequencias">Consequências</h2>
+<h3 id="positivas">Positivas</h3>
+<ul><li>Respostas sobre a arquitetura ancoradas na documentação, com custo zero para mensagens comuns e de uma chamada (com ~400 tokens a mais) para perguntas sobre ela.</li><li>Manter a documentação em dia passa a melhorar a própria Juniper.</li></ul>
+<h3 id="negativas">Negativas</h3>
+<ul><li>A busca por palavras perde quando a pergunta usa vocabulário que a documentação não tem; os sinônimos cobrem só os casos comuns.</li><li>O detector é por regras e em português: falsos negativos caem na tool; falsos positivos custam alguns tokens.</li><li>A imagem fica um pouco maior (as fontes Markdown, algumas centenas de KB).</li></ul>
+<h2 id="alternativas-consideradas">Alternativas consideradas</h2>
+<ol><li><strong>Classificar com o LLM</strong> se a mensagem é sobre a Juniper: uma chamada a mais por mensagem.</li><li><strong>Só a tool:</strong> cada pergunta sobre ela custaria duas chamadas com o prompt inteiro.</li><li><strong>Embeddings</strong> (o mesmo modelo da memória): melhor para sinônimos, mas carrega o modelo e gasta CPU por pergunta; o BM25 basta para um corpus pequeno e técnico, e pode ser trocado depois atrás da mesma função <code>search</code>.</li><li><strong>Pôr a documentação no prompt de sistema:</strong> dezenas de milhares de tokens em toda chamada.</li></ol>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

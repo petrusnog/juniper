@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modelos de linguagem (LLM) — Livro de bolso Juniper</title>
+<meta name="description" content="O que é um modelo de linguagem, quais a Juniper usa, por que ela tem mais de um e o que isso significa para custo, velocidade e privacidade.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-llm.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Modelos de linguagem (LLM)</div>
+<h1>Modelos de linguagem (LLM) <span class="tag v">guia</span></h1>
+<p class="lead">O que é um modelo de linguagem, quais a Juniper usa, por que ela tem mais de um e o que isso significa para custo, velocidade e privacidade.</p>
+<h2 id="o-que-e">O que é um modelo de linguagem</h2>
+<p>Um <strong>modelo de linguagem</strong> (em inglês, <em>Large Language Model</em>, ou <strong>LLM</strong>) é um programa treinado com uma quantidade enorme de texto para prever qual palavra vem a seguir. Isso parece pouco, mas, feito muito bem, permite entender pedidos, resumir, explicar e escrever respostas naturais. É a mesma família de tecnologia por trás dos assistentes de IA mais conhecidos.</p>
+<p>Duas coisas importantes sobre um LLM:</p>
+<ul><li><strong>Ele não tem memória própria entre conversas.</strong> A cada pergunta, a Juniper entrega ao modelo tudo o que ele precisa saber naquele momento: quem ela é, o que vocês conversaram, a hora atual, o que ela lembra sobre você. A memória é da Juniper, não do modelo (<a href="produto-memoria.html">Memória</a>).</li><li><strong>Ele não age sozinho.</strong> O modelo só escreve texto. Quando ele "decide" usar uma ferramenta, na verdade escreve um pedido estruturado ("chame a agenda com estes dados"), e é o cérebro da Juniper que confere, pede a sua permissão e executa (<a href="produto-ferramentas.html">Ferramentas e permissões</a>).</li></ul>
+<h2 id="tokens">Tokens: a unidade de medida</h2>
+<p>Os modelos leem e escrevem em <strong>tokens</strong>, pedaços de palavra (em média, uns quatro caracteres). Os provedores cobram e limitam o uso por token, e a velocidade de resposta também se mede em tokens por segundo. Por isso a Juniper cuida do tamanho do que manda ao modelo: mantém só as conversas recentes, resume os dados das ferramentas e escolhe só as memórias relevantes para cada mensagem.</p>
+<h2 id="provedores">Os provedores que a Juniper usa</h2>
+<p>A Juniper fala com modelos de três provedores, em ordem de preferência:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Provedor</th><th>Onde roda</th><th>Papel</th></tr></thead><tbody><tr><td><strong>DeepInfra</strong></td><td>Na nuvem</td><td>O principal: modelos capazes, cobrados por uso (<a href="adr-009.html">ADR-009</a>).</td></tr><tr><td><strong>Groq</strong></td><td>Na nuvem</td><td>A segunda opção: rápido e com um plano gratuito (com limite de uso).</td></tr><tr><td><strong>Ollama</strong></td><td>No seu computador</td><td>A reserva: roda localmente, sem internet, mais lento e menos capaz.</td></tr></tbody></table></div>
+<h2 id="failover">Por que mais de um: failover</h2>
+<p>Serviços na nuvem às vezes ficam fora do ar, atingem o limite de uso ou recusam uma chave. Em vez de parar, a Juniper tenta o próximo da fila automaticamente, com a mesma conversa. Isso se chama <strong>failover</strong> (troca por falha). Se a troca acontecer, ela avisa ("A DeepInfra recusou as credenciais. Vou tentar a Groq."). Uma regra protege a conversa: se o modelo já começou a responder, ela não troca no meio, para não repetir o começo da resposta (<a href="adr-001.html">ADR-001</a>, <a href="adr-009.html">ADR-009</a>).</p>
+<p>A ordem é configurável, e trocar de modelo ou de provedor não muda nada no resto da Juniper: o cérebro conversa com "um modelo", e uma peça chamada roteador escolhe qual (<a href="llm.html">LLM</a>).</p>
+<h2 id="papeis">Modelos diferentes para tarefas diferentes</h2>
+<p>Nem toda tarefa precisa do modelo mais caro. A conversa do dia a dia usa o modelo principal. A <a href="produto-personalidade.html">personalidade viva</a>, quando ligada, faz uma reflexão uma vez por noite e pode usar um modelo mais capaz para isso, porque roda pouco e o custo fica baixo.</p>
+<h2 id="privacidade">Privacidade</h2>
+<p>O que você escreve é enviado ao provedor do modelo para ser processado, junto com o contexto necessário (trechos de memória, títulos de eventos da agenda que ela leu). As <strong>chaves de acesso</strong> aos provedores ficam só no servidor e nunca aparecem em mensagens de erro nem em registros. A busca na memória é feita por um modelo pequeno que roda <strong>no próprio servidor</strong>: o texto das memórias não sai dali para ser indexado. Mais em <a href="produto-privacidade.html">Privacidade e segurança</a>.</p>
+<h2 id="limites">Limites</h2>
+<ul><li>Modelos podem <strong>errar</strong>: entender mal um pedido ou inventar um detalhe. É por isso que toda ação que altera algo pede confirmação, mostrando exatamente o que será feito.</li><li>Não há controle automático de gasto nos provedores: o consumo é acompanhado no painel de cada um.</li><li>O modelo local (Ollama) é bem mais lento num computador sem placa de vídeo e segue pior as instruções; por isso fica por último na fila.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

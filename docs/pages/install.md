@@ -1,18 +1,20 @@
 ---
-title: Instalação
-group: Começando
-order: 1
-description: Instalar a Juniper e as dependências de desenvolvimento, a partir de uma máquina limpa.
+title: Instalação sem Docker (modo local)
+group: Ambiente Local
+order: 5
+description: O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
 status: guia
 tags: instalar install.sh venv python uv gcp conta de serviço docker mongodb desinstalar dependências
 ---
 
 ## Instalação rápida {#rapida}
 
-Como instalar a Juniper e todas as dependências de desenvolvimento, a partir de uma máquina limpa. Não precisa ter Python instalado e nada é instalado no sistema: tudo fica dentro de `~/.juniper`, num ambiente virtual. Você precisa só de `git`, `bash` e `curl` (ou `wget`).
+Além do [ambiente Docker](primeiros-passos.html), a Juniper pode rodar inteira dentro do processo do terminal: o **modo local** (`deployment.mode: local`), em que o cérebro, a memória e as ferramentas rodam no próprio comando `juniper`, sem servidor. É o jeito mais rápido de usar a Juniper sozinho numa máquina, e é o que o instalador monta. Os clientes remotos (Telegram, app) precisam do modo servidor e ficam de fora.
+
+O instalador monta a Juniper e as dependências a partir de uma máquina limpa. Não precisa ter Python instalado e nada é instalado no sistema: tudo fica dentro de `~/.juniper`, num ambiente virtual. Você precisa só de `git`, `bash` e `curl` (ou `wget`).
 
 ```bash
-git clone git@github.com:petrusnog/juniper.git ~/.juniper
+git clone https://github.com/<owner>/juniper.git ~/.juniper
 bash ~/.juniper/scripts/install.sh
 ```
 
@@ -79,7 +81,7 @@ bash ~/.juniper/scripts/install.sh --dev
 
 ## Ambiente de desenvolvimento {#dev}
 
-> **Docker:** para subir o brain e o MongoDB em contêineres, com o código montado por volume, veja o [tutorial do ambiente de desenvolvimento com Docker](dev-docker.html).
+> **Docker:** para subir o cérebro e o MongoDB em contêineres, com o código montado por volume e os clientes remotos, siga [Primeiros passos](primeiros-passos.html).
 
 ```bash
 bash ~/.juniper/scripts/install.sh --dev
@@ -89,7 +91,7 @@ ruff check brain/ tests/    # lint
 mypy brain/                 # tipos (strict)
 ```
 
-Uma task só está pronta quando os três passam (Definition of Done em `docs/JUNIPER.md`).
+Uma tarefa só está pronta quando os três passam ([Definition of Done](contribuindo.html#dod)).
 
 Sem o instalador (manual):
 
@@ -119,7 +121,7 @@ Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado del
 
 ## Conta de serviço no GCP {#gcp}
 
-A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda ([Agenda Google](google-calendar.html)). Passo a passo no console:
+A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda ([Agenda Google](google-calendar.html)); a mesma configuração vale para o servidor ([Integrações Google Cloud e Groq](integracoes-producao.html#calendar)). Passo a passo no console:
 
 1. **Projeto.** Em console.cloud.google.com, abra o seletor de projetos (topo da página) e escolha um projeto ou crie um novo. Confirme que ele está ativo.
 2. **Ativar a API.** Menu ☰ → APIs e serviços → Biblioteca, procure **Google Calendar API** e clique em Ativar.

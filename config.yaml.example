@@ -125,3 +125,11 @@ trace:
   # Diário das mensagens: cada interação contada em texto corrido, camada por camada
   # (logs/message.log). Guarda o texto das conversas, por isso vem desligado.
   enabled: false
+
+metadocs:
+  # A Juniper consultando a própria documentação (ADR-025): busca local por palavras-chave
+  # (BM25), sem LLM e sem rede. Só lê docs/pages e docs/decisions, nunca segredos.
+  enabled: true
+  auto_context: true     # pergunta sobre ela mesma já leva os trechos no turno (sem volta extra)
+  top_k: 3               # seções por consulta
+  max_chars: 1500        # teto dos trechos entregues ao modelo

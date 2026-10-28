@@ -1,7 +1,8 @@
 ---
 title: Voz no terminal
-group: Clientes
-order: 2
+group: Documentação Técnica
+section: Clientes
+order: 22
 description: Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
 status: guia
 tags: voz prefixo juniper voce say start_reply fala fixa gerada terminal voice.py
@@ -22,7 +23,7 @@ Tudo que a Juniper diz no terminal segue o mesmo padrão. Você sempre sabe quem
 | `🌿 JUNIPER:` | A Juniper | Sempre, em qualquer comando. |
 | `👤 VOCÊ:` | Você, ao digitar | Um único ponto de troca (`voice.user_tag()`) para virar o seu nome quando o perfil existir. |
 
-> **Nota:** isto é a "voz" **escrita** do terminal. A voz por áudio (STT e TTS locais no cliente, wake word) é da Sprint 4 e ainda não tem ADR.
+> **Nota:** isto é a "voz" **escrita** do terminal. A conversa por áudio está em [Voz por áudio](voz-audio.html).
 
 ## Fala gerada × fala fixa {#gerada-fixa}
 
