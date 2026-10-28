@@ -247,6 +247,17 @@ Veja [Memória](memoria.html).
 | `memory.profile.enabled` | `true` | Perfil do usuário em toda mensagem. |
 | `memory.profile.max_chars` | `500` | Teto do parágrafo do perfil. |
 
+## metadocs {#metadocs}
+
+A Juniper consultando a própria documentação ([Metadocumentação](metadocs.html), [ADR-025](adr-025.html)). A busca é local (BM25), sem LLM e sem rede, e só lê `docs/pages` e `docs/decisions`.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `metadocs.enabled` | `true` | Liga a tool `docs_search` e o contexto automático. Sem a pasta `docs/` (uma imagem antiga, por exemplo), a tool simplesmente não aparece. |
+| `metadocs.auto_context` | `true` | Quando o detector de palavras-chave reconhece uma pergunta sobre ela mesma, os trechos entram no próprio turno, sem uma chamada extra ao LLM. Desligado, só a tool responde. |
+| `metadocs.top_k` | `3` | Quantas seções entram por consulta (1 a 8). |
+| `metadocs.max_chars` | `1500` | Teto, em caracteres, dos trechos somados entregues ao modelo (300 a 6.000). |
+
 ## Como adicionar uma opção {#adicionar}
 
 1. Crie ou altere o submodelo pydantic em `brain/config.py`.

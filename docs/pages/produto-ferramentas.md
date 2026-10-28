@@ -19,7 +19,7 @@ Toda ferramenta declara um nível de risco, e o comportamento da Juniper segue e
 
 | Nível | O que significa | O que a Juniper faz | Exemplos |
 |---|---|---|---|
-| **Leitura** | Não muda nada nem envia dados para fora. | Executa direto. | Ver a agenda, buscar músicas, consultar a memória. |
+| **Leitura** | Não muda nada nem envia dados para fora. | Executa direto. | Ver a agenda, buscar músicas, consultar a memória ou a própria documentação. |
 | **Escrita** | Muda algo de forma reversível. | Pergunta antes e só age com um "sim". | Marcar ou alterar um evento, criar uma playlist. |
 | **Destrutiva** | Irreversível, ou envia algo sensível para fora. | Pergunta, avisando que não dá para desfazer. Nunca dispensa a pergunta. | Apagar um evento, esquecer uma memória, publicar uma feature. |
 | **Proibida** | Perigosa demais. | Nunca executa, nem com permissão. | Comandos que apagariam o sistema. |

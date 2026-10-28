@@ -51,6 +51,7 @@ from brain.memory.longterm import (
 from brain.memory.profile import ProfileError, render
 from brain.memory.stores import close_session_store, open_session_store
 from brain.memory.v2 import open_v2_runtime, v2_enabled
+from brain.metadocs import docs_context
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
 from brain.tools import memory as memory_tools
 from brain.tools.base import Tier
@@ -438,6 +439,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         store=store,
         memory=v2.context if v2 else memory,
         turn_sink=v2.sink if v2 else None,
+        self_docs=docs_context,
     )
     if note is not None:
         printer.say(note)

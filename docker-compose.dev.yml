@@ -60,6 +60,8 @@ services:
       # O código: editado no host, visto na hora no contêiner.
       - ./brain:/app/brain:ro
       - ./prompts:/app/prompts:ro
+      # A documentação que ela consulta sobre si mesma (ADR-025): editou, a próxima busca já vê.
+      - ./docs:/app/docs:ro
       # Configuração e segredos, como na produção (somente leitura).
       - ./docker/config.dev.yaml:/home/juniper/.juniper/config.yaml:ro
       - ${JUNIPER_BASE_CONFIG_FILE:-./config.yaml}:/home/juniper/.juniper/config.base.yaml:ro

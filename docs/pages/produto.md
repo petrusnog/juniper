@@ -45,6 +45,10 @@ A Juniper divide o que pode fazer em níveis de risco. Consultar algo (ler a age
 
 A Juniper tem um jeito próprio: fala português do dia a dia, em frases corridas (nunca em listas ou tabelas), com humor leve e curiosidade pela pessoa. Ela é honesta sobre o que é: uma IA, e diz isso quando perguntam com sinceridade. Opcionalmente, a personalidade dela pode **evoluir** com o tempo, formando opiniões, sentimentos e interesses próprios, sempre dentro de regras fixas que não mudam ([Personalidade, opiniões e sentimentos](produto-personalidade.html)).
 
+## Ela sabe explicar como funciona {#autoconhecimento}
+
+Pergunte "como funciona a sua memória?" ou "por que você pede permissão antes de apagar?" e a Juniper responde com base nesta própria documentação. Ela reconhece a pergunta por palavras-chave e busca os trechos certos no próprio servidor, sem gastar uma chamada extra ao modelo, e nunca revela senhas ou chaves: a documentação só diz onde elas ficam ([Metadocumentação](metadocs.html), [ADR-025](adr-025.html)).
+
 ## Onde ela roda {#onde-roda}
 
 O cérebro roda num **servidor** (uma VPS, um computador alugado na nuvem, ou qualquer máquina sempre ligada). Esse servidor **não fica exposto na internet**: os seus dispositivos chegam até ele por uma rede privada, como uma linha direta que só eles conhecem ([ADR-013](adr-013.html)). Para uso individual, a Juniper também pode rodar inteira dentro do terminal de um computador, sem servidor.

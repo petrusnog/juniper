@@ -63,6 +63,7 @@ class Agent:
         store: SessionStore | None = None,
         memory: ContextProvider | None = None,
         turn_sink: Callable[[str, Turn], Any] | None = None,
+        self_docs: Callable[[str], str | None] | None = None,
     ) -> None:
         self._provider = provider
         self._dispatcher = dispatcher
@@ -74,6 +75,9 @@ class Agent:
         # Called with (session id, finished turn) after each turn: the durable transcript (V2).
         self._turn_sink = turn_sink
         self._memory_message: Message | None = None
+        # Excerpts of her own documentation when the message is about her (ADR-025).
+        self._self_docs = self_docs
+        self._docs_message: Message | None = None
         self._profile_message: Message | None = None
         # Which channel the turn comes from (set by the server before each turn; ADR-022).
         self.channel_note: str | None = None
@@ -185,6 +189,8 @@ class Agent:
         )
         with self._stages.stage("recall"):
             self._profile_message, self._memory_message = await self._recall(user_input, previous)
+        with self._stages.stage("docs"):
+            self._docs_message = await self._docs(user_input)
         pending, self._dispatcher.pending = self._dispatcher.pending, None
         said_yes = interpret_reply(user_input) == "yes"
         consent: str | None = None
@@ -247,6 +253,26 @@ class Agent:
         memories = Message("system", context.block) if context.block else None
         return profile, memories
 
+    async def _docs(self, user_input: str) -> Message | None:
+        """Documentation excerpts for this turn, if it is a question about her. Never breaks it.
+
+        Runs in a thread: the first search builds the index (file reads), which must not block
+        the event loop of the server."""
+        if self._self_docs is None:
+            return None
+        try:
+            block = await asyncio.to_thread(self._self_docs, user_input)
+        except Exception as exc:  # noqa: BLE001  (the turn goes on without them)
+            event_log.log("error", where="metadocs.agent", type=type(exc).__name__)
+            return None
+        if block:
+            message_trace.step(
+                "Agente",
+                "A mensagem é uma pergunta sobre mim: juntei trechos da minha documentação, "
+                "achados por busca local (sem LLM), para o modelo responder com base neles.",
+            )
+        return Message("system", block) if block else None
+
     async def _ensure_question(self, message: Message, on_token: TokenCallback | None) -> str:
         """If actions are parked but the assistant did not ask, the system asks for it."""
         text = message.content or ""
@@ -282,6 +308,7 @@ class Agent:
             self._profile_message,
             self._memory_message,
             self.channel_note,
+            self._docs_message,
         )
         event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
         started = time.monotonic()
@@ -337,8 +364,10 @@ def _with_context(
     profile: Message | None,
     memory: Message | None,
     channel: str | None = None,
+    docs: Message | None = None,
 ) -> list[Message]:
-    """``messages`` with the user's profile and the recalled memories added for this turn.
+    """``messages`` with the user's profile, the recalled memories and (for a question about
+    herself) documentation excerpts added for this turn.
 
     Neither is saved in the history. The profile (who the user is) changes rarely, so it goes
     right after the persona, in the stable part of the prompt that providers cache; the memories
@@ -347,10 +376,12 @@ def _with_context(
     out = list(messages)
     if channel:  # the very last thing the model reads before the answer: it is about this turn
         out.append(Message("system", channel))
-    if memory is not None:
+    for block in (memory, docs):  # both about this message: memories, then docs, then it
+        if block is None:
+            continue
         for index in range(len(out) - 1, 0, -1):
             if out[index].role == "user":
-                out.insert(index, memory)
+                out.insert(index, block)
                 break
     if profile is not None and out and out[0].role == "system":
         out.insert(1, profile)

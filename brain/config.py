@@ -753,6 +753,20 @@ class TelegramSettings(BaseModel):
     delete_after_hours: float = Field(default=0.0, ge=0.0, le=48.0)
 
 
+class MetadocsSettings(BaseModel):
+    """A Juniper consultando a própria documentação (ADR-025): busca local, sem LLM nem rede."""
+
+    # Liga a tool `docs_search` e o contexto automático. Só lê docs/pages e docs/decisions.
+    enabled: bool = True
+    # Pergunta sobre ela mesma (detectada por palavras-chave) já leva os trechos no turno, sem
+    # uma volta extra ao LLM. Desligado, só a tool responde.
+    auto_context: bool = True
+    # Quantas seções entram por consulta.
+    top_k: int = Field(default=3, ge=1, le=8)
+    # Teto de caracteres dos trechos (somados) entregues ao modelo.
+    max_chars: int = Field(default=1500, ge=300, le=6000)
+
+
 class PathsSettings(BaseModel):
     """Paths canônicos do runtime da Juniper.
 
@@ -822,6 +836,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
+    metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
