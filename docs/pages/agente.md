@@ -64,6 +64,7 @@ Pega um `ToolCall` do LLM e devolve uma `Message(role="tool")`. **Nunca levanta 
 | `precheck` falha | A tool recusa antes de te incomodar (ex.: conflito na agenda). Você não é perguntado. |
 | Tier `WRITE` ou `DESTRUCTIVE` | Pede o seu "sim" (veja abaixo). Negado, expirado ou ausente = não executa. |
 | Tier `READ`, ou `WRITE` com `confirm = False` | Executa direto. |
+| `WRITE` com `requires_confirmation(**args)` falso | Executa direto **só nessa chamada** (ex.: `open_url` para um domínio de confiança). `DESTRUCTIVE` ignora o gancho; se o gancho falhar, pergunta. |
 | A tool levanta exceção | Só o **nome do tipo** vai ao LLM ("falha interna da ferramenta (KeyError)"); a mensagem pode ter segredos. O detalhe vai ao log. |
 
 Chamadas que chegam juntas (uma mensagem do assistente) são aprovadas **em lote**, com uma única pergunta. Várias tool calls da mesma resposta rodam uma após a outra, não em paralelo, para as confirmações não se misturarem.

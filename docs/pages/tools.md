@@ -141,17 +141,19 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.html#playlists) |
 | `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.html#playlists) |
 | `music_playlist_add` | WRITE | CLOUD | Adiciona músicas a uma playlist existente (até 25 por vez). | [Música](musica.html#playlists) |
+| `open_url` | WRITE (sem perguntar em domínio de confiança) | EXECUTOR | Abre um link no dispositivo (no celular, o app que trata o endereço, como o YouTube Music). | [Executor](executor.html#open-url) |
 | `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 
-Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`) e `open_url` ([Executor](executor.html), planejada). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.html) está ligada.
+Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.html) está ligada.
 
 ## Limitações conhecidas {#limitacoes}
 
 - A validação do schema é rasa: confere a estrutura mínima, não se cada propriedade é um JSON Schema válido.
 - O tier é fixo por classe. A futura `run_shell` terá tier dinâmico (decidido pelo comando), e o tier da classe servirá de piso.
+- A **confirmação**, ao contrário, pode depender da chamada: uma tool `WRITE` sobrescreve `requires_confirmation(**args)` (padrão: segue `confirm`) para dispensar a pergunta em chamadas seguras pelos próprios argumentos, como `open_url` com um domínio de confiança. `DESTRUCTIVE` sempre pergunta, e um gancho que falha também pergunta.
 - O registry é global do processo; os testes isolam isso trocando o conteúdo dele. Não há `unregister`.
 - A ordem de `all()` e `schemas()` não é estável entre arquivos.
 

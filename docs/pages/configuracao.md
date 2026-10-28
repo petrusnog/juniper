@@ -154,6 +154,7 @@ O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token 
 | `tools.security.shell_allowlist` | `git, ls, cat, grep, rg, fd, jq, find, wc, head, tail` | Binários que a futura `run_shell` aceita. |
 | `tools.security.shell_require_confirmation` | `true` | Exige confirmação para a `run_shell`. |
 | `tools.security.confirmation_timeout` | `60` | Segundos que o modo de confirmação por callback espera (1 a 600). |
+| `tools.open_url.trusted_domains` | `music.youtube.com` | Domínios (e subdomínios) cujos links a `open_url` abre **sem perguntar**. Não afrouxa a política de URL; entradas que não são um domínio (com `/`, `:`, `@` ou um IP) falham ao carregar a configuração. Veja [Executor](executor.html#confianca). |
 
 ## music {#music}
 
