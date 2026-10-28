@@ -240,6 +240,9 @@ class VoiceSettings(BaseModel):
     max_spoken_chars: int = Field(default=800, ge=100, le=5000)
     # Silêncio (sem ninguém falar) que encerra a conversa de voz.
     idle_timeout_seconds: int = Field(default=60, ge=10, le=3600)
+    # O mesmo, para a conversa aberta pela palavra de ativação: sem pedido depois da saudação, ela
+    # fecha logo e o celular volta a esperar a palavra.
+    wake_idle_seconds: int = Field(default=15, ge=5, le=600)
     # Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício.
     usage_file: Path = Field(
         default_factory=lambda: Path.home() / ".juniper" / "voice" / "usage.json"

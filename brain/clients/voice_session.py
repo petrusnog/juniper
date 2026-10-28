@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import random
 import secrets
 import time
 from collections.abc import Awaitable, Callable
@@ -38,9 +39,16 @@ from brain.voice.vad import Vad
 
 AUDIO_CHUNK_MS: Final = 100
 SAY_SECONDS_PER_CHAR: Final = 0.07  # how long the device takes to say a character (an estimate)
+GREETINGS: Final = (
+    "Oi! Pode falar.",
+    "Tô ouvindo, pode falar.",
+    "Diz aí, o que você quer ouvir?",
+    "Oi, Petrus! Pode pedir.",
+)
 CANT_HEAR_MESSAGE = "Não consegui te ouvir agora. Pode repetir?"
 MAX_UTTERANCES_QUEUED: Final = 4
 ECHO_TAIL_SECONDS: Final = 1.0  # speaker: keep ignoring the microphone this long after she ends
+END_PLAYBACK_PAD_SECONDS: Final = 0.4  # after her last word, before the session closes
 PLAY_MARGIN_SECONDS: Final = 0.6  # the device may play a bit slower than the estimate
 SETTLE_SECONDS: Final = 0.4  # a pause in the reply this long lets a finished sentence be spoken
 
@@ -57,6 +65,7 @@ class _Speech:
     queue: asyncio.Queue[str | None] = field(default_factory=asyncio.Queue)
     task: asyncio.Task[None] | None = None
     spoke: bool = False
+    end_after: bool = False  # music started this turn: end the session when she is done
 
 
 class VoiceSession:
@@ -74,6 +83,8 @@ class VoiceSession:
         local_stt: bool = False,
         local_tts: bool = False,
         route: str | None = None,
+        wake: bool = False,
+        greeting: Callable[[], str] | None = None,
         vad: Vad | None = None,
         clock: Callable[[], float] = time.monotonic,
         idle_timeout: float | None = None,
@@ -90,6 +101,8 @@ class VoiceSession:
         self.local_stt = local_stt
         self.local_tts = local_tts
         self._route = route
+        self._wake = wake
+        self._greeting = greeting or (lambda: random.choice(GREETINGS))
         self._gated = False
         self._vad = vad or Vad()
         self._clock = clock
@@ -129,7 +142,9 @@ class VoiceSession:
             )
         )
         await self._state("listening")
-        event_log.log("voice", action="start", stt=stt_cloud, tts=tts_cloud)
+        event_log.log("voice", action="start", stt=stt_cloud, tts=tts_cloud, wake=self._wake)
+        if self._wake:
+            await self._say_standalone(self._greeting())  # she greets; the mic stays closed
 
     async def end(self, reason: p.VoiceEndReason, *, notify: bool = True) -> None:
         """Close the session (idempotent). ``notify`` tells the client why."""
@@ -198,8 +213,8 @@ class VoiceSession:
         moment after) nothing from the microphone is analysed; he cuts her off with the button.
         With headphones (or an unknown route) the full-duplex barge-in stays.
         """
-        if self._route != "speaker":
-            return False
+        if self._route == "headset":
+            return False  # headphones cannot echo: speaking over her still cuts her off
         speaking = self._speech is not None and self._speech.spoke
         gated = speaking or self._clock() < self._play_until + ECHO_TAIL_SECONDS
         if gated and not self._gated:
@@ -244,10 +259,11 @@ class VoiceSession:
             for sentence in speech.chunker.settle():
                 speech.queue.put_nowait(sentence)
 
-    def turn_finished(self, turn_id: str) -> None:
+    def turn_finished(self, turn_id: str, *, playback: bool = False) -> None:
         speech = self._speech
         if speech is None or speech.turn_id != turn_id or speech.chunker is None:
             return
+        speech.end_after = playback
         self._disarm_settle()
         for sentence in speech.chunker.flush():
             speech.queue.put_nowait(sentence)
@@ -340,8 +356,22 @@ class VoiceSession:
         except Exception as exc:  # noqa: BLE001 - a bug in speaking must not drop the connection
             event_log.log("error", where="voice.speak", type=type(exc).__name__)
         if self._speech is speech:
+            if speech.end_after:
+                await self._end_after_playback()
+                return
             self._speech = None
             await self._state("listening")
+
+    async def _end_after_playback(self) -> None:
+        """Music started this turn and her comment is said: close the conversation.
+
+        The device is still playing what was sent, and the voice must not be cut: wait for it.
+        Then the session ends (the phone goes back to waiting for the wake word) and the music
+        and the microphone never share the room.
+        """
+        pause = max(0.0, self._play_until - self._clock()) + END_PLAYBACK_PAD_SECONDS
+        await asyncio.sleep(pause)
+        await self.end("playback")
 
     async def _send_audio(self, speech: _Speech, pcm: bytes, seq: int) -> int:
         step = self._out_rate * 2 * AUDIO_CHUNK_MS // 1000 // 2 * 2

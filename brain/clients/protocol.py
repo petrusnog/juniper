@@ -524,6 +524,10 @@ class VoiceStart(_Message):
     """O aparelho sabe transcrever (STT nativo): pode assumir se a nuvem acabar."""
     local_tts: bool | None = None
     """O aparelho sabe falar (TTS nativo): pode assumir se a nuvem acabar ou o orçamento acabar."""
+    wake: bool | None = None
+    """A sessão abriu porque a palavra de ativação foi dita (o celular estava em espera): a
+    Juniper cumprimenta, espera pouco por quem fala (`voice.wake_idle_seconds`) e, se a conversa
+    puser música para tocar, encerra a sessão (`voice.end` com `reason: playback`)."""
     route: VoiceRouteName | None = None
     """Por onde o aparelho toca a voz: `speaker` (viva-voz, o microfone ouve a própria Juniper) ou
     `headset` (fone, sem eco). Em `speaker` o cérebro ignora o microfone enquanto ela fala."""
@@ -620,7 +624,7 @@ class VoiceInterrupt(_Message):
     type: Literal["voice.interrupt"] = "voice.interrupt"
 
 
-VoiceEndReason = Literal["client", "command", "silence", "error", "server"]
+VoiceEndReason = Literal["client", "command", "silence", "error", "server", "playback"]
 
 
 class VoiceEnd(_Message):

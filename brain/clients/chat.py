@@ -38,7 +38,13 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
 from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
-from brain.tools.channel import DEVICE_KINDS, Channel, channel_note, current_channel
+from brain.tools.channel import (
+    DEVICE_KINDS,
+    Channel,
+    PlaybackFlag,
+    channel_note,
+    current_channel,
+)
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 from brain.trace import message_trace, quote
@@ -477,12 +483,14 @@ class ChatHandler:
             await self._deliver(conversation, run, p.ChatToken(turn_id=run.turn_id, text=piece))
 
         current_origin.set(run.owner)  # o executor desta conexão tem preferência nas tools
+        playback = PlaybackFlag()
         channel = Channel(
             kind=run.owner.kind,
             voice=run.voice is not None,
             can_open=run.owner.kind in DEVICE_KINDS
             and self.executors.offers(run.owner, "open_url"),
             gateway=self.executors,
+            playback=playback,
         )
         current_channel.set(channel)
         conversation.agent.channel_note = channel_note(channel)
@@ -521,7 +529,7 @@ class ChatHandler:
             )
         finally:
             if run.voice is not None:
-                run.voice.turn_finished(run.turn_id)
+                run.voice.turn_finished(run.turn_id, playback=playback.started)
             self._turn_done(conversation, run)
 
     def _timing(self, conversation: Conversation) -> dict[str, object] | None:
@@ -581,6 +589,8 @@ class ChatHandler:
             local_stt=bool(message.local_stt),
             local_tts=bool(message.local_tts),
             route=message.route,
+            wake=bool(message.wake),
+            idle_timeout=services.wake_idle_timeout if message.wake else None,
         )
         self._voices[conn.id] = session
         await session.start(message.id)
