@@ -242,10 +242,17 @@ export class VoiceController {
       if (message.mode === 'local') {
         void this.listenLocally();
       } else {
-        void this.stt.stop();
+        void this.backToCloud();
       }
     } else {
       this.set({ tts: message.mode });
+    }
+  }
+
+  private async backToCloud(): Promise<void> {
+    await this.stt.stop().catch(() => undefined);
+    if (this.sessionOpen) {
+      await this.audio.resumeCapture().catch(() => undefined);
     }
   }
 
@@ -254,6 +261,8 @@ export class VoiceController {
       return;
     }
     try {
+      // The recognizer needs the microphone to itself: release the capture while it listens.
+      await this.audio.pauseCapture();
       await this.stt.start(
         text => {
           if (this.sessionOpen && text.trim() !== '') {
@@ -267,6 +276,8 @@ export class VoiceController {
         () => undefined,
       );
     } catch {
+      // Give the microphone back and carry on: the brain keeps working (text chat still works).
+      await this.audio.resumeCapture().catch(() => undefined);
       // The brain keeps working on text; the person can still use the text chat.
       this.set({
         notice: 'Não consegui usar o reconhecimento de voz do aparelho.',

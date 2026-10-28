@@ -30,6 +30,8 @@ const audio = {
   stop: jest.fn(async () => undefined),
   onChunk: () => () => undefined,
   onStopRequested: () => () => undefined,
+  pauseCapture: jest.fn(async () => undefined),
+  resumeCapture: jest.fn(async () => undefined),
   openPlayer: jest.fn(async () => undefined),
   play: jest.fn(),
   flush: jest.fn(),

@@ -1,6 +1,7 @@
 package app.juniper.mobile.media
 
 import app.juniper.mobile.voice.JuniperAudioModule
+import app.juniper.mobile.voice.JuniperSttModule
 import app.juniper.mobile.voice.JuniperTtsModule
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -14,6 +15,7 @@ class JuniperPackage : ReactPackage {
           MediaAutoplayModule(reactContext),
           JuniperAudioModule(reactContext),
           JuniperTtsModule(reactContext),
+          JuniperSttModule(reactContext),
       )
 
   override fun createViewManagers(

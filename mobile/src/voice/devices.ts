@@ -13,6 +13,9 @@ export interface AudioDevice {
   onChunk(listener: (base64Pcm: string) => void): () => void;
   /** The person pressed "encerrar" in the notification. */
   onStopRequested(listener: () => void): () => void;
+  /** Releases the microphone without ending the session (the device recognizer needs it). */
+  pauseCapture(): Promise<void>;
+  resumeCapture(): Promise<void>;
   openPlayer(sampleRate: number): Promise<void>;
   /** Queues PCM for playback, after what is already queued. */
   play(base64Pcm: string): void;

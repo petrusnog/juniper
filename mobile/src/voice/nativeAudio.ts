@@ -9,6 +9,8 @@ import { AudioDevice } from './devices';
 interface NativeAudio {
   start(sampleRate: number): Promise<void>;
   stop(): Promise<void>;
+  pauseCapture(): Promise<void>;
+  resumeCapture(): Promise<void>;
   openPlayer(sampleRate: number): Promise<void>;
   play(base64: string): void;
   flush(): void;
@@ -55,6 +57,16 @@ export const nativeAudio: AudioDevice = {
     const emitter = new NativeEventEmitter(NativeModules.JuniperAudio);
     const subscription = emitter.addListener('juniperStopRequested', listener);
     return () => subscription.remove();
+  },
+  async pauseCapture() {
+    await (
+      NativeModules.JuniperAudio as NativeAudio | undefined
+    )?.pauseCapture();
+  },
+  async resumeCapture() {
+    await (
+      NativeModules.JuniperAudio as NativeAudio | undefined
+    )?.resumeCapture();
   },
   async openPlayer(sampleRate) {
     await (NativeModules.JuniperAudio as NativeAudio).openPlayer(sampleRate);
