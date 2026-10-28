@@ -9,15 +9,22 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import typer
 from rich.console import Console
 
 from brain.clients import voice
 from brain.config import settings
+from brain.memory.errors import MemoryUnavailableError
 from brain.music import oauth
 from brain.music.base import MusicError
 from brain.music.quota import QuotaTracker
+from brain.music.taste import TasteBook
+from brain.tools import music as music_tools
+
+SIGNAL_WORDS = {"like": "gostou", "dislike": "não gostou", "skip": "pulou", "played": "pediu"}
 
 
 def _duration(seconds: float) -> str:
@@ -94,3 +101,66 @@ def install(app: typer.Typer, console: Console) -> None:
             "Pronto: entrei na sua conta do YouTube. O acesso fica guardado em "
             f"{settings.music.oauth_file} (só você lê).",
         )
+
+    taste_app = typer.Typer(
+        help="O que anotei do seu gosto musical (só o que você pediu e comentou).",
+        invoke_without_command=True,
+    )
+    music_app.add_typer(taste_app, name="taste")
+
+    def book() -> TasteBook:
+        try:
+            return music_tools.taste_book()
+        except MemoryUnavailableError as exc:
+            voice.say(console, str(exc), "red")
+            raise typer.Exit(1) from None
+
+    @taste_app.callback()
+    def taste(
+        ctx: typer.Context,
+        limit: Annotated[int, typer.Option("--limit", "-n", help="Quantos eventos mostrar.")] = 15,
+    ) -> None:
+        """Mostra o resumo e os últimos registros do seu gosto musical."""
+        if ctx.invoked_subcommand is not None:
+            return
+        taste_book = book()
+        summary = taste_book.summary()
+        if summary.total == 0:
+            voice.say(console, "Ainda não anotei nada do seu gosto musical.")
+            return
+        zone = ZoneInfo(settings.agent.timezone)
+        lines = [f"Anotei {summary.total} registro(s) do seu gosto musical."]
+        lines.append(
+            "Por sinal: "
+            + ", ".join(
+                f"{SIGNAL_WORDS.get(k, k)} {v}" for k, v in sorted(summary.by_signal.items())
+            )
+        )
+        if summary.artists:
+            lines.append(
+                "Artistas em alta: "
+                + ", ".join(f"{a} ({score:+d})" for a, score in summary.artists)
+            )
+        lines.append("Últimos registros:")
+        for event in taste_book.recent(limit):
+            what = " — ".join(p for p in (event.title, event.artist) if p)
+            when = event.at.astimezone(zone).strftime("%d/%m/%Y %H:%M")
+            lines.append(f"  {when}  {SIGNAL_WORDS.get(event.signal, event.signal)}: {what}")
+        voice.say(console, "\n".join(lines))
+
+    @taste_app.command("clear")
+    def clear(
+        yes: Annotated[
+            bool, typer.Option("--yes", "-y", help="Não pergunta antes de apagar.")
+        ] = False,
+    ) -> None:
+        """Apaga TODO o gosto musical anotado (não dá para desfazer)."""
+        taste_book = book()
+        total = taste_book.count()
+        if total == 0:
+            voice.say(console, "Não há nada anotado para apagar.")
+            return
+        if not yes and not typer.confirm(f"Apagar os {total} registro(s) do seu gosto musical?"):
+            voice.say(console, "Ok, não apaguei nada.")
+            return
+        voice.say(console, f"Apaguei {taste_book.clear()} registro(s).")
