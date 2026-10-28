@@ -187,6 +187,29 @@ class SecuritySettings(BaseModel):
     confirmation_timeout: int = Field(default=60, ge=1, le=600)
 
 
+class MusicSettings(BaseModel):
+    """Música pela YouTube Data API (ver ADR-024)."""
+
+    enabled: bool = False
+    # Unidades da cota diária que o cérebro aceita gastar (o Google dá 10.000; margem de segurança).
+    daily_quota_limit: int = Field(default=9000, ge=100, le=1_000_000)
+    search_limit: int = Field(default=5, ge=1, le=5)
+    region: str = Field(default="BR", pattern=r"^[A-Za-z]{2}$")
+    quota_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "music" / "quota.json"
+    )
+
+    @field_validator("region")
+    @classmethod
+    def _upper_region(cls, v: str) -> str:
+        return v.upper()
+
+    @field_validator("quota_file")
+    @classmethod
+    def _expand_quota_file(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
 class OpenUrlSettings(BaseModel):
     """Política da tool `open_url` (ver ADR-014)."""
 
@@ -721,6 +744,7 @@ class Settings(BaseSettings):
     deployment: DeploymentSettings = Field(default_factory=DeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     google: GoogleSettings = Field(default_factory=GoogleSettings)
+    music: MusicSettings = Field(default_factory=MusicSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
@@ -730,6 +754,7 @@ class Settings(BaseSettings):
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
+    youtube_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_YOUTUBE_API_KEY")
     telegram_bot_token: SecretStr | None = Field(default=None, alias="JUNIPER_TELEGRAM_BOT_TOKEN")
 
     # Paths (calculados no model_post_init)
