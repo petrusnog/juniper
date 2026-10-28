@@ -156,7 +156,8 @@ class GoogleSynthesizer(Synthesizer):
             token_source or ServiceAccountToken(credentials_file or cfg.credentials_file).token
         )
         self._client = httpx.AsyncClient(
-            timeout=timeout or cfg.timeout, transport=logged_transport("google_tts", transport)
+            timeout=timeout or cfg.timeout,
+            transport=logged_transport("google_tts", transport, redact_bodies=True),
         )
 
     @property

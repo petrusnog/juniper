@@ -60,7 +60,7 @@ Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
 - **Cada frase** (`SpeechService.speak`) sai como áudio (`voice.audio`) ou, se o orçamento acabou ou o Google falhou, como texto para o aparelho falar (`voice.say`). Depois de uma falha, o Google fica em paz por 30 s (10 min se o erro foi de cota) antes de outra tentativa.
 - **Aviso uma vez:** cada troca de modo vira um único `voice.fallback` (motivo `budget`, `quota` ou `error`) e outro quando o Google volta (`recovered`, por exemplo na virada do mês). Falha inesperada do provedor também cai no aparelho: nenhuma frase fica sem voz.
 - **Log:** só tamanhos e códigos, nunca o texto.
-- **`juniper voice status`:** mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
+- **`juniper voice status`:** (lê o arquivo de gasto do lugar onde o comando roda; na VPS, rode-o dentro do contêiner do cérebro) mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
 
 ## A sessão de voz no servidor {#sessao}
 
@@ -72,9 +72,24 @@ Implementada no T-152 (`brain/clients/voice_session.py`, ligada ao `ChatHandler`
 4. **Interromper:** falar por cima dela por `barge_in_ms` corta a fala e cancela o turno; a fala nova é transcrita e vira o próximo turno. «Para», «chega» e «silêncio» (ou `voice.interrupt`) calam sem abrir turno.
 5. **Encerrar:** botão (`voice.end`), comando falado («encerrar a conversa», «tchau, Juniper») ou `voice.idle_timeout_seconds` de silêncio. Os comandos são reconhecidos **sem o LLM** e só valem para a frase inteira.
 6. **Confirmação por voz:** uma pergunta, uma resposta («Posso criar a playlist?» → «sim»); o «sim» é a transcrição seguinte, interpretada por `consent.py`. Nada repete a pergunta.
-7. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
+7. **Pergunta pendente morre com a voz:** «para», «chega», o botão de interromper e qualquer fim de sessão descartam a confirmação que estava aberta; um «sim» dito depois não executa a ação antiga. Terminar por voz também cancela o turno em andamento.
+8. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
 
 Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.html#voz).
+
+## Ligar a voz e testar de verdade {#ligar}
+
+Tudo acima foi verificado com **peças falsas** nas pontas (LLM, Google, Groq, YouTube e um tom sintético no lugar da voz). O que só se confirma com os serviços e o aparelho reais está neste roteiro. Os passos de 1 a 4 não precisam do app.
+
+1. **Conta de serviço do Google** (Text-to-Speech ligado no projeto, com faturamento): baixe o JSON e salve em `certs/gcp-voice.json` (a pasta `certs/` é montada só para leitura; o arquivo nunca entra na imagem nem no Git).
+2. **Chave da Groq** em `JUNIPER_GROQ_API_KEY` no `.env`.
+3. **Ligue** no seu config (`docker/config.base.yaml` ou o pessoal): `voice: {enabled: true}`. O gasto do mês fica em `voice-usage.json` no volume `juniper-music` (veja [Produção](producao.html)), então sobrevive a deploys.
+4. **Confira:** `juniper voice status` deve mostrar «Credencial do Google: encontrada», «Chave da Groq: configurada» e o gasto do mês em zero. Ele nunca imprime chaves.
+5. **No aparelho** (quando o app existir, [App mobile](mobile.html)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
+6. **Ajustes que só o uso mostra:** os limiares do detector (3 vezes o piso para falar, 6 vezes para interromper) e `voice.vad.*`; a qualidade da voz Leda; se o STT da Groq acerta nomes de músicas e artistas.
+7. **Custo:** `juniper voice status` mostra quanto do orçamento de caracteres foi usado; ao esgotar, a voz do aparelho assume sozinha e a Juniper avisa uma vez.
+
+O que ainda **não** foi verificado: o formato real das respostas do Google e da Groq, os limites gratuitos atuais da Groq (as fontes citam 20 requisições por minuto e 2.000 por dia, a confirmar no console) e o comportamento do cancelamento de eco em aparelhos reais.
 
 ## Mensagens {#protocolo}
 
@@ -82,4 +97,4 @@ Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_versio
 
 ## Tasks {#tasks}
 
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite do backend, **pronto**: `tests/test_acceptance_voice.py`). Épica #179.

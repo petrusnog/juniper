@@ -290,7 +290,7 @@ async def test_the_states_walk_listening_thinking_speaking_listening(tmp_path: P
 
 async def test_the_device_voice_takes_over_when_the_cloud_voice_is_gone(tmp_path: Path) -> None:
     async with Rig(tmp_path, FakeProvider([say(LONG)]), stt=FakeStt("oi"), limit=0) as rig:
-        client, ready = await rig.open()
+        client, ready = await rig.open(local_tts=True)
         assert ready.tts == "local"
         await say_phrase(client)
         says = []
@@ -305,7 +305,7 @@ async def test_the_device_voice_takes_over_when_the_cloud_voice_is_gone(tmp_path
 async def test_budget_running_out_mid_conversation_is_announced_once(tmp_path: Path) -> None:
     provider = FakeProvider([say(LONG)])
     async with Rig(tmp_path, provider, stt=FakeStt("oi"), limit=len(LONG) - 1) as rig:
-        client, ready = await rig.open()
+        client, ready = await rig.open(local_tts=True)
         await say_phrase(client)
         fallbacks = []
         while True:
@@ -503,3 +503,122 @@ async def test_logs_never_carry_what_was_said(
         await client.send(type="voice.end", reason="client")
         await wait_for(lambda: not rig.handler._voices)
     assert seen and "segredo" not in str(seen) and "Petrus" not in str(seen)
+
+
+# --- findings of the independent review (T-153) --------------------------------------------
+
+
+async def test_stop_and_end_commands_drop_a_pending_confirmation(tmp_path: Path) -> None:
+    """ "chega" after a question is a no: a later "sim" must not execute the old action."""
+    cleared: list[str] = []
+    async with Rig(tmp_path, FakeProvider([say(LONG), say(LONG)]), cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True)
+        conversation = next(iter(rig.handler._live.values()))
+        original = conversation.agent.clear_pending
+        conversation.agent.clear_pending = lambda: (cleared.append("x"), original())[1]  # type: ignore[method-assign]
+        await client.send(type="voice.text", id="t-1", text="oi")
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+        before = len(cleared)
+        await client.send(type="voice.text", id="t-2", text="chega")
+        await asyncio.sleep(0.2)
+        assert len(cleared) == before + 1
+        await client.send(type="voice.text", id="t-3", text="tchau Juniper")
+        await client.until(p.VoiceEnd)
+        assert len(cleared) == before + 2
+
+
+async def test_ending_by_voice_during_a_turn_cancels_it(tmp_path: Path) -> None:
+    async with Rig(tmp_path, Gated(), cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True)
+        await client.send(type="voice.text", id="t-1", text="fala bastante")
+        await client.until(p.ChatStarted)
+        await client.send(type="voice.text", id="t-2", text="tchau Juniper")
+        messages = await collect(client, p.VoiceEnd, p.ChatEnd)
+        assert of(messages, p.ChatEnd)[0].finish == "cancelled"
+
+
+async def test_ending_while_a_turn_is_being_opened_does_not_leave_the_chat_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.clients import voice_session
+
+    gate = asyncio.Event()
+
+    async def stuck(self: Any, turn_id: str) -> None:
+        gate.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(voice_session.VoiceSession, "turn_started", stuck)
+    async with Rig(tmp_path, FakeProvider([say("oi")]), stt=FakeStt("oi")) as rig:
+        client, _ = await rig.open()
+        await say_phrase(client)
+        await asyncio.wait_for(gate.wait(), 3)
+        await client.send(type="voice.end", reason="client")
+        await wait_for(lambda: not rig.handler._voices)
+        conversation = next(iter(rig.handler._live.values()))
+        assert not conversation.busy
+        assert texts(await client.chat("e agora?")) == "oi"
+
+
+async def test_a_broken_connection_still_cleans_the_session_up(tmp_path: Path) -> None:
+    from brain.clients.voice_session import VoiceSession
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    ended: list[bool] = []
+
+    async def dead(message: Any) -> bool:
+        return False
+
+    async def nothing() -> None:
+        return None
+
+    session = VoiceSession(
+        rig.services,
+        send=dead,
+        submit=lambda text: nothing(),
+        cancel_turn=nothing,
+        turn_active=lambda: False,
+        ended=lambda: ended.append(True),
+        clear_pending=lambda: None,
+    )
+    await session.start("v-1")
+    worker, watchdog = session._worker, session._watchdog
+    await session.end("server", notify=False)
+    await asyncio.sleep(0)
+    assert worker is not None and watchdog is not None
+    assert worker.done() and watchdog.done() and ended == [True]
+
+
+async def test_without_a_device_voice_the_text_is_not_sent_as_voice_say(tmp_path: Path) -> None:
+    async with Rig(tmp_path, FakeProvider([say(LONG)]), cloud_stt=False, limit=0) as rig:
+        client, ready = await rig.open(local_stt=True)  # no local_tts
+        assert ready.tts == "local"
+        await client.send(type="voice.text", id="t-1", text="oi")
+        messages = await collect(client, p.ChatEnd)
+        await asyncio.sleep(0.3)
+        while True:
+            try:
+                async with asyncio.timeout(0.2):
+                    messages.append(await client.recv())
+            except TimeoutError:
+                break
+    assert not of(messages, p.VoiceSay)
+    assert texts(messages) == LONG  # the caption is still there
+
+
+async def test_odd_sized_audio_at_another_rate_is_not_an_error(tmp_path: Path) -> None:
+    async with Rig(tmp_path, FakeProvider([say("oi")])) as rig:
+        client = await connect_client(rig.server, "celular")
+        await client.send(
+            type="voice.start",
+            id="v-1",
+            format={"encoding": "pcm_s16le", "sample_rate": 44_100, "channels": 1},
+        )
+        await client.until(p.VoiceReady)
+        odd = base64.b64encode(b"\x01\x02\x03").decode()
+        for seq in range(3):
+            await client.send(type="voice.audio", seq=seq, data=odd)
+        await client.send(type="voice.audio", seq=3, data=base64.b64encode(b"\0\0" * 441).decode())
+        assert rig.handler._voices  # still open, and no `error` came back
+        messages = await client.chat("oi")  # the chat still works: nothing was broken
+        assert texts(messages) == "oi" and not of(messages, p.Error)

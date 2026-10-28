@@ -454,3 +454,12 @@ def test_the_bot_healthcheck_uses_the_health_flag() -> None:
 def test_ci_validates_the_compose_file_with_the_telegram_profile_on() -> None:
     workflow = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
     assert "--profile telegram" in workflow
+
+
+def test_the_voice_budget_survives_a_deploy() -> None:
+    """The monthly TTS counter must live in a named volume, or a new container would forget the
+    month's spending and the budget cap would stop meaning anything."""
+    usage = Path(yaml.safe_load(CONFIG_PROD.read_text("utf-8"))["voice"]["usage_file"])
+    mounts = COMPOSE["services"]["brain"]["volumes"]
+    volume_dirs = [Path(mount_target(m)) for m in mounts if not str(m).startswith(("./", "$"))]
+    assert any(usage.is_relative_to(d) for d in volume_dirs), usage
