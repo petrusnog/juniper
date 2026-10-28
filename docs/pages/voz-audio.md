@@ -51,6 +51,16 @@ Implementado no T-151 (`brain/voice/vad.py` e `stt.py`):
 - **Alucinações** (`is_hallucination`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## Viva-voz, fone e música tocando {#viva-voz}
+
+Sem fone, a voz sai pelo alto-falante e o microfone ouve a própria Juniper. O que existe contra o laço de «ela se ouve e responde a si mesma»:
+
+1. **Cancelamento de eco do Android:** o app captura com a fonte `VOICE_COMMUNICATION`, liga o modo de comunicação e manda a voz para o **viva-voz** (sem isso o Android usa o alto-falante da chamada, junto ao ouvido). Com fone conectado, a voz vai para o fone.
+2. **Meio-duplex no viva-voz** ([protocolo](protocolo.html#voz)): enquanto ela fala (e por 1 s depois), o cérebro **ignora o microfone**. A voz dela, o eco e a música dessa janela nunca viram fala. O preço: no viva-voz **não dá para interromper falando por cima**, só pelo botão «Parar de falar». Com fone o corte por voz continua.
+3. **«Segurar para falar»** (botão na aba Voz): o microfone só vai ao cérebro enquanto o botão está apertado (e ao soltar vão 900 ms de silêncio para o cérebro fechar a fala). É a saída segura quando há **música tocando no celular**: ela não é interpretada, porque o microfone só abre quando você quer. Apertar o botão enquanto ela fala também a interrompe.
+
+O que **não** dá para garantir sem fone: falar por cima de uma música alta sem apertar o botão. O Android cancela o eco da voz da Juniper, não o de outro app; sem o botão, a música pode ser tomada por fala (e a transcrição de letra de música não é filtrada). Por isso: fone, ou «Segurar para falar».
+
 ## Orçamento e voz do aparelho {#orcamento}
 
 Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):

@@ -11,12 +11,25 @@ tags: musica youtube music data api playlist cota quota oauth gosto musical open
 
 ## Como funciona {#como-funciona}
 
-1. O LLM chama **`music_search`** (`READ`): a YouTube Data API v3 devolve até 5 faixas, com preferência pelas oficiais ("Artista - Topic").
-2. O LLM escolhe e chama [`open_url`](executor.html#open-url) com `https://music.youtube.com/watch?v=<videoId>`. O domínio `music.youtube.com` está na lista de confiança, então abre **sem perguntar**.
+1. O LLM chama **`play_music`** ([abaixo](#play-music)): a YouTube Data API v3 devolve até 5 faixas, com preferência pelas oficiais ("Artista - Topic"), e a primeira é a escolhida. Para só **mostrar opções**, ele usa `music_search` (`READ`).
+2. O cérebro abre `https://music.youtube.com/watch?v=<videoId>` no celular pelo [`open_url`](executor.html#open-url). O domínio `music.youtube.com` está na lista de confiança, então abre **sem perguntar**.
    **Páginas de busca não valem:** se o LLM tentar abrir `music.youtube.com/search?...` (ou os resultados do YouTube) com `open_url`, a chamada é recusada antes de chegar ao celular, com a instrução de usar `music_search`. Um link de busca só abre uma lista e não toca nada; foi o que aconteceu no primeiro teste real. Só vale enquanto a música está ligada.
 3. O celular redireciona para o app do YouTube Music e o [app mobile](mobile.html) dá o play automaticamente; se o autoplay falhar, a faixa aparece pronta e basta apertar play.
 
 Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no `.env`) e `music.enabled: true`. A chave viaja no cabeçalho `x-goog-api-key`, **nunca na URL**, e não aparece em erro nem em log. Sem chave ou com a música desligada, a tool nem aparece para o LLM.
+
+## Tocar: `play_music` e o canal do pedido {#play-music}
+
+Para **tocar**, o modelo chama uma ferramenta só, `play_music`: ela busca, escolhe o melhor resultado (a mesma ordenação da busca) e abre. Antes eram dois passos soltos (`music_search` e depois `open_url`) e o modelo às vezes parava no meio e mandava o link no texto. Agora o passo de abrir não depende dele. `music_search` ficou para **mostrar opções** e para montar playlists.
+
+O que acontece depende de **por onde o pedido chegou**: o cérebro diz isso ao modelo em cada turno («Canal: aplicativo do celular (voz)», «Canal: telegram»...) e as próprias ferramentas se comportam assim:
+
+| Canal | O que `play_music` e `open_url` fazem |
+|---|---|
+| **App do celular** (texto ou voz) | abrem no celular e dão o play, **sem segunda pergunta**: o pedido da pessoa é a confirmação |
+| **Terminal, Telegram** e outros | **não abrem nada**, nem que haja um celular conectado: devolvem o link para o modelo mandar na resposta |
+
+A pergunta de confirmação continua valendo para endereços fora da lista de confiança (`tools.open_url.trusted_domains`): a música é a exceção porque o link é montado pelo cérebro a partir do resultado da busca, nunca digitado pelo modelo.
 
 ## Tools {#tools}
 

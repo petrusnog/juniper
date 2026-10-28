@@ -30,6 +30,9 @@ const audio = {
   stop: jest.fn(async () => undefined),
   onChunk: () => () => undefined,
   onStopRequested: () => () => undefined,
+  hasHeadset: jest.fn(async () => false),
+  applyRoute: jest.fn(async () => undefined),
+  onRouteChange: () => () => undefined,
   pauseCapture: jest.fn(async () => undefined),
   resumeCapture: jest.fn(async () => undefined),
   openPlayer: jest.fn(async () => undefined),
@@ -139,4 +142,54 @@ test('the fallback voices are shown while the session is on', async () => {
     await Promise.resolve();
   });
   expect(texts().join(' ')).toContain('voz do aparelho');
+});
+
+const settle = () =>
+  ReactTestRenderer.act(async () => {
+    await new Promise(resolve => setImmediate(resolve));
+  });
+
+test('the screen asks for "display over other apps" when it is not granted', async () => {
+  const { root, texts } = mount();
+  await settle();
+  expect(root.findByProps({ testID: 'overlay-banner' })).toBeTruthy();
+  expect(texts().join(' ')).toContain('Exibir sobre outros apps');
+  expect(root.findByProps({ testID: 'overlay-allow' })).toBeTruthy();
+});
+
+test('hold-to-talk shows the hold button only during a conversation, and it drives the microphone', async () => {
+  const { conn, voice, root } = mount();
+  await settle();
+  expect(root.findAllByProps({ testID: 'talk' })).toHaveLength(0);
+  await ReactTestRenderer.act(async () => {
+    await root.findByProps({ testID: 'toggle' }).props.onPress();
+    conn.l({
+      type: 'voice.ready',
+      reply_to: 'v-1',
+      input: { encoding: 'pcm_s16le', sample_rate: 16000, channels: 1 },
+      output: { encoding: 'pcm_s16le', sample_rate: 24000, channels: 1 },
+      stt: 'cloud',
+      tts: 'cloud',
+    });
+    await Promise.resolve();
+  });
+  ReactTestRenderer.act(() =>
+    root.findByProps({ testID: 'ptt-switch' }).props.onValueChange(true),
+  );
+  const talk = root.findByProps({ testID: 'talk' });
+  ReactTestRenderer.act(() => talk.props.onPressIn());
+  expect(voice.state.talking).toBe(true);
+  ReactTestRenderer.act(() => talk.props.onPressOut());
+  expect(voice.state.talking).toBe(false);
+});
+
+test('the screen says whether she is on the loudspeaker (no interrupting by voice) or on headphones', async () => {
+  const { conn, root, texts } = mount();
+  await settle();
+  await ReactTestRenderer.act(async () => {
+    await root.findByProps({ testID: 'toggle' }).props.onPress();
+    await Promise.resolve();
+  });
+  expect(texts().join(' ')).toContain('Viva-voz');
+  expect(conn.sent[0]).toMatchObject({ route: 'speaker' });
 });

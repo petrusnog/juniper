@@ -11,6 +11,8 @@ interface NativeAudio {
   stop(): Promise<void>;
   pauseCapture(): Promise<void>;
   resumeCapture(): Promise<void>;
+  hasHeadset(): Promise<boolean>;
+  applyRoute(speaker: boolean): void;
   openPlayer(sampleRate: number): Promise<void>;
   play(base64: string): void;
   flush(): void;
@@ -67,6 +69,26 @@ export const nativeAudio: AudioDevice = {
     await (
       NativeModules.JuniperAudio as NativeAudio | undefined
     )?.resumeCapture();
+  },
+  async hasHeadset() {
+    return (
+      (await (
+        NativeModules.JuniperAudio as NativeAudio | undefined
+      )?.hasHeadset()) === true
+    );
+  },
+  async applyRoute(speaker) {
+    (NativeModules.JuniperAudio as NativeAudio | undefined)?.applyRoute(
+      speaker,
+    );
+  },
+  onRouteChange(listener) {
+    const emitter = new NativeEventEmitter(NativeModules.JuniperAudio);
+    const subscription = emitter.addListener(
+      'juniperAudioRoute',
+      (headset: unknown) => listener(headset === true),
+    );
+    return () => subscription.remove();
   },
   async openPlayer(sampleRate) {
     await (NativeModules.JuniperAudio as NativeAudio).openPlayer(sampleRate);

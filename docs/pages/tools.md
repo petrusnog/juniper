@@ -137,6 +137,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `delete_event` | DESTRUCTIVE | CLOUD | Apaga um evento (irreversível). | [Agenda Google](google-calendar.html) |
 | `git_search` | READ | EXECUTOR | Busca commits por termo. | [Comandos git](git.html) |
 | `git_deploy` | DESTRUCTIVE | EXECUTOR | Cherry-pick de feature em develop/stage. | [Comandos git](git.html) |
+| `play_music` | WRITE (sem perguntar) | CLOUD | **Toca** uma música: busca, escolhe a melhor e, se o pedido veio do app do celular, abre e dá o play; de outros canais devolve o link para a resposta. O pedido já é a confirmação. | [Música](musica.html#play-music) |
 | `music_search` | READ | CLOUD | Procura músicas no YouTube Music e devolve links (só aparece com `music.enabled` e a chave configurada). | [Música](musica.html) |
 | `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.html#playlists) |
 | `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.html#playlists) |

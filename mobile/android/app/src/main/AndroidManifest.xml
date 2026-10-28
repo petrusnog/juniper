@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- "Display over other apps": lets the music open while the app is in the background -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- usesCleartextTraffic="true": the brain speaks ws:// and is only reachable inside the
          Tailscale tunnel (WireGuard), which encrypts the traffic (ADR-013, ADR-022). -->

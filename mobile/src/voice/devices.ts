@@ -16,6 +16,12 @@ export interface AudioDevice {
   /** Releases the microphone without ending the session (the device recognizer needs it). */
   pauseCapture(): Promise<void>;
   resumeCapture(): Promise<void>;
+  /** Whether headphones (wired or Bluetooth) are the way out right now. */
+  hasHeadset(): Promise<boolean>;
+  /** Loudspeaker (`true`) or whatever is plugged in (`false`); also turns on echo cancellation. */
+  applyRoute(speaker: boolean): Promise<void>;
+  /** Headphones plugged in or out. Returns the unsubscribe function. */
+  onRouteChange(listener: (headset: boolean) => void): () => void;
   openPlayer(sampleRate: number): Promise<void>;
   /** Queues PCM for playback, after what is already queued. */
   play(base64Pcm: string): void;

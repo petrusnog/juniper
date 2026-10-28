@@ -138,7 +138,7 @@ Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.ht
 
 | Direção | Tipo | Campos | Quando |
 |---|---|---|---|
-| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?` | Abre a sessão; `format` é o do microfone. |
+| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?`, `route?` | Abre a sessão; `format` é o do microfone. |
 | servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: o formato do áudio de saída e se STT e TTS são `cloud` ou `local`. |
 | cliente → servidor | `voice.audio` | `seq`, `data` | Áudio do microfone. |
 | servidor → cliente | `voice.audio` | `seq`, `data`, `turn_id`, `last?` | Áudio da resposta; `last` fecha a fala do turno. |
@@ -148,11 +148,14 @@ Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.ht
 | servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
 | cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
 | cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
+| cliente → servidor | `voice.route` | `route` (`speaker`, `headset`) | A saída de áudio mudou no meio da conversa (fone ligado ou desligado). |
 | ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
 
 `voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Um quadro de áudio com base64 inválido, `seq` negativo ou acima do limite é recusado como `bad_request`. Os erros `voice_unavailable` e `voice_busy` estão na [tabela de erros](#erros). `hello.client.kind` passa a documentar também `mobile`.
 
 **Cortar a fala.** Quando o Petrus fala por cima dela, diz «silêncio» ou o app manda `voice.interrupt`, o cérebro para de enviar áudio e manda `voice.state` com `state: listening` **e o `turn_id` do turno cortado**: é a ordem para o app **descartar na hora o áudio daquele turno** que ainda não tocou. O mesmo `listening` **sem** `turn_id` é o fim natural: o app deixa tocar o que já recebeu. Em seguida o turno é cancelado (`chat.end` com `finish: cancelled`).
+
+**Viva-voz e fone (`route`).** O app diz em `voice.start` por onde a voz toca: `speaker` (viva-voz) ou `headset` (fone), e avisa com `voice.route` se isso mudar no meio. Em `speaker` o microfone ouve a própria Juniper, então o cérebro **ignora o microfone enquanto ela fala** (e por 1 segundo depois): não há como interromper falando por cima, só pelo botão (`voice.interrupt`). Em `headset` (ou sem o campo) o corte por voz continua. O campo é opcional: um app antigo funciona como antes.
 
 **Formato de entrada.** O cérebro analisa o áudio a 16 kHz; se o app mandar outra taxa em `voice.start`, o cérebro reamostra cada pedaço (prefira 16 kHz). A taxa do áudio que sai vem em `voice.ready.output`.
 

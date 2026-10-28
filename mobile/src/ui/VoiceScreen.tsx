@@ -1,7 +1,16 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { ChatController } from '../chat/ChatController';
 import { useChat } from '../chat/useChat';
+import { backgroundPermission } from '../executor/MediaAutoplay';
+import { useOverlayPermission } from '../executor/useOverlayPermission';
 import { ConnectionState } from '../connection/BrainConnection';
 import { radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
@@ -27,6 +36,7 @@ export function VoiceScreen({ voice, chat, connection }: Props) {
   const theme = useTheme();
   const state = useVoice(voice);
   const chatState = useChat(chat);
+  const overlay = useOverlayPermission();
   const reply = [...chatState.messages]
     .reverse()
     .find(m => m.role === 'assistant');
@@ -89,6 +99,34 @@ export function VoiceScreen({ voice, chat, connection }: Props) {
             {state.tts === 'local' ? 'Falando com a voz do aparelho.' : ''}
           </Text>
         ) : null}
+        {active ? (
+          <Text testID="route" style={[styles.small, { color: theme.muted }]}>
+            {state.route === 'speaker'
+              ? 'Viva-voz: enquanto ela fala, o microfone fica fechado (use «Parar de falar» para interromper).'
+              : 'Fone de ouvido: dá para interromper falando por cima.'}
+          </Text>
+        ) : null}
+        {overlay.granted === false ? (
+          <View
+            testID="overlay-banner"
+            style={[
+              styles.caption,
+              { backgroundColor: theme.card, borderColor: theme.amber },
+            ]}
+          >
+            <Text style={[styles.text, { color: theme.ink }]}>
+              Para tocar música com a tela apagada ou com outro app na frente,
+              permita «Exibir sobre outros apps» para a Juniper.
+            </Text>
+            <Pressable
+              testID="overlay-allow"
+              accessibilityRole="button"
+              onPress={() => backgroundPermission.openSettings()}
+            >
+              <Text style={{ color: theme.blue }}>Permitir agora</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {state.notice ? (
           <Text testID="notice" style={[styles.small, { color: theme.red }]}>
             {state.notice}
@@ -97,6 +135,33 @@ export function VoiceScreen({ voice, chat, connection }: Props) {
       </ScrollView>
 
       <View style={styles.controls}>
+        <View style={styles.ptt}>
+          <Text style={{ color: theme.ink }}>Segurar para falar</Text>
+          <Switch
+            testID="ptt-switch"
+            value={state.pushToTalk}
+            onValueChange={on => voice.setPushToTalk(on)}
+          />
+        </View>
+        {active && state.pushToTalk ? (
+          <Pressable
+            testID="talk"
+            accessibilityRole="button"
+            accessibilityLabel="Segure para falar"
+            onPressIn={() => voice.pressTalk()}
+            onPressOut={() => voice.releaseTalk()}
+            style={[
+              styles.secondary,
+              { borderColor: state.talking ? theme.green : theme.border },
+            ]}
+          >
+            <Text style={{ color: state.talking ? theme.green : theme.ink }}>
+              {state.talking
+                ? 'Ouvindo… solte para enviar'
+                : 'Segure para falar'}
+            </Text>
+          </Pressable>
+        ) : null}
         {state.phase === 'speaking' || state.phase === 'thinking' ? (
           <Pressable
             testID="interrupt"
@@ -145,6 +210,7 @@ const styles = StyleSheet.create({
   who: { fontSize: 12, fontWeight: '600' },
   text: { fontSize: 18 },
   small: { fontSize: 13, textAlign: 'center' },
+  ptt: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   controls: { alignItems: 'center', padding: spacing.xl, gap: spacing.md },
   big: {
     width: 132,

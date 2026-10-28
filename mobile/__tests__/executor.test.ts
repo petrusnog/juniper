@@ -179,3 +179,38 @@ test('the history is bounded', async () => {
   await flush();
   expect(executor.history).toHaveLength(50);
 });
+
+test('in the background without the overlay permission it does not claim to have opened', async () => {
+  const { connection, media, executor } = setup();
+  media.answer = {
+    opened: true,
+    autoplay: true,
+    foreground: false,
+    overlay: false,
+  };
+  connection.listener?.(invoke('https://music.youtube.com/watch?v=abc'));
+  await flush();
+  const result = connection.sent.at(-1)!;
+  expect(result.success).toBe(false); // "autoplay: true" may be the previous song still playing
+  expect(result.metadata.code).toBe('background_blocked');
+  expect(result.error).toContain('Exibir sobre outros apps');
+  expect(executor.history[0]).toMatchObject({
+    outcome: 'failed',
+    detail: 'background_blocked',
+  });
+});
+
+test.each([
+  [{ foreground: false, overlay: true }],
+  [{ foreground: true, overlay: false }],
+  [{}],
+])(
+  'with the screen in front, the overlay permission or no report, it opens normally (%j)',
+  async extra => {
+    const { connection, media } = setup();
+    media.answer = { opened: true, autoplay: true, ...extra };
+    connection.listener?.(invoke('https://music.youtube.com/watch?v=abc'));
+    await flush();
+    expect(connection.sent.at(-1)).toMatchObject({ success: true });
+  },
+);
