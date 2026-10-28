@@ -38,6 +38,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.longterm import LongTermMemory
 from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore, SessionStoreError
+from brain.metadocs import docs_context
 from brain.tools.channel import DEVICE_KINDS, Channel, channel_note, current_channel
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
@@ -152,8 +153,11 @@ class ChatHandler:
         turn_sink: Callable[[str, Turn], Any] | None = None,
         v2_context: V2Context | None = None,
         voice: VoiceServices | None = None,
+        self_docs: Callable[[str], str | None] | None = None,
     ) -> None:
         self._store = store
+        # Documentation excerpts for questions about herself (ADR-025); None in most tests.
+        self._self_docs = self_docs
         self._voice = voice
         self._voices: dict[str, VoiceSession] = {}
         self._provider = provider
@@ -303,6 +307,7 @@ class ChatHandler:
             store=self._store,
             memory=self._recall,
             turn_sink=self._turn_sink,
+            self_docs=self._self_docs,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -801,6 +806,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         turn_sink=v2.sink if v2 else None,
         v2_context=v2.context if v2 else None,
         voice=voice_services,
+        self_docs=docs_context,
     )
     from brain.dashboard.sources import Sources
 

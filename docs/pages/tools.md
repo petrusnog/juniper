@@ -149,6 +149,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
 | `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
+| `docs_search` | READ | CLOUD | Busca na própria documentação, por palavras-chave, para responder sobre si mesma. | [Metadocumentação](metadocs.html#docs-search) |
 
 Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.html) está ligada.
 

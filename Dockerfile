@@ -63,6 +63,9 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin juniper \
 # O brain roda direto do código (o prompt da persona é lido de ../prompts, relativo ao pacote).
 COPY brain ./brain
 COPY prompts ./prompts
+# As fontes da documentação, para a Juniper responder sobre si mesma (ADR-025). Sem segredos.
+COPY docs/pages ./docs/pages
+COPY docs/decisions ./docs/decisions
 
 USER juniper
 WORKDIR /home/juniper

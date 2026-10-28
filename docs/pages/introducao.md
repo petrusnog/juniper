@@ -26,6 +26,7 @@ Três ideias guiam o projeto:
 | Git | Busca commits e faz o deploy de uma feature (cherry-pick em `develop` e `stage`) no repositório local. | [Integrações](produto-integracoes.html#git) |
 | Memória | Lembra da conversa atual, de fatos duráveis sobre você e do seu perfil; opcionalmente forma opiniões, sentimentos, interesses e uma personalidade que evolui. | [Memória](produto-memoria.html), [Personalidade](produto-personalidade.html) |
 | Canais | Terminal (`juniper`), bot do Telegram, app Android com chat de texto e de voz, e um painel web somente leitura. | [Onde conversar](produto-canais.html) |
+| Autoconhecimento | Responde sobre a própria arquitetura e funcionamento consultando esta documentação, com uma busca local que não gasta tokens à toa. | [Como funciona](produto.html#autoconhecimento) |
 | Resiliência | Usa vários provedores de modelo de linguagem: se um falhar, o próximo assume sem interromper a conversa. | [Modelos de linguagem](produto-llm.html) |
 
 ## Como ela é construída, em um minuto {#construcao}

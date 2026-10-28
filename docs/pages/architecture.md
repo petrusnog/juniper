@@ -120,6 +120,7 @@ Exemplo: no app, você escreve *"amanhã quero uma ida ao dentista, às 16h"*.
 | Voz (VAD, STT, TTS, orçamento) | `brain/voice/` | [Voz por áudio](voz-audio.html) |
 | Música (YouTube, cota, OAuth, gosto) | `brain/music/` | [Música](musica.html) |
 | Dashboard | `brain/dashboard/` | [Dashboard](dashboard.html) |
+| Metadocumentação (busca local na própria documentação) | `brain/metadocs/`, `brain/tools/docs.py` | [Metadocumentação](metadocs.html) |
 | Configuração | `brain/config.py` | [Configuração](configuracao.html) |
 | Logs, tempos, diário, agendador | `brain/eventlog.py`, `httplog.py`, `logfiles.py`, `timing.py`, `trace.py`, `scheduler.py` | [Observabilidade](observabilidade.html) |
 | Persona | `prompts/persona.core.md` | [Agente](agente.html#persona) |
@@ -136,6 +137,7 @@ Exemplo: no app, você escreve *"amanhã quero uma ida ao dentista, às 16h"*.
 | Servidor WebSocket, CLI remoto, Telegram, dashboard | Implementado. |
 | App Android (texto, voz, executor, autoplay) e voz no cérebro | Implementado; validação contínua em aparelhos reais. |
 | Música (busca, tocar, playlists, gosto) | Implementado. |
+| Metadocumentação (responder sobre a própria arquitetura) | Implementado ([ADR-025](adr-025.html)). |
 | Login com MFA | Proposto ([ADR-021](adr-021.html)). |
 | `run_shell`, `open_app`, `web_fetch`, `web_search` | Previstos no modelo de segurança, ainda não implementados. |
 | Cliente desktop em Electron | Descartado em favor do app Android ([ADR-015](adr-015.html), [ADR-022](adr-022.html)). |
