@@ -31,7 +31,7 @@ ARG UID=1000
 RUN pip install "watchfiles>=0.21" \
     && useradd --create-home --uid ${UID} --shell /usr/sbin/nologin juniper \
     && mkdir -p /home/juniper/.juniper/state /home/juniper/.juniper/logs \
-        /home/juniper/.juniper/models /home/juniper/.juniper/certs \
+        /home/juniper/.juniper/models /home/juniper/.juniper/certs /home/juniper/.juniper/music \
     && chown -R juniper:juniper /home/juniper
 
 USER juniper
@@ -57,7 +57,7 @@ LABEL org.opencontainers.image.title="juniper-brain" \
 # montados nela herdam esse dono na primeira vez.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin juniper \
     && mkdir -p /home/juniper/.juniper/state /home/juniper/.juniper/logs \
-        /home/juniper/.juniper/models /home/juniper/.juniper/certs \
+        /home/juniper/.juniper/models /home/juniper/.juniper/certs /home/juniper/.juniper/music \
     && chown -R juniper:juniper /home/juniper
 
 # O brain roda direto do código (o prompt da persona é lido de ../prompts, relativo ao pacote).

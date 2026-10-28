@@ -60,15 +60,14 @@ _UNWANTED = (
     "playlist",
     "1 hour",
 )
-_QUOTA_REASONS = {
-    "quotaExceeded",
-    "dailyLimitExceeded",
-    "rateLimitExceeded",
-    "userRateLimitExceeded",
-}
+# The DAILY quota is gone: stop calling until the Pacific day rolls over.
+_QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded"}
+# A per-second or per-user burst limit: transient, it must not lock the whole day.
+_BURST_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
 # Why one track could not be added; the others are still added (that is not a fatal failure).
 _SKIPPABLE = {"videoNotFound", "videoAlreadyInPlaylist", "playlistItemsNotAccessible"}
 DESCRIPTION: Final = "Criada pela Juniper."
+MAX_PLAYLIST_PAGES: Final = 4
 
 
 def clean_title(text: str) -> str:
@@ -76,10 +75,17 @@ def clean_title(text: str) -> str:
     return " ".join(html.unescape(text).split())
 
 
+def _has_word(text: str, word: str) -> bool:
+    """``word`` as a whole word ("live" is not in "Alive" or "Olive")."""
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", text) is not None
+
+
 def _penalty(title: str, query: str) -> int:
     """How many unwanted markers the title has that the query did not ask for."""
     low_title, low_query = title.lower(), query.lower()
-    return sum(1 for word in _UNWANTED if word in low_title and word not in low_query)
+    return sum(
+        1 for word in _UNWANTED if _has_word(low_title, word) and not _has_word(low_query, word)
+    )
 
 
 def rank(items: list[dict[str, Any]], query: str, limit: int, mode: SearchMode) -> list[Track]:
@@ -148,6 +154,8 @@ class YouTubeProvider(MusicProvider):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+        if self._tokens is not None:
+            await self._tokens.aclose()
 
     async def search(
         self, query: str, *, limit: int = 5, mode: SearchMode = "track"
@@ -218,27 +226,36 @@ class YouTubeProvider(MusicProvider):
             raise MusicError("network_error", "Não consegui falar com o YouTube agora.") from exc
 
     async def list_playlists(self) -> list[Playlist]:
-        self._quota.reserve(COST_READ)
-        headers = await self._auth_headers()
-        response = await self._call(
-            "GET",
-            "/playlists",
-            headers,
-            params={"part": "snippet,contentDetails", "mine": "true", "maxResults": 25},
-        )
-        self._check(response, authed=True)
-        try:
-            items = response.json().get("items", [])
-            return [
-                Playlist(
-                    playlist_id=str(i["id"]),
-                    title=clean_title(i["snippet"]["title"]),
-                    track_count=i.get("contentDetails", {}).get("itemCount"),
-                )
-                for i in items
-            ]
-        except (ValueError, KeyError, TypeError, AttributeError) as exc:
-            raise MusicError("api_error", "O YouTube devolveu uma resposta ilegível.") from exc
+        headers = await self._auth_headers()  # no login, no cost: ask for it before counting
+        found: list[Playlist] = []
+        page_token: str | None = None
+        for _ in range(MAX_PLAYLIST_PAGES):  # one unit per page; 50 playlists per page
+            self._quota.reserve(COST_READ)
+            params: dict[str, Any] = {
+                "part": "snippet,contentDetails",
+                "mine": "true",
+                "maxResults": 50,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            response = await self._call("GET", "/playlists", headers, params=params)
+            self._check(response, authed=True)
+            try:
+                body = response.json()
+                found += [
+                    Playlist(
+                        playlist_id=str(i["id"]),
+                        title=clean_title(i["snippet"]["title"]),
+                        track_count=i.get("contentDetails", {}).get("itemCount"),
+                    )
+                    for i in body.get("items", [])
+                ]
+                page_token = body.get("nextPageToken")
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                raise MusicError("api_error", "O YouTube devolveu uma resposta ilegível.") from exc
+            if not page_token:
+                break
+        return found
 
     async def create_playlist(self, title: str, video_ids: list[str]) -> Playlist:
         name = valid_title(title)
@@ -252,9 +269,9 @@ class YouTubeProvider(MusicProvider):
                 "invalid_request",
                 f"Use de 0 a {MAX_TRACKS_PER_CALL} músicas (ids ou links do YouTube) por playlist.",
             )
+        headers = await self._auth_headers()  # no login, no cost: ask for it before counting
         # The whole cost up front: never leave a half-made playlist because the quota ran out.
         self._quota.reserve(COST_WRITE * (1 + len(ids)))
-        headers = await self._auth_headers()
         response = await self._call(
             "POST",
             "/playlists",
@@ -273,10 +290,14 @@ class YouTubeProvider(MusicProvider):
         try:
             added = await self._add(playlist_id, ids, headers)
         except MusicError as exc:
+            done = exc.added or 0
             raise MusicError(
                 exc.code,
-                f"A playlist «{name}» foi criada, mas não terminei de adicionar as músicas: "
-                f"{exc.message}",
+                f"A playlist «{name}» foi criada (id {playlist_id}) com {done} de {len(ids)} "
+                f"músicas, mas não terminei: {exc.message} Use music_playlist_add com esse id "
+                "para completar; não crie outra.",
+                playlist_id=playlist_id,
+                added=done,
             ) from exc
         return Playlist(playlist_id, name, added)
 
@@ -289,31 +310,47 @@ class YouTubeProvider(MusicProvider):
                 "invalid_request",
                 f"Use de 1 a {MAX_TRACKS_PER_CALL} músicas (ids ou links do YouTube) por vez.",
             )
+        headers = await self._auth_headers()  # no login, no cost: ask for it before counting
         self._quota.reserve(COST_WRITE * len(ids))
-        return await self._add(playlist_id, ids, await self._auth_headers())
+        try:
+            return await self._add(playlist_id, ids, headers)
+        except MusicError as exc:
+            if not exc.added:
+                raise
+            raise MusicError(
+                exc.code,
+                f"Adicionei {exc.added} de {len(ids)} músicas e parei: {exc.message}",
+                playlist_id=playlist_id,
+                added=exc.added,
+            ) from exc
 
     async def _add(self, playlist_id: str, ids: list[str], headers: dict[str, str]) -> int:
-        """Add the tracks one by one, in order. A track that cannot be added is skipped."""
+        """Add the tracks one by one, in order. A track that cannot be added is skipped; a fatal
+        failure stops and says (``MusicError.added``) how many went in before it."""
         added = 0
         for video_id in ids:
-            response = await self._call(
-                "POST",
-                "/playlistItems",
-                headers,
-                params={"part": "snippet"},
-                body={
-                    "snippet": {
-                        "playlistId": playlist_id,
-                        "resourceId": {"kind": "youtube#video", "videoId": video_id},
-                    }
-                },
-            )
-            if response.status_code < 400:
-                added += 1
-                continue
-            if _reason(response) in _SKIPPABLE and response.status_code in (403, 404, 409):
-                continue
-            self._check(response, authed=True)
+            try:
+                response = await self._call(
+                    "POST",
+                    "/playlistItems",
+                    headers,
+                    params={"part": "snippet"},
+                    body={
+                        "snippet": {
+                            "playlistId": playlist_id,
+                            "resourceId": {"kind": "youtube#video", "videoId": video_id},
+                        }
+                    },
+                )
+                if response.status_code < 400:
+                    added += 1
+                    continue
+                if _reason(response) in _SKIPPABLE and response.status_code in (403, 404, 409):
+                    continue
+                self._check(response, authed=True)
+            except MusicError as exc:
+                exc.added = added
+                raise
         return added
 
     def _check(self, response: httpx.Response, *, authed: bool = False) -> None:
@@ -323,6 +360,10 @@ class YouTubeProvider(MusicProvider):
         if response.status_code == 403 and reason in _QUOTA_REASONS:
             self._quota.mark_exhausted()
             raise MusicError("quota_exhausted", self._quota.exhausted_message())
+        if response.status_code in (403, 429) and reason in _BURST_REASONS:
+            raise MusicError(
+                "api_error", "O YouTube pediu para ir mais devagar; tente de novo em instantes."
+            )
         if response.status_code in (400, 403) and reason in {"keyInvalid", "ipRefererBlocked"}:
             raise MusicError(
                 "not_configured",

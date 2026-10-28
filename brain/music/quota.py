@@ -58,12 +58,18 @@ class QuotaTracker:
         return 0
 
     def _store(self, used: int) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_name(f"{self._path.name}.tmp")
-        tmp.write_text(json.dumps({"day": self._day(), "used": used}), encoding="utf-8")
-        with contextlib.suppress(OSError):
-            tmp.chmod(0o600)
-        os.replace(tmp, self._path)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_name(f"{self._path.name}.tmp")
+            tmp.write_text(json.dumps({"day": self._day(), "used": used}), encoding="utf-8")
+            with contextlib.suppress(OSError):
+                tmp.chmod(0o600)
+            os.replace(tmp, self._path)
+        except OSError as exc:
+            raise MusicError(
+                "storage_error",
+                "Não consegui gravar o contador de cota da música (permissões da pasta?).",
+            ) from exc
 
     def used(self) -> int:
         with self._lock:

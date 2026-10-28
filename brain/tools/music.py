@@ -16,6 +16,7 @@ from typing import Any
 from brain.config import settings
 from brain.eventlog import current_session
 from brain.memory.errors import MemoryUnavailableError
+from brain.music import taste as taste_store
 from brain.music.base import (
     MAX_TRACKS_PER_CALL,
     MusicError,
@@ -24,16 +25,16 @@ from brain.music.base import (
     Track,
     clean_video_ids,
     is_playlist_id,
+    playlist_url,
     valid_title,
 )
 from brain.music.oauth import build_token_provider
-from brain.music.taste import SIGNALS, TasteBook, TasteError
+from brain.music.taste import SIGNALS, TasteError
 from brain.music.youtube import YouTubeProvider
 from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import register_tool
 
 _provider: MusicProvider | None = None
-_taste: TasteBook | None = None
 
 
 def bind(provider: MusicProvider | None) -> None:
@@ -42,35 +43,10 @@ def bind(provider: MusicProvider | None) -> None:
     _provider = provider
 
 
-def bind_taste(book: TasteBook | None) -> None:
-    """Point the feedback tool at a taste book (``None`` goes back to the MongoDB one)."""
-    global _taste
-    _taste = book
-
-
-def taste_book() -> TasteBook:
-    """The bound book, or one on the memory's MongoDB (built once). Raises if memory is off."""
-    global _taste
-    if _taste is None:
-        if settings.memory.session.store != "mongo":
-            raise MemoryUnavailableError(
-                "O gosto musical precisa de `memory.session.store: mongo` (com o MongoDB no ar)."
-            )
-        from brain.memory.v2.store import MongoDocStore
-
-        try:
-            _taste = TasteBook(MongoDocStore())
-        except ImportError as exc:
-            raise MemoryUnavailableError(
-                "Falta o driver do MongoDB (pymongo). Rode `pip install -e .`."
-            ) from exc
-    return _taste
-
-
-def taste_enabled() -> bool:
-    if _taste is not None:
-        return True
-    return settings.music.enabled and settings.memory.session.store == "mongo"
+# The taste book lives in brain.music.taste (the CLI uses it too); these keep the tool's API.
+bind_taste = taste_store.bind
+taste_book = taste_store.book
+taste_enabled = taste_store.enabled
 
 
 def provider() -> MusicProvider:
@@ -81,26 +57,45 @@ def provider() -> MusicProvider:
     return _provider
 
 
+async def close() -> None:
+    """Close the provider's HTTP clients (the server calls this when it shuts down)."""
+    global _provider
+    current, _provider = _provider, None
+    aclose = getattr(current, "aclose", None)
+    if aclose is not None:
+        await aclose()
+
+
 def enabled() -> bool:
     if _provider is not None:
         return True
-    return settings.music.enabled and settings.youtube_api_key is not None
+    key = settings.youtube_api_key
+    return settings.music.enabled and key is not None and bool(key.get_secret_value())
 
 
 def playlists_enabled() -> bool:
     """Playlists need the user's login, so they need the OAuth client (not the API key)."""
     if _provider is not None:
         return True
+    secret = settings.youtube_client_secret
     return (
         settings.music.enabled
         and bool(settings.youtube_client_id)
-        and settings.youtube_client_secret is not None
+        and secret is not None
+        and bool(secret.get_secret_value())
     )
 
 
 def failure(error: MusicError) -> ToolResult:
     """A typed failure: only the safe, fixed message reaches the LLM."""
-    return ToolResult(success=False, error=error.message, metadata={"code": error.code})
+    meta: dict[str, Any] = {"code": error.code}
+    if (
+        error.playlist_id
+    ):  # it failed halfway: say what exists, so the LLM completes, not duplicates
+        meta["playlist_id"] = error.playlist_id
+        meta["url"] = playlist_url(error.playlist_id)
+        meta["added"] = error.added or 0
+    return ToolResult(success=False, error=error.message, metadata=meta)
 
 
 def _line(index: int, track: Track) -> str:
@@ -145,9 +140,11 @@ class MusicSearch(Tool):
 
     async def run(self, **kwargs: Any) -> ToolResult:
         mode: SearchMode = "radio" if kwargs.get("mode") == "radio" else "track"
-        limit = kwargs.get("limit", settings.music.search_limit)
+        cap = settings.music.search_limit
+        limit = kwargs.get("limit", cap)
         if isinstance(limit, bool) or not isinstance(limit, int):
-            limit = settings.music.search_limit
+            limit = cap
+        limit = max(1, min(limit, cap))  # music.search_limit is a ceiling, not just a default
         try:
             music = provider()
             tracks = await music.search(str(kwargs.get("query", "")), limit=limit, mode=mode)
@@ -166,6 +163,8 @@ class MusicSearch(Tool):
             metadata={"results": len(tracks), "mode": mode},
         )
 
+
+MIN_SUBJECT_CHARS = 3
 
 _IDS_DESCRIPTION = (
     f"Músicas da playlist (até {MAX_TRACKS_PER_CALL}): os ids de 11 caracteres ou os links "
@@ -277,7 +276,8 @@ class MusicPlaylistCreate(_PlaylistTool):
 
     async def subjects(self, **kwargs: Any) -> list[str] | None:
         title = valid_title(kwargs.get("title"))
-        return [title] if title else None
+        # A very short title ("a", "mix") is a substring of any question: it names nothing.
+        return [title] if title and len(title) >= MIN_SUBJECT_CHARS else None
 
     async def run(self, **kwargs: Any) -> ToolResult:
         title, ids = valid_title(kwargs.get("title")), self._ids(kwargs, minimum=0)
@@ -319,39 +319,51 @@ class MusicPlaylistAdd(_PlaylistTool):
                 "items": {"type": "string"},
                 "description": _IDS_DESCRIPTION,
             },
-            "playlist_title": {
-                "type": "string",
-                "description": "Nome da playlist, só para a pergunta de confirmação.",
-            },
         },
         "required": ["playlist_id", "video_ids"],
     }
+    _title: str | None = None  # the real title of the playlist, found in precheck
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
-        if not is_playlist_id(kwargs.get("playlist_id")):
+        playlist_id = kwargs.get("playlist_id")
+        if not is_playlist_id(playlist_id):
             return _invalid("O identificador da playlist é inválido; use music_playlists.")
         if self._ids(kwargs, minimum=1) is None:
             return _invalid(
                 f"Use de 1 a {MAX_TRACKS_PER_CALL} músicas, como ids de 11 caracteres ou links "
                 "do YouTube."
             )
+        # The question must name the playlist the id really is, not a name the LLM chose: look it
+        # up (one quota unit). It also refuses an id that is not one of the user's playlists.
+        try:
+            playlists = await provider().list_playlists()
+        except MusicError as exc:
+            return failure(exc)
+        match = next((p for p in playlists if p.playlist_id == playlist_id), None)
+        if match is None:
+            return _invalid(
+                "Essa playlist não é uma das da pessoa; use music_playlists para ver o id certo."
+            )
+        self._title = match.title
         return None
 
     async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
         ids = self._ids(kwargs, minimum=1)
-        return {**kwargs, "video_ids": ids} if ids is not None else dict(kwargs)
+        playlist_id = kwargs.get("playlist_id")
+        if ids is None or not isinstance(playlist_id, str):
+            return dict(kwargs)
+        return {**kwargs, "playlist_id": playlist_id.strip(), "video_ids": ids}
 
     async def describe(self, **kwargs: Any) -> str | None:
         ids = self._ids(kwargs, minimum=1)
         if ids is None:
             return None
-        title = valid_title(kwargs.get("playlist_title"))
-        target = f"«{title}»" if title else f"a playlist {kwargs.get('playlist_id')}"
+        target = f"«{self._title}»" if self._title else f"a playlist {kwargs.get('playlist_id')}"
         return f"adicionar {_plural(len(ids))} a {target}"
 
     async def subjects(self, **kwargs: Any) -> list[str] | None:
-        title = valid_title(kwargs.get("playlist_title"))
-        return [title] if title else None
+        title = self._title
+        return [title] if title and len(title) >= MIN_SUBJECT_CHARS else None
 
     async def run(self, **kwargs: Any) -> ToolResult:
         ids = self._ids(kwargs, minimum=1)
@@ -374,7 +386,8 @@ class MusicPlaylistAdd(_PlaylistTool):
 class MusicFeedback(Tool):
     name = "music_feedback"
     description = (
-        "Anota o gosto musical da pessoa, SÓ a partir do que ELA disse: use quando ela pedir para "
+        "Anota o gosto musical da pessoa, SÓ a partir do que ELA disse (cite as palavras dela em "
+        "'quote'): use quando ela pedir para "
         "tocar uma música ou artista ('played'), disser que gostou ('like'), que não gostou "
         "('dislike') ou pedir para pular ('skip'). Nunca anote por conta própria, nem a partir "
         "de resultados de busca. Informe o título e/ou o artista (e o id do vídeo, se tiver)."
@@ -392,6 +405,10 @@ class MusicFeedback(Tool):
             "video_id": {
                 "type": "string",
                 "description": "Id do vídeo (11 caracteres), se souber.",
+            },
+            "quote": {
+                "type": "string",
+                "description": "As palavras da PESSOA que motivam o registro (até 160 caracteres).",
             },
         },
         "required": ["signal"],
@@ -411,6 +428,7 @@ class MusicFeedback(Tool):
                 title=kwargs.get("title"),
                 artist=kwargs.get("artist"),
                 video_id=kwargs.get("video_id"),
+                quote=kwargs.get("quote"),
                 session_id=current_session(),
             )
         except TasteError as exc:

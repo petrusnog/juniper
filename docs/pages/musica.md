@@ -7,7 +7,7 @@ status: proposto
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **Implementado até agora:** a busca (`music_search`), o contador de cota e a configuração (T-154) o login no YouTube (T-155), as playlists (T-156) e o registro do gosto musical (T-157).
+> **Nota:** esta página resume o [ADR-024](adr-024.html) (proposto). **O backend de música está pronto e coberto por teste de aceite** (T-154 a T-158: busca e cota, login, playlists, gosto musical); o que falta para tocar de ponta a ponta é o [app do celular](mobile.html) com o autoplay.
 
 ## Como funciona {#como-funciona}
 
@@ -31,11 +31,11 @@ Apagar playlist não existe na v1.
 
 ## Como a busca ranqueia {#ranqueamento}
 
-O cérebro busca 10 resultados na categoria de música (o custo é o mesmo de buscar menos) e devolve até 5, sem repetir o mesmo vídeo: primeiro as faixas oficiais (canais "Artista - Topic"), depois as demais; versões "ao vivo", *cover*, *karaoke*, *reaction*, *remix*, *slowed*, *nightcore*, álbum completo e playlist descem na lista, **a menos que o pedido cite a palavra**. Títulos vêm com HTML escapado da API e são mostrados como texto. A escolha final é do LLM, que vê a lista. No modo `radio`, o link devolvido é o de mix (`list=RDAMVM<id>`); se o YouTube Music monta a fila e dá autoplay a partir dele ainda é **a confirmar no aparelho**.
+O cérebro busca 10 resultados na categoria de música (o custo é o mesmo de buscar menos) e devolve até 5, sem repetir o mesmo vídeo: primeiro as faixas oficiais (canais "Artista - Topic"), depois as demais; versões "ao vivo", *cover*, *karaoke*, *reaction*, *remix*, *slowed*, *nightcore*, álbum completo e playlist descem na lista, **a menos que o pedido cite a palavra** (a comparação é por palavra inteira: "Alive" não é uma versão "live" nem "Discover" um "cover"). Títulos vêm com HTML escapado da API e são mostrados como texto. A escolha final é do LLM, que vê a lista. No modo `radio`, o link devolvido é o de mix (`list=RDAMVM<id>`); se o YouTube Music monta a fila e dá autoplay a partir dele ainda é **a confirmar no aparelho**.
 
 ## Cota e erros {#cota}
 
-A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro conta o que gasta (`music.quota_file`, por dia do **Pacífico**, sobrevive a reinício) e recusa antes do Google, com o erro tipado `quota_exhausted` e quanto falta para voltar; se o próprio Google disser que a cota acabou, o cérebro para de chamar até o dia virar. O limite padrão é 9.000 (margem sob os 10.000). Os demais códigos: `auth_required`, `auth_expired`, `api_error`, `not_configured`, `network_error`.
+A cota padrão é de 10.000 unidades por dia (busca 100, escrita 50). O cérebro conta o que gasta (`music.quota_file`, por dia do **Pacífico**, sobrevive a reinício) e recusa antes do Google, com o erro tipado `quota_exhausted` e quanto falta para voltar; se o próprio Google disser que a cota acabou, o cérebro para de chamar até o dia virar. O limite padrão é 9.000 (margem sob os 10.000). Os demais códigos: `auth_required`, `auth_expired`, `not_configured`, `invalid_request` (entrada recusada), `not_supported`, `storage_error` (não deu para gravar o token ou o contador), `api_error` e `network_error`. A tool `music_feedback` ainda devolve `memory_unavailable` quando o MongoDB está fora. **Limite de taxa** do YouTube (`rateLimitExceeded`, uma rajada) **não** trava o dia: vira `api_error` ("tente de novo em instantes"); só `quotaExceeded` e `dailyLimitExceeded` marcam a cota do dia como esgotada.
 
 ## Playlists e login {#login}
 
@@ -45,7 +45,7 @@ Criar playlists exige o login do Petrus no Google, pelo fluxo de **código de di
 2. Rode **`juniper music login`**. Ele mostra um link e um código; abra o link em qualquer navegador, entre com a conta do YouTube Music e autorize. O comando espera, respeitando o intervalo do Google, e grava o token.
 3. **`juniper music status`** mostra o que está configurado (sem revelar nenhuma chave ou token), a cota de hoje e se há login.
 
-O token de renovação fica em `music.oauth_file` (`~/.juniper/music/oauth.json`, modo 600, fora do git; na VPS, um arquivo montado). O acesso **se renova sozinho**, uma vez só mesmo com várias chamadas ao mesmo tempo. Nada é apagado por conta própria.
+O token de renovação fica em `music.oauth_file` (`~/.juniper/music/oauth.json`, modo 600, fora do git). **Na VPS, o diretório `~/.juniper/music` é um volume do Docker (`juniper-music`), não um arquivo montado:** o token é gravado por troca de arquivo (escreve um temporário, força o disco e renomeia), o que um *bind mount* de arquivo único não permite; e sem o volume o token e o contador de cota sumiriam a cada deploy. Falha de gravação vira `storage_error` com instrução, nunca uma exceção. O acesso **se renova sozinho**, uma vez só mesmo com várias chamadas ao mesmo tempo. Nada é apagado por conta própria.
 
 | Situação | Código |
 |---|---|
@@ -61,18 +61,18 @@ Se o app OAuth estiver em modo de teste, o Google pode expirar o token de renova
 As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAuth configurado (a chave de API sozinha não loga ninguém); sem o login feito, elas respondem `auth_required` com a instrução, em vez de falhar calado.
 
 - **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso é decisão do Petrus) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.html#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
-- **`music_playlist_add`** (`playlist_id`, `video_ids`, `playlist_title` opcional, só para a pergunta): adiciona a uma playlist existente; o id vem de `music_playlists`.
+- **`music_playlist_add`** (`playlist_id`, `video_ids`): adiciona a uma playlist existente; o id vem de `music_playlists`. **Antes de perguntar**, a Juniper confere o id entre as playlists do Petrus (1 unidade de cota) e a pergunta usa o **nome verdadeiro** dessa playlist, não um nome escolhido pelo LLM; um id que não é dele é recusado. Um título curto demais (menos de 3 caracteres) não vale como "sim" em contexto: ela pergunta de novo.
 - **O que é recusado antes de perguntar:** título vazio, com mais de 150 caracteres ou com `<` ou `>`; ids ou links que não são do YouTube; mais de 25 faixas; playlist inválida. Você nunca é perguntado sobre algo que vai falhar.
 
 **Custo de cota:** criar custa 50 unidades e **cada faixa adicionada também custa 50**, então uma playlist de 10 faixas gasta 550 do limite diário. O cérebro **reserva o custo inteiro antes de criar qualquer coisa**, para nunca deixar uma playlist pela metade por falta de cota.
 
-**Falhas no meio:** uma faixa que não existe mais ou que já está na playlist é **pulada** (o resultado diz quantas não entraram); uma falha séria (cota, login) para e a resposta diz que a playlist foi criada, com quantas faixas entraram. Outros erros: `playlistNotFound` (não achei a playlist), conta sem canal do YouTube e playlist cheia.
+**Falhas no meio:** uma faixa que não existe mais ou que já está na playlist é **pulada** (o resultado diz quantas não entraram). Uma falha séria (cota, login, rede) **para** e devolve o que existe: a mensagem e o `metadata` trazem o **id e o link da playlist e quantas faixas entraram**, e mandam usar `music_playlist_add` para completar, em vez de criar uma duplicada. Outros erros: `playlistNotFound` (não achei a playlist), conta sem canal do YouTube e playlist cheia. **Sem login, nada é gasto da cota**: o login é conferido antes de contar.
 
 ## Gosto musical {#gosto}
 
 A API oficial não dá o histórico de reprodução, então o gosto vem **do que o Petrus diz**: "toca Djavan" (`played`) e as reações dele ("gostei dessa" `like`, "não curto" `dislike`, "pula essa" `skip`). A tool **`music_feedback`** anota isso, em silêncio (como `remember`), com título e/ou artista, o id do vídeo quando houver e a conversa de onde veio.
 
-**A regra do [ADR-017](adr-017.html), garantida em código e em teste:** só o que o Petrus **escreveu** entra. Resultado de busca, título devolvido pela API e qualquer saída de tool **nunca** são gravados (a busca não escreve nada, e a única porta de escrita é a `music_feedback`). Texto com cara de segredo é recusado, e o que passa de 200 caracteres também.
+**A regra do [ADR-017](adr-017.html) e o que ela garante de verdade:** o código garante que a **busca nunca escreve** e que a única porta de escrita é a `music_feedback`. Mas **quem decide chamá-la é o LLM**, e ela é silenciosa; então a regra "só o que o Petrus escreveu" depende da instrução da tool, e o registro guarda **a citação das palavras dele** (`quote`, até 160 caracteres) para auditoria: um registro sem citação, ou cuja citação não é dele, aparece em `juniper music taste`. Texto com cara de segredo é recusado; título e artista passam por limpeza (caracteres de controle e de direção são removidos) e têm até 200 caracteres. Para um laço do LLM não encher o banco: a mesma reação repetida em até 1 minuto vale uma só, no máximo **30 registros por conversa** e **5.000 no total** (acima disso a tool diz para rodar `juniper music taste clear`).
 
 Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.session.store: mongo`; sem isso a tool nem aparece). Para ver e apagar:
 
@@ -82,6 +82,25 @@ Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.ses
 | `juniper music taste clear [--yes]` | Apaga **tudo**, depois de perguntar. Não dá para desfazer. |
 
 Nesta versão o gosto **só é registrado**: ainda não influencia a conversa nem as sugestões. Que o sonho noturno leia esses eventos e forme crenças sobre o gosto (e que a Juniper sugira algo fora da "bolha") é um passo seguinte que muda o ADR-017, e depende da decisão do Petrus. A coleção `music_taste` não entra na exclusão em cascata da Memória V2: quem apaga é o `juniper music taste clear`.
+
+## Aceite {#aceite}
+
+**O que os testes provam** (`tests/test_acceptance_music.py`, com o servidor, o dispatcher, as tools e o protocolo do executor reais, e só o LLM, o YouTube e o celular falsos):
+
+- "Toca Oceano do Djavan": `music_search` devolve a lista com links, o LLM chama `open_url` e o celular recebe `invoke` com o link de `music.youtube.com`, **sem pergunta no meio**. "Algo parecido" usa o link de mix.
+- Sem celular conectado, a Juniper avisa que o dispositivo está desconectado.
+- Cota esgotada aparece como erro tipado, sem inventar resultado.
+- **Defesas:** um título de resultado que manda abrir outro site é perguntado em palavras, com o endereço exato, e nada chega ao celular antes do "sim"; o truque `evil.example\.music.youtube.com` nunca chega ao celular.
+- Playlist: a Juniper pergunta **uma vez** em palavras ("Posso criar a playlist «Foco» com 2 músicas?"), nada é criado antes do "sim", um "não" não cria nada, um pedido inválido é recusado antes de perguntar, e o link da playlist abre no celular.
+- Gosto: a reação do Petrus ("gostei dessa") é anotada em silêncio; uma busca sozinha não grava nada.
+
+**O que só se verifica no aparelho** (roteiro manual depois do app e da chave):
+
+1. `juniper music status`: chave `configurada`, música `ligada`, cota `0 de 9000`.
+2. No app, "toca Oceano do Djavan": o YouTube Music abre na faixa **e dá play sozinho** (se o autoplay falhar, a faixa aparece pronta e basta apertar play).
+3. "Toca algo parecido com Djavan": confira se o link de mix monta a fila no YouTube Music.
+4. `juniper music login`, depois "cria uma playlist Foco com essas músicas": ela aparece na biblioteca do YouTube Music como **privada**.
+5. "Gostei dessa", depois `juniper music taste`: o registro aparece; `juniper music taste clear` apaga.
 
 ## Por que não a `ytmusicapi` {#ytmusicapi}
 

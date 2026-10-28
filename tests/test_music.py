@@ -469,3 +469,109 @@ def test_the_api_key_comes_from_the_environment(
     assert s.youtube_api_key is not None and s.youtube_api_key.get_secret_value() == KEY
     assert s.music.enabled is True
     assert KEY not in repr(s.youtube_api_key)  # SecretStr keeps it out of reprs and logs
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+
+def test_the_unwanted_markers_match_whole_words_only() -> None:
+    """ "Alive" holds "live" and "Discover" holds "cover", but they are not live/cover versions."""
+    items = [
+        item("aaaaaaaaaaa", "Alive", "Canal A"),
+        item("bbbbbbbbbbb", "Oceano", "Canal B"),
+        item("ccccccccccc", "Discover Weekly", "Canal C"),
+        item("ddddddddddd", "Recover", "Canal D"),
+    ]
+    # Same channel type, original order: nothing is penalised, so the order must not change.
+    assert [t.video_id for t in rank(items, "x", 4, "track")] == [
+        "aaaaaaaaaaa",
+        "bbbbbbbbbbb",
+        "ccccccccccc",
+        "ddddddddddd",
+    ]
+    real = [
+        item("eeeeeeeeeee", "Oceano (Live)", "Canal E"),
+        item("fffffffffff", "Oceano", "Canal F"),
+    ]
+    assert [t.video_id for t in rank(real, "Oceano", 2, "track")] == ["fffffffffff", "eeeeeeeeeee"]
+    # ...and asking for it removes the penalty
+    assert [t.video_id for t in rank(real, "Oceano live", 2, "track")] == [
+        "eeeeeeeeeee",
+        "fffffffffff",
+    ]
+
+
+@pytest.mark.parametrize("reason", ["rateLimitExceeded", "userRateLimitExceeded"])
+async def test_a_burst_limit_does_not_lock_the_whole_day(tmp_path: Path, reason: str) -> None:
+    answers = [error(403, reason), ok(ITEMS)]
+    provider, quota = make_provider(lambda r: answers.pop(0), tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.search("oceano")
+    assert exc.value.code == "api_error" and "mais devagar" in exc.value.message
+    assert quota.remaining() > 0 and quota.used() == COST_SEARCH  # not marked as exhausted
+    assert await provider.search("oceano")  # the next call goes through
+
+
+def test_a_daily_quota_error_still_locks_the_day(tmp_path: Path) -> None:
+    quota = QuotaTracker(tmp_path / "q.json", 500, clock=Clock())
+    quota.mark_exhausted()
+    assert quota.remaining() == 0
+
+
+def test_an_unwritable_quota_file_is_a_typed_error_not_an_oserror(tmp_path: Path) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    quota = QuotaTracker(blocker / "sub" / "quota.json", 500, clock=Clock())
+    with pytest.raises(MusicError) as exc:
+        quota.reserve(100)
+    assert exc.value.code == "storage_error" and "permissões" in exc.value.message
+
+
+async def test_search_limit_is_a_ceiling_for_the_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings.music, "search_limit", 2)
+
+    class Spy(MusicProvider):
+        limits: list[int] = []
+
+        async def search(
+            self, query: str, *, limit: int = 5, mode: SearchMode = "track"
+        ) -> list[Track]:
+            self.limits.append(limit)
+            return []
+
+    spy = Spy()
+    music_tools.bind(spy)
+    try:
+        await music_tools.MusicSearch().run(query="x", limit=5)
+        await music_tools.MusicSearch().run(query="x")
+        await music_tools.MusicSearch().run(query="x", limit=1)
+        await music_tools.MusicSearch().run(query="x", limit=0)
+    finally:
+        music_tools.bind(None)
+    assert spy.limits == [2, 2, 1, 1]
+
+
+def test_a_blank_key_in_the_environment_does_not_enable_the_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings.music, "enabled", True)
+    monkeypatch.setattr(settings, "youtube_api_key", SecretStr(""))
+    assert not music_tools.MusicSearch.available()
+
+
+async def test_closing_releases_the_provider() -> None:
+    closed: list[bool] = []
+
+    class Closable(MusicProvider):
+        async def search(
+            self, query: str, *, limit: int = 5, mode: SearchMode = "track"
+        ) -> list[Track]:
+            return []
+
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    music_tools.bind(Closable())
+    await music_tools.close()
+    await music_tools.close()  # nothing left to close: harmless
+    assert closed == [True]

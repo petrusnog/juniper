@@ -10,6 +10,7 @@ the LLM or the log.
 from __future__ import annotations
 
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -27,6 +28,7 @@ SearchMode = Literal["track", "radio"]
 
 ErrorCode = Literal[
     "quota_exhausted",
+    "storage_error",
     "auth_required",
     "auth_expired",
     "not_configured",
@@ -38,12 +40,26 @@ ErrorCode = Literal[
 
 
 class MusicError(Exception):
-    """An expected music failure. ``message`` is safe to show (PT-BR, no URL, no key)."""
+    """An expected music failure. ``message`` is safe to show (PT-BR, no URL, no key).
 
-    def __init__(self, code: ErrorCode, message: str) -> None:
+    When a playlist call fails *after* it had already done part of the work, ``playlist_id`` and
+    ``added`` say what exists, so the tool can tell the LLM and it can finish with
+    ``music_playlist_add`` instead of creating a duplicate.
+    """
+
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str,
+        *,
+        playlist_id: str | None = None,
+        added: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.code: ErrorCode = code
         self.message = message
+        self.playlist_id = playlist_id
+        self.added = added
 
 
 @dataclass(frozen=True)
@@ -70,11 +86,11 @@ class Playlist:
 
 def is_video_id(value: object) -> bool:
     """Whether ``value`` has the shape of a YouTube video id (11 URL-safe characters)."""
-    return isinstance(value, str) and _VIDEO_ID.match(value) is not None
+    return isinstance(value, str) and _VIDEO_ID.fullmatch(value) is not None
 
 
 def is_playlist_id(value: object) -> bool:
-    return isinstance(value, str) and _PLAYLIST_ID.match(value) is not None
+    return isinstance(value, str) and _PLAYLIST_ID.fullmatch(value) is not None
 
 
 def extract_video_id(value: object) -> str | None:
@@ -114,11 +130,22 @@ def clean_video_ids(values: object) -> list[str] | None:
     return ids
 
 
+def clean_text(value: str) -> str:
+    """``value`` without control, format and direction characters (``\x1b``, U+202E, zero-width...),
+    with the whitespace collapsed: nothing that could scramble what the user is asked to approve."""
+    kept = "".join(
+        " " if c.isspace() else c
+        for c in value
+        if not unicodedata.category(c).startswith("C") or c.isspace()
+    )
+    return " ".join(kept.split())
+
+
 def valid_title(value: object) -> str | None:
     """A playlist title YouTube accepts, or ``None`` (empty, too long, or with ``<`` / ``>``)."""
     if not isinstance(value, str):
         return None
-    title = " ".join(value.split())
+    title = clean_text(value)
     if not title or len(title) > MAX_TITLE_CHARS or "<" in title or ">" in title:
         return None
     return title

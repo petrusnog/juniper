@@ -134,13 +134,27 @@ def test_brain_waits_for_a_healthy_mongo_and_has_its_own_healthcheck() -> None:
 
 
 def test_named_volumes_hold_the_state() -> None:
-    assert {"juniper-mongo-data", "juniper-state", "juniper-logs", "juniper-models"} <= set(
-        COMPOSE["volumes"]
-    )
+    assert {
+        "juniper-mongo-data",
+        "juniper-state",
+        "juniper-logs",
+        "juniper-models",
+        "juniper-music",
+    } <= set(COMPOSE["volumes"])
     mounts = COMPOSE["services"]["brain"]["volumes"]
     targets = {mount_target(m) for m in mounts}
     assert "/home/juniper/.juniper/models" in targets  # o modelo de embeddings não vai na imagem
     assert "juniper-mongo-data:/data/db" in COMPOSE["services"]["mongo"]["volumes"]
+
+
+def test_the_music_state_is_a_named_volume_not_a_single_file_mount() -> None:
+    """The login token is replaced by a rename, which a single-file bind mount cannot do; and
+    without a volume the token and the quota counter would vanish with every new container."""
+    mounts = COMPOSE["services"]["brain"]["volumes"]
+    [music] = [m for m in mounts if mount_target(m) == "/home/juniper/.juniper/music"]
+    assert str(music).startswith("juniper-music:")  # a named volume, not a host file path
+    # both image stages create the directory, so a new named volume gets the right owner
+    assert DOCKERFILE.count("/home/juniper/.juniper/music") == 2
 
 
 def test_secrets_are_mounted_read_only_and_never_written_into_the_compose_file() -> None:

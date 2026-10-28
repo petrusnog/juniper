@@ -19,10 +19,10 @@ from brain.clients import voice
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.music import oauth
+from brain.music import taste as taste_store
 from brain.music.base import MusicError
 from brain.music.quota import QuotaTracker
 from brain.music.taste import TasteBook
-from brain.tools import music as music_tools
 
 SIGNAL_WORDS = {"like": "gostou", "dislike": "não gostou", "skip": "pulou", "played": "pediu"}
 
@@ -110,7 +110,7 @@ def install(app: typer.Typer, console: Console) -> None:
 
     def book() -> TasteBook:
         try:
-            return music_tools.taste_book()
+            return taste_store.book()
         except MemoryUnavailableError as exc:
             voice.say(console, str(exc), "red")
             raise typer.Exit(1) from None
