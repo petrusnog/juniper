@@ -8,7 +8,7 @@ status: pronta
 tags: voz audio tts stt google chirp leda groq whisper vad orçamento fallback protocolo voice pcm base64 interrupção encerrar
 ---
 
-> **Nota:** esta página detalha o [ADR-023](adr-023.html); o backend de voz está implementado e coberto por teste de aceite (`tests/test_acceptance_voice.py`). A [voz do terminal](voz.html) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
+> **Nota:** esta página detalha o [ADR-023](../decisions/ADR-023.md); o backend de voz está implementado e coberto por teste de aceite (`tests/test_acceptance_voice.py`). A [voz do terminal](voz.md) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
 
 ## Visão geral {#visao-geral}
 
@@ -26,9 +26,9 @@ app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Led
 - **VAD no cérebro:** detector de energia com piso de ruído adaptativo; o app só transmite áudio. Falar por cima da Juniper a interrompe (`barge_in_ms`).
 - **Orçamento:** o cérebro conta os caracteres enviados ao Google por mês; ao atingir o limite (padrão 1.250.000), a voz cai para o TTS do Android e a Juniper avisa uma vez.
 - **Fallbacks:** limite da Groq → o app usa o STT nativo do Android em pt-BR e manda texto; orçamento ou falha do Google → o app fala o texto com o TTS do Android. A conversa não para.
-- **Confirmação por voz:** uma única pergunta; o "sim" é a transcrição seguinte, interpretada por `consent.py` ([Agente](agente.html#confirmacao)).
+- **Confirmação por voz:** uma única pergunta; o "sim" é a transcrição seguinte, interpretada por `consent.py` ([Agente](agente.md#confirmacao)).
 - **Encerrar:** botão, comando falado (reconhecido sem LLM) ou silêncio prolongado.
-- **A voz não autentica:** a sessão herda a autenticação da conexão ([Login com MFA](login.html)).
+- **A voz não autentica:** a sessão herda a autenticação da conexão ([Login com MFA](login.md)).
 - **Dados que saem da máquina:** o áudio do usuário vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.
 
 ## Falar: texto preparado e o sintetizador {#falar}
@@ -40,7 +40,7 @@ O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice
 - **Sintetizador** (`Synthesizer`, interface; `GoogleSynthesizer`): uma chamada de `text:synthesize` por frase (textos acima de 450 caracteres são partidos nos espaços), `LINEAR16` na taxa configurada, WAV recebido → PCM sem o cabeçalho (reamostrado se a taxa vier outra). A autenticação é uma **conta de serviço em arquivo montado** (`voice.tts.credentials_file`); o token se renova sozinho e só viaja no cabeçalho `authorization` (o log mascara por nome).
 - **Erros tipados** (`VoiceError`, mensagens fixas em PT-BR, sem chave, URL, token nem resposta crua): `not_configured` (credencial ausente, inválida ou recusada), `quota` (limite de uso do Google), `network_error`, `api_error`, `invalid_audio`.
 
-As opções estão em [Configuração](configuracao.html#voice).
+As opções estão em [Configuração](configuracao.md#voice).
 
 ## Ouvir: detector de fala e transcrição {#ouvir}
 
@@ -57,7 +57,7 @@ Em `brain/voice/vad.py` e `stt.py`:
 Sem fone, a voz sai pelo alto-falante e o microfone ouve a própria Juniper. O que existe contra o laço de «ela se ouve e responde a si mesma»:
 
 1. **Cancelamento de eco do Android:** o app captura com a fonte `VOICE_COMMUNICATION`, liga o modo de comunicação e manda a voz para o **viva-voz** (sem isso o Android usa o alto-falante da chamada, junto ao ouvido). Com fone conectado, a voz vai para o fone.
-2. **Meio-duplex no viva-voz** ([protocolo](protocolo.html#voz)): enquanto ela fala (e por 1 s depois), o cérebro **ignora o microfone**. A voz dela, o eco e a música dessa janela nunca viram fala. O preço: no viva-voz **não dá para interromper falando por cima**, só pelo botão «Parar de falar». Com fone o corte por voz continua.
+2. **Meio-duplex no viva-voz** ([protocolo](protocolo.md#voz)): enquanto ela fala (e por 1 s depois), o cérebro **ignora o microfone**. A voz dela, o eco e a música dessa janela nunca viram fala. O preço: no viva-voz **não dá para interromper falando por cima**, só pelo botão «Parar de falar». Com fone o corte por voz continua.
 3. **«Segurar para falar»** (botão na aba Voz): o microfone só vai ao cérebro enquanto o botão está apertado (e ao soltar vão 900 ms de silêncio para o cérebro fechar a fala). É a saída segura quando há **música tocando no celular**: ela não é interpretada, porque o microfone só abre quando você quer. Apertar o botão enquanto ela fala também a interrompe.
 
 O que **não** dá para garantir sem fone: falar por cima de uma música alta sem apertar o botão. O Android cancela o eco da voz da Juniper, não o de outro app; sem o botão, a música pode ser tomada por fala (e a transcrição de letra de música não é filtrada). Por isso: fone, ou «Segurar para falar».
@@ -78,7 +78,7 @@ Em `brain/voice/budget.py` e `speech.py`:
 Em `brain/clients/voice_session.py`, ligada ao `ChatHandler` (`voice.enabled: true` liga o conjunto no servidor):
 
 1. `voice.start` abre a sessão (uma por conexão: a segunda recebe `voice_busy`; sem `voice.enabled` ou sem como ouvir, `voice_unavailable`). O cérebro responde `voice.ready` com os formatos e de onde vêm STT e TTS.
-2. O áudio do microfone passa pelo detector de fala. Cada fala é transcrita (nuvem, ou `voice.text` se o aparelho transcreve) e vira um **turno de chat comum**: o agente, a confirmação ([ADR-010](adr-010.html)) e a memória só veem texto. Quem pediu «toca Djavan» recebe `voice.transcript`, `chat.started`, `chat.token` (a legenda) e o áudio.
+2. O áudio do microfone passa pelo detector de fala. Cada fala é transcrita (nuvem, ou `voice.text` se o aparelho transcreve) e vira um **turno de chat comum**: o agente, a confirmação ([ADR-010](../decisions/ADR-010.md)) e a memória só veem texto. Quem pediu «toca Djavan» recebe `voice.transcript`, `chat.started`, `chat.token` (a legenda) e o áudio.
 3. Enquanto o LLM escreve, os tokens viram **frases** que são faladas na ordem (Google ou aparelho, conforme o [orçamento](#orcamento)). Uma frase que já terminou em pontuação é falada depois de 0,4 s de pausa, para ela dizer «Vou procurar» enquanto a tool roda.
 4. **Interromper:** falar por cima dela por `barge_in_ms` corta a fala e cancela o turno; a fala nova é transcrita e vira o próximo turno. «Para», «chega» e «silêncio» (ou `voice.interrupt`) calam sem abrir turno.
 5. **Encerrar:** botão (`voice.end`), comando falado («encerrar a conversa», «tchau, Juniper») ou `voice.idle_timeout_seconds` de silêncio. Os comandos são reconhecidos **sem o LLM** e só valem para a frase inteira.
@@ -86,7 +86,7 @@ Em `brain/clients/voice_session.py`, ligada ao `ChatHandler` (`voice.enabled: tr
 7. **Pergunta pendente morre com a voz:** «para», «chega», o botão de interromper e qualquer fim de sessão descartam a confirmação que estava aberta; um «sim» dito depois não executa a ação antiga. Terminar por voz também cancela o turno em andamento.
 8. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
 
-Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.html#voz).
+Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.md#voz).
 
 ## Ligar a voz e testar de verdade {#ligar}
 
@@ -94,9 +94,9 @@ Tudo acima foi verificado com **peças falsas** nas pontas (LLM, Google, Groq, Y
 
 1. **Conta de serviço do Google** (Text-to-Speech ligado no projeto, com faturamento): baixe o JSON e salve em `certs/gcp-voice.json` (a pasta `certs/` é montada só para leitura; o arquivo nunca entra na imagem nem no Git).
 2. **Chave da Groq** em `JUNIPER_GROQ_API_KEY` no `.env`.
-3. **Ligue** no config do servidor (`voice: {enabled: true}`) ou no `.env` (`JUNIPER_VOICE__ENABLED=true`). Em produção o gasto do mês fica em `voice-usage.json` no volume `juniper-music`, então sobrevive a deploys ([Integrações Google Cloud e Groq](integracoes-producao.html#voz)).
+3. **Ligue** no config do servidor (`voice: {enabled: true}`) ou no `.env` (`JUNIPER_VOICE__ENABLED=true`). Em produção o gasto do mês fica em `voice-usage.json` no volume `juniper-music`, então sobrevive a deploys ([Integrações Google Cloud e Groq](integracoes-producao.md#voz)).
 4. **Confira:** `juniper voice status` deve mostrar «Credencial do Google: encontrada», «Chave da Groq: configurada» e o gasto do mês em zero. Ele nunca imprime chaves.
-5. **No aparelho** ([App mobile](mobile.html#voz)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
+5. **No aparelho** ([App mobile](mobile.md#voz)): abrir a voz; dizer «toca Oceano do Djavan» e ouvir a resposta; falar por cima dela no meio de uma frase; dizer «silêncio»; pedir uma playlist e responder «sim»; dizer «tchau, Juniper»; ficar 60 s sem falar.
 6. **Ajustes que só o uso mostra:** os limiares do detector (3 vezes o piso para falar, 6 vezes para interromper) e `voice.vad.*`; a qualidade da voz Leda; se o STT da Groq acerta nomes de músicas e artistas.
 7. **Custo:** `juniper voice status` mostra quanto do orçamento de caracteres foi usado; ao esgotar, a voz do aparelho assume sozinha e a Juniper avisa uma vez.
 
@@ -104,4 +104,11 @@ O que ainda **não** foi verificado: o formato real das respostas do Google e da
 
 ## Mensagens {#protocolo}
 
-Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](adr-023.html#7-protocolo-extensao-compativel-do-adr-012).
+Extensão compatível do [protocolo](protocolo.md) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](../decisions/ADR-023.md#7-protocolo-extensao-compativel-do-adr-012).
+
+## Para saber mais {#para-saber-mais}
+
+- [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
+- [Voz no terminal](voz.md) (Documentação Técnica): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
+- [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.

@@ -101,10 +101,10 @@ juniper logs ls                      # os arquivos de log e o tamanho de cada um
 
 Uma linha da rede tem esta cara: `→ POST https://api.deepinfra.com/... [deepinfra] req=a1b2c3d4` na ida e `← 200 [deepinfra] req=a1b2c3d4  812ms (1º byte 400ms)  5120B` na volta; o `req` liga as duas.
 
-- **Onde o log mora.** Onde o cérebro roda. No modo `local` é `~/.juniper/logs`; na VPS, dentro do contêiner: `docker compose -f docker-compose.prod.yml exec brain python -m brain logs -f` (o executável `juniper` não existe lá; veja o atalho em [Operação](operacao.html#atalho)). O cliente é fino ([ADR-012](adr-012.html)): ele não lê o log do servidor.
+- **Onde o log mora.** Onde o cérebro roda. No modo `local` é `~/.juniper/logs`; na VPS, dentro do contêiner: `docker compose -f docker-compose.prod.yml exec brain python -m brain logs -f` (o executável `juniper` não existe lá; veja o atalho em [Operação](operacao.md#atalho)). O cliente é fino ([ADR-012](../decisions/ADR-012.md)): ele não lê o log do servidor.
 - **Segredos.** Valem as mesmas regras de [segredos no log](#segredos): `Authorization`, chaves de API, tokens e a *assertion* do login do Google saem como `***`. O corpo não: ele **é** o que você conversou, por isso o arquivo é `600` e os logs somem em poucos dias.
 - **Tamanho.** Corpos acima de `logging.wire_max_chars` são cortados com a contagem do que sobrou. Um stream é gravado depois do último pedaço, sem atrasar a resposta.
-- **Desligar.** `logging.wire: false` para de gravar `http_*` (o resto do log continua). Veja [Configuração](configuracao.html).
+- **Desligar.** `logging.wire: false` para de gravar `http_*` (o resto do log continua). Veja [Configuração](configuracao.md).
 - **Fora do alcance.** O MongoDB (consultas da memória) e o que as tools fazem em memória não aparecem como HTTP; as tools têm o próprio evento `tool_call`.
 
 ## Rotação diária {#rotacao kind=conceito file=brain/logfiles.py}
@@ -151,7 +151,7 @@ Terminal (CLI)              mostrei a resposta no terminal: «...»
 
 No modo `local` não há servidor nem rede: o terminal passa a mensagem direto ao agente, e as camadas do servidor não aparecem.
 
-- **Quem escreve é o cliente.** Os passos do servidor viajam até ele numa mensagem `trace` do [protocolo](protocolo.html) (só se o `hello` pediu **e** o servidor também tem `trace.enabled`). Assim o arquivo sai numa ordem só, mesmo com o servidor num contêiner.
+- **Quem escreve é o cliente.** Os passos do servidor viajam até ele numa mensagem `trace` do [protocolo](protocolo.md) (só se o `hello` pediu **e** o servidor também tem `trace.enabled`). Assim o arquivo sai numa ordem só, mesmo com o servidor num contêiner.
 - **Segredos** (chaves, tokens) são mascarados como no log de eventos, e textos longos são cortados.
 - Os passos de agente, LLM, ferramentas, memória e tempos são a tradução em frases dos mesmos eventos do log estruturado (`brain/trace.py`), sem código novo em cada módulo.
 - No ambiente Docker de dev: `JUNIPER_TRACE__ENABLED=true docker compose -f docker-compose.dev.yml up -d` liga só o lado do servidor sem editar o `config.yaml`.
@@ -207,3 +207,11 @@ pytest tests/test_eventlog.py tests/test_timing.py -v
 ```
 
 Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token), o arquivo por dia com permissão `600`, o log que nunca levanta erro, os eventos do agente, cada `decision` do dispatcher, erro de tool, erro de LLM e o failover do router.
+
+## Para saber mais {#para-saber-mais}
+
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
+- [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

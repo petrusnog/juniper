@@ -13,7 +13,7 @@ Este tutorial monta o ambiente completo de desenvolvimento numa máquina Linux, 
 - a Juniper respondendo no **terminal**, num **bot do Telegram** e no **app Android** (emulador ou celular), os três conectados ao mesmo cérebro local;
 - uma alteração de código aparecendo nos três clientes **sem reinstalar nada**.
 
-A topologia é a mesma da produção: o cérebro e o MongoDB em contêineres e os clientes de fora, falando por WebSocket ([Arquitetura](architecture.html)). Leve cerca de uma hora na primeira vez (a maior parte é download).
+A topologia é a mesma da produção: o cérebro e o MongoDB em contêineres e os clientes de fora, falando por WebSocket ([Arquitetura](architecture.md)). Leve cerca de uma hora na primeira vez (a maior parte é download).
 
 ## 0. Pré-requisitos {#pre-requisitos}
 
@@ -22,7 +22,7 @@ A topologia é a mesma da produção: o cérebro e o MongoDB em contêineres e o
 | `git` | Clonar o repositório. | `git --version` |
 | **Docker** com o plugin **Compose v2** | Rodar o cérebro, o MongoDB e o LLM de teste. No Linux, o seu usuário no grupo `docker`. | `docker compose version` |
 | **Python 3.11+** | O comando `juniper` (cliente) e os testes, na sua máquina. | `python3 --version` |
-| **Node 22+**, **JDK 17** e **Android SDK** | Compilar e rodar o app. A instalação do SDK está em [Ambiente mobile](mobile-dev.html#sdk). | `node -v`, `java -version`, `adb version` |
+| **Node 22+**, **JDK 17** e **Android SDK** | Compilar e rodar o app. A instalação do SDK está em [Ambiente mobile](mobile-dev.md#sdk). | `node -v`, `java -version`, `adb version` |
 | Um **emulador Android** ou um **celular** com depuração USB | Rodar o app. | `adb devices` |
 | Uma conta no **Telegram** | Criar o bot de teste. | — |
 | Cerca de 3 GB livres em disco (mais ~10 GB para o SDK do Android) | Imagens, o MongoDB e o modelo de embeddings. | `df -h` |
@@ -70,7 +70,7 @@ python scripts/smoke_server.py --token-file .juniper-dev/state/token "oi, tudo b
 - O arquivo `.juniper-dev/state/token` é o **token dos clientes**: todo cliente precisa dele para conectar. Os três passos seguintes usam este arquivo.
 - O `smoke_server.py` conecta, conversa e imprime a resposta chegando em pedaços.
 
-Os serviços, as portas e o que fazer quando algo não sobe estão em [Ambiente Docker](dev-docker.html).
+Os serviços, as portas e o que fazer quando algo não sobe estão em [Ambiente Docker](dev-docker.md).
 
 ## 3. Converse pelo terminal {#terminal}
 
@@ -89,7 +89,7 @@ juniper tools         # as ferramentas que o cérebro oferece
 
 ## 4. Converse pelo Telegram {#telegram}
 
-O bot do Telegram é outro cliente do mesmo cérebro ([Bot do Telegram](telegram.html)). Ele **busca** as mensagens no Telegram (*long polling*), então funciona na sua máquina sem abrir nenhuma porta.
+O bot do Telegram é outro cliente do mesmo cérebro ([Bot do Telegram](telegram.md)). Ele **busca** as mensagens no Telegram (*long polling*), então funciona na sua máquina sem abrir nenhuma porta.
 
 **4.1 Crie um bot de teste.** No Telegram, abra o `@BotFather` (o oficial tem o selo azul), envie `/newbot`, escolha um nome e um *username* terminado em `bot`. Guarde o **token** que ele devolve: é a senha do bot e nunca vai para código, log nem PR.
 
@@ -117,9 +117,9 @@ juniper telegram
 
 ## 5. Converse pelo Android {#android}
 
-O app Android é um cliente fino em React Native ([App mobile](mobile.html)). Em desenvolvimento ele roda em modo *debug*, ligado ao **Metro** (o servidor de pacotes do React Native), que recarrega o código do app na hora.
+O app Android é um cliente fino em React Native ([App mobile](mobile.md)). Em desenvolvimento ele roda em modo *debug*, ligado ao **Metro** (o servidor de pacotes do React Native), que recarrega o código do app na hora.
 
-**5.1 Prepare o Android.** Se ainda não tem o SDK, um emulador ou o celular com depuração USB, siga [Ambiente mobile](mobile-dev.html#sdk). Confira que o aparelho aparece:
+**5.1 Prepare o Android.** Se ainda não tem o SDK, um emulador ou o celular com depuração USB, siga [Ambiente mobile](mobile-dev.md#sdk). Confira que o aparelho aparece:
 
 ```bash
 adb devices          # uma linha "emulator-5554 device" ou o número do seu celular
@@ -150,9 +150,9 @@ adb shell input text "$(cat .juniper-dev/state/token)"
 
 Salve. A linha de estado no topo deve mostrar **Conectada**.
 
-✅ **Marco 3:** na aba **Texto**, mande "oi" e veja a resposta chegar aos poucos. Na aba **Voz** dá para testar a conversa falada se o cérebro tiver a voz ligada ([Voz por áudio](voz-audio.html#ligar)); sem ela, o cérebro recusa a sessão de voz com o erro `voice_unavailable`.
+✅ **Marco 3:** na aba **Texto**, mande "oi" e veja a resposta chegar aos poucos. Na aba **Voz** dá para testar a conversa falada se o cérebro tiver a voz ligada ([Voz por áudio](voz-audio.md#ligar)); sem ela, o cérebro recusa a sessão de voz com o erro `voice_unavailable`.
 
-> **Nota:** no ambiente local o tráfego é `ws://` sem cifra, o que é aceitável porque não sai da sua máquina (o emulador e o `adb reverse` usam a interface local). Em produção os clientes chegam por uma rede privada cifrada ([Visão geral da produção](producao.html)).
+> **Nota:** no ambiente local o tráfego é `ws://` sem cifra, o que é aceitável porque não sai da sua máquina (o emulador e o `adb reverse` usam a interface local). Em produção os clientes chegam por uma rede privada cifrada ([Visão geral da produção](producao.md)).
 
 ## 6. Edite o código e veja ao vivo {#ao-vivo}
 
@@ -164,7 +164,7 @@ Agora os três clientes estão conectados ao mesmo cérebro. Vamos mudar o cére
 docker compose -f docker-compose.dev.yml logs -f brain
 ```
 
-**6.2 Crie uma ferramenta nova.** Uma tool é só um arquivo em `brain/tools/` ([Tools](tools.html)). Crie `brain/tools/dev_hello.py`:
+**6.2 Crie uma ferramenta nova.** Uma tool é só um arquivo em `brain/tools/` ([Tools](tools.md)). Crie `brain/tools/dev_hello.py`:
 
 ```python
 from __future__ import annotations
@@ -192,7 +192,7 @@ Ao salvar, o log mostra o servidor reiniciando (o contêiner usa o `watchfiles`,
 **6.3 Confira nos clientes:**
 
 - **Terminal:** `juniper tools` lista `dev_hello` (funciona mesmo com o `fake-llm`).
-- **Com uma chave de LLM real**, peça "testa o ambiente de desenvolvimento" no terminal, no Telegram e no app: a Juniper chama `dev_hello` e responde com a frase nova nos três. Por ser `READ`, ela executa sem pedir confirmação ([Segurança](seguranca.html#tiers)).
+- **Com uma chave de LLM real**, peça "testa o ambiente de desenvolvimento" no terminal, no Telegram e no app: a Juniper chama `dev_hello` e responde com a frase nova nos três. Por ser `READ`, ela executa sem pedir confirmação ([Segurança](seguranca.md#tiers)).
 
 **6.4 Mude o app.** Com o Metro rodando, edite um texto de `mobile/src/ui/ChatScreen.tsx` (por exemplo, o rótulo do botão «Enviar») e salve: o *Fast Refresh* atualiza a tela do app em um ou dois segundos, sem reinstalar. Mudanças em código Kotlin (`mobile/android/`) exigem rodar `npx react-native run-android` de novo.
 
@@ -219,7 +219,7 @@ ruff check brain/ tests/ && mypy brain/
 cd mobile && npm test && npm run typecheck && npx eslint .
 ```
 
-As regras do que testar e de como abrir o PR estão em [Como contribuir](contribuindo.html).
+As regras do que testar e de como abrir o PR estão em [Como contribuir](contribuindo.md).
 
 ## 8. Parar e limpar {#limpar}
 
@@ -242,4 +242,14 @@ Depois de apagar o token, todos os clientes precisam do novo (no app, abra a con
 | App: «sem conexão» no celular | Faltou `adb reverse tcp:8765 tcp:8765` (ou o cabo foi reconectado). |
 | App: «o servidor recusou o token» | Copie o token de novo; ele muda se `.juniper-dev/` for apagada. |
 | O app abre uma tela vermelha do Metro | O Metro não está rodando ou o aparelho não o alcança: `npx react-native start` e, no celular, `adb reverse tcp:8081 tcp:8081`. |
-| Outros problemas do Docker | Veja [Ambiente Docker](dev-docker.html#problemas). |
+| Outros problemas do Docker | Veja [Ambiente Docker](dev-docker.md#problemas). |
+
+## Para saber mais {#para-saber-mais}
+
+- [Introdução](introducao.md) (Introdução): O que é a Juniper, o que ela sabe fazer hoje, como é construída e quais trilhas seguir para aprender mais.
+- [Como contribuir](contribuindo.md) (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.
+- [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
+- [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
+- [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
+- [CLI](cli.md) (Documentação Técnica): O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.
+- [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.

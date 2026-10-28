@@ -8,7 +8,7 @@ status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
 
-> **Nota:** esta página detalha o [ADR-020](adr-020.html). O dashboard é **somente leitura**. Código: `brain/dashboard/`.
+> **Nota:** esta página detalha o [ADR-020](../decisions/ADR-020.md). O dashboard é **somente leitura**. Código: `brain/dashboard/`.
 
 ## Visão geral {#visao-geral}
 
@@ -18,7 +18,7 @@ Um painel web para ver a memória da Juniper sem o terminal. Roda dentro do serv
 http://<endereço-do-servidor-na-rede-privada>:8766/
 ```
 
-O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.html#dashboard) do próprio cérebro. Nada neste painel escreve no banco (um teste confere).
+O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Nada neste painel escreve no banco (um teste confere).
 
 ## Login e defesas {#login}
 
@@ -47,12 +47,12 @@ Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a
 
 ## Configuração {#configuracao}
 
-As chaves `dashboard.*` estão em [Configuração](configuracao.html#trace). Para desligar: `dashboard.enabled: false`; a conversa não depende do dashboard.
+As chaves `dashboard.*` estão em [Configuração](configuracao.md#trace). Para desligar: `dashboard.enabled: false`; a conversa não depende do dashboard.
 
 ## Acesso {#acesso}
 
-- **Em desenvolvimento:** `http://127.0.0.1:8766/`, com o token de `.juniper-dev/state/token` ([Ambiente Docker](dev-docker.html)).
-- **Em produção:** a porta é publicada só no endereço da rede privada e precisa estar liberada para os seus dispositivos; o passo a passo está em [Clientes em produção](clientes-producao.html#dashboard).
+- **Em desenvolvimento:** `http://127.0.0.1:8766/`, com o token de `.juniper-dev/state/token` ([Ambiente Docker](dev-docker.md)).
+- **Em produção:** a porta é publicada só no endereço da rede privada e precisa estar liberada para os seus dispositivos; o passo a passo está em [Clientes em produção](clientes-producao.md#dashboard).
 
 | Sintoma | Causa provável |
 |---|---|
@@ -69,3 +69,13 @@ As chaves `dashboard.*` estão em [Configuração](configuracao.html#trace). Par
 ```bash
 pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py -v
 ```
+
+## Para saber mais {#para-saber-mais}
+
+- [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
+- [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
+- [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+- [Clientes em produção](clientes-producao.md) (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.
+- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

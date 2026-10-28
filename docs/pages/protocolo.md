@@ -7,20 +7,20 @@ status: pronta
 tags: api websocket protocolo mensagens hello welcome chat.send chat.token chat.end heartbeat sessão memória executor invoke voz erros códigos fechamento json schema protocol_version
 ---
 
-> **Nota:** o contrato vem do [ADR-012](adr-012.html), estendido pelos ADRs [014](adr-014.html) (executor) e [023](adr-023.html) (voz). A fonte da verdade em código são os modelos de `brain/clients/protocol.py`, exportados para o JSON Schema `docs/protocol/schema.json` (`python scripts/export_protocol_schema.py`). Em caso de divergência, vale o schema. Um guia prático para escrever um cliente está em [Integrar com o cérebro](integrar-cliente.html).
+> **Nota:** o contrato vem do [ADR-012](../decisions/ADR-012.md), estendido pelos ADRs [014](../decisions/ADR-014.md) (executor) e [023](../decisions/ADR-023.md) (voz). A fonte da verdade em código são os modelos de `brain/clients/protocol.py`, exportados para o JSON Schema `docs/protocol/schema.json` (`python scripts/export_protocol_schema.py`). Em caso de divergência, vale o schema. Um guia prático para escrever um cliente está em [Integrar com o cérebro](integrar-cliente.md).
 
 ## Conexão {#conexao}
 
 | Item | Valor |
 |---|---|
-| Endereço | `ws://<host>:<porta>/v1/ws` (porta padrão 8765). Sem TLS: use dentro de uma rede privada cifrada ([ADR-013](adr-013.html)). |
+| Endereço | `ws://<host>:<porta>/v1/ws` (porta padrão 8765). Sem TLS: use dentro de uma rede privada cifrada ([ADR-013](../decisions/ADR-013.md)). |
 | Autenticação | Cabeçalho `Authorization: Bearer <token>` no *handshake* HTTP. Sem ele, ou com token errado: HTTP 401 antes do upgrade. |
 | Quadros | Texto, JSON UTF-8, **uma mensagem por quadro**. Quadros binários são recusados. |
 | Tamanho | Até 1 MiB por mensagem; até 32.000 caracteres em `chat.send.text`. |
 | Versão | `protocol_version: 1`. Mudanças compatíveis (mensagens, campos ou códigos novos) não mudam a versão. |
-| Saúde | `GET /health` na mesma porta, sem autenticação ([API HTTP](api-http.html#health)). |
+| Saúde | `GET /health` na mesma porta, sem autenticação ([API HTTP](api-http.md#health)). |
 
-O token é gerado pelo servidor no primeiro boot e fica no arquivo `deployment.auth.token_file` ([Servidor WebSocket](servidor.html#iniciar)).
+O token é gerado pelo servidor no primeiro boot e fica no arquivo `deployment.auth.token_file` ([Servidor WebSocket](servidor.md#iniciar)).
 
 ## Envelope {#envelope}
 
@@ -50,7 +50,7 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
   "session": { "id": "20261015-101500-ab12cd", "resumed": true, "turns": 6 } }
 ```
 
-- `client.kind` identifica o cliente (`cli`, `telegram`, `mobile`...). O servidor usa isso para saber o canal do pedido ([Servidor WebSocket](servidor.html#conversas)).
+- `client.kind` identifica o cliente (`cli`, `telegram`, `mobile`...). O servidor usa isso para saber o canal do pedido ([Servidor WebSocket](servidor.md#conversas)).
 - `resume` leva `session_id` **ou** `latest: true`, nunca os dois nem nenhum (`bad_request`). Sem `resume`, o servidor abre uma conversa nova.
 - Versão incompatível: `error` com `unsupported_version` e fechamento `4426`.
 - Uma segunda conexão com o mesmo `device_id` **substitui** a primeira (`4409`).
@@ -83,7 +83,7 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 ```
 
 - **Um turno por vez por conversa:** `chat.send` durante um turno recebe `turn_in_progress`.
-- **Confirmação:** o cliente não tem estado de confirmação. A Juniper pergunta em palavras dentro de `chat.token`, e o "sim" é só o próximo `chat.send`, interpretado pelo cérebro ([ADR-010](adr-010.html)).
+- **Confirmação:** o cliente não tem estado de confirmação. A Juniper pergunta em palavras dentro de `chat.token`, e o "sim" é só o próximo `chat.send`, interpretado pelo cérebro ([ADR-010](../decisions/ADR-010.md)).
 - **Queda no meio do turno:** o turno termina no servidor e a conversa é salva com a resposta; os tokens não lidos são descartados. Ao retomar, `session.state.history` traz a resposta completa.
 
 ## Sessões {#sessoes}
@@ -134,7 +134,7 @@ Sem memória de longo prazo no servidor, o pedido recebe `error` com `memory_una
 
 ## Executor {#executor}
 
-Um cliente que cumpre tools no dispositivo ([Executor](executor.html)) usa a mesma conexão.
+Um cliente que cumpre tools no dispositivo ([Executor](executor.md)) usa a mesma conexão.
 
 | Direção | `type` | Campos |
 |---|---|---|
@@ -150,13 +150,13 @@ Um cliente que cumpre tools no dispositivo ([Executor](executor.html)) usa a mes
 ```
 
 - O registro é **por conexão**: some quando a conexão cai, e o executor se registra de novo ao reconectar (a cada `welcome`).
-- O cérebro não escala tier: recusa registrar uma tool com tier mais permissivo do que a política que ele já tem para ela, e uma tool desconhecida do servidor tem piso `WRITE` ([ADR-014](adr-014.html)).
+- O cérebro não escala tier: recusa registrar uma tool com tier mais permissivo do que a política que ele já tem para ela, e uma tool desconhecida do servidor tem piso `WRITE` ([ADR-014](../decisions/ADR-014.md)).
 - O cliente **revalida** cada `invoke` (catálogo, schema, tier, política) e responde `result` com `success: false` e `metadata.code` (`unknown_tool`, `invalid_args`, `tier_mismatch`, `policy_denied`, `os_error`) quando recusa.
 - Um `result` que chega depois do `timeout_ms` é ignorado.
 
 ## Voz {#voz}
 
-Extensão compatível do [ADR-023](adr-023.html): uma sessão de voz por conexão. O áudio vai em **quadros de texto JSON com base64** (PCM 16 bits *little-endian*, mono; `seq` crescente; de 20 a 100 ms por quadro). Cada fala transcrita vira um turno de chat comum, então a resposta também chega como `chat.started`, `chat.token` (a legenda) e `chat.end` ([Voz por áudio](voz-audio.html)).
+Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz por conexão. O áudio vai em **quadros de texto JSON com base64** (PCM 16 bits *little-endian*, mono; `seq` crescente; de 20 a 100 ms por quadro). Cada fala transcrita vira um turno de chat comum, então a resposta também chega como `chat.started`, `chat.token` (a legenda) e `chat.end` ([Voz por áudio](voz-audio.md)).
 
 | Direção | `type` | Campos | Quando |
 |---|---|---|---|
@@ -180,7 +180,7 @@ Extensão compatível do [ADR-023](adr-023.html): uma sessão de voz por conexã
 |---|---|---|
 | servidor → cliente | `trace` | `layer`, `text`, `at` |
 
-Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.enabled`. O cliente escreve as linhas no seu `message.log` ([Observabilidade](observabilidade.html#message-log)).
+Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.enabled`. O cliente escreve as linhas no seu `message.log` ([Observabilidade](observabilidade.md#message-log)).
 
 ## Erros {#erros}
 
@@ -227,3 +227,13 @@ Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.
 - **Recuo exponencial com variação:** 1, 2, 4, 8, 16 e depois 30 s (±20%); zera depois de 30 s de conexão estável. Em `1012`, reconecta quase na hora. `4401`, `4409` e `4426` param e mostram o motivo.
 - Ao reconectar, manda `hello` com a conversa que estava aberta e, se for executor, repete o `register`.
 - Offline, o cliente **não enfileira** mensagens: avisa que a Juniper está indisponível e mantém o texto digitado.
+
+## Para saber mais {#para-saber-mais}
+
+- [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
+- [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
+- [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+- [Integrar com o cérebro](integrar-cliente.md) (Produção): Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.

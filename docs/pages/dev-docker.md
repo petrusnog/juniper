@@ -7,9 +7,9 @@ status: guia
 tags: docker compose dev desenvolvimento juniper-dev token brain mongo fake-llm watchfiles portas variáveis logs mongosh problemas
 ---
 
-O passo a passo para subir o ambiente pela primeira vez está em [Primeiros passos](primeiros-passos.html). Esta página é a referência para o dia a dia.
+O passo a passo para subir o ambiente pela primeira vez está em [Primeiros passos](primeiros-passos.md). Esta página é a referência para o dia a dia.
 
-> **Nota:** o compose de desenvolvimento é o arquivo **`docker-compose.dev.yml`**. Os outros dois (`docker-compose.prod.yml`, da produção, e `docker-compose.yml`, só com o MongoDB para o [modo local](install.html)) servem a outras situações e **não** criam a pasta `.juniper-dev/`. Sempre use `-f docker-compose.dev.yml`.
+> **Nota:** o compose de desenvolvimento é o arquivo **`docker-compose.dev.yml`**. Os outros dois (`docker-compose.prod.yml`, da produção, e `docker-compose.yml`, só com o MongoDB para o [modo local](install.md)) servem a outras situações e **não** criam a pasta `.juniper-dev/`. Sempre use `-f docker-compose.dev.yml`.
 
 ## Serviços {#servicos}
 
@@ -18,7 +18,7 @@ O `docker-compose.dev.yml` sobe a **mesma topologia da produção** (o mesmo `Do
 | Contêiner | O que é | Porta na sua máquina |
 |---|---|---|
 | `juniper-dev-fix-perms` | Roda uma vez e termina (`Exited (0)` é o normal): acerta o dono de `.juniper-dev/`. | nenhuma |
-| `juniper-dev-brain` | O servidor (`juniper serve`), alvo `dev` do `Dockerfile`, sem o código na imagem; o `watchfiles` o reinicia quando `brain/` ou `prompts/` mudam. | `127.0.0.1:8765` (WebSocket e `/health`), `127.0.0.1:8766` ([dashboard](dashboard.html)) |
+| `juniper-dev-brain` | O servidor (`juniper serve`), alvo `dev` do `Dockerfile`, sem o código na imagem; o `watchfiles` o reinicia quando `brain/` ou `prompts/` mudam. | `127.0.0.1:8765` (WebSocket e `/health`), `127.0.0.1:8766` ([dashboard](dashboard.md)) |
 | `juniper-dev-mongo` | MongoDB 7 com as memórias e as conversas. | `127.0.0.1:27018` |
 | `juniper-dev-fake-llm` | LLM de mentira (`scripts/fake_ollama.py`), o último da fila de failover: sem chave, o ambiente ainda responde ecoando. | nenhuma |
 
@@ -29,10 +29,10 @@ Tudo é publicado só em `127.0.0.1`: nada do ambiente aparece na rede. A config
 | Caminho | O que é |
 |---|---|
 | `.juniper-dev/state/token` | O token que os clientes usam para conectar. Criado no primeiro boot. |
-| `.juniper-dev/logs/` | Os logs JSONL do cérebro ([Observabilidade](observabilidade.html)). |
+| `.juniper-dev/logs/` | Os logs JSONL do cérebro ([Observabilidade](observabilidade.md)). |
 | `.env` | Segredos: usuário e senha do MongoDB (obrigatórios), chaves de LLM e das integrações (opcionais). |
 | `config.yaml` | A sua configuração pessoal (camada base). |
-| `certs/` | Credenciais do Google montadas no contêiner, só leitura ([Integrações Google Cloud e Groq](integracoes-producao.html)). |
+| `certs/` | Credenciais do Google montadas no contêiner, só leitura ([Integrações Google Cloud e Groq](integracoes-producao.md)). |
 
 ## Variáveis do compose {#variaveis}
 
@@ -69,7 +69,7 @@ docker compose -f docker-compose.dev.yml exec brain python -m brain logs -f   # 
 
 Dentro do contêiner, qualquer comando administrativo roda com `docker compose -f docker-compose.dev.yml exec brain python -m brain <comando>` (por exemplo, `memory list` ou `logs -f`).
 
-**Diário de mensagens (`message.log`).** Conta, camada por camada, o caminho de cada mensagem; vem desligado porque guarda o texto das conversas. Para ligar: `export JUNIPER_TRACE__ENABLED=true`, `restart brain` e use o CLI no mesmo terminal ([Observabilidade](observabilidade.html#message-log)).
+**Diário de mensagens (`message.log`).** Conta, camada por camada, o caminho de cada mensagem; vem desligado porque guarda o texto das conversas. Para ligar: `export JUNIPER_TRACE__ENABLED=true`, `restart brain` e use o CLI no mesmo terminal ([Observabilidade](observabilidade.md#message-log)).
 
 **Olhar o banco:**
 
@@ -101,3 +101,13 @@ rm -rf .juniper-dev                                  # zera o token e os logs
 | **Porta 8765, 8766 ou 27018 ocupada.** | Mude `JUNIPER_DEV_PORT`, `JUNIPER_DEV_DASHBOARD_PORT` ou `JUNIPER_DEV_MONGO_PORT` no `.env`. |
 | **A resposta é só o eco da mensagem.** | É o `fake-llm`: nenhuma chave de LLM válida no `.env`, ou o provedor real falhou. |
 | **Os arquivos de `.juniper-dev` são de outro usuário.** | O seu uid não é 1000. `export UID` antes de `up -d --build` (precisa reconstruir a imagem). |
+
+## Para saber mais {#para-saber-mais}
+
+- [Como contribuir](contribuindo.md) (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
+- [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Deploy contínuo](deploy-continuo.md) (Produção): Cada merge em master vira deploy: imagem no registro de contêineres, entrada temporária do CI na rede privada, SSH, backup, troca de versão, healthcheck e rollback automático.

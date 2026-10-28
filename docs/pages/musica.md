@@ -8,14 +8,14 @@ status: pronta
 tags: musica youtube music data api playlist cota quota oauth gosto musical open_url autoplay music_search videoId ytmusicapi
 ---
 
-> **Nota:** esta página detalha o [ADR-024](adr-024.html). A música funciona de ponta a ponta: busca e cota, tocar no celular pelo [app Android](mobile.html) com autoplay, login, playlists e gosto musical, cobertos por teste de aceite. O código fica em `brain/music/` e `brain/tools/music.py`.
+> **Nota:** esta página detalha o [ADR-024](../decisions/ADR-024.md). A música funciona de ponta a ponta: busca e cota, tocar no celular pelo [app Android](mobile.md) com autoplay, login, playlists e gosto musical, cobertos por teste de aceite. O código fica em `brain/music/` e `brain/tools/music.py`.
 
 ## Como funciona {#como-funciona}
 
 1. O LLM chama **`play_music`** ([abaixo](#play-music)): a YouTube Data API v3 devolve até 5 faixas, com preferência pelas oficiais ("Artista - Topic"), e a primeira é a escolhida. Para só **mostrar opções**, ele usa `music_search` (`READ`).
-2. O cérebro abre `https://music.youtube.com/watch?v=<videoId>` no celular pelo [`open_url`](executor.html#open-url). O domínio `music.youtube.com` está na lista de confiança, então abre **sem perguntar**.
+2. O cérebro abre `https://music.youtube.com/watch?v=<videoId>` no celular pelo [`open_url`](executor.md#open-url). O domínio `music.youtube.com` está na lista de confiança, então abre **sem perguntar**.
    **Páginas de busca não valem:** se o LLM tentar abrir `music.youtube.com/search?...` (ou os resultados do YouTube) com `open_url`, a chamada é recusada antes de chegar ao celular, com a instrução de usar `music_search`. Um link de busca só abre uma lista e não toca nada; foi o que aconteceu no primeiro teste real. Só vale enquanto a música está ligada.
-3. O celular redireciona para o app do YouTube Music e o [app mobile](mobile.html) dá o play automaticamente; se o autoplay falhar, a faixa aparece pronta e basta apertar play.
+3. O celular redireciona para o app do YouTube Music e o [app mobile](mobile.md) dá o play automaticamente; se o autoplay falhar, a faixa aparece pronta e basta apertar play.
 
 Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no `.env`) e `music.enabled: true`. A chave viaja no cabeçalho `x-goog-api-key`, **nunca na URL**, e não aparece em erro nem em log. Sem chave ou com a música desligada, a tool nem aparece para o LLM.
 
@@ -75,7 +75,7 @@ Se o app OAuth estiver em modo de teste, o Google pode expirar o token de renova
 
 As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAuth configurado (a chave de API sozinha não loga ninguém); sem o login feito, elas respondem `auth_required` com a instrução, em vez de falhar calado.
 
-- **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso exige uma decisão registrada em ADR) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.html#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
+- **`music_playlist_create`** (`title`, `video_ids`): cria uma playlist **sempre privada** (mudar isso exige uma decisão registrada em ADR) e adiciona as faixas **na ordem dada**, uma a uma. Até **25 faixas** por chamada. A pergunta de confirmação mostra o que será feito ("criar a playlist privada «Foco» com 2 músicas"), e como ela nomeia a playlist, um "sim" na conversa já basta ([Agente](agente.md#confirmacao)). Os itens de `video_ids` podem ser ids de 11 caracteres ou links do YouTube e do YouTube Music (o id é o que vem depois de `v=`); repetidos são descartados.
 - **`music_playlist_add`** (`playlist_id`, `video_ids`): adiciona a uma playlist existente; o id vem de `music_playlists`. **Antes de perguntar**, a Juniper confere o id entre as playlists do usuário (1 unidade de cota) e a pergunta usa o **nome verdadeiro** dessa playlist, não um nome escolhido pelo LLM; um id que não é dele é recusado. Um título curto demais (menos de 3 caracteres) não vale como "sim" em contexto: ela pergunta de novo.
 - **O que é recusado antes de perguntar:** título vazio, com mais de 150 caracteres ou com `<` ou `>`; ids ou links que não são do YouTube; mais de 25 faixas; playlist inválida. Você nunca é perguntado sobre algo que vai falhar.
 
@@ -87,7 +87,7 @@ As três tools de playlist só aparecem com `music.enabled` **e** o cliente OAut
 
 A API oficial não dá o histórico de reprodução, então o gosto vem **do que o usuário diz**: "toca Djavan" (`played`) e as reações dele ("gostei dessa" `like`, "não curto" `dislike`, "pula essa" `skip`). A tool **`music_feedback`** anota isso, em silêncio (como `remember`), com título e/ou artista, o id do vídeo quando houver e a conversa de onde veio.
 
-**A regra do [ADR-017](adr-017.html) e o que ela garante de verdade:** o código garante que a **busca nunca escreve** e que a única porta de escrita é a `music_feedback`. Mas **quem decide chamá-la é o LLM**, e ela é silenciosa; então a regra "só o que o usuário escreveu" depende da instrução da tool, e o registro guarda **a citação das palavras dele** (`quote`, até 160 caracteres) para auditoria: um registro sem citação, ou cuja citação não é dele, aparece em `juniper music taste`. Texto com cara de segredo é recusado; título e artista passam por limpeza (caracteres de controle e de direção são removidos) e têm até 200 caracteres. Para um laço do LLM não encher o banco: a mesma reação repetida em até 1 minuto vale uma só, no máximo **30 registros por conversa** e **5.000 no total** (acima disso a tool diz para rodar `juniper music taste clear`).
+**A regra do [ADR-017](../decisions/ADR-017.md) e o que ela garante de verdade:** o código garante que a **busca nunca escreve** e que a única porta de escrita é a `music_feedback`. Mas **quem decide chamá-la é o LLM**, e ela é silenciosa; então a regra "só o que o usuário escreveu" depende da instrução da tool, e o registro guarda **a citação das palavras dele** (`quote`, até 160 caracteres) para auditoria: um registro sem citação, ou cuja citação não é dele, aparece em `juniper music taste`. Texto com cara de segredo é recusado; título e artista passam por limpeza (caracteres de controle e de direção são removidos) e têm até 200 caracteres. Para um laço do LLM não encher o banco: a mesma reação repetida em até 1 minuto vale uma só, no máximo **30 registros por conversa** e **5.000 no total** (acima disso a tool diz para rodar `juniper music taste clear`).
 
 Os registros ficam na coleção `music_taste` do MongoDB (precisa de `memory.session.store: mongo`; sem isso a tool nem aparece). Para ver e apagar:
 
@@ -121,3 +121,9 @@ Nesta versão o gosto **só é registrado**: ainda não influencia a conversa ne
 
 Uma POC com a biblioteca não oficial autenticou, mas recebeu HTTP 403 em tudo com um token OAuth próprio. Ela fica fora do caminho crítico e pode voltar atrás da mesma interface.
 
+## Para saber mais {#para-saber-mais}
+
+- [Integrações](produto-integracoes.md) (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.
+- [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
+- [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.

@@ -25,8 +25,32 @@ failover: DeepInfra, Groq, Ollama), `tools` (registry, tiers, locality), `memory
 memória de longo prazo no MongoDB), `clients` (CLI, servidor WebSocket, cliente remoto). Os
 clientes (CLI, futuro app Electron) são finos. Em produção o cérebro roda numa VPS (Hetzner) e os
 clientes falam com ele por WebSocket dentro do Tailscale. Fonte de verdade das decisões:
-`docs/decisions/ADR-*.md`; visão geral e preferências em `docs/JUNIPER.md`; o livro de bolso em
-`docs/pages/` (gera `docs/html/`).
+`docs/decisions/ADR-*.md`; o livro de bolso em `docs/pages/` (gera `docs/html/`). O ponto de
+entrada de tudo isso é `docs/MAPA.md`.
+
+## Consultar a documentação (economia de tokens)
+
+A documentação é uma rede de notas ligadas (`docs/MAPA.md` é o índice). Leia **do menor para o
+maior** e pare quando tiver a resposta:
+
+1. **`docs/MAPA.md`** (~3 mil tokens): uma linha por página e por ADR, com o que cada um cobre.
+   Se a dúvida é "onde está X?", ele basta.
+2. **`python scripts/docs_search.py "pergunta"`**: busca local (BM25, sem rede, sem LLM) que devolve
+   `arquivo:linha` e um trecho das melhores seções. `--outline <página>` lista os títulos com a
+   linha, para abrir só a seção certa.
+3. **`Read` com `offset`/`limit`** na seção indicada, nunca o arquivo inteiro.
+4. **Siga os links** do fim da nota (`## Para saber mais`) em vez de buscar de novo; não repita no
+   código ou na conversa o que a nota já diz, cite o caminho.
+
+Regras:
+
+- **ADR só para decidir ou questionar.** Para saber *como é hoje*, leia a página em `docs/pages/`;
+  o ADR conta *por que* e o que foi descartado. A página cita o ADR certo.
+- **Nunca leia `docs/html/`** (gerado) nem `docs/JUNIPER.md` inteiro (histórico, ~7 mil tokens).
+- Antes de abrir um arquivo de código, procure a seção da página que o descreve: cada título
+  técnico traz `file=` com o caminho do código.
+- Mexeu em `docs/pages` ou `docs/decisions`? Veja `docs/CLAUDE.md` (convenções de links) e rode
+  `python scripts/build_docs.py`, que também regenera o mapa.
 
 ## Regras de arquitetura (inegociáveis sem um ADR novo)
 

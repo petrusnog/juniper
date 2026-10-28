@@ -15,11 +15,11 @@ cd ~/juniper && docker compose -f docker-compose.prod.yml exec -T brain cat /hom
 
 Trate-o como uma senha. Se ele vazar, apague o arquivo (`docker compose -f docker-compose.prod.yml exec brain rm /home/juniper/.juniper/state/token`) e reinicie o cérebro: um token novo é gerado e todos os clientes precisam dele.
 
-Cada dispositivo (computador, celular, navegador) precisa estar na rede privada: no Tailscale, instale o app e entre na mesma conta (com a etiqueta `tag:juniper-client`, se a política exigir; veja o [passo 5.2](deploy-vps.html#rede)).
+Cada dispositivo (computador, celular, navegador) precisa estar na rede privada: no Tailscale, instale o app e entre na mesma conta (com a etiqueta `tag:juniper-client`, se a política exigir; veja o [passo 5.2](deploy-vps.md#rede)).
 
 ## Terminal {#cli}
 
-No seu computador, com a Juniper instalada ([Instalação sem Docker](install.html) ou `pip install -e .` num clone):
+No seu computador, com a Juniper instalada ([Instalação sem Docker](install.md) ou `pip install -e .` num clone):
 
 ```bash
 mkdir -p ~/.juniper && umask 077
@@ -38,11 +38,11 @@ deployment:
     token_file: ~/.juniper/token
 ```
 
-Teste: `juniper "oi"`, `juniper` (conversa), `juniper --resume`, `juniper tools`, `juniper memory list`. Se o endereço for público (fora de uma rede privada), o CLI avisa antes de conectar, porque `ws://` não cifra. Detalhes: [CLI](cli.html#server).
+Teste: `juniper "oi"`, `juniper` (conversa), `juniper --resume`, `juniper tools`, `juniper memory list`. Se o endereço for público (fora de uma rede privada), o CLI avisa antes de conectar, porque `ws://` não cifra. Detalhes: [CLI](cli.md#server).
 
 ## Telegram {#telegram}
 
-O bot é um serviço **opcional** do compose de produção (perfil `telegram`). Ele roda no próprio servidor, fala com o cérebro pela rede interna do Docker e **busca** as mensagens no Telegram, então o celular não precisa estar na rede privada ([ADR-016](adr-016.html)).
+O bot é um serviço **opcional** do compose de produção (perfil `telegram`). Ele roda no próprio servidor, fala com o cérebro pela rede interna do Docker e **busca** as mensagens no Telegram, então o celular não precisa estar na rede privada ([ADR-016](../decisions/ADR-016.md)).
 
 1. **Crie o bot:** no Telegram, `@BotFather` (o oficial tem o selo azul) → `/newbot`. Guarde o token. Desligue grupos: `/mybots` → o bot → *Bot Settings* → *Allow Groups?* → *Turn groups off*. Ative a verificação em duas etapas na sua conta do Telegram.
 2. **Na VPS**, em `~/juniper`:
@@ -78,11 +78,11 @@ Mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.env` e r
 | O bot não responde | O seu ID não está na lista, ou você escreveu num grupo. |
 | "Não consegui falar com o servidor" | O cérebro não está saudável: `ps` e `logs brain`. |
 
-Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [Configuração](configuracao.html#telegram-config); comportamento em [Bot do Telegram](telegram.html).
+Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [Configuração](configuracao.md#telegram-config); comportamento em [Bot do Telegram](telegram.md).
 
 ## App Android {#app}
 
-1. **Gere o APK** no seu computador (nunca na VPS), assinado com uma chave sua: [Ambiente mobile → Gerar um APK](mobile-dev.html#apk). Guarde a chave e as senhas: sem elas não dá para atualizar o app por cima.
+1. **Gere o APK** no seu computador (nunca na VPS), assinado com uma chave sua: [Ambiente mobile → Gerar um APK](mobile-dev.md#apk). Guarde a chave e as senhas: sem elas não dá para atualizar o app por cima.
 2. **Leve ao celular** pelo meio mais fácil: o compartilhamento de arquivos da sua VPN (no Tailscale, o Taildrop), um cabo, e-mail ou um serviço de arquivos privado. O arquivo é `mobile/android/app/build/outputs/apk/release/app-release.apk`.
 3. **Instale:** abra o arquivo no celular e permita "instalar apps desta origem" quando o Android pedir (a permissão é do app que abriu o arquivo; dá para desligá-la depois).
 4. **Ligue a VPN no celular** e abra o app. Na configuração, informe:
@@ -92,7 +92,7 @@ Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [C
 
    O token fica no Android Keystore. A linha do topo deve mostrar **Conectada**.
 5. **Permissões:** microfone e notificações (na primeira conversa por voz) e, para a música abrir com o app em segundo plano, **«Exibir sobre outros apps»** (a aba Voz mostra um botão «Permitir agora»).
-6. **Teste** pelo [roteiro de aceite](mobile.html#aceite): texto, «toca Oceano do Djavan» (exige a [música](integracoes-producao.html#musica) ligada e o YouTube Music instalado), voz (exige a [voz](integracoes-producao.html#voz) ligada).
+6. **Teste** pelo [roteiro de aceite](mobile.md#aceite): texto, «toca Oceano do Djavan» (exige a [música](integracoes-producao.md#musica) ligada e o YouTube Music instalado), voz (exige a [voz](integracoes-producao.md#voz) ligada).
 
 | Sintoma | Causa e solução |
 |---|---|
@@ -104,8 +104,16 @@ Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [C
 
 ## Dashboard {#dashboard}
 
-1. Libere a porta **8766** na política da VPN para os seus dispositivos (a política do [passo 5.2](deploy-vps.html#rede) já inclui).
+1. Libere a porta **8766** na política da VPN para os seus dispositivos (a política do [passo 5.2](deploy-vps.md#rede) já inclui).
 2. No navegador de um dispositivo na rede privada: `http://<endereço-do-servidor>:8766/`.
 3. Entre com o token dos clientes. O login vale 12 horas (`dashboard.session_hours`) e o token nunca vai na URL.
 
-Para HTTPS (por exemplo, para "instalar" o painel no celular), ponha na frente um proxy que termine TLS dentro da rede privada (no Tailscale, `tailscale serve --bg http://<IP-PRIVADO>:8766`) e inclua o nome usado em `dashboard.allowed_hosts` se ele não for `*.ts.net`. Detalhes e problemas: [Dashboard](dashboard.html#acesso).
+Para HTTPS (por exemplo, para "instalar" o painel no celular), ponha na frente um proxy que termine TLS dentro da rede privada (no Tailscale, `tailscale serve --bg http://<IP-PRIVADO>:8766`) e inclua o nome usado em `dashboard.allowed_hosts` se ele não for `*.ts.net`. Detalhes e problemas: [Dashboard](dashboard.md#acesso).
+
+## Para saber mais {#para-saber-mais}
+
+- [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
+- [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Integrar com o cérebro](integrar-cliente.md) (Produção): Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.

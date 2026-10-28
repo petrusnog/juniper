@@ -7,7 +7,7 @@ status: guia
 tags: android sdk emulador celular adb metro fast refresh react native node jdk gradle sdkmanager avd apk keystore assinatura testes jest eslint typecheck protocolo wsl
 ---
 
-O app da Juniper fica em `mobile/`: React Native com TypeScript, Android apenas (`minSdk` 26), com módulos nativos em Kotlin ([App mobile](mobile.html)). Esta página prepara a máquina para desenvolvê-lo. Para ligá-lo ao cérebro local, siga [Primeiros passos](primeiros-passos.html#android).
+O app da Juniper fica em `mobile/`: React Native com TypeScript, Android apenas (`minSdk` 26), com módulos nativos em Kotlin ([App mobile](mobile.md)). Esta página prepara a máquina para desenvolvê-lo. Para ligá-lo ao cérebro local, siga [Primeiros passos](primeiros-passos.md#android).
 
 ## Ferramentas {#sdk}
 
@@ -83,7 +83,7 @@ O Metro serve o JavaScript do app: ao salvar um arquivo de `mobile/src/`, o *Fas
 
 | Pasta | O que tem |
 |---|---|
-| `src/connection/` | O WebSocket com o cérebro: handshake, heartbeat, reconexão ([App mobile](mobile.html#conexao)). |
+| `src/connection/` | O WebSocket com o cérebro: handshake, heartbeat, reconexão ([App mobile](mobile.md#conexao)). |
 | `src/protocol/` | Tipos gerados do schema do protocolo e funções de parse e serialização. |
 | `src/chat/` | O estado e o controlador do chat de texto. |
 | `src/voice/` | O controlador da conversa por voz e as pontes para os módulos nativos de áudio, STT e TTS. |
@@ -113,7 +113,7 @@ python scripts/export_protocol_schema.py     # regenera docs/protocol/schema.jso
 cd mobile && npm run gen:protocol             # regenera src/protocol/types.generated.ts
 ```
 
-A referência das mensagens está em [API WebSocket](protocolo.html).
+A referência das mensagens está em [API WebSocket](protocolo.md).
 
 ## Gerar um APK {#apk}
 
@@ -143,7 +143,7 @@ Para instalar sem o Metro (um build de *release*, com o JavaScript embutido):
    cd android && ./gradlew assembleRelease
    ```
 
-   O APK sai em `mobile/android/app/build/outputs/apk/release/app-release.apk`. A instalação no celular está em [Clientes em produção](clientes-producao.html#app).
+   O APK sai em `mobile/android/app/build/outputs/apk/release/app-release.apk`. A instalação no celular está em [Clientes em produção](clientes-producao.md#app).
 
 ## Problemas comuns {#problemas}
 
@@ -157,3 +157,10 @@ Para instalar sem o Metro (um build de *release*, com o JavaScript embutido):
 | O Gradle fica sem memória no WSL | Crie `C:\Users\SEU_USUARIO\.wslconfig` com `[wsl2]` e `memory=6GB` e rode `wsl --shutdown`. |
 | Tela vermelha «Unable to load script» | O Metro não está rodando ou o aparelho não o alcança: `npx react-native start` e `adb reverse tcp:8081 tcp:8081`. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | O app instalado foi assinado com outra chave: desinstale antes. |
+
+## Para saber mais {#para-saber-mais}
+
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.

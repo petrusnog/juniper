@@ -34,6 +34,9 @@ Formato de uma página (docs/pages/exemplo.md):
 Títulos com `kind=` entram no índice de entidades. O Markdown aceito é um subconjunto pequeno
 (títulos, listas, tabelas, código, citações, negrito, itálico, links); um bloco ```html-raw
 passa HTML direto.
+
+Links entre as fontes são relativos e apontam para o ``.md`` (``agente.md#dispatcher``,
+``../decisions/ADR-007.md``): o Obsidian os resolve e desenha o grafo; aqui viram ``.html``.
 """
 
 from __future__ import annotations
@@ -53,6 +56,7 @@ PAGES_DIR = ROOT / "docs" / "pages"
 ADR_DIR = ROOT / "docs" / "decisions"
 OUT_DIR = ROOT / "docs" / "html"
 DATA_FILE = OUT_DIR / "assets" / "docs-data.js"
+MAP_FILE = ROOT / "docs" / "MAPA.md"
 
 GROUPS = [
     "Introdução",
@@ -106,6 +110,23 @@ def plain(text: str) -> str:
     return text.strip()
 
 
+_MD_LINK = re.compile(r"^(?:\./|\.\./(?:pages|decisions)/)?([\w-]+)\.md(#[\w-]*)?$")
+_ADR_NAME = re.compile(r"^ADR-(\d+)$")
+
+
+def md_to_html(url: str) -> str:
+    """Link entre fontes (que o Obsidian resolve) -> link entre páginas geradas.
+
+    ``agente.md#x`` -> ``agente.html#x``; ``../decisions/ADR-007.md`` -> ``adr-007.html``.
+    """
+    match = _MD_LINK.match(url)
+    if not match:
+        return url
+    name, anchor = match.group(1), match.group(2) or ""
+    adr = _ADR_NAME.match(name)
+    return f"{'adr-' + adr.group(1).zfill(3) if adr else name}.html{anchor}"
+
+
 _SAFE_URL = re.compile(r"^(https?://|mailto:|#|[\w./-]+(\.html|\.md)?(#[\w-]*)?$)", re.IGNORECASE)
 
 
@@ -125,6 +146,7 @@ def inline(text: str) -> str:
         label, url = match.group(1), html.unescape(match.group(2))
         if not _SAFE_URL.match(url):
             return match.group(0)
+        url = md_to_html(url)
         external = url.startswith(("http://", "https://"))
         extra = ' target="_blank" rel="noopener"' if external else ""
         return f'<a href="{html.escape(url, quote=True)}"{extra}>{label}</a>'
@@ -887,6 +909,61 @@ def nav_entries(pages: list[Page]) -> list[dict[str, str | float]]:
 # ---------------------------------------------------------------------------
 
 
+def brief(text: str, limit: int = 130) -> str:
+    """A primeira frase, no máximo ``limit`` caracteres (no mapa, cada linha custa tokens)."""
+    first = re.split(r"(?<=[.!?])\s", text.strip())[0]
+    if len(first) <= limit:
+        return first
+    return first[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def docs_map(pages: list[Page], adrs: list[Adr]) -> str:
+    """``docs/MAPA.md``: o índice de entrada (MOC) para quem lê a documentação, gente ou agente.
+
+    Uma linha por página e por ADR, em ordem de leitura, com links que o Obsidian resolve. Fica
+    pequeno de propósito: quem chega aqui escolhe o que abrir em vez de abrir tudo.
+    """
+    cited: dict[str, list[str]] = {}
+    for page in pages:
+        source = (ROOT / page.source).read_text(encoding="utf-8")
+        for number in sorted(set(re.findall(r"ADR-(\d{3})\.md", source))):
+            cited.setdefault(number, []).append(Path(page.source).stem)
+
+    lines = [
+        f"{MARK_PREFIX} — não edite; rode `python scripts/build_docs.py` -->",
+        "# Mapa da documentação",
+        "",
+        "Índice de entrada: escolha a linha que responde à sua dúvida e abra só essa nota. "
+        'Busca por palavra-chave: `python scripts/docs_search.py "sua pergunta"`.',
+        "",
+    ]
+    for group in GROUPS:
+        members = sorted(
+            (p for p in pages if p.group == group and p.file != "index.html"),
+            key=lambda p: (p.section, p.order, p.title),
+        )
+        if not members:
+            continue
+        lines += [f"## {group}", ""]
+        current = None
+        for page in members:
+            if page.section and page.section != current:
+                current = page.section
+                lines += [f"### {current}", ""]
+            lines.append(
+                f"- [{page.title}](pages/{Path(page.source).name}): {brief(page.description)}"
+            )
+        lines.append("")
+    lines += ["## Decisões (ADR)", "", "Cada ADR, o status e as páginas que o citam.", ""]
+    for adr in adrs:
+        number = adr.number.zfill(3)
+        status = adr.meta.get("Status", "").split("(")[0].strip()
+        short = re.sub(r"^ADR-\d+\s*[—-]\s*", "", adr.title)
+        where = ", ".join(f"`{name}`" for name in cited.get(number, [])) or "—"
+        lines.append(f"- [ADR-{number}](decisions/ADR-{number}.md): {short} ({status}) · {where}")
+    return "\n".join(lines) + "\n"
+
+
 def build() -> dict[Path, str]:
     """Todas as saídas, em memória: caminho -> conteúdo."""
     pages = load_pages()
@@ -946,6 +1023,7 @@ def build() -> dict[Path, str]:
         f"window.JUNIPER_SEARCH = {json.dumps(index, ensure_ascii=False, separators=(',', ':'))};\n"
     )
     outputs[DATA_FILE] = data
+    outputs[MAP_FILE] = docs_map(pages, adrs)
     return outputs
 
 

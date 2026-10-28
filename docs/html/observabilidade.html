@@ -85,6 +85,8 @@ jq -c &#x27;select(.event==&quot;embedding&quot; or .event==&quot;embedding_mode
 <h2 id="testes">Testes</h2>
 <pre><code class="lang-bash">pytest tests/test_eventlog.py tests/test_timing.py -v</code></pre>
 <p>Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token), o arquivo por dia com permissão <code>600</code>, o log que nunca levanta erro, os eventos do agente, cada <code>decision</code> do dispatcher, erro de tool, erro de LLM e o failover do router.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="agente.html">Agente</a> (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</li><li><a href="llm.html">LLM</a> (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.</li><li><a href="dashboard.html">Dashboard</a> (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li><li><a href="operacao.html">Operação e manutenção</a> (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

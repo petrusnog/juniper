@@ -16,12 +16,12 @@ A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (
 
 ## Por onde começar {#comecar}
 
-- **Primeiro contato:** a [Introdução](introducao.html) explica o que a Juniper é, o que ela faz e quais trilhas seguir.
-- **Entender o produto, sem código:** a trilha [Produto](produto.html) explica, para qualquer pessoa, como ela conversa, age, lembra e protege os seus dados.
-- **Desenvolver uma feature:** a trilha [Ambiente Local](primeiros-passos.html) monta o ambiente completo e termina com a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
-- **Entender a arquitetura:** a [Documentação Técnica](architecture.html) cobre cada camada: núcleo, memória, clientes e integrações.
-- **Consultar contratos e decisões:** a [Referência](adr.html) traz os ADRs, a [API WebSocket](protocolo.html), a [API HTTP](api-http.html) e todas as [opções de configuração](configuracao.html).
-- **Colocar no ar:** a trilha [Produção](producao.html) ensina a implantar o cérebro numa VPS qualquer, ligar as integrações e conectar os clientes.
+- **Primeiro contato:** a [Introdução](introducao.md) explica o que a Juniper é, o que ela faz e quais trilhas seguir.
+- **Entender o produto, sem código:** a trilha [Produto](produto.md) explica, para qualquer pessoa, como ela conversa, age, lembra e protege os seus dados.
+- **Desenvolver uma feature:** a trilha [Ambiente Local](primeiros-passos.md) monta o ambiente completo e termina com a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- **Entender a arquitetura:** a [Documentação Técnica](architecture.md) cobre cada camada: núcleo, memória, clientes e integrações.
+- **Consultar contratos e decisões:** a [Referência](adr.html) traz os ADRs, a [API WebSocket](protocolo.md), a [API HTTP](api-http.md) e todas as [opções de configuração](configuracao.md).
+- **Colocar no ar:** a trilha [Produção](producao.md) ensina a implantar o cérebro numa VPS qualquer, ligar as integrações e conectar os clientes.
 
 ## Todas as páginas {#paginas}
 
@@ -38,4 +38,4 @@ python scripts/build_docs.py          # regenera tudo
 python scripts/build_docs.py --check  # só confere se está em dia (o CI roda isto)
 ```
 
-Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `section`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O comando `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831). Detalhes em [Como contribuir](contribuindo.html#documentacao).
+Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `section`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O comando `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831). Detalhes em [Como contribuir](contribuindo.md#documentacao).

@@ -26,7 +26,7 @@
 <h3 id="message">Message</h3>
 <p>Uma "carta" da conversa.</p>
 <div class="tablewrap"><table class="tbl"><thead><tr><th>Campo</th><th>O que é</th></tr></thead><tbody><tr><td><code>role</code></td><td><code>system</code>, <code>user</code>, <code>assistant</code> ou <code>tool</code></td></tr><tr><td><code>content</code></td><td>O texto (pode ser vazio)</td></tr><tr><td><code>tool_calls</code></td><td>Pedidos de ferramenta (só em <code>assistant</code>)</td></tr><tr><td><code>tool_call_id</code></td><td>A qual pedido uma resposta <code>tool</code> responde</td></tr><tr><td><code>name</code></td><td>Nome da tool (em <code>tool</code>)</td></tr></tbody></table></div>
-<p><code>to_openai()</code> converte para o formato OpenAI function calling (ADR-002). O ciclo de uma tool: o <code>assistant</code> pede (<code>tool_calls</code>), a mensagem <code>tool</code> devolve o resultado com o mesmo <code>tool_call_id</code>, e o ciclo se repete até o modelo responder só com texto.</p>
+<p><code>to_openai()</code> converte para o formato OpenAI function calling (<a href="adr-002.html">ADR-002</a>). O ciclo de uma tool: o <code>assistant</code> pede (<code>tool_calls</code>), a mensagem <code>tool</code> devolve o resultado com o mesmo <code>tool_call_id</code>, e o ciclo se repete até o modelo responder só com texto.</p>
 <h3 id="toolcall">ToolCall</h3>
 <p>O modelo pedindo uma ferramenta: <code>id</code>, <code>name</code> e <code>arguments</code> (um <code>dict</code> já pronto, <strong>não</strong> texto JSON).</p>
 <h3 id="llmresponse">LLMResponse</h3>
@@ -47,7 +47,7 @@
 <p><code>tools</code> usa o schema OpenAI (ADR-002). <code>compact_prompt</code> (atributo de classe) pede ao router uma persona e descrições de tool mais curtas, usado só pelo Ollama.</p>
 <h2 id="providers">Providers</h2>
 <h3 id="deepinfraprovider">DeepInfraProvider</h3>
-<p>O LLM principal na nuvem (ADR-009). API compatível com a da OpenAI via <code>httpx</code>, sem SDK.</p>
+<p>O LLM principal na nuvem (<a href="adr-009.html">ADR-009</a>). API compatível com a da OpenAI via <code>httpx</code>, sem SDK.</p>
 <div class="tablewrap"><table class="tbl"><thead><tr><th>Item</th><th>Valor</th></tr></thead><tbody><tr><td>Endpoint</td><td><code>POST https://api.deepinfra.com/v1/openai/chat/completions</code></td></tr><tr><td>Autenticação</td><td><code>Authorization: Bearer &lt;chave&gt;</code> (<code>JUNIPER_DEEPINFRA_API_KEY</code>)</td></tr><tr><td>Streaming</td><td>SSE: linhas <code>data: {...}</code> até <code>data: [DONE]</code></td></tr><tr><td>Tools</td><td><code>tools</code> + <code>tool_choice: &quot;auto&quot;</code>; argumentos voltam como string JSON e viram <code>dict</code></td></tr><tr><td>Saúde</td><td><code>GET /models</code> (falso se não há chave)</td></tr><tr><td>Modelo padrão</td><td><code>deepseek-ai/DeepSeek-V4-Flash-0731</code> (precisa suportar tool calling)</td></tr></tbody></table></div>
 <p>Mapeamento HTTP: 401/402/403 → <code>LLMAuthError</code>; 429 → <code>LLMRateLimitError</code>; 5xx, conexão e stream cortado → <code>LLMUnavailableError</code>; timeout → <code>LLMTimeoutError</code>; demais 4xx → <code>LLMError</code> (sem failover). Chave ausente falha na <strong>primeira chamada</strong> (não no construtor), para um <code>.env</code> sem a chave não derrubar a partida: o router segue para a Groq.</p>
 <h3 id="groqprovider">GroqProvider</h3>
@@ -92,6 +92,8 @@ await router.aclose()</code></pre>
 <pre><code class="lang-bash">pytest tests/test_llm_base.py tests/test_ollama_provider.py tests/test_groq_provider.py \
        tests/test_deepinfra_provider.py tests/test_llm_router.py tests/test_llm_compact.py -v</code></pre>
 <p>Sem rede nem chave: <code>httpx.MockTransport</code> para Ollama e DeepInfra, um cliente falso do SDK (com as exceções reais) para a Groq e providers falsos para o router (1º responde; 1º falha e o 2º responde; todos falham; falha no meio do stream não duplica saída).</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="produto-llm.html">Modelos de linguagem (LLM)</a> (Produto): O que é um modelo de linguagem, quais a Juniper usa, por que ela tem mais de um e o que isso significa para custo, velocidade e privacidade.</li><li><a href="architecture.html">Visão geral da arquitetura</a> (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.</li><li><a href="agente.html">Agente</a> (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</li><li><a href="observabilidade.html">Observabilidade</a> (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), <code>juniper logs</code>, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li><li><a href="integracoes-producao.html">Integrações Google Cloud e Groq</a> (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

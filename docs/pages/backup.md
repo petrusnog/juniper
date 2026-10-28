@@ -95,7 +95,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 30 2 * * * cd $HOME/juniper && ./scripts/backup_memory.sh daily >> $HOME/juniper/backups/backup.log 2>&1
 ```
 
-Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes do sonho da [Memória V2](memoria-v2.html#passada-noturna), às 03:00 (no fuso do agente; ajuste o horário do cron se a VPS estiver em outro fuso). Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
+Às 02:30 no relógio da VPS (confira com `date`: ela costuma estar em UTC, não no fuso do agente), depois da faxina de logs das 00:10 e antes do sonho da [Memória V2](memoria-v2.md#passada-noturna), às 03:00 (no fuso do agente; ajuste o horário do cron se a VPS estiver em outro fuso). Confira no dia seguinte: `tail ~/juniper/backups/backup.log` e o último commit no GitHub.
 
 ## Códigos de saída {#saida}
 
@@ -131,7 +131,7 @@ Um backup que nunca foi restaurado não conta. O CI faz uma **ida e volta** a ca
 
 ## O que o backup não leva {#fora}
 
-- **Segredos:** `.env`, chave do Google e o `backup.env`. Ficam só na VPS (e no seu gerenciador de senhas); refaça-os num servidor novo pelo [tutorial de deploy](deploy-vps.html).
+- **Segredos:** `.env`, chave do Google e o `backup.env`. Ficam só na VPS (e no seu gerenciador de senhas); refaça-os num servidor novo pelo [tutorial de deploy](deploy-vps.md).
 - **O token dos clientes** (`juniper-state`): é recriado no primeiro boot, e os clientes precisam do novo.
 - **Logs** e o **modelo de embeddings** (`juniper-logs`, `juniper-models`): o modelo baixa de novo e os logs vivem só 3 dias.
 - Só o banco `juniper`: os usuários do Mongo vêm do `.env`.
@@ -143,3 +143,12 @@ Um backup que nunca foi restaurado não conta. O CI faz uma **ida e volta** a ca
 - **O histórico cresce.** Cada backup é um arquivo novo e cifrado (o git não consegue comprimir a diferença entre versões), então o tamanho do repositório é, em ordem de grandeza, o do banco vezes o número de backups. Para uma memória pessoal pequena isso dura anos; se passar de algumas centenas de MB, o procedimento é recomeçar o histórico (um repositório novo com o último backup) e arquivar o antigo.
 - **Retenção:** o próprio histórico do git. Nada é apagado automaticamente.
 - **A chave de deploy tem escrita no repositório de backup,** então uma VPS comprometida pode enviar lixo, mas, com a proteção de `main` (force push e exclusão bloqueados), não consegue apagar o que já existe.
+
+## Para saber mais {#para-saber-mais}
+
+- [Memória](produto-memoria.md) (Produto): Como a Juniper lembra: a conversa atual, os fatos duráveis sobre você, o seu perfil, a busca por significado e como ver e apagar tudo.
+- [Memória](memoria.md) (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
+- [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Deploy do cérebro numa VPS](deploy-vps.md) (Produção): Tutorial completo para levar o cérebro a uma VPS de qualquer provedor: acesso e SSH, sistema, Docker, rede privada, firewall, segredos, subida, verificação e varredura de portas.
+- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

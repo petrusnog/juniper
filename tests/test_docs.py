@@ -309,3 +309,89 @@ def test_nav_and_index_are_published_for_the_browser(outputs: dict[Path, str]) -
     for name in ("index.html", "agente.html", "status.html"):
         text = outputs.get(HTML_DIR / name) or (HTML_DIR / name).read_text(encoding="utf-8")
         assert "assets/docs-data.js" in text and "assets/search.js" in text
+
+
+# --- notas ligadas, mapa e Obsidian ---------------------------------------------------------------
+
+DOCS = ROOT / "docs"
+_SOURCE_LINK = re.compile(r"\]\(([^)\s]+)\)")
+GENERATED_PAGES = {"adr.html", "entidades.html", "status.html"}
+
+
+def _sources() -> dict[Path, str]:
+    paths = sorted((DOCS / "pages").glob("*.md")) + sorted((DOCS / "decisions").glob("ADR-*.md"))
+    return {path: path.read_text(encoding="utf-8") for path in paths}
+
+
+def _internal_targets(path: Path, text: str) -> set[Path]:
+    """The source files that ``text`` links to (resolved like Obsidian resolves them)."""
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    found = set()
+    for url in _SOURCE_LINK.findall(text):
+        target = url.partition("#")[0]
+        if target.endswith(".md") and "://" not in target:
+            found.add((path.parent / target).resolve())
+    return found
+
+
+def test_source_links_point_to_existing_md_files_not_html() -> None:
+    problems = []
+    for path, text in _sources().items():
+        stripped = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+        for url in _SOURCE_LINK.findall(stripped):
+            target = url.partition("#")[0]
+            if "://" in target:
+                continue
+            if target.endswith(".html") and target not in GENERATED_PAGES:
+                problems.append(f"{path.name}: {url} (use o .md; o Obsidian não resolve .html)")
+            elif target.endswith(".md") and not (path.parent / target).exists():
+                problems.append(f"{path.name}: {url} (arquivo não existe)")
+    assert not problems, "\n".join(problems)
+
+
+def test_no_note_is_an_orphan() -> None:
+    sources = _sources()
+    linked_to: set[Path] = set()
+    linking: set[Path] = set()
+    for path, text in sources.items():
+        targets = _internal_targets(path, text) - {path.resolve()}
+        if targets:
+            linking.add(path.resolve())
+        linked_to |= targets
+    orphans = [
+        path.name
+        for path in sources
+        if path.resolve() not in linked_to and path.resolve() not in linking
+    ]
+    assert not orphans, f"notas sem nenhum link entrando ou saindo: {orphans}"
+    # A rede também precisa ser lida: nenhuma página fica sem ser citada por outra nota.
+    uncited = [
+        path.name for path in sources if path.resolve() not in linked_to and path.name != "index.md"
+    ]
+    assert not uncited, f"notas que nenhuma outra nota cita: {uncited}"
+
+
+def test_every_page_ends_with_related_notes() -> None:
+    missing = [
+        path.name
+        for path in (DOCS / "pages").glob("*.md")
+        if path.name != "index.md" and "## Para saber mais" not in path.read_text(encoding="utf-8")
+    ]
+    assert not missing, f"páginas sem a seção 'Para saber mais': {missing}"
+
+
+def test_map_lists_every_page_and_adr(outputs: dict[Path, str]) -> None:
+    text = outputs[DOCS / "MAPA.md"]
+    for path in _sources():
+        folder = path.parent.name
+        assert f"]({folder}/{path.name})" in text or path.name == "index.md", path.name
+    assert len(text) < 16_000, "o mapa cresceu demais: ele existe para custar poucos tokens"
+    assert text.startswith(build_docs.MARK_PREFIX)
+
+
+def test_shared_obsidian_config_is_valid_and_hides_generated_html() -> None:
+    app = json.loads((DOCS / ".obsidian" / "app.json").read_text(encoding="utf-8"))
+    graph = json.loads((DOCS / ".obsidian" / "graph.json").read_text(encoding="utf-8"))
+    assert app["useMarkdownLinks"] is True and app["newLinkFormat"] == "relative"
+    assert "html/" in app["userIgnoreFilters"]
+    assert graph["colorGroups"]

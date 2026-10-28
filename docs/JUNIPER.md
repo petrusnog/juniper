@@ -4,6 +4,8 @@
 > **Idioma:** documentação em PT-BR. Código, comentários, docstrings e logs em inglês. Mensagens ao usuário final em PT-BR.
 > **Última atualização:** 2026-10-07 · **Branch:** `v4` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
 
+> **Documento histórico (Sprint 1).** Descreve o estado e o backlog de 2026-10-07 e ficou para trás: não o leia inteiro. O estado atual está no [mapa da documentação](MAPA.md) (páginas em `pages/`, decisões em `decisions/`); daqui valem ainda os princípios (§4.1), a estrutura do repositório (§5) e as convenções de código (§7).
+
 ---
 
 ## 1. Visão do Projeto

@@ -9,7 +9,7 @@ tags: produto memória lembrar esquecer curto prazo longo prazo perfil busca por
 
 ## Por que memória importa {#por-que}
 
-Um modelo de linguagem não lembra de nada entre uma pergunta e outra. Sem memória, toda conversa começaria do zero e você precisaria repetir que prefere o terminal ZSH ou em que projeto está trabalhando. A Juniper resolve isso com **duas camadas de memória**, como as pessoas: a de curto prazo (a conversa de agora) e a de longo prazo (o que vale a pena guardar) ([ADR-011](adr-011.html)).
+Um modelo de linguagem não lembra de nada entre uma pergunta e outra. Sem memória, toda conversa começaria do zero e você precisaria repetir que prefere o terminal ZSH ou em que projeto está trabalhando. A Juniper resolve isso com **duas camadas de memória**, como as pessoas: a de curto prazo (a conversa de agora) e a de longo prazo (o que vale a pena guardar) ([ADR-011](../decisions/ADR-011.md)).
 
 ## Memória de curto prazo: a conversa {#curto-prazo}
 
@@ -40,16 +40,16 @@ Guardar é silencioso, para a conversa fluir: no máximo ela diz "anotado". Já 
 
 | Quero... | Como |
 |---|---|
-| Ver o que ela sabe | Perguntar "o que você sabe sobre mim?", ou `juniper memory list` no terminal, ou o [painel web](produto-canais.html#painel). |
+| Ver o que ela sabe | Perguntar "o que você sabe sobre mim?", ou `juniper memory list` no terminal, ou o [painel web](produto-canais.md#painel). |
 | Pedir para lembrar | "Lembra que eu uso ZSH." |
 | Pedir para esquecer | "Esquece o que eu disse sobre o projeto X." Ela mostra o que vai apagar e pede o "sim". |
 | Levar tudo embora | `juniper memory export` gera um arquivo com o perfil e as memórias. |
 
 ## Além dos fatos {#alem}
 
-A memória pode ir além de fatos: com a **Memória V2** ligada, a Juniper forma opiniões sobre você com grau de certeza calculado, tem sentimentos, desenvolve interesses e uma personalidade que evolui, com um processo noturno parecido com o sono. Isso é opcional e está em [Personalidade, opiniões e sentimentos](produto-personalidade.html).
+A memória pode ir além de fatos: com a **Memória V2** ligada, a Juniper forma opiniões sobre você com grau de certeza calculado, tem sentimentos, desenvolve interesses e uma personalidade que evolui, com um processo noturno parecido com o sono. Isso é opcional e está em [Personalidade, opiniões e sentimentos](produto-personalidade.md).
 
 ## Para saber mais {#mais}
 
-- Técnico: [Memória](memoria.html), [Memória de sessão](memoria-sessao.html) e [Memória de longo prazo](memoria-longo-prazo.html).
-- Decisão: [ADR-011](adr-011.html) (arquitetura de memória) e [ADR-018](adr-018.html) (memória refinada).
+- Técnico: [Memória](memoria.md), [Memória de sessão](memoria-sessao.md) e [Memória de longo prazo](memoria-longo-prazo.md).
+- Decisão: [ADR-011](../decisions/ADR-011.md) (arquitetura de memória) e [ADR-018](../decisions/ADR-018.md) (memória refinada).
