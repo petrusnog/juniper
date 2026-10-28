@@ -184,7 +184,7 @@ class PlayMusic(Tool):
         "properties": {
             "query": {
                 "type": "string",
-                "description": "O que tocar: música e artista, ou só o artista (ex.: Djavan Oceano).",
+                "description": "O que tocar: música e artista, ou só o artista.",
             },
             "mode": {
                 "type": "string",
