@@ -199,7 +199,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 
 ## 9. Como Consultar e Trabalhar
 
-- **Ler a documentação:** mapa → `python scripts/docs_search.py "pergunta"` → só a seção (`Read` com `offset`). Convenções de escrita e de links: [`docs/CLAUDE.md`](CLAUDE.md).
+- **Ler a documentação:** mapa → `python scripts/docs_search.py "pergunta"` → só a seção (`Read` com `offset`). Convenções de escrita e de links: seção "Escrever na documentação" do `CLAUDE.md` da raiz.
 - **Fluxo:** toda task nasce de uma issue `[T-0xx]`; branch `feature/T0xx` a partir de `master`; PR com `Closes #N` ([Como contribuir](pages/contribuindo.md)).
 - **Antes de começar uma task com decisões em aberto, pergunte ao responsável:** ele quer participar das decisões de design com trade-offs reais.
 
