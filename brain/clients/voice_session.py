@@ -40,6 +40,7 @@ AUDIO_CHUNK_MS: Final = 100
 SAY_SECONDS_PER_CHAR: Final = 0.07  # how long the device takes to say a character (an estimate)
 CANT_HEAR_MESSAGE = "Não consegui te ouvir agora. Pode repetir?"
 MAX_UTTERANCES_QUEUED: Final = 4
+ECHO_TAIL_SECONDS: Final = 1.0  # speaker: keep ignoring the microphone this long after she ends
 PLAY_MARGIN_SECONDS: Final = 0.6  # the device may play a bit slower than the estimate
 SETTLE_SECONDS: Final = 0.4  # a pause in the reply this long lets a finished sentence be spoken
 
@@ -72,6 +73,7 @@ class VoiceSession:
         input_rate: int = VAD_RATE,
         local_stt: bool = False,
         local_tts: bool = False,
+        route: str | None = None,
         vad: Vad | None = None,
         clock: Callable[[], float] = time.monotonic,
         idle_timeout: float | None = None,
@@ -87,6 +89,8 @@ class VoiceSession:
         self._input_rate = input_rate
         self.local_stt = local_stt
         self.local_tts = local_tts
+        self._route = route
+        self._gated = False
         self._vad = vad or Vad()
         self._clock = clock
         self._idle = idle_timeout if idle_timeout is not None else services.idle_timeout
@@ -157,6 +161,8 @@ class VoiceSession:
         pcm = pcm[: len(pcm) // 2 * 2]  # a half sample is garbage, and would break the resampler
         if self._input_rate != VAD_RATE:
             pcm = resample(pcm, self._input_rate, VAD_RATE)
+        if self._echo_gate():
+            return
         self._refresh_playing()
         for event in self._vad.feed(pcm):
             if event.kind in ("speech_start", "barge_in"):
@@ -177,6 +183,29 @@ class VoiceSession:
             return
         self._touch()
         await self._heard(message.text.strip())
+
+    def set_route(self, route: str) -> None:
+        """The device's audio output changed (headphones plugged in or out)."""
+        self._route = route
+        self._gated = False
+        self._vad.reset()
+
+    def _echo_gate(self) -> bool:
+        """True while the microphone must be ignored (speakerphone: it hears her own voice).
+
+        On a speaker the phone's echo cancellation is not enough to tell her voice from his, and
+        a cut-off by "speech" would be her own echo. So, half-duplex: while she speaks (and a
+        moment after) nothing from the microphone is analysed; he cuts her off with the button.
+        With headphones (or an unknown route) the full-duplex barge-in stays.
+        """
+        if self._route != "speaker":
+            return False
+        speaking = self._speech is not None and self._speech.spoke
+        gated = speaking or self._clock() < self._play_until + ECHO_TAIL_SECONDS
+        if gated and not self._gated:
+            self._vad.reset()  # what was half heard before she started is dropped with the rest
+        self._gated = gated
+        return gated
 
     async def interrupt(self) -> None:
         """ "Shut up" from the client (the button, or its own detection)."""

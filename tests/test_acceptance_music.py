@@ -6,6 +6,7 @@ the server, the dispatcher, the tools and the executor protocol are the real one
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -124,7 +125,7 @@ async def test_play_a_song_search_then_the_phone_opens_the_link_without_asking(
         m.content or "" for m in provider.seen[1] if m.role == "tool" and m.name == "music_search"
     )
     assert f"1. Oceano — Djavan (oficial) | {link}" in searched
-    assert "open_url" in searched  # the result tells the LLM what to do next
+    assert "play_music" in searched  # the result tells the LLM what to do next
 
 
 async def test_play_something_similar_uses_the_radio_link(tmp_path: Path, youtube: Youtube) -> None:
@@ -145,23 +146,24 @@ async def test_play_something_similar_uses_the_radio_link(tmp_path: Path, youtub
     assert youtube.searches == [("Djavan", 5, "radio")]
 
 
-async def test_a_search_with_no_phone_connected_ends_politely(
+async def test_a_search_from_the_terminal_hands_back_the_link(
     tmp_path: Path, youtube: Youtube
 ) -> None:
     from tests.test_chat_server import connect_client
 
+    link = track_url(OCEANO)
     provider = FakeProvider(
         [
             use("music_search", "k1", query="Djavan Oceano"),
-            use("open_url", "k2", url=track_url(OCEANO)),
-            say("Seu celular está desconectado agora."),
+            use("open_url", "k2", url=link),
+            say(f"Aqui está o link: {link}"),
         ]
     )
     async with Setup(tmp_path, provider) as s:
         register_music(s)
         client = await connect_client(s.server, "cli")  # a chat client: no executor
-        assert texts(await client.chat("toca Oceano")) == "Seu celular está desconectado agora."
-    assert "não está conectado" in tool_result_seen_by_llm(provider)
+        assert link in texts(await client.chat("toca Oceano"))
+    assert "não é do aplicativo" in tool_result_seen_by_llm(provider)
 
 
 # --- failures are typed and never invented -------------------------------------------------
@@ -315,3 +317,105 @@ async def test_the_users_reaction_is_recorded_silently_and_a_search_alone_record
 
 def test_links_and_ids_round_trip() -> None:
     assert clean_video_ids([track_url(OCEANO), radio_url(SINA)]) == [OCEANO, SINA]
+
+
+# --- play_music: one step, and aware of where the request came from -------------------------
+
+
+def provider_note(provider: FakeProvider) -> str:
+    """The channel note the model got in its last request (a system message at the end)."""
+    return next(
+        (
+            m.content or ""
+            for m in reversed(provider.seen[0])
+            if m.role == "system" and "Canal:" in (m.content or "")
+        ),
+        "",
+    )
+
+
+async def test_play_music_in_the_app_opens_straight_away_without_a_second_question(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    link = track_url(OCEANO)
+    provider = FakeProvider(
+        [use("play_music", "k1", query="Djavan Oceano"), say("Tocando Oceano, do Djavan.")]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.send(type="chat.send", id="c-1", text="toca Oceano do Djavan")
+        await answer_open_url(phone, link)  # the open comes with no question in between
+        assert texts(await phone.until(p.ChatEnd)) == "Tocando Oceano, do Djavan."
+    assert youtube.searches == [("Djavan Oceano", 5, "track")]
+    result = tool_result_seen_by_llm(provider)
+    assert "Oceano" in result and "Djavan" in result and "Abri." in result
+    note = provider_note(provider)
+    assert "aplicativo do celular (texto)" in note and "play_music" in note
+
+
+async def test_play_music_from_the_terminal_returns_the_link_even_with_a_phone_connected(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    from tests.test_chat_server import connect_client
+
+    link = track_url(OCEANO)
+    provider = FakeProvider(
+        [use("play_music", "k1", query="Djavan Oceano"), say(f"Toma o link: {link}")]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        client = await connect_client(s.server, "terminal", "cli")
+        assert link in texts(await client.chat("toca Oceano do Djavan"))
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.3):
+                await phone.recv()  # the phone was left alone
+    result = tool_result_seen_by_llm(provider)
+    assert link in result and "não abre links" in result
+    assert "cli" in provider_note(provider) and "mande o link" in provider_note(provider)
+
+
+async def test_play_music_when_the_phone_refuses_hands_back_the_link(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    link = track_url(OCEANO)
+    provider = FakeProvider([use("play_music", "k1", query="Djavan Oceano"), say("Não abriu.")])
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.send(type="chat.send", id="c-1", text="toca Oceano")
+        invoke = (await phone.until(p.Invoke))[-1]
+        await phone.send(
+            type="result", call_id=invoke.call_id, success=False, error="O Android bloqueou."
+        )
+        await phone.until(p.ChatEnd)
+    result = tool_result_seen_by_llm(provider)
+    assert "O Android bloqueou." in result and link in result
+
+
+async def test_play_music_with_nothing_found_says_so(tmp_path: Path, youtube: Youtube) -> None:
+    youtube.tracks = []
+    provider = FakeProvider([use("play_music", "k1", query="zzzz"), say("Não achei.")])
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.chat("toca zzzz")
+    assert "Não achei nenhuma música" in tool_result_seen_by_llm(provider)
+
+
+async def test_play_music_reports_a_quota_error_instead_of_playing(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    youtube.error = MusicError("quota_exhausted", "A cota diária da busca de músicas acabou.")
+    provider = FakeProvider([use("play_music", "k1", query="Djavan"), say("Sem cota hoje.")])
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.chat("toca Djavan")
+    assert tool_result_seen_by_llm(provider) == "ERRO: A cota diária da busca de músicas acabou."

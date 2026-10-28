@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -368,16 +369,23 @@ async def test_a_refused_link_never_reaches_the_phone(tmp_path: Path) -> None:
     assert "Não posso abrir esse endereço" in tool_result_seen_by_llm(provider)
 
 
-async def test_without_a_phone_connected_the_juniper_says_so(tmp_path: Path) -> None:
+async def test_a_chat_that_is_not_the_app_gets_the_link_not_an_open(tmp_path: Path) -> None:
+    """The terminal and Telegram cannot open anything on the phone: the link is the answer,
+    even when a phone is connected as an executor at that very moment."""
     from tests.test_chat_server import connect_client
 
-    provider = FakeProvider([use("open_url", url=MUSIC), say("O celular está desconectado.")])
+    provider = FakeProvider([use("open_url", url=MUSIC), say("Aqui está o link.")])
     async with Setup(tmp_path, provider) as s:
         s.registry.register(OpenUrl)
-        client = await connect_client(s.server, "cli")  # a chat client, not an executor
+        phone, _ = await s.executor("celular", DEVICE_TOOL)  # a phone IS connected
+        client = await connect_client(s.server, "cli")  # but the request comes from the terminal
         messages = await client.chat("toca algo")
-        assert texts(messages) == "O celular está desconectado."
-    assert "não está conectado" in tool_result_seen_by_llm(provider)
+        assert texts(messages) == "Aqui está o link."
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.3):
+                await phone.recv()  # nothing reached the phone
+    result = tool_result_seen_by_llm(provider)
+    assert "não é do aplicativo" in result and MUSIC in result
 
 
 # --- search pages are not music (found in the first real run on the VPS) ----------------------

@@ -36,11 +36,11 @@ def server_side(registry: ToolRegistry) -> ToolRegistry:
     return registry
 
 
-def hello(device_id: str = "dev-1", **resume: Any) -> str:
+def hello(device_id: str = "dev-1", kind: str = "cli", **resume: Any) -> str:
     frame: dict[str, Any] = {
         "type": "hello",
         "protocol_version": p.PROTOCOL_VERSION,
-        "client": {"kind": "cli", "version": "0.1.0", "device_id": device_id},
+        "client": {"kind": kind, "version": "0.1.0", "device_id": device_id},
     }
     if resume:
         frame["resume"] = resume
@@ -75,12 +75,14 @@ class Client:
         return await self.until(p.ChatEnd)
 
 
-async def connect_client(server: BrainServer, device_id: str = "dev-1", **resume: Any) -> Client:
+async def connect_client(
+    server: BrainServer, device_id: str = "dev-1", kind: str = "cli", **resume: Any
+) -> Client:
     ws = await connect(
         f"ws://127.0.0.1:{server.port}/v1/ws",
         additional_headers={"Authorization": f"Bearer {TOKEN}"},
     )
-    await ws.send(hello(device_id, **resume))
+    await ws.send(hello(device_id, kind, **resume))
     welcome = p.parse_server_message(await ws.recv())
     assert isinstance(welcome, p.Welcome)
     return Client(ws, welcome)

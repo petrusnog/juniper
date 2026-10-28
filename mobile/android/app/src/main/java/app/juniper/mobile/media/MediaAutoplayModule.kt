@@ -1,5 +1,6 @@
 package app.juniper.mobile.media
 
+import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -7,6 +8,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.KeyEvent
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -46,6 +48,10 @@ class MediaAutoplayModule(private val reactContext: ReactApplicationContext) :
     val retryMs = if (options.hasKey("retryMs")) options.getInt("retryMs").toLong() else 1500L
 
     val result = Arguments.createMap()
+    // Android 10+ may refuse to start an activity from the background. Report what we know, so
+    // the answer to the person is honest ("blocked") instead of a silent "opened".
+    result.putBoolean("foreground", isForeground())
+    result.putBoolean("overlay", Settings.canDrawOverlays(reactContext))
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
       reactContext.startActivity(intent)
@@ -94,6 +100,32 @@ class MediaAutoplayModule(private val reactContext: ReactApplicationContext) :
           Handler(Looper.getMainLooper()).post { promise.resolve(result) }
         }
         .start()
+  }
+
+  /** True while the app's screen is in front (not when only the voice service keeps it alive). */
+  private fun isForeground(): Boolean {
+    val info = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(info)
+    return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+  }
+
+  /** Whether "display over other apps" is granted: what lets us open the music app from the
+   * background (with the invisible window the voice service keeps while a conversation is on). */
+  @ReactMethod
+  fun canOpenFromBackground(promise: Promise) {
+    promise.resolve(Settings.canDrawOverlays(reactContext))
+  }
+
+  @ReactMethod
+  fun openOverlaySettings() {
+    val intent =
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${reactContext.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+      reactContext.startActivity(intent)
+    } catch (e: RuntimeException) {
+      // No such settings screen on this phone: the person finds it in the app's settings.
+    }
   }
 
   private fun sendPlayKey() {

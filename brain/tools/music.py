@@ -32,7 +32,9 @@ from brain.music.oauth import build_token_provider
 from brain.music.taste import SIGNALS, TasteError
 from brain.music.youtube import YouTubeProvider
 from brain.tools.base import Locality, Tier, Tool, ToolResult
+from brain.tools.channel import current_channel
 from brain.tools.registry import register_tool
+from brain.tools.url_policy import check_url
 
 _provider: MusicProvider | None = None
 
@@ -107,12 +109,11 @@ def _line(index: int, track: Track) -> str:
 class MusicSearch(Tool):
     name = "music_search"
     description = (
-        "Procura músicas no YouTube Music e devolve até 5 resultados com o link de cada um. Use "
-        "SEMPRE que a pessoa pedir para procurar, achar ou tocar uma música, artista ou álbum "
-        "(nunca monte um link de busca à mão). "
-        "Para TOCAR uma música: chame esta ferramenta, escolha o resultado que melhor combina "
-        "com o pedido e chame open_url com o link dele (abre no celular e toca). Em 'mode' use "
-        "'radio' para tocar algo parecido, em sequência. Pesquise por nome da música e do artista."
+        "Procura músicas no YouTube Music e devolve até 5 resultados com o link de cada um. Serve "
+        "para MOSTRAR opções (procurar, listar, comparar) ou para escolher músicas de uma "
+        "playlist. Para TOCAR, use play_music, que já abre no celular. Nunca monte um link de "
+        "busca à mão. Em 'mode' use 'radio' para algo parecido. Pesquise por nome da música e "
+        "do artista."
     )
     parameters = {
         "type": "object",
@@ -161,8 +162,95 @@ class MusicSearch(Tool):
         lines = "\n".join(_line(i, t) for i, t in enumerate(tracks, start=1))
         return ToolResult(
             success=True,
-            output=f"{lines}\nPara tocar, chame open_url com o link do resultado escolhido.",
+            output=(
+                f"{lines}\nPara tocar um deles, chame play_music com o nome da música e do artista."
+            ),
             metadata={"results": len(tracks), "mode": mode},
+        )
+
+
+@register_tool
+class PlayMusic(Tool):
+    name = "play_music"
+    description = (
+        "TOCA uma música: procura no YouTube Music, escolhe o melhor resultado e, se a pessoa "
+        "está no aplicativo do celular, abre e dá o play sozinho. Use SEMPRE que ela pedir para "
+        "tocar, colocar ou ouvir uma música, artista ou álbum. O pedido já é a confirmação: "
+        "não pergunte de novo. Em canais que não abrem links (terminal, Telegram) devolve o "
+        "link para você mandar na resposta. Para só procurar e mostrar opções, use music_search."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "O que tocar: música e artista, ou só o artista.",
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["track", "radio"],
+                "description": "'track' (padrão) toca a faixa; 'radio' toca algo parecido.",
+            },
+        },
+        "required": ["query"],
+    }
+    tier = Tier.WRITE
+    locality = Locality.CLOUD
+
+    @classmethod
+    def available(cls) -> bool:
+        return enabled()
+
+    async def requires_confirmation(self, **kwargs: Any) -> bool:
+        return False  # "toca X" is the confirmation (the URL is built here, never typed by a model)
+
+    async def describe(self, **kwargs: Any) -> str | None:
+        return f"tocar {kwargs.get('query', '')}"
+
+    async def run(self, **kwargs: Any) -> ToolResult:
+        mode: SearchMode = "radio" if kwargs.get("mode") == "radio" else "track"
+        try:
+            tracks = await provider().search(
+                str(kwargs.get("query", "")), limit=settings.music.search_limit, mode=mode
+            )
+        except MusicError as exc:
+            return failure(exc)
+        if not tracks:
+            return ToolResult(
+                success=True,
+                output="Não achei nenhuma música para esse pedido. Tente outro nome ou artista.",
+                metadata={"results": 0},
+            )
+        track = tracks[0]
+        what = f"«{track.title}», de {track.artist}"
+        checked = check_url(track.url)
+        if not checked.ok or checked.url is None:  # never expected: the URL is ours
+            return ToolResult(success=False, error="Não consegui montar o link da música.")
+        channel = current_channel.get()
+        if channel is None or not channel.can_open or channel.gateway is None:
+            return ToolResult(
+                success=True,
+                output=(
+                    f"Achei {what}. Este canal não abre links no celular: mande este link na "
+                    f"resposta: {checked.url}"
+                ),
+                metadata={"url": checked.url, "opened": False},
+            )
+        opened = await channel.gateway.invoke("open_url", {"url": checked.url})
+        if not opened.success:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Achei {what}, mas não consegui abrir no celular: "
+                    f"{opened.error or 'erro desconhecido'} Link para mandar na resposta: "
+                    f"{checked.url}"
+                ),
+                metadata={"url": checked.url, "opened": False, **(opened.metadata or {})},
+            )
+        return ToolResult(
+            success=True,
+            output=f"{what}: {opened.output or 'abri no celular.'}",
+            metadata={"url": checked.url, "opened": True, **(opened.metadata or {})},
         )
 
 

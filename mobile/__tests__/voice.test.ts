@@ -65,6 +65,21 @@ class FakeAudio implements AudioDevice {
       this.stopRequested = null;
     };
   }
+  headset = false;
+  routes: boolean[] = [];
+  routeListener: ((headset: boolean) => void) | null = null;
+  async hasHeadset() {
+    return this.headset;
+  }
+  async applyRoute(speaker: boolean) {
+    this.routes.push(speaker);
+  }
+  onRouteChange(l: (headset: boolean) => void) {
+    this.routeListener = l;
+    return () => {
+      this.routeListener = null;
+    };
+  }
   async pauseCapture() {
     this.log.push('pause');
   }
@@ -154,6 +169,7 @@ test('start opens the microphone, asks the brain for a session and waits for it'
     format: { encoding: 'pcm_s16le', sample_rate: 16000, channels: 1 },
     local_stt: true,
     local_tts: true,
+    route: 'speaker',
   });
   expect(voice.state.phase).toBe('starting');
 });
@@ -438,4 +454,114 @@ test('if the device recognizer cannot start, the microphone goes back to the bra
   await new Promise(resolve => setImmediate(resolve));
   expect(s.audio.log).toEqual(expect.arrayContaining(['pause', 'resume']));
   expect(s.voice.state.notice).toContain('reconhecimento de voz do aparelho');
+});
+
+// --- loudspeaker, headphones and hold-to-talk --------------------------------------------------
+
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('without headphones the voice goes to the loudspeaker and the brain is told', async () => {
+  const { connection, audio, voice } = setup();
+  await voice.start();
+  expect(audio.routes).toEqual([true]);
+  expect(connection.sentOfType('voice.start')[0].route).toBe('speaker');
+  expect(voice.state.route).toBe('speaker');
+});
+
+test('with headphones the loudspeaker is not used and the brain is told', async () => {
+  const { connection, audio, voice } = setup();
+  audio.headset = true;
+  await voice.start();
+  expect(audio.routes).toEqual([false]);
+  expect(connection.sentOfType('voice.start')[0].route).toBe('headset');
+  expect(voice.state.route).toBe('headset');
+});
+
+test('plugging headphones in during the conversation switches the route and tells the brain', async () => {
+  const { connection, audio, voice } = await open();
+  audio.routeListener?.(true);
+  expect(voice.state.route).toBe('headset');
+  expect(audio.routes.at(-1)).toBe(false);
+  expect(connection.sentOfType('voice.route')).toEqual([
+    { type: 'voice.route', route: 'headset' },
+  ]);
+  audio.routeListener?.(true); // the same route again: nothing new
+  expect(connection.sentOfType('voice.route')).toHaveLength(1);
+  audio.routeListener?.(false);
+  expect(connection.sentOfType('voice.route').at(-1)).toEqual({
+    type: 'voice.route',
+    route: 'speaker',
+  });
+});
+
+test('hold-to-talk: the microphone stays closed until the button goes down', async () => {
+  const { connection, audio, voice } = await open();
+  voice.setPushToTalk(true);
+  audio.chunk?.('AAAA');
+  expect(connection.sentOfType('voice.audio')).toEqual([]); // closed
+  voice.pressTalk();
+  audio.chunk?.('BBBB');
+  expect(connection.sentOfType('voice.audio').map(m => m.data)).toEqual([
+    'BBBB',
+  ]);
+  voice.releaseTalk();
+  audio.chunk?.('CCCC'); // closed again
+  const sent = connection.sentOfType('voice.audio').map(m => m.data);
+  expect(sent).not.toContain('CCCC');
+});
+
+test('releasing the button sends 900 ms of silence so the brain hears the utterance end', async () => {
+  const { connection, voice } = await open();
+  voice.setPushToTalk(true);
+  voice.pressTalk();
+  voice.releaseTalk();
+  const silence = connection.sentOfType('voice.audio');
+  expect(silence).toHaveLength(9);
+  const bytes = Buffer.from(silence[0].data, 'base64');
+  expect(bytes.length).toBe(3200); // 100 ms at 16 kHz, 16 bits
+  expect(bytes.every(b => b === 0)).toBe(true);
+  expect(silence.map(m => m.seq)).toEqual([...silence.keys()]);
+});
+
+test('pressing the talk button while she speaks cuts her off first', async () => {
+  const { connection, audio, voice } = await open();
+  voice.setPushToTalk(true);
+  connection.receive({
+    type: 'voice.state',
+    state: 'speaking',
+    turn_id: 't-1',
+  });
+  voice.pressTalk();
+  expect(connection.sentOfType('voice.interrupt')).toHaveLength(1);
+  expect(audio.log).toContain('flush');
+  expect(voice.state.talking).toBe(true);
+});
+
+test('the talk button does nothing without hold-to-talk or without a session', async () => {
+  const s = setup();
+  s.voice.pressTalk();
+  expect(s.voice.state.talking).toBe(false);
+  const { connection, voice } = await open();
+  voice.pressTalk(); // pushToTalk is off
+  expect(voice.state.talking).toBe(false);
+  voice.releaseTalk();
+  expect(connection.sentOfType('voice.audio')).toEqual([]);
+});
+
+test("hold-to-talk survives a new conversation (it is the person's choice)", async () => {
+  const { voice } = await open();
+  voice.setPushToTalk(true);
+  await voice.end();
+  await voice.start();
+  expect(voice.state.pushToTalk).toBe(true);
+  expect(voice.state.talking).toBe(false);
+});
+
+test('with the cloud STT out, releasing the button sends no silence (the device listens)', async () => {
+  const { connection, voice } = await open('local');
+  voice.setPushToTalk(true);
+  voice.pressTalk();
+  await tick();
+  voice.releaseTalk();
+  expect(connection.sentOfType('voice.audio')).toEqual([]);
 });

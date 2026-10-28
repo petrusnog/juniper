@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
@@ -13,6 +16,8 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Promise
@@ -50,6 +55,10 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   @Volatile private var playing = false
 
   private var stopReceiver: BroadcastReceiver? = null
+  private var deviceCallback: AudioDeviceCallback? = null
+
+  private val audioManager: AudioManager
+    get() = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
   private fun emit(event: String, payload: Any?) {
     if (reactContext.hasActiveReactInstance()) {
@@ -74,6 +83,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
       ContextCompat.startForegroundService(
           reactContext, Intent(reactContext, VoiceService::class.java))
       registerStopReceiver()
+      watchDevices()
       beginCapture(sampleRate)
       promise.resolve(null)
     } catch (e: Exception) {
@@ -166,10 +176,85 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
             }
   }
 
+  /** True when something that is not the phone's own speaker is plugged in (wired or Bluetooth). */
+  private fun headsetConnected(): Boolean =
+      audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+        when (it.type) {
+          AudioDeviceInfo.TYPE_WIRED_HEADSET,
+          AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+          AudioDeviceInfo.TYPE_USB_HEADSET,
+          AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+          AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> true
+          else -> false
+        }
+      }
+
+  @ReactMethod
+  fun hasHeadset(promise: Promise) {
+    promise.resolve(headsetConnected())
+  }
+
+  /**
+   * Plays her voice on the loudspeaker (`speaker = true`) or on whatever is plugged in. The
+   * communication mode is what makes the platform echo canceller work and lets the voice use the
+   * loudspeaker instead of the earpiece. The cérebro also ignores the microphone while she speaks
+   * on the loudspeaker (half-duplex), so her own voice never becomes a question.
+   */
+  @ReactMethod
+  fun applyRoute(speaker: Boolean) {
+    val manager = audioManager
+    manager.mode = AudioManager.MODE_IN_COMMUNICATION
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      if (speaker) {
+        manager.availableCommunicationDevices
+            .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            ?.let { manager.setCommunicationDevice(it) }
+      } else {
+        manager.clearCommunicationDevice()
+      }
+    } else {
+      manager.isSpeakerphoneOn = speaker // deprecated since API 31, still the way before it
+    }
+  }
+
+  private fun resetRoute() {
+    val manager = audioManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      manager.clearCommunicationDevice()
+    } else {
+      manager.isSpeakerphoneOn = false
+    }
+    manager.mode = AudioManager.MODE_NORMAL
+  }
+
+  /** Tells JavaScript when headphones are plugged in or out, so the route can follow. */
+  private fun watchDevices() {
+    if (deviceCallback != null) return
+    val callback =
+        object : AudioDeviceCallback() {
+          override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            emit("juniperAudioRoute", headsetConnected())
+          }
+
+          override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            emit("juniperAudioRoute", headsetConnected())
+          }
+        }
+    audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
+    deviceCallback = callback
+  }
+
+  private fun unwatchDevices() {
+    deviceCallback?.let { audioManager.unregisterAudioDeviceCallback(it) }
+    deviceCallback = null
+  }
+
   @ReactMethod
   fun stop(promise: Promise) {
     stopCapture()
     captureRate = 0
+    unwatchDevices()
+    resetRoute()
     reactContext.startService(
         Intent(reactContext, VoiceService::class.java).setAction(VoiceService.ACTION_STOP_SERVICE))
     unregisterStopReceiver()
@@ -294,6 +379,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun invalidate() {
+    unwatchDevices()
     stopCapture()
     closePlayerInternal()
     unregisterStopReceiver()

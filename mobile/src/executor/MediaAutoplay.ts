@@ -18,6 +18,10 @@ export interface OpenResult {
   /** true: music is playing; false: it opened but did not start; null: it did not open. */
   autoplay: boolean | null;
   detail?: string;
+  /** The app's screen was in front when the link was opened. */
+  foreground?: boolean;
+  /** "Display over other apps" is granted (what lets us open it from the background). */
+  overlay?: boolean;
 }
 
 /** The only thing the app knows about the music app: open this link and try to play it. */
@@ -42,5 +46,25 @@ export const nativeMediaAutoplay: MediaAutoplay = {
     } catch {
       return { opened: false, autoplay: null, detail: 'native_error' };
     }
+  },
+};
+
+/** The "display over other apps" permission, which lets the music open from the background. */
+export const backgroundPermission = {
+  async granted(): Promise<boolean> {
+    const native = NativeModules.JuniperMedia as
+      | { canOpenFromBackground(): Promise<boolean> }
+      | undefined;
+    try {
+      return (await native?.canOpenFromBackground()) === true;
+    } catch {
+      return false;
+    }
+  },
+  /** Opens the Android screen where the person grants it. */
+  openSettings(): void {
+    (
+      NativeModules.JuniperMedia as { openOverlaySettings(): void } | undefined
+    )?.openOverlaySettings();
   },
 };

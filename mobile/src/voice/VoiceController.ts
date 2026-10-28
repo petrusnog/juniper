@@ -27,6 +27,12 @@ export interface VoiceState {
   tts: Mode;
   /** What the brain understood the person said (the last utterance). */
   userText: string;
+  /** Where her voice plays: the loudspeaker (the microphone hears her) or headphones. */
+  route: 'speaker' | 'headset';
+  /** "Hold to talk": the microphone only goes to the brain while the button is held. */
+  pushToTalk: boolean;
+  /** The talk button is being held right now (only meaningful with `pushToTalk`). */
+  talking: boolean;
   /** Why the session ended or could not start (PT-BR, for the screen). */
   notice: string | null;
 }
@@ -36,8 +42,16 @@ export const initialVoice: VoiceState = {
   stt: 'cloud',
   tts: 'cloud',
   userText: '',
+  route: 'speaker',
+  pushToTalk: false,
+  talking: false,
   notice: null,
 };
+
+/** 100 ms of silence (16 kHz, 16 bits): 3200 zero bytes in base64. */
+const SILENCE_CHUNK = `${'A'.repeat(4267)}=`;
+/** What follows a released talk button, so the brain's detector hears the utterance end. */
+const SILENCE_CHUNKS_AFTER_TALK = 9;
 
 const END_TEXT: Record<string, string | null> = {
   client: null,
@@ -97,7 +111,12 @@ export class VoiceController {
     this.starting = true;
     this.cut.clear();
     this.seq = 0;
-    this.set({ ...initialVoice, phase: 'starting' });
+    // Keep the person's choice of "hold to talk" across conversations.
+    this.set({
+      ...initialVoice,
+      pushToTalk: this.state.pushToTalk,
+      phase: 'starting',
+    });
     this.offs = [
       this.connection.onMessage(m => this.onMessage(m)),
       this.connection.onState(s => {
@@ -112,6 +131,7 @@ export class VoiceController {
       this.audio.onStopRequested(() => {
         void this.end();
       }),
+      this.audio.onRouteChange(headset => this.changeRoute(headset)),
     ];
     try {
       await this.audio.start(INPUT_RATE);
@@ -123,12 +143,17 @@ export class VoiceController {
       this.starting = false;
       return false;
     }
+    const headset = await this.audio.hasHeadset().catch(() => false);
+    const route = headset ? 'headset' : 'speaker';
+    await this.audio.applyRoute(route === 'speaker').catch(() => undefined);
+    this.set({ route });
     const sent = this.connection.send({
       type: 'voice.start',
       id: this.newId(),
       format: { encoding: 'pcm_s16le', sample_rate: INPUT_RATE, channels: 1 },
       local_stt: this.stt.available,
       local_tts: this.tts.available,
+      route,
     });
     this.starting = false;
     if (!sent) {
@@ -161,9 +186,58 @@ export class VoiceController {
     this.tts.stop();
   }
 
+  /** Hold-to-talk on or off. With it on, only what is said while holding reaches the brain. */
+  setPushToTalk(on: boolean): void {
+    this.set({ pushToTalk: on, talking: false });
+  }
+
+  /** The talk button went down: cut her off if she is speaking, and open the microphone. */
+  pressTalk(): void {
+    if (!this.sessionOpen || !this.state.pushToTalk) {
+      return;
+    }
+    if (this.state.phase === 'speaking' || this.state.phase === 'thinking') {
+      this.interrupt();
+    }
+    this.set({ talking: true });
+  }
+
+  /** The talk button went up: close the microphone and let the brain hear the utterance end. */
+  releaseTalk(): void {
+    if (!this.state.talking) {
+      return;
+    }
+    this.set({ talking: false });
+    if (this.sessionOpen && this.state.stt === 'cloud') {
+      for (let i = 0; i < SILENCE_CHUNKS_AFTER_TALK; i++) {
+        this.connection.send({
+          type: 'voice.audio',
+          seq: this.seq++,
+          data: SILENCE_CHUNK,
+        });
+      }
+    }
+  }
+
+  private changeRoute(headset: boolean): void {
+    if (!this.sessionOpen) {
+      return;
+    }
+    const route = headset ? 'headset' : 'speaker';
+    if (route === this.state.route) {
+      return;
+    }
+    this.set({ route });
+    this.audio.applyRoute(!headset).catch(() => undefined);
+    this.connection.send({ type: 'voice.route', route });
+  }
+
   private onChunk(data: string): void {
     if (!this.sessionOpen || this.state.stt !== 'cloud') {
       return;
+    }
+    if (this.state.pushToTalk && !this.state.talking) {
+      return; // hold-to-talk: the microphone is closed until the button is pressed
     }
     // Nothing is queued while offline: a late chunk is worth nothing.
     this.connection.send({ type: 'voice.audio', seq: this.seq++, data });

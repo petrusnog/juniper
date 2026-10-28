@@ -207,6 +207,11 @@ class ExecutorHub:
                 seen.setdefault(name, remote.cls)
         return list(seen.values())
 
+    def offers(self, conn: Connection, tool_name: str) -> bool:
+        """Whether this very connection is an executor that offers ``tool_name``."""
+        session = self._executors.get(conn.id)
+        return session is not None and tool_name in session.tools
+
     def _offering(self, tool_name: str) -> list[ExecutorSession]:
         return [s for s in self._executors.values() if tool_name in s.tools]
 

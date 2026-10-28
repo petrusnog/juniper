@@ -118,6 +118,24 @@ export class OpenUrlExecutor {
         });
         return;
       }
+      if (opened.foreground === false && opened.overlay === false) {
+        // In the background without the overlay permission Android drops the request silently:
+        // do not claim it opened (the music that is "active" may be the previous one).
+        this.record({
+          url: checked.url,
+          outcome: 'failed',
+          detail: 'background_blocked',
+        });
+        this.reply(invoke.call_id, {
+          success: false,
+          error:
+            'Tentei abrir, mas o aplicativo estava em segundo plano e o Android costuma bloquear ' +
+            'isso. Avise o Petrus que ele pode permitir «Exibir sobre outros apps» nas ' +
+            'configurações do aplicativo da Juniper, ou abrir o aplicativo.',
+          metadata: { code: 'background_blocked', url: checked.url },
+        });
+        return;
+      }
       this.record({
         url: checked.url,
         outcome: 'opened',

@@ -1479,6 +1479,30 @@
       "title": "VoiceReady",
       "type": "object"
     },
+    "VoiceRoute": {
+      "description": "A saída de áudio mudou no meio da conversa (o fone foi ligado ou desligado).",
+      "properties": {
+        "route": {
+          "enum": [
+            "speaker",
+            "headset"
+          ],
+          "title": "Route",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.route",
+          "default": "voice.route",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "route"
+      ],
+      "title": "VoiceRoute",
+      "type": "object"
+    },
     "VoiceSay": {
       "description": "Fallback de TTS: o aparelho fala o `text` com a voz dele.",
       "properties": {
@@ -1549,6 +1573,22 @@
           ],
           "default": null,
           "title": "Local Tts"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "enum": [
+                "speaker",
+                "headset"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route"
         },
         "type": {
           "const": "voice.start",
@@ -1776,6 +1816,7 @@
       "voice.fallback": "#/$defs/VoiceFallback",
       "voice.interrupt": "#/$defs/VoiceInterrupt",
       "voice.ready": "#/$defs/VoiceReady",
+      "voice.route": "#/$defs/VoiceRoute",
       "voice.say": "#/$defs/VoiceSay",
       "voice.start": "#/$defs/VoiceStart",
       "voice.state": "#/$defs/VoiceState",
@@ -1864,6 +1905,9 @@
     },
     {
       "$ref": "#/$defs/VoiceInterrupt"
+    },
+    {
+      "$ref": "#/$defs/VoiceRoute"
     },
     {
       "$ref": "#/$defs/VoiceEnd"

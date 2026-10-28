@@ -75,6 +75,8 @@ class Agent:
         self._turn_sink = turn_sink
         self._memory_message: Message | None = None
         self._profile_message: Message | None = None
+        # Which channel the turn comes from (set by the server before each turn; ADR-022).
+        self.channel_note: str | None = None
         self._executed_until: int | None = None
         self._used_tools = False
         self._turns: list[Turn] = []
@@ -276,7 +278,10 @@ class Agent:
         usage: TokenUsage | None = None
         finish_reason: str | None = None
         messages = _with_context(
-            self.session.messages(), self._profile_message, self._memory_message
+            self.session.messages(),
+            self._profile_message,
+            self._memory_message,
+            self.channel_note,
         )
         event_log.log("llm_request", messages=len(messages), tools=len(schemas or []))
         started = time.monotonic()
@@ -328,7 +333,10 @@ def _last_user_text(session: Session) -> str | None:
 
 
 def _with_context(
-    messages: list[Message], profile: Message | None, memory: Message | None
+    messages: list[Message],
+    profile: Message | None,
+    memory: Message | None,
+    channel: str | None = None,
 ) -> list[Message]:
     """``messages`` with the user's profile and the recalled memories added for this turn.
 
@@ -337,6 +345,8 @@ def _with_context(
     (relevant to this message) go just before the current user message.
     """
     out = list(messages)
+    if channel:  # the very last thing the model reads before the answer: it is about this turn
+        out.append(Message("system", channel))
     if memory is not None:
         for index in range(len(out) - 1, 0, -1):
             if out[index].role == "user":
