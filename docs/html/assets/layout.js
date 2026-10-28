@@ -12,12 +12,17 @@
 
   const groups = [...new Set(NAV.map((f) => f.group))];
   let nav = `<a class="brand" href="index.html"><img class="logo" src="assets/juniper.png" alt="" width="64" height="64"><span>Juniper · Livro de bolso</span></a>
-    <div class="sub">Documentação técnica</div>
+    <div class="sub">Documentação</div>
     <button class="searchbtn" type="button" data-search aria-label="Buscar na documentação"><span>🔍 Buscar</span><kbd>Ctrl K</kbd></button>
     <a class="item ${page === "index.html" ? "active" : ""}" href="index.html">Início</a>`;
   for (const g of groups) {
     nav += `<h4>${esc(g)}</h4>`;
+    let section = "";
     for (const f of NAV.filter((x) => x.group === g)) {
+      if (f.section && f.section !== section) {
+        section = f.section;
+        nav += `<h5>${esc(section)}</h5>`;
+      }
       nav += `<a class="item ${isActive(f.file) ? "active" : ""}" href="${f.file}">${esc(f.title)}</a>`;
     }
   }
@@ -70,11 +75,16 @@
       proposto: `<span class="tag a">proposto</span>`,
       planejada: `<span class="tag a">planejada</span>`,
     };
+    const card = (f) =>
+      `<a class="fcard" href="${f.file}">${tagFor[f.status] || ""}<h3>${esc(f.title)}</h3><p>${esc(f.desc)}</p></a>`;
     holder.outerHTML = groups.map((g) => {
-      const cards = NAV.filter((f) => f.group === g).map((f) =>
-        `<a class="fcard" href="${f.file}">${tagFor[f.status] || ""}<h3>${esc(f.title)}</h3><p>${esc(f.desc)}</p></a>`
-      ).join("");
-      return `<h2>${esc(g)}</h2><div class="cards">${cards}</div>`;
+      const items = NAV.filter((f) => f.group === g);
+      const sections = [...new Set(items.map((f) => f.section || ""))];
+      const blocks = sections.map((s) => {
+        const cards = items.filter((f) => (f.section || "") === s).map(card).join("");
+        return `${s ? `<h3 class="cardsec">${esc(s)}</h3>` : ""}<div class="cards">${cards}</div>`;
+      }).join("");
+      return `<h2>${esc(g)}</h2>${blocks}`;
     }).join("");
   }
 

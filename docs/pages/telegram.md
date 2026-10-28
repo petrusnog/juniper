@@ -1,13 +1,14 @@
 ---
 title: Bot do Telegram
-group: Clientes
-order: 3
+group: Documentação Técnica
+section: Clientes
+order: 23
 description: O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
-status: proposto
+status: pronta
 tags: telegram bot botfather cliente celular token allowed_user_ids lista permissão privacidade long polling python-telegram-bot mensagens chat id
 ---
 
-> **Nota:** esta página resume o [ADR-016](adr-016.html). O bot (`brain/clients/telegram.py`, comando `juniper telegram`), o serviço no compose de produção e o endurecimento (limite de mensagens, apagar depois de N horas) estão implementados.
+> **Nota:** esta página detalha o [ADR-016](adr-016.html). Código: `brain/clients/telegram.py`, comando `juniper telegram`.
 
 ## Visão geral {#visao-geral}
 
@@ -18,7 +19,7 @@ Seu celular ─► Telegram (nuvem) ◄── long polling ── Bot ──ws:/
 ```
 
 - O bot **busca** as mensagens no Telegram (*long polling*): não abre porta pública nem usa *webhook*.
-- Ele fala com o cérebro pela rede interna do Docker; o **celular não precisa do Tailscale**.
+- Ele fala com o cérebro pela rede interna do Docker; o **celular não precisa estar na rede privada**.
 - Um cliente fino: sem lógica de agente e sem acesso ao MongoDB.
 
 ## Criar o bot {#criar}
@@ -39,55 +40,12 @@ Seu celular ─► Telegram (nuvem) ◄── long polling ── Bot ──ws:/
 
 O ID é um **número** (não o *username*). Não use bots de terceiros para descobri-lo. Suba o bot com a lista vazia, espere o log mostrar `Telegram: conectado como @... escutando mensagens.` e **só então** mande uma mensagem a ele: ninguém recebe resposta, e o log mostra uma linha como `Telegram: mensagem de usuário não autorizado (id=123456789)`. Mensagens enviadas **antes** de o bot subir são descartadas de propósito (ele não responde a pedidos velhos de horas), então, se a linha não aparecer, mande outra. Copie o número para a lista e reinicie o bot. O **texto** da mensagem nunca vai para o log.
 
-### Rodar na sua máquina (desenvolvimento) {#rodar-dev}
+### Rodar {#rodar}
 
-Com o brain de pé (por exemplo, o [ambiente de desenvolvimento](dev-docker.html)), em outro terminal:
-
-```bash
-export JUNIPER_DEPLOYMENT__MODE=server
-export JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE="$PWD/.juniper-dev/state/token"
-export JUNIPER_TELEGRAM_BOT_TOKEN='<o token>'
-export JUNIPER_TELEGRAM__ALLOWED_USER_IDS='[123456789]'
-juniper telegram
-```
+- **Na sua máquina**, ligado ao cérebro de desenvolvimento: [Primeiros passos](primeiros-passos.html#telegram).
+- **No servidor**, como serviço opcional do compose de produção: [Clientes em produção](clientes-producao.html#telegram). Nesse modo o contêiner do bot não publica porta, não recebe o `.env` (não tem a senha do MongoDB nem as chaves de LLM) e só lê o token dos clientes.
 
 O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém está autorizado.
-
-### Rodar na VPS {#vps}
-
-O compose de produção tem o serviço `telegram` como **opt-in** (perfil `telegram`): quem não usa o bot não muda nada. Ele roda a mesma imagem do brain, fala com o `brain` pela rede do compose, **não publica porta**, **não recebe o `.env`** (então não tem a senha do Mongo nem as chaves de LLM) e só **lê** o token dos clientes.
-
-Na VPS, dentro de `~/juniper`:
-
-```bash
-# 1. o token do bot, sem aparecer na tela nem no histórico do shell
-read -rsp "Token do bot: " T; echo
-echo "JUNIPER_TELEGRAM_BOT_TOKEN=$T" >> .env && unset T
-echo "COMPOSE_PROFILES=telegram" >> .env        # liga o serviço (ou use --profile telegram)
-
-# 2. sobe (a lista de permissão ainda vazia: o bot não responde a ninguém)
-docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml ps        # o telegram fica "healthy" em ~1 min
-
-# 3. mande uma mensagem ao bot no Telegram e leia o seu ID no log
-docker compose -f docker-compose.prod.yml logs --tail=20 telegram
-#    ...Telegram: mensagem de usuário não autorizado (id=123456789)
-
-# 4. autorize o seu ID e reinicie o bot
-echo "JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]" >> .env
-docker compose -f docker-compose.prod.yml up -d telegram
-```
-
-Agora mande "oi" ao bot. Para desligar: tire `COMPOSE_PROFILES=telegram` do `.env` e rode `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, ou `stop telegram`.
-
-| Sintoma | Causa e solução |
-|---|---|
-| O contêiner reinicia sem parar | Falta `JUNIPER_TELEGRAM_BOT_TOKEN`, ou o Telegram **recusou o token** (o log diz qual dos dois; o token nunca aparece no log). Corrija o `.env` e rode `up -d telegram`. |
-| A mensagem não aparece no log | Foi enviada antes de o bot subir (as pendentes são descartadas): espere `escutando mensagens` e mande de novo. Se ainda assim nada aparecer, veja `logs telegram` por uma linha `erro da biblioteca (...)` (o tipo do erro: `Conflict` = outro processo usa o **mesmo token**; `NetworkError` = a VPS não alcança o Telegram) e confira com `docker compose -f docker-compose.prod.yml exec telegram sh -c 'tail -n 20 /home/juniper/.juniper/logs/*.jsonl'`. |
-| O bot não responde a você | O seu ID não está na lista (o log mostra `não autorizado (id=...)`), ou você escreveu num grupo. |
-| "Não consegui falar com o servidor" | O brain não está saudável: veja `ps` e `logs brain`. |
-| `unhealthy` | O laço do bot travou; `logs telegram` mostra o motivo. O Docker reinicia o contêiner. |
-| Mensagem velha sem resposta | Depois de uma pausa o bot descarta pedidos pendentes de horas atrás, de propósito. |
 
 ## Quem o bot atende {#autorizacao}
 
@@ -144,7 +102,3 @@ Categoria `telegram` no [eventlog](observabilidade.html): `start`, `stop`, `mess
 ## Saúde {#saude}
 
 O bot escreve um sinal de vida a cada 15 s (`/tmp/telegram-health`). `juniper telegram --health` sai com 0 se o sinal é recente, e é o que o *healthcheck* do contêiner usa.
-
-## Tasks {#tasks}
-
-T-093 (ADR-016), T-094 (Google Calendar na VPS), T-095 (o bot), T-096 (serviço no compose e segredo), T-097 (limite de mensagens e apagar depois de N horas).

@@ -1,88 +1,71 @@
 ---
 title: Dashboard
-group: Clientes
-order: 5
-description: O painel web da Juniper: memórias, afetos, estudos e notas, memória central e pesquisa, somente leitura, em qualquer dispositivo da tailnet.
+group: Documentação Técnica
+section: Clientes
+order: 27
+description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
 status: pronta
-tags: dashboard web painel tailnet memória afetos estudos notas pesquisa responsivo adr-020
+tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
 
-> **Nota:** o dashboard é **somente leitura** e foi construído na épica #159. A decisão está no [ADR-020](adr-020.html).
+> **Nota:** esta página detalha o [ADR-020](adr-020.html). O dashboard é **somente leitura**. Código: `brain/dashboard/`.
 
 ## Visão geral {#visao-geral}
 
-Um painel web, **somente leitura**, para ver a memória da Juniper sem o terminal. Roda dentro do servidor (`juniper serve`), na porta **8766**, e abre em qualquer navegador de qualquer dispositivo da tailnet:
+Um painel web para ver a memória da Juniper sem o terminal. Roda dentro do servidor (`juniper serve`), na porta **8766**, e abre em qualquer navegador de um dispositivo que alcance o servidor pela rede privada:
 
 ```text
-http://<IP-da-tailnet-da-VPS>:8766/
+http://<endereço-do-servidor-na-rede-privada>:8766/
 ```
 
-O navegador nunca fala com o MongoDB: tudo passa pela API do próprio cérebro. Nada neste painel escreve no banco.
+O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.html#dashboard) do próprio cérebro. Nada neste painel escreve no banco (um teste confere).
 
-## O que ele mostra {#hoje}
+## Login e defesas {#login}
 
-- **Servidor e login (T-130):** a tela de login pede o token do servidor (o mesmo dos clientes, `~/.juniper/token`). O token **nunca vai na URL**: vai num cabeçalho, e o servidor devolve um cookie `HttpOnly` que vale `dashboard.session_hours` (12 horas). Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo.
-- **Defesas:** o cabeçalho `Host` precisa ser um IP, `localhost` ou um nome `*.ts.net` (ou um host de `dashboard.allowed_hosts`); CSP restritiva (nada inline nem externo); sem CORS; só `GET`.
-- **Isolamento:** se a porta estiver ocupada ou uma rota falhar, o servidor e a conversa seguem funcionando; o problema vai para o log.
+- **Login:** a tela pede o token dos clientes (o mesmo do CLI e do app). O token **nunca vai na URL**: vai no cabeçalho `Authorization` de `GET /api/login`, e o servidor devolve um cookie `HttpOnly`, `SameSite=Strict`, que vale `dashboard.session_hours` (12 horas). Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo.
+- **Host:** o cabeçalho `Host` precisa ser um IP, `localhost`, um nome `*.ts.net` ou um host de `dashboard.allowed_hosts` (defesa contra *DNS rebinding*); outro nome recebe 421.
+- **Navegador:** CSP restritiva (nada inline nem externo), sem CORS, só `GET`. Tudo que vem do servidor entra na tela com `textContent`, nunca como HTML (um teste proíbe `innerHTML` e afins).
+- **Saída:** tudo passa por um único ponto que **mascara segredos e remove vetores**.
+- **Isolamento:** se a porta estiver ocupada ou uma rota falhar, o servidor e a conversa seguem funcionando; o problema vai para o log (evento `error` com `where=dashboard.start` ou `dashboard.request`).
 
-- **API de leitura (T-131):** todas as camadas por JSON, só `GET`, paginada (`?limit=` até 200 e `?offset=`). Tudo que sai passa por um único ponto que **mascara segredos e remove vetores**; nossos ids são preservados.
+## Páginas {#paginas}
 
-| Rota | O que entrega |
+A interface é responsiva (de 360 px a telas largas; menu lateral no computador, barra inferior no celular), com tema claro e escuro automático e navegação por teclado. Não usa biblioteca externa: os gráficos são SVG simples.
+
+| Página | O que mostra |
 |---|---|
-| `/api/overview` | Contadores, humor e sentimentos de agora, traços, último sonho |
-| `/api/memories` (+ `/api/memories/<id>`) | Fatos, com filtros `type`, `status` (`active`, `superseded`, `all`), `reflexao` e `q`; o detalhe traz a lembrança e a linhagem bruta → refinada |
-| `/api/beliefs` (+ `/<id>`) | Crenças com confiança, faixa de certeza, fontes e evidências |
-| `/api/affects` (+ `/<id>`), `/api/mood` | Sentimentos (filtros `origin`, `kind`), o rastreio até a fala que os causou e a série do humor |
-| `/api/persona`, `/api/concerns`, `/api/core` | Personalidade e histórico, preocupações, núcleo e perfil |
-| `/api/interests` (+ `/<id>`), `/api/notes` | Temas com passo e posição; **cada nota** com incerteza, fonte e passo (filtros `interest`, `uncertainty`, `source`, `kind`, `q`) |
-| `/api/prompt?message=` | O simulador: os blocos que a Memória V2 acrescentaria ao prompt para aquela mensagem, com tokens; usa um contexto próprio e não grava nada |
-| `/api/search?q=` | Pesquisa em tudo: memórias, crenças, temas, notas, sentimentos e conversas; filtros `type` (repetível) e `limit` |
-| `/api/dreams`, `/api/journal` | Execuções do sonho (fases, tokens, erros) e o diário |
-| `/api/sessions` (+ `/<id>`) | Conversas (somem com `dashboard.transcripts: false`); a resposta dela depois de tools fica de fora |
+| **Visão geral** | Como ela está agora (humor, sentimentos e ecos), a personalidade (radar de traços contra o jeito de partida), contadores de cada camada e o último sonho com as fases. |
+| **Afetos** | A série do humor (7, 14 ou 30 dias) e os sentimentos (filtro conversa ou sonho); cada sentimento rastreia a fala que o causou, a resposta dela e a preocupação atingida. |
+| **Memórias** | Busca e filtros (ativas, substituídas ou todas; brutas ou refinadas; tipo). O detalhe de uma refinada mostra a lembrança (contexto, o que ela sentiu, como ela era, relevância), a linhagem bruta ↔ refinada e as ligações. |
+| **Memória central** | O núcleo da persona, o perfil, a personalidade (com a linha do tempo de cada traço), as crenças com as evidências, as preocupações e o **simulador do prompt**: escreva uma mensagem e veja o que a Memória V2 acrescentaria. |
+| **Estudos** | Os temas, com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |
+| **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
+| **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
+| **Pesquisa** | Uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado; o que casa por palavras vem antes. Sem o modelo de embeddings, cai para palavras e avisa. |
 
-Camada desligada responde 503 com o motivo, sem erro. Nenhuma rota escreve no banco (um teste confere).
-
-- **Casca e primeiras páginas (T-132):** responsivo de 360 px a telas largas (menu lateral no computador, barra inferior no celular), tema claro e escuro automático, teclado e foco visíveis. Sem biblioteca externa: os gráficos são SVG simples.
-  - **Visão geral:** como ela está agora (humor, sentimentos e ecos), a personalidade (radar de traços contra o jeito de partida), contadores de cada camada e o último sonho com as fases.
-  - **Afetos:** a série do humor (7, 14 ou 30 dias) e a lista de sentimentos (filtro conversa ou sonho). Ao clicar num sentimento aparece **de onde veio**: a fala do Petrus, a resposta dela e a preocupação atingida.
-- **Segurança do frontend:** tudo que vem do servidor entra na tela com `textContent`, nunca como HTML (um teste proíbe `innerHTML` e afins), e a CSP bloqueia script e estilo inline.
-
-- **Memórias (T-133):** busca por texto e filtros (ativas, substituídas ou todas; brutas ou refinadas; tipo). O detalhe de uma refinada mostra o fato, a **lembrança** (contexto, o que ela sentiu, como ela era, relevância), a **linhagem** (bruta ↔ refinada, com links) e as ligações.
-- **Memória central (T-133):** o núcleo (recolhido, para ler quando quiser), o perfil, a personalidade (radar, as frases que a descrevem e **a linha do tempo de cada traço** por versão), as crenças (confiança, faixa, fontes e **cada evidência**), o que importa para ela e o **simulador do prompt**: você escreve uma mensagem e vê, bloco a bloco, o que a V2 acrescentaria.
-
-- **Estudos (T-134):** os temas que ela estuda, com passo, posição e intensidade. Dentro de um tema: as notas **por passo** (um gráfico simples), as **perguntas em aberto** que ficaram para o próximo passo e **cada nota**, com a incerteza (firme, incerteza média ou incerta), a fonte (modelo ou documento), o passo que a escreveu e a data. Dá para filtrar por incerteza e fonte e buscar no texto. "Todas as notas" lista as de todos os temas, paginadas, com os mesmos filtros e o link para o tema de cada uma.
-
-- **Sonhos (T-135):** cada execução com o horário, o status (ok, parcial, falhou), a duração, as conversas lidas, os **tokens gastos** (barra proporcional) e as **fases** com o resultado, as mudanças e o resumo; fase que estourou o orçamento ou deu erro aparece destacada. Abaixo, o **diário** (7, 30 ou 90 dias; sonhos, estudos, personalidade).
-- **Conversas (T-135):** as sessões com o número de turnos e se o sonho já as leu (ou quantos turnos esperam o próximo); dentro de uma, a conversa em balões, começando pelos turnos mais novos. A resposta dela depois de ferramentas **não aparece**. Com `dashboard.transcripts: false` a página diz que está desligada.
-
-- **Pesquisa (T-136):** uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas (as conversas só com `dashboard.transcripts`). Cada coisa é procurada **por palavras** (todas as palavras da busca aparecem) e **por significado** (embeddings, com um piso de relevância); o que casa por palavras vem sempre antes. Se o modelo de embeddings não responder, a busca cai para palavras e avisa. As conversas são lidas até os últimos 3000 turnos. Cada resultado é um link para a página certa.
+Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a página correspondente explica.
 
 ## Configuração {#configuracao}
 
-Veja as chaves `dashboard.*` em [Configuração](configuracao.html).
+As chaves `dashboard.*` estão em [Configuração](configuracao.html#trace). Para desligar: `dashboard.enabled: false`; a conversa não depende do dashboard.
 
-## Na VPS {#vps}
+## Acesso {#acesso}
 
-O compose de produção publica `${TAILSCALE_IP}:8766`, nunca em `0.0.0.0`. **A ACL do Tailscale precisa liberar a porta 8766** para os seus dispositivos (hoje ela só libera a `8765` e o SSH). Para HTTPS (instalar como app no celular, por exemplo), use `tailscale serve` na VPS; o código não muda.
-
-## Deploy e primeiro teste {#deploy}
-
-1. **Libere a porta 8766 na ACL do Tailscale** para os seus dispositivos (hoje a política só libera a `8765` e o SSH). Sem isso o dashboard abre dentro da VPS e não de fora.
-2. Faça o deploy como de costume. O `docker-compose.prod.yml` já publica `${TAILSCALE_IP}:8766`. Confira: `docker compose -p juniper-prod ps` mostra as duas portas do `brain`, ambas no endereço da tailnet.
-3. **O token** é o mesmo dos clientes: na VPS, `docker compose -p juniper-prod exec brain cat /home/juniper/.juniper/state/token`. Ele só é digitado na tela de login (nunca vai na URL) e vale por 12 horas.
-4. No navegador de qualquer dispositivo da tailnet: `http://<IP-da-VPS-na-tailnet>:8766/`. Para o endereço, `tailscale ip -4` na VPS (ou o nome `*.ts.net` do MagicDNS).
-5. **No celular:** com o Tailscale ligado, abra o mesmo endereço. O menu fica na barra de baixo; role para o lado para ver todas as seções.
-
-**Se algo não abrir:**
+- **Em desenvolvimento:** `http://127.0.0.1:8766/`, com o token de `.juniper-dev/state/token` ([Ambiente Docker](dev-docker.html)).
+- **Em produção:** a porta é publicada só no endereço da rede privada e precisa estar liberada para os seus dispositivos; o passo a passo está em [Clientes em produção](clientes-producao.html#dashboard).
 
 | Sintoma | Causa provável |
 |---|---|
-| Nada responde de fora da VPS | A ACL do Tailscale não libera a 8766, ou o `TAILSCALE_IP` do `.env` não é o da tailnet |
-| "Host não aceito" (421) | Você abriu por um nome que não é IP nem `*.ts.net`; inclua-o em `dashboard.allowed_hosts` |
-| "muitas tentativas" (429) | Cinco tokens errados em cinco minutos; espere um pouco |
-| Volta sempre para o login | O token mudou no servidor (isso encerra as sessões) ou o cookie venceu |
-| A porta está ocupada | O servidor segue sem o dashboard e registra o aviso (evento `error` com `where=dashboard.start`) |
+| Nada responde | A porta 8766 não está liberada na rede privada, ou não foi publicada no endereço certo. |
+| "Host não aceito" (421) | O endereço usado não é IP, `localhost` nem `*.ts.net`: inclua-o em `dashboard.allowed_hosts`. |
+| "muitas tentativas" (429) | Cinco tokens errados em cinco minutos; espere um pouco. |
+| Volta sempre para o login | O token mudou no servidor (isso encerra as sessões) ou o cookie venceu. |
+| A porta está ocupada | O servidor segue sem o dashboard e registra o aviso. |
 
-**HTTPS (opcional):** para instalar como app no celular, `tailscale serve --bg http://<IP-da-tailnet>:8766` na VPS dá um endereço `https://...ts.net`; o servidor reconhece o `X-Forwarded-Proto` e marca o cookie como `Secure`. Isso não foi testado aqui.
+**HTTPS (opcional):** atrás de um proxy que termine TLS e envie `X-Forwarded-Proto: https`, o cookie passa a ser marcado como `Secure`.
 
-**Desligar:** `dashboard.enabled: false` no `config.prod.yaml`. A conversa não depende do dashboard.
+## Testes {#testes}
+
+```bash
+pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py -v
+```

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Livro de bolso da Juniper — Livro de bolso Juniper</title>
-<meta name="description" content="Documentação técnica da Juniper, organizada por tópico.">
+<meta name="description" content="Documentação da Juniper, organizada por trilhas de leitura.">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/juniper.png">
 <script src="assets/theme.js"></script>
@@ -14,17 +14,17 @@
 <main id="content">
 <div class="crumb">Início</div>
 <div class="hero"><img class="logo" src="assets/juniper.png" alt="Juniper: ilustração em preto e branco de uma mulher de óculos, com rabo de cavalo e blazer, sorrindo" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
-<p>A Juniper é uma assistente autônoma pessoal: você fala em linguagem natural e ela decide quais ferramentas usar (agenda do Google, comandos git, memória), com failover entre provedores de LLM. Este livro é a referência técnica: o que cada peça é, como se encaixa e como usar.</p>
-<div class="callout tip"><p><strong>Dica:</strong> aperte <kbd>Ctrl</kbd>+<kbd>K</kbd> (ou <kbd>/</kbd>) em qualquer página para buscar por termo: nomes de classes (<code>Dispatcher</code>), opções do <code>config.yaml</code> (<code>retrieval.threshold</code>), comandos (<code>juniper memory</code>) ou assuntos (<code>deploy</code>).</p></div>
+<p>A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (pelo terminal, pelo Telegram, por um app Android ou por voz) e ela decide quais ferramentas usar para resolver o pedido, como a agenda do Google, a música do YouTube, comandos git e a própria memória. Este livro reúne tudo o que é preciso para entender, desenvolver, integrar e implantar a Juniper.</p>
+<div class="callout tip"><p><strong>Dica:</strong> aperte <kbd>Ctrl</kbd>+<kbd>K</kbd> (ou <kbd>/</kbd>) em qualquer página para buscar por termo: nomes de classes (<code>Dispatcher</code>), opções do <code>config.yaml</code> (<code>retrieval.threshold</code>), comandos (<code>juniper memory</code>), mensagens do protocolo (<code>chat.send</code>) ou assuntos (<code>deploy</code>).</p></div>
 <h2 id="comecar">Por onde começar</h2>
-<ul><li><strong>Instalar e conversar:</strong> <a href="install.html">Instalação</a>, depois o <a href="cli.html">CLI</a>.</li><li><strong>Entender o desenho:</strong> <a href="architecture.html">Arquitetura</a> e o <a href="agente.html">Agente</a>.</li><li><strong>Procurar uma classe ou tool:</strong> o <a href="entidades.html">índice de Entidades</a>.</li><li><strong>Saber o porquê de uma escolha:</strong> as <a href="adr.html">Decisões (ADRs)</a>.</li><li><strong>O que vem a seguir (produção, protocolo, desktop):</strong> as páginas do grupo <em>Produção</em>, marcadas como <code>proposto</code>.</li></ul>
+<ul><li><strong>Primeiro contato:</strong> a <a href="introducao.html">Introdução</a> explica o que a Juniper é, o que ela faz e quais trilhas seguir.</li><li><strong>Entender o produto, sem código:</strong> a trilha <a href="produto.html">Produto</a> explica, para qualquer pessoa, como ela conversa, age, lembra e protege os seus dados.</li><li><strong>Desenvolver uma feature:</strong> a trilha <a href="primeiros-passos.html">Ambiente Local</a> monta o ambiente completo e termina com a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.</li><li><strong>Entender a arquitetura:</strong> a <a href="architecture.html">Documentação Técnica</a> cobre cada camada: núcleo, memória, clientes e integrações.</li><li><strong>Consultar contratos e decisões:</strong> a <a href="adr.html">Referência</a> traz os ADRs, a <a href="protocolo.html">API WebSocket</a>, a <a href="api-http.html">API HTTP</a> e todas as <a href="configuracao.html">opções de configuração</a>.</li><li><strong>Colocar no ar:</strong> a trilha <a href="producao.html">Produção</a> ensina a implantar o cérebro numa VPS qualquer, ligar as integrações e conectar os clientes.</li></ul>
 <h2 id="paginas">Todas as páginas</h2>
 <div id="feature-cards"></div>
 <h2 id="como-e-feita">Como esta documentação é feita</h2>
 <p>As páginas são escritas em Markdown em <code>docs/pages/</code> e os ADRs em <code>docs/decisions/</code>. O script <code>scripts/build_docs.py</code> gera o HTML em <code>docs/html/</code>, o menu, o índice de entidades e o índice da busca. Depois de editar uma fonte, rode:</p>
 <pre><code class="lang-bash">python scripts/build_docs.py          # regenera tudo
 python scripts/build_docs.py --check  # só confere se está em dia (o CI roda isto)</code></pre>
-<p>Para criar uma página nova, copie o cabeçalho de outra em <code>docs/pages/</code> (<code>title</code>, <code>group</code>, <code>order</code>, <code>description</code>) e escreva. Um título marcado com <code>{#id kind=classe file=caminho}</code> entra no índice de Entidades. O <code>juniper docs</code> serve esta pasta em <a href="http://localhost:47831" target="_blank" rel="noopener">http://localhost:47831</a>.</p>
+<p>Para criar uma página nova, copie o cabeçalho de outra em <code>docs/pages/</code> (<code>title</code>, <code>group</code>, <code>section</code>, <code>order</code>, <code>description</code>) e escreva. Um título marcado com <code>{#id kind=classe file=caminho}</code> entra no índice de Entidades. O comando <code>juniper docs</code> serve esta pasta em <a href="http://localhost:47831" target="_blank" rel="noopener">http://localhost:47831</a>. Detalhes em <a href="contribuindo.html#documentacao">Como contribuir</a>.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

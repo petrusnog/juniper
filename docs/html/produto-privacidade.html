@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidade e segurança — Livro de bolso Juniper</title>
+<meta name="description" content="Para onde vão os seus dados, o que fica só no seu servidor, como a Juniper se protege e o que você controla.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-privacidade.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Privacidade e segurança</div>
+<h1>Privacidade e segurança <span class="tag v">guia</span></h1>
+<p class="lead">Para onde vão os seus dados, o que fica só no seu servidor, como a Juniper se protege e o que você controla.</p>
+<h2 id="onde">Onde os seus dados ficam</h2>
+<p>A Juniper é feita para rodar num servidor <strong>seu</strong>. Conversas, memórias, perfil, opiniões e sentimentos ficam no banco de dados desse servidor, e não num serviço da Juniper: não existe uma "nuvem da Juniper".</p>
+<h2 id="o-que-sai">O que sai do servidor</h2>
+<p>Algumas tarefas dependem de serviços externos. Cada um recebe só o necessário:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Serviço</th><th>O que recebe</th><th>Quando</th></tr></thead><tbody><tr><td>Provedor do modelo de linguagem (DeepInfra, Groq)</td><td>A sua mensagem e o contexto da resposta (trechos de memória, perfil, dados que as ferramentas leram).</td><td>A cada mensagem.</td></tr><tr><td>Google Calendar</td><td>Os dados dos eventos que ela cria ou altera.</td><td>Quando você usa a agenda.</td></tr><tr><td>YouTube</td><td>Os termos de busca e as playlists.</td><td>Quando você usa a música.</td></tr><tr><td>Groq (transcrição)</td><td>O áudio da sua fala.</td><td>Na conversa por voz.</td></tr><tr><td>Google (voz)</td><td>O texto das respostas que ela fala.</td><td>Na conversa por voz.</td></tr><tr><td>Telegram</td><td>As mensagens trocadas com o bot.</td><td>Se você usa o Telegram.</td></tr></tbody></table></div>
+<p>O que <strong>não sai</strong>: a busca por significado na memória roda no próprio servidor, e os registros técnicos ficam só nele. Cada serviço tem a própria política de retenção de dados, que vale conferir antes do uso diário.</p>
+<h2 id="servidor">Como o servidor é protegido</h2>
+<ul><li><strong>Nenhuma porta aberta para a internet.</strong> O servidor só é alcançável por uma rede privada entre os seus dispositivos. Para quem está de fora, ele não responde (<a href="adr-013.html">ADR-013</a>).</li><li><strong>Token em cada conexão.</strong> Além da rede privada, todo cliente precisa de um token: são duas travas independentes.</li><li><strong>Segredos fora do código.</strong> Chaves de acesso ficam em arquivos protegidos no servidor, nunca no código, nas imagens ou nos registros. Nos registros, chaves e senhas aparecem mascaradas.</li><li><strong>Backup criptografado.</strong> A memória pode ser copiada todo dia, criptografada com uma chave que fica só com você: quem obtiver a cópia vê apenas bytes ilegíveis (<a href="backup.html">Backup da memória</a>).</li><li><strong>Login com segundo fator</strong> está planejado para todos os canais (<a href="adr-021.html">ADR-021</a>); ainda não existe.</li></ul>
+<h2 id="acoes">Como a Juniper se protege dela mesma</h2>
+<ul><li>Ações que alteram algo pedem o seu "sim", e o "sim" é interpretado pelo sistema, não pelo modelo (<a href="produto-ferramentas.html#permissao">Ferramentas e permissões</a>).</li><li>Conteúdo vindo de fora é tratado como informação, nunca como ordem.</li><li>O celular confere de novo, por conta própria, cada pedido do cérebro antes de executar (por exemplo, nunca abre endereços de redes internas).</li><li>A memória filtra segredos antes de guardar e recusa documentos no perfil.</li></ul>
+<h2 id="controle">O que você controla</h2>
+<ul><li><strong>Ver, exportar e apagar</strong> a memória a qualquer momento (<a href="produto-memoria.html#controle">Memória</a>).</li><li><strong>Ligar ou desligar</strong> cada recurso: memória de longo prazo, Memória V2, sentimentos, voz, música, Telegram.</li><li><strong>Auditar</strong> o que a Juniper concluiu e por quê (<a href="produto-personalidade.html#transparencia">Personalidade</a>).</li><li><strong>Escolher os provedores</strong> de modelo de linguagem, inclusive um que roda localmente.</li></ul>
+<h2 id="limites">Limites honestos</h2>
+<ul><li>Os filtros de segredo são heurísticos: um segredo num formato desconhecido pode passar.</li><li>Nenhuma defesa contra <em>prompt injection</em> é completa; por isso as ações continuam pedindo confirmação.</li><li>O Telegram não oferece criptografia de ponta a ponta para bots.</li><li>Um servidor único não tem alta disponibilidade: se cair, a Juniper fica fora do ar até ser restaurado (os dados voltam pelo backup).</li></ul>
+<p>Os detalhes técnicos estão em <a href="seguranca.html">Segurança</a> e na trilha <a href="producao.html">Produção</a>.</p>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

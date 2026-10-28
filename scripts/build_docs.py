@@ -20,8 +20,9 @@ Formato de uma página (docs/pages/exemplo.md):
 
     ---
     title: Agente
-    group: Núcleo            # um dos GROUPS abaixo
-    order: 1                 # posição dentro do grupo
+    group: Documentação Técnica   # um dos GROUPS abaixo
+    section: Núcleo          # subdivisão do grupo no menu (opcional)
+    order: 1                 # posição dentro do grupo (as seções seguem a ordem das páginas)
     description: Uma frase que aparece no índice e no topo da página.
     status: pronta           # pronta | guia | proposto | planejada | ferramenta (opcional)
     tags: loop, orquestração # palavras extras para a busca (opcional)
@@ -54,14 +55,12 @@ OUT_DIR = ROOT / "docs" / "html"
 DATA_FILE = OUT_DIR / "assets" / "docs-data.js"
 
 GROUPS = [
-    "Começando",
-    "Núcleo",
-    "Integrações",
-    "Memória",
-    "Clientes",
-    "Produção",
+    "Introdução",
+    "Ambiente Local",
+    "Produto",
+    "Documentação Técnica",
     "Referência",
-    "Ferramentas",
+    "Produção",
 ]
 STATUSES = {"pronta", "guia", "proposto", "planejada", "ferramenta"}
 STATUS_TAG = {"pronta": "g", "guia": "v", "proposto": "a", "planejada": "a", "ferramenta": "v"}
@@ -69,7 +68,7 @@ STATUS_TAG = {"pronta": "g", "guia": "v", "proposto": "a", "planejada": "a", "fe
 # Páginas feitas à mão, fora do gerador, que aparecem no menu.
 EXTRA_NAV = [
     {
-        "group": "Ferramentas",
+        "group": "Ambiente Local",
         "title": "Painel de status",
         "file": "status.html",
         "desc": "Testa até onde a Juniper está funcional.",
@@ -430,6 +429,7 @@ class Page:
     headings: list[Heading]
     crumb_group: str = ""
     kind: str = "page"  # page | adr | generated
+    section: str = ""
 
 
 def load_pages() -> list[Page]:
@@ -457,6 +457,7 @@ def load_pages() -> list[Page]:
                 source=str(path.relative_to(ROOT)),
                 body=rendered.html,
                 headings=rendered.headings,
+                section=meta.get("section", ""),
             )
         )
     return pages
@@ -565,8 +566,9 @@ def page_html(page: Page) -> str:
     if page.file == "index.html":
         crumb = "Início"
     else:
+        section = f"{html.escape(page.section)} / " if page.section else ""
         crumb = (
-            f'<a href="index.html">Início</a> / {html.escape(page.group)} / '
+            f'<a href="index.html">Início</a> / {html.escape(page.group)} / {section}'
             f"{html.escape(page.title)}"
         )
     return wrap(
@@ -638,15 +640,17 @@ def adr_index(adrs: list[Adr]) -> Page:
     intro = (
         "<p>Cada decisão de arquitetura da Juniper fica registrada num ADR (<em>Architecture "
         "Decision Record</em>): o contexto, o que foi decidido, as consequências e as "
-        "alternativas descartadas. Os ADRs <strong>propostos</strong> descrevem o que está "
-        "planejado e ainda não foi construído; os <strong>aceitos</strong> descrevem o que "
-        "vale hoje. Os arquivos-fonte ficam em <code>docs/decisions/</code>.</p>"
+        "alternativas descartadas. Os ADRs são a bibliografia do projeto: as páginas de "
+        "produto e de documentação técnica citam o ADR que fundamenta cada comportamento. "
+        "O status registra a etapa em que a decisão foi tomada; o que já está implementado "
+        "aparece nas páginas técnicas. Os arquivos-fonte ficam em "
+        "<code>docs/decisions/</code>.</p>"
     )
     page = Page(
         file="adr.html",
         title="Decisões (ADRs)",
         group="Referência",
-        order=2,
+        order=1,
         description="As decisões de arquitetura: contexto, escolha, consequências e alternativas.",
         status="",
         tags="adr architecture decision record decisões arquitetura",
@@ -692,7 +696,7 @@ def entities_page(pages: list[Page]) -> Page:
         file="entidades.html",
         title="Entidades",
         group="Referência",
-        order=1,
+        order=9,
         description=(
             "Índice de todas as classes, tools e conceitos documentados, com link para a seção."
         ),
@@ -869,6 +873,7 @@ def nav_entries(pages: list[Page]) -> list[dict[str, str | float]]:
                 "desc": page.description,
                 "status": page.status,
                 "order": page.order,
+                "section": page.section,
             }
         )
     for extra in EXTRA_NAV:

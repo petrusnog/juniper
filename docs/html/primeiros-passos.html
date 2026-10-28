@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Primeiros passos — Livro de bolso Juniper</title>
+<meta name="description" content="Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/primeiros-passos.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Ambiente Local / Primeiros passos</div>
+<h1>Primeiros passos <span class="tag v">guia</span></h1>
+<p class="lead">Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.</p>
+<p>Este tutorial monta o ambiente completo de desenvolvimento numa máquina Linux, macOS ou Windows com WSL 2. No final você terá:</p>
+<ul><li>o <strong>cérebro</strong> rodando em contêineres, com o código da sua máquina valendo na hora;</li><li>a Juniper respondendo no <strong>terminal</strong>, num <strong>bot do Telegram</strong> e no <strong>app Android</strong> (emulador ou celular), os três conectados ao mesmo cérebro local;</li><li>uma alteração de código aparecendo nos três clientes <strong>sem reinstalar nada</strong>.</li></ul>
+<p>A topologia é a mesma da produção: o cérebro e o MongoDB em contêineres e os clientes de fora, falando por WebSocket (<a href="architecture.html">Arquitetura</a>). Leve cerca de uma hora na primeira vez (a maior parte é download).</p>
+<h2 id="pre-requisitos">0. Pré-requisitos</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Ferramenta</th><th>Para quê</th><th>Como conferir</th></tr></thead><tbody><tr><td><code>git</code></td><td>Clonar o repositório.</td><td><code>git --version</code></td></tr><tr><td><strong>Docker</strong> com o plugin <strong>Compose v2</strong></td><td>Rodar o cérebro, o MongoDB e o LLM de teste. No Linux, o seu usuário no grupo <code>docker</code>.</td><td><code>docker compose version</code></td></tr><tr><td><strong>Python 3.11+</strong></td><td>O comando <code>juniper</code> (cliente) e os testes, na sua máquina.</td><td><code>python3 --version</code></td></tr><tr><td><strong>Node 22+</strong>, <strong>JDK 17</strong> e <strong>Android SDK</strong></td><td>Compilar e rodar o app. A instalação do SDK está em <a href="mobile-dev.html#sdk">Ambiente mobile</a>.</td><td><code>node -v</code>, <code>java -version</code>, <code>adb version</code></td></tr><tr><td>Um <strong>emulador Android</strong> ou um <strong>celular</strong> com depuração USB</td><td>Rodar o app.</td><td><code>adb devices</code></td></tr><tr><td>Uma conta no <strong>Telegram</strong></td><td>Criar o bot de teste.</td><td>—</td></tr><tr><td>Cerca de 3 GB livres em disco (mais ~10 GB para o SDK do Android)</td><td>Imagens, o MongoDB e o modelo de embeddings.</td><td><code>df -h</code></td></tr></tbody></table></div>
+<p>Uma chave de modelo de linguagem é <strong>opcional</strong>: sem ela o ambiente usa o <code>fake-llm</code>, um LLM de mentira que só ecoa a sua mensagem, suficiente para provar que tudo está conectado. Para ver a Juniper conversar e usar ferramentas, crie uma chave gratuita da Groq em <code>console.groq.com/keys</code> (ou uma da DeepInfra).</p>
+<h2 id="clonar">1. Clone e prepare a pasta</h2>
+<pre><code class="lang-bash">git clone https://github.com/&lt;owner&gt;/juniper.git
+cd juniper
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e &quot;.[dev]&quot;          # o comando `juniper` e as ferramentas de teste
+./scripts/dev_setup.sh           # cria .juniper-dev/, certs/, .env e config.yaml</code></pre>
+<p>O <code>scripts/dev_setup.sh</code> é seguro de repetir: cria <code>.juniper-dev/state</code> e <code>.juniper-dev/logs</code>, copia <code>.env.example</code> para <code>.env</code> e <code>config.yaml.example</code> para <code>config.yaml</code> (se ainda não existem) e confere o que falta.</p>
+<p>Abra o <code>.env</code> e preencha <strong>o usuário e a senha do MongoDB</strong> (escolha quaisquer valores; o banco é criado com eles) e, se tiver, a chave do LLM:</p>
+<pre><code class="lang-bash">JUNIPER_MEMORY__MONGO__USERNAME=juniper
+JUNIPER_MEMORY__MONGO__PASSWORD=uma-senha-qualquer
+JUNIPER_GROQ_API_KEY=gsk_...          # opcional</code></pre>
+<p>O <code>.env</code> nunca é versionado. Se o <code>dev_setup.sh</code> avisar que o seu uid não é 1000 (<code>id -u</code>), rode <code>export UID</code> antes do próximo passo, para os arquivos de <code>.juniper-dev/</code> ficarem seus.</p>
+<h2 id="subir">2. Suba o cérebro</h2>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml ps</code></pre>
+<p>Na primeira vez o <code>--build</code> baixa as imagens e instala as dependências (alguns minutos). Espere <code>juniper-dev-brain</code> e <code>juniper-dev-mongo</code> aparecerem como <strong>healthy</strong>. Depois confira:</p>
+<pre><code class="lang-bash">curl -s http://127.0.0.1:8765/health                 # {&quot;status&quot;: &quot;ok&quot;, &quot;memory&quot;: &quot;ready&quot;, ...}
+ls .juniper-dev/state                                # o arquivo `token`
+python scripts/smoke_server.py --token-file .juniper-dev/state/token &quot;oi, tudo bem?&quot;</code></pre>
+<ul><li>Enquanto o modelo de embeddings baixa (só na primeira vez), o <code>/health</code> mostra <code>&quot;status&quot;: &quot;degraded&quot;, &quot;memory&quot;: &quot;warming_up&quot;</code>. É normal: a conversa já funciona.</li><li>O arquivo <code>.juniper-dev/state/token</code> é o <strong>token dos clientes</strong>: todo cliente precisa dele para conectar. Os três passos seguintes usam este arquivo.</li><li>O <code>smoke_server.py</code> conecta, conversa e imprime a resposta chegando em pedaços.</li></ul>
+<p>Os serviços, as portas e o que fazer quando algo não sobe estão em <a href="dev-docker.html">Ambiente Docker</a>.</p>
+<h2 id="terminal">3. Converse pelo terminal</h2>
+<p>O CLI vira cliente do cérebro remoto quando está em <code>deployment.mode: server</code>. Para não mexer no seu <code>config.yaml</code>, defina isso só no terminal, a partir da raiz do repositório:</p>
+<pre><code class="lang-bash">export JUNIPER_DEPLOYMENT__MODE=server
+export JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=&quot;$PWD/.juniper-dev/state/token&quot;
+
+juniper &quot;oi&quot;          # uma mensagem
+juniper               # conversa interativa (/sair encerra)
+juniper tools         # as ferramentas que o cérebro oferece</code></pre>
+<p>✅ <strong>Marco 1:</strong> a Juniper respondeu no terminal. Com o <code>fake-llm</code>, a resposta é <code>Eco (1): oi</code>; com uma chave real, é a Juniper de verdade. Deixe este terminal aberto numa conversa interativa: ele será usado no passo 6.</p>
+<h2 id="telegram">4. Converse pelo Telegram</h2>
+<p>O bot do Telegram é outro cliente do mesmo cérebro (<a href="telegram.html">Bot do Telegram</a>). Ele <strong>busca</strong> as mensagens no Telegram (<em>long polling</em>), então funciona na sua máquina sem abrir nenhuma porta.</p>
+<p><strong>4.1 Crie um bot de teste.</strong> No Telegram, abra o <code>@BotFather</code> (o oficial tem o selo azul), envie <code>/newbot</code>, escolha um nome e um <em>username</em> terminado em <code>bot</code>. Guarde o <strong>token</strong> que ele devolve: é a senha do bot e nunca vai para código, log nem PR.</p>
+<p><strong>4.2 Suba o bot</strong>, num terminal novo, na raiz do repositório e com o ambiente virtual ativo:</p>
+<pre><code class="lang-bash">source .venv/bin/activate
+export JUNIPER_DEPLOYMENT__MODE=server
+export JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=&quot;$PWD/.juniper-dev/state/token&quot;
+read -rsp &quot;Token do bot: &quot; JUNIPER_TELEGRAM_BOT_TOKEN; echo
+export JUNIPER_TELEGRAM_BOT_TOKEN
+juniper telegram</code></pre>
+<p>Espere a linha <code>Telegram: conectado como @... escutando mensagens.</code></p>
+<p><strong>4.3 Autorize o seu usuário.</strong> O bot só responde a IDs numéricos de uma lista de permissão, e a lista começa vazia (ninguém). Mande "oi" ao bot: ele não responde, e o terminal mostra <code>Telegram: mensagem de usuário não autorizado (id=123456789)</code>. Pare o bot (Ctrl+C), autorize o número e suba de novo:</p>
+<pre><code class="lang-bash">export JUNIPER_TELEGRAM__ALLOWED_USER_IDS=&#x27;[123456789]&#x27;
+juniper telegram</code></pre>
+<p>✅ <strong>Marco 2:</strong> mande "oi" ao bot e veja a resposta no Telegram. Deixe o bot rodando.</p>
+<h2 id="android">5. Converse pelo Android</h2>
+<p>O app Android é um cliente fino em React Native (<a href="mobile.html">App mobile</a>). Em desenvolvimento ele roda em modo <em>debug</em>, ligado ao <strong>Metro</strong> (o servidor de pacotes do React Native), que recarrega o código do app na hora.</p>
+<p><strong>5.1 Prepare o Android.</strong> Se ainda não tem o SDK, um emulador ou o celular com depuração USB, siga <a href="mobile-dev.html#sdk">Ambiente mobile</a>. Confira que o aparelho aparece:</p>
+<pre><code class="lang-bash">adb devices          # uma linha &quot;emulator-5554 device&quot; ou o número do seu celular</code></pre>
+<p><strong>5.2 Rode o app</strong>, num terminal novo:</p>
+<pre><code class="lang-bash">cd mobile
+npm install
+npx react-native run-android      # compila o app de debug, instala e abre o Metro</code></pre>
+<p>O primeiro build baixa dependências do Gradle e leva vários minutos. O Metro fica aberto nesse terminal; deixe-o rodando.</p>
+<p><strong>5.3 Aponte o app para o cérebro local.</strong> A tela de configuração pede endereço, porta e token. O cérebro de desenvolvimento só escuta em <code>127.0.0.1</code> da sua máquina, então o endereço depende de onde o app roda:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Onde o app roda</th><th>Endereço</th><th>Porta</th><th>Preparação</th></tr></thead><tbody><tr><td>Emulador</td><td><code>10.0.2.2</code> (o "localhost" do computador visto de dentro do emulador)</td><td><code>8765</code></td><td>nenhuma</td></tr><tr><td>Celular pelo cabo USB</td><td><code>127.0.0.1</code></td><td><code>8765</code></td><td><code>adb reverse tcp:8765 tcp:8765</code> (repita sempre que reconectar o cabo)</td></tr></tbody></table></div>
+<p>Para o <strong>token</strong>, copie o conteúdo de <code>.juniper-dev/state/token</code>. Num emulador, o jeito mais simples é tocar no campo do token e mandar o texto pelo <code>adb</code>:</p>
+<pre><code class="lang-bash">adb shell input text &quot;$(cat .juniper-dev/state/token)&quot;</code></pre>
+<p>Salve. A linha de estado no topo deve mostrar <strong>Conectada</strong>.</p>
+<p>✅ <strong>Marco 3:</strong> na aba <strong>Texto</strong>, mande "oi" e veja a resposta chegar aos poucos. Na aba <strong>Voz</strong> dá para testar a conversa falada se o cérebro tiver a voz ligada (<a href="voz-audio.html#ligar">Voz por áudio</a>); sem ela, o cérebro recusa a sessão de voz com o erro <code>voice_unavailable</code>.</p>
+<div class="callout info"><p><strong>Nota:</strong> no ambiente local o tráfego é <code>ws://</code> sem cifra, o que é aceitável porque não sai da sua máquina (o emulador e o <code>adb reverse</code> usam a interface local). Em produção os clientes chegam por uma rede privada cifrada (<a href="producao.html">Visão geral da produção</a>).</p></div>
+<h2 id="ao-vivo">6. Edite o código e veja ao vivo</h2>
+<p>Agora os três clientes estão conectados ao mesmo cérebro. Vamos mudar o cérebro e ver o efeito em todos, sem reiniciar nada à mão.</p>
+<p><strong>6.1 Acompanhe o cérebro</strong>, num terminal à parte:</p>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml logs -f brain</code></pre>
+<p><strong>6.2 Crie uma ferramenta nova.</strong> Uma tool é só um arquivo em <code>brain/tools/</code> (<a href="tools.html">Tools</a>). Crie <code>brain/tools/dev_hello.py</code>:</p>
+<pre><code class="lang-python">from __future__ import annotations
+
+from typing import Any
+
+from brain.tools.base import Locality, Tier, Tool, ToolResult
+from brain.tools.registry import register_tool
+
+
+@register_tool
+class DevHello(Tool):
+    name = &quot;dev_hello&quot;
+    description = &quot;Cumprimenta a partir do ambiente de desenvolvimento. Use quando pedirem para testar o ambiente.&quot;
+    parameters = {&quot;type&quot;: &quot;object&quot;, &quot;properties&quot;: {}}
+    tier = Tier.READ
+    locality = Locality.CLOUD
+
+    async def run(self, **kwargs: Any) -&gt; ToolResult:
+        return ToolResult(success=True, output=&quot;Olá do ambiente de desenvolvimento: o código novo já está no ar.&quot;)</code></pre>
+<p>Ao salvar, o log mostra o servidor reiniciando (o contêiner usa o <code>watchfiles</code>, que vigia <code>brain/</code> e <code>prompts/</code>). O servidor fecha as conexões de forma limpa e <strong>os três clientes reconectam sozinhos</strong>, retomando a conversa em que estavam.</p>
+<p><strong>6.3 Confira nos clientes:</strong></p>
+<ul><li><strong>Terminal:</strong> <code>juniper tools</code> lista <code>dev_hello</code> (funciona mesmo com o <code>fake-llm</code>).</li><li><strong>Com uma chave de LLM real</strong>, peça "testa o ambiente de desenvolvimento" no terminal, no Telegram e no app: a Juniper chama <code>dev_hello</code> e responde com a frase nova nos três. Por ser <code>READ</code>, ela executa sem pedir confirmação (<a href="seguranca.html#tiers">Segurança</a>).</li></ul>
+<p><strong>6.4 Mude o app.</strong> Com o Metro rodando, edite um texto de <code>mobile/src/ui/ChatScreen.tsx</code> (por exemplo, o rótulo do botão «Enviar») e salve: o <em>Fast Refresh</em> atualiza a tela do app em um ou dois segundos, sem reinstalar. Mudanças em código Kotlin (<code>mobile/android/</code>) exigem rodar <code>npx react-native run-android</code> de novo.</p>
+<p>✅ <strong>Marco 4:</strong> você mudou o cérebro e o app e viu o resultado sem reinstalar nada. Apague <code>brain/tools/dev_hello.py</code> antes de abrir um PR (era só um exemplo).</p>
+<h3 id="recarga">O que recarrega sozinho</h3>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Você mudou</th><th>O que acontece</th></tr></thead><tbody><tr><td><code>brain/</code> ou <code>prompts/</code></td><td>O cérebro reinicia sozinho e os clientes reconectam.</td></tr><tr><td><code>mobile/src/</code> (TypeScript)</td><td>O Metro aplica na hora (<em>Fast Refresh</em>).</td></tr><tr><td><code>mobile/android/</code> (Kotlin, manifesto)</td><td>Rode <code>npx react-native run-android</code> de novo.</td></tr><tr><td>O código do bot (<code>brain/clients/telegram.py</code>)</td><td>O bot roda fora do contêiner: pare com Ctrl+C e rode <code>juniper telegram</code> de novo.</td></tr><tr><td><code>.env</code> ou <code>docker/config.dev.yaml</code></td><td><code>docker compose -f docker-compose.dev.yml restart brain</code></td></tr><tr><td><code>requirements.txt</code> ou <code>pyproject.toml</code></td><td><code>docker compose -f docker-compose.dev.yml up -d --build</code> (e <code>pip install -e &quot;.[dev]&quot;</code> na sua máquina)</td></tr></tbody></table></div>
+<h2 id="testes">7. Rode os testes</h2>
+<p>Os testes rodam na sua máquina, sem Docker e sem rede:</p>
+<pre><code class="lang-bash">pytest -m &quot;not integration&quot;            # o que o CI roda
+ruff check brain/ tests/ &amp;&amp; mypy brain/
+cd mobile &amp;&amp; npm test &amp;&amp; npm run typecheck &amp;&amp; npx eslint .</code></pre>
+<p>As regras do que testar e de como abrir o PR estão em <a href="contribuindo.html">Como contribuir</a>.</p>
+<h2 id="limpar">8. Parar e limpar</h2>
+<pre><code class="lang-bash">docker compose -f docker-compose.dev.yml down        # desliga; os dados ficam nos volumes
+docker compose -f docker-compose.dev.yml down -v     # desliga e APAGA o banco e o modelo baixado
+rm -rf .juniper-dev                                  # zera o token e os logs (um novo token nasce no próximo up)</code></pre>
+<p>Depois de apagar o token, todos os clientes precisam do novo (no app, abra a configuração e cole o token novo).</p>
+<h2 id="problemas">Problemas comuns</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Sintoma</th><th>Causa e solução</th></tr></thead><tbody><tr><td>"Não achei o token do servidor em ~/.juniper/token"</td><td>O CLI está em modo <code>server</code> sem a variável do token. Exporte <code>JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE</code> (<a href="#terminal">passo 3</a>).</td></tr><tr><td>A resposta é só o eco da mensagem</td><td>É o <code>fake-llm</code>: nenhuma chave válida no <code>.env</code>. Preencha e rode <code>restart brain</code>.</td></tr><tr><td>O bot não responde</td><td>O seu ID não está em <code>JUNIPER_TELEGRAM__ALLOWED_USER_IDS</code>, ou você escreveu num grupo (o bot só atende chats privados).</td></tr><tr><td>App: «sem conexão» no emulador</td><td>Use <code>10.0.2.2</code>, não <code>localhost</code>; confira <code>curl http://127.0.0.1:8765/health</code> no computador.</td></tr><tr><td>App: «sem conexão» no celular</td><td>Faltou <code>adb reverse tcp:8765 tcp:8765</code> (ou o cabo foi reconectado).</td></tr><tr><td>App: «o servidor recusou o token»</td><td>Copie o token de novo; ele muda se <code>.juniper-dev/</code> for apagada.</td></tr><tr><td>O app abre uma tela vermelha do Metro</td><td>O Metro não está rodando ou o aparelho não o alcança: <code>npx react-native start</code> e, no celular, <code>adb reverse tcp:8081 tcp:8081</code>.</td></tr><tr><td>Outros problemas do Docker</td><td>Veja <a href="dev-docker.html#problemas">Ambiente Docker</a>.</td></tr></tbody></table></div>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

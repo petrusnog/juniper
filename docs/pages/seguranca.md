@@ -1,7 +1,8 @@
 ---
 title: Segurança
-group: Núcleo
-order: 4
+group: Documentação Técnica
+section: Núcleo
+order: 5
 description: Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
 status: pronta
 tags: tier confirmação segredos prompt injection permissões token filtro forbidden
@@ -9,7 +10,7 @@ tags: tier confirmação segredos prompt injection permissões token filtro forb
 
 ## Visão geral {#visao-geral}
 
-A Juniper age no mundo real por decisão de um LLM, e um LLM pode entender mal o pedido ou ser induzido por conteúdo que leu (a web, o título de um convite de agenda). A política (ADR-006) é: **ler é livre, alterar pede o seu "sim", destruir pede com aviso, e o proibido nunca executa.** Cada tool declara o seu tier; o [Dispatcher](agente.html#dispatcher) o aplica.
+A Juniper age no mundo real por decisão de um LLM, e um LLM pode entender mal o pedido ou ser induzido por conteúdo que leu (a web, o título de um convite de agenda). A política ([ADR-006](adr-006.html)) é: **ler é livre, alterar pede o seu "sim", destruir pede com aviso, e o proibido nunca executa.** Cada tool declara o seu tier; o [Dispatcher](agente.html#dispatcher) o aplica.
 
 ## Os quatro tiers {#tiers}
 
@@ -49,7 +50,7 @@ Texto que veio de fora (páginas da web, títulos de eventos criados por terceir
 | Log estruturado | Tudo passa por `redact()`: campos `api_key`, `token`, `secret`, `password`, `authorization`, `private_key` viram `***`, assim como padrões de chave (`gsk_…`, `Bearer …`, blocos de chave privada) e as chaves configuradas. |
 | Memória de longo prazo | O filtro de segredos (`secretfilter.py`) mascara a conversa antes de mandá-la ao LLM de extração e recusa candidatas que pareçam segredo. É uma heurística, não uma garantia. |
 | Chave da conta de serviço do Google | `~/.juniper/certs/gcp-key.json`: pasta `700`, arquivo `600`, `certs/` no `.gitignore`. |
-| Token dos clientes remotos (planejado) | `~/.juniper/token` (`600`) no servidor; cofre do sistema no cliente ([Protocolo](protocolo.html), [Desktop](desktop.html)). |
+| Token dos clientes remotos | Gerado no primeiro boot do servidor (`600`, no volume de estado); no app Android, no Keystore; nunca em URL nem em log ([API WebSocket](protocolo.html#conexao), [App mobile](mobile.html)). |
 
 ## Arquivos {#arquivos}
 
@@ -61,8 +62,12 @@ Tudo que a Juniper grava com conteúdo seu tem permissão restrita: a pasta de c
 
 ## Comandos de shell {#shell}
 
-Para a futura `run_shell` (T-023), a política do ADR-006 é: um **único binário** por chamada, validado contra a allowlist `tools.security.shell_allowlist` (`git`, `ls`, `cat`, `grep`, `rg`, `fd`, `jq`, `find`, `wc`, `head`, `tail`); operadores de composição (`;`, `&&`, `||`, `|`, `$()`, crases, redirecionamentos) são rejeitados; e o tier é decidido pelo comando (`rm` é destrutivo; `rm -rf /`, `mkfs`, `dd` e escrita em `/etc` são `FORBIDDEN`). As tools de `git` que existem hoje não passam por uma string de shell: cada argumento é passado separado e validado (só dígitos nos ids, por exemplo).
+Para a futura `run_shell`, a política do [ADR-006](adr-006.html) é: um **único binário** por chamada, validado contra a allowlist `tools.security.shell_allowlist` (`git`, `ls`, `cat`, `grep`, `rg`, `fd`, `jq`, `find`, `wc`, `head`, `tail`); operadores de composição (`;`, `&&`, `||`, `|`, `$()`, crases, redirecionamentos) são rejeitados; e o tier é decidido pelo comando (`rm` é destrutivo; `rm -rf /`, `mkfs`, `dd` e escrita em `/etc` são `FORBIDDEN`). As tools de `git` que existem hoje não passam por uma string de shell: cada argumento é passado separado e validado (só dígitos nos ids, por exemplo).
 
 ## Produção {#producao}
 
-Com o cérebro numa VPS (propostas nos [ADRs](adr.html) 007, 012 e 013), as travas adicionais são: nenhuma porta pública (acesso só pelo Tailscale), token em cada conexão, executor que **revalida** tudo o que recebe ([Executor](executor.html)), segredos só no servidor e deploy com rollback. Veja [Produção](producao.html).
+Com o cérebro num servidor, as travas adicionais são ([ADR-007](adr-007.html), [ADR-012](adr-012.html), [ADR-013](adr-013.html), [ADR-014](adr-014.html)): nenhuma porta pública (acesso só pela rede privada), token em cada conexão, executor que **revalida** tudo o que recebe ([Executor](executor.html#revalidacao)), segredos só no servidor (montados como arquivos, nunca na imagem), contêiner com usuário sem privilégio e deploy com rollback e backup. Veja [Visão geral da produção](producao.html#seguranca).
+
+## Planejado: login com segundo fator {#mfa}
+
+Hoje o token e a rede privada protegem os clientes, e o Telegram usa uma lista de IDs. O [login com MFA](login.html) ([ADR-021](adr-021.html)) acrescentaria um segundo fator para todos os canais.

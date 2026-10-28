@@ -1,7 +1,8 @@
 ---
 title: Memória de longo prazo
-group: Memória
-order: 3
+group: Documentação Técnica
+section: Memória
+order: 12
 description: Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
 status: pronta
 tags: embeddings vetor cosseno rag extração recuperação perfil remember recall forget secretfilter backgroundextractor threshold e5 onnx

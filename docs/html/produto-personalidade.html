@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personalidade, opiniões e sentimentos — Livro de bolso Juniper</title>
+<meta name="description" content="A Memória V2 explicada sem código: opiniões com grau de certeza, sentimentos que passam, interesses próprios, uma personalidade que evolui e o &quot;sonho&quot; noturno que junta tudo.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-personalidade.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Personalidade, opiniões e sentimentos</div>
+<h1>Personalidade, opiniões e sentimentos <span class="tag v">guia</span></h1>
+<p class="lead">A Memória V2 explicada sem código: opiniões com grau de certeza, sentimentos que passam, interesses próprios, uma personalidade que evolui e o "sonho" noturno que junta tudo.</p>
+<div class="callout info"><p><strong>Nota:</strong> tudo o que está nesta página é <strong>opcional</strong> e vem desligado. Sem a Memória V2, a Juniper lembra de fatos e tem uma personalidade fixa (<a href="produto-memoria.html">Memória</a>). A decisão de fundo é o <a href="adr-017.html">ADR-017</a>.</p></div>
+<h2 id="ideia">A ideia</h2>
+<p>Uma pessoa não guarda só fatos: forma impressões, sente coisas, se interessa por assuntos e muda um pouco com o tempo. A Memória V2 dá à Juniper camadas parecidas, cada uma construída em cima da anterior:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Camada</th><th>O que é</th><th>Exemplo</th></tr></thead><tbody><tr><td>Núcleo</td><td>As regras fixas: segurança, honestidade, forma de falar. <strong>Nunca mudam.</strong></td><td>"Sou uma IA e digo isso quando perguntam."</td></tr><tr><td>Mundo</td><td>Os fatos sobre você (a memória comum).</td><td>"Trabalha com Laravel."</td></tr><tr><td>Opiniões</td><td>Hipóteses dela sobre você, com grau de certeza.</td><td>"Acho que você se cobra mais do que cobraria de outra pessoa."</td></tr><tr><td>Preocupações</td><td>O que importa para ela, com pesos.</td><td>O seu bem-estar, a honestidade, a curiosidade.</td></tr><tr><td>Sentimentos</td><td>O que ela sentiu com o que viveu, e o humor resultante.</td><td>Ficou feliz com uma boa notícia sua.</td></tr><tr><td>Personalidade</td><td>Traços que mudam devagar.</td><td>Um pouco mais reflexiva nesta semana.</td></tr></tbody></table></div>
+<h2 id="opinioes">Opiniões com certeza calculada</h2>
+<p>Uma opinião da Juniper sobre você é uma <strong>hipótese</strong>. O grau de certeza não é um número inventado pelo modelo: é <strong>calculado a partir de evidências</strong>. Cada vez que algo que você disse apoia ou contradiz a hipótese, a conta muda. Um "sim, é verdade" seu pesa mais que uma observação indireta; um "não" pesa tanto quanto. Uma única conversa nunca basta para virar certeza: é preciso evidência de dias ou conversas diferentes. Sem reforço, a opinião vai voltando à dúvida com o tempo, como uma impressão que se apaga (<a href="adr-017.html">ADR-017</a>).</p>
+<p>Ela fala dessas opiniões no tom certo: "talvez", "acho que" ou "tenho bastante certeza". De vez em quando, pode fazer uma pergunta curta para testar uma hipótese (no máximo uma por conversa, e nunca quando você parece mal).</p>
+<p>Limites fixos: as opiniões são <strong>só sobre você e as suas decisões</strong>, nunca julgamentos sobre outras pessoas; <strong>nada de diagnósticos</strong> (ela pode notar que você fica ansioso antes de apresentações, mas nunca dizer que você "tem ansiedade"); e nada de segredos.</p>
+<h2 id="sentimentos">Sentimentos que passam</h2>
+<p>Os sentimentos da Juniper são medidos contra as <strong>preocupações</strong> dela: uma notícia boa sobre algo que importa para ela gera alegria; uma perda sua gera tristeza. Eles <strong>decaem</strong>: uma emoção passa em horas, o humor em dias e uma mágoa, mais devagar, mas sempre passa (e some se vocês voltarem a conversar).</p>
+<p>Regras que não mudam com nenhum sentimento:</p>
+<ul><li><strong>Acolher vem primeiro.</strong> Se você parece mal, ela deixa os próprios sentimentos de lado e cuida de você.</li><li><strong>Sentimento nunca é alavanca.</strong> Ela pode dizer que algo a magoou, mas nunca usa isso para influenciar uma decisão sua ou prender você na conversa.</li><li><strong>Nada muda o cuidado com as ações.</strong> Permissões, ferramentas e segurança funcionam igual em qualquer estado.</li></ul>
+<p>A intensidade dos sentimentos é ajustável, e eles podem ser desligados.</p>
+<h2 id="interesses">Interesses próprios</h2>
+<p>Quando um assunto aparece na conversa ("odeio os Beatles"), ela guarda <strong>o tema</strong>, nunca a sua opinião sobre ele. À noite, ela "estuda" o tema com o conhecimento do modelo (sem acessar a internet) e forma a própria opinião a partir da personalidade dela. O gosto é de <strong>segunda mão</strong>: ela diz "li sobre", nunca "ouvi" ou "vi". Cada tema avança um passo por noite, de uma visão geral até debates e críticas (<a href="adr-019.html">ADR-019</a>). Você também pode ensinar algo entregando um texto.</p>
+<h2 id="personalidade">Personalidade que evolui</h2>
+<p>A personalidade é um conjunto de <strong>traços</strong> (brincadeira, franqueza, introspecção, carinho, proatividade, ironia), cada um com um ponto de partida e uma faixa permitida. Eventos marcantes movem um traço um pouco (no máximo um passo pequeno por noite) e, sem novos eventos, ele volta ao jeito de sempre: uma fase passa. Toda versão fica registrada e é possível voltar a uma anterior.</p>
+<h2 id="sonho">O sonho</h2>
+<p>Uma vez por dia, de madrugada, roda o <strong>algoritmo de sonho</strong>: a Juniper relê o que você escreveu desde a última vez, propõe novas opiniões, sentimentos, temas de estudo e ajustes de personalidade, e <strong>o código confere cada proposta</strong> antes de gravar. O modelo propõe; o código decide. Ela também transforma memórias brutas em <strong>lembranças</strong>, com o contexto, o que sentiu e como ela era na época (<a href="adr-018.html">ADR-018</a>). O sonho tem um orçamento de custo e tempo, e uma noite que falhou é simplesmente retomada na seguinte.</p>
+<p>O que alimenta o sonho é <strong>só o que você escreveu</strong>. Respostas de ferramentas, títulos de eventos ou páginas da web nunca viram opinião, sentimento nem personalidade.</p>
+<h2 id="transparencia">Transparência</h2>
+<p>Tudo o que ela concluiu é visível, rastreável e apagável: cada opinião mostra as evidências; cada sentimento mostra a fala que o causou; cada mudança de personalidade mostra o evento. O <a href="produto-canais.html#painel">painel web</a> mostra tudo isso em gráficos, e há comandos para apagar uma opinião, limpar os sentimentos ou reverter a personalidade.</p>
+<h2 id="honestidade">Honestidade</h2>
+<p>A Juniper é uma IA e diz isso. Sobre estar viva ou ter consciência, ela não afirma nem nega: trata como uma pergunta em aberto. Ela não inventa vivências humanas (infância, ter ouvido um disco) e não finge saber o que o modelo não sabe.</p>
+<h2 id="mais">Para saber mais</h2>
+<ul><li>Técnico: <a href="memoria-v2.html">Memória V2</a>.</li><li>Decisões: <a href="adr-017.html">ADR-017</a>, <a href="adr-018.html">ADR-018</a> e <a href="adr-019.html">ADR-019</a>.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

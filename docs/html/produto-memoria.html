@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memória — Livro de bolso Juniper</title>
+<meta name="description" content="Como a Juniper lembra: a conversa atual, os fatos duráveis sobre você, o seu perfil, a busca por significado e como ver e apagar tudo.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/juniper.png">
+<script src="assets/theme.js"></script>
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/produto-memoria.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Produto / Memória</div>
+<h1>Memória <span class="tag v">guia</span></h1>
+<p class="lead">Como a Juniper lembra: a conversa atual, os fatos duráveis sobre você, o seu perfil, a busca por significado e como ver e apagar tudo.</p>
+<h2 id="por-que">Por que memória importa</h2>
+<p>Um modelo de linguagem não lembra de nada entre uma pergunta e outra. Sem memória, toda conversa começaria do zero e você precisaria repetir que prefere o terminal ZSH ou em que projeto está trabalhando. A Juniper resolve isso com <strong>duas camadas de memória</strong>, como as pessoas: a de curto prazo (a conversa de agora) e a de longo prazo (o que vale a pena guardar) (<a href="adr-011.html">ADR-011</a>).</p>
+<h2 id="curto-prazo">Memória de curto prazo: a conversa</h2>
+<p>É o que foi dito na conversa atual. A Juniper salva a conversa a cada resposta, então você pode fechar o aplicativo e <strong>retomar</strong> depois de onde parou, até em outro aparelho.</p>
+<p>Uma conversa muito longa não cabe inteira no modelo. Por isso ela mantém só as mensagens mais recentes; o que saiu da janela não se perde de verdade, porque o que importava já foi para a memória de longo prazo.</p>
+<h2 id="longo-prazo">Memória de longo prazo: fatos sobre você</h2>
+<p>Depois de cada resposta, em segundo plano, a Juniper relê o que foi dito e separa <strong>fatos duráveis</strong>: preferências ("prefere ZSH"), projetos ("o projeto X usa Laravel 11"), coisas da sua vida ditas de passagem ("tem um gato chamado Bidu"). Pedidos pontuais ("marca dentista amanhã") não viram memória: o compromisso já está na agenda.</p>
+<p>Quando você fala de algo, ela <strong>busca por significado</strong>, não por palavra exata: uma pergunta sobre "framework PHP" encontra a memória sobre "Laravel". Para isso, cada memória é transformada numa lista de números que representa o seu sentido (um <em>embedding</em>), e a busca compara esses números. Essa transformação roda <strong>no próprio servidor</strong>, sem enviar as memórias a terceiros. As memórias mais parecidas com o assunto entram no contexto da resposta, técnica conhecida como RAG (<em>Retrieval-Augmented Generation</em>, geração aumentada por recuperação).</p>
+<p>Regras que valem sempre:</p>
+<ul><li><strong>Sem duplicar, sem apagar à força.</strong> Se um fato mudou ("migrei o projeto X para o Laravel 12"), a memória nova <strong>substitui</strong> a antiga, que fica arquivada para auditoria, nunca editada.</li><li><strong>Segredos nunca são guardados.</strong> Senhas, chaves e números de cartão são filtrados antes de qualquer gravação.</li><li><strong>Memória é dado, não ordem.</strong> O que está na memória informa a Juniper, mas nunca a comanda.</li><li><strong>Uma falha de memória nunca derruba a conversa.</strong> Se o banco estiver fora do ar, ela conversa sem lembrar.</li></ul>
+<h2 id="perfil">O seu perfil</h2>
+<p>Além dos fatos, a Juniper guarda um <strong>perfil</strong> curto: nome, data de nascimento, nacionalidade (e gênero, só se você disser). Ele entra em toda mensagem, então ela sabe quem você é desde o "bom dia". A idade é calculada na hora a partir da data de nascimento. Documentos (CPF, RG, passaporte) nunca entram no perfil.</p>
+<h2 id="controle">Você no controle</h2>
+<p>Guardar é silencioso, para a conversa fluir: no máximo ela diz "anotado". Já <strong>esquecer sempre pergunta</strong>, porque não dá para desfazer. Você pode:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Quero...</th><th>Como</th></tr></thead><tbody><tr><td>Ver o que ela sabe</td><td>Perguntar "o que você sabe sobre mim?", ou <code>juniper memory list</code> no terminal, ou o <a href="produto-canais.html#painel">painel web</a>.</td></tr><tr><td>Pedir para lembrar</td><td>"Lembra que eu uso ZSH."</td></tr><tr><td>Pedir para esquecer</td><td>"Esquece o que eu disse sobre o projeto X." Ela mostra o que vai apagar e pede o "sim".</td></tr><tr><td>Levar tudo embora</td><td><code>juniper memory export</code> gera um arquivo com o perfil e as memórias.</td></tr></tbody></table></div>
+<h2 id="alem">Além dos fatos</h2>
+<p>A memória pode ir além de fatos: com a <strong>Memória V2</strong> ligada, a Juniper forma opiniões sobre você com grau de certeza calculado, tem sentimentos, desenvolve interesses e uma personalidade que evolui, com um processo noturno parecido com o sono. Isso é opcional e está em <a href="produto-personalidade.html">Personalidade, opiniões e sentimentos</a>.</p>
+<h2 id="mais">Para saber mais</h2>
+<ul><li>Técnico: <a href="memoria.html">Memória</a>, <a href="memoria-sessao.html">Memória de sessão</a> e <a href="memoria-longo-prazo.html">Memória de longo prazo</a>.</li><li>Decisão: <a href="adr-011.html">ADR-011</a> (arquitetura de memória) e <a href="adr-018.html">ADR-018</a> (memória refinada).</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

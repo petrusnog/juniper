@@ -1,7 +1,8 @@
 ---
 title: Login com MFA
-group: Núcleo
-order: 5
+group: Documentação Técnica
+section: Núcleo
+order: 7
 description: O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 status: proposto
 tags: login mfa totp autenticação sessão token recuperação telegram dashboard segurança identidade auth
@@ -11,7 +12,7 @@ tags: login mfa totp autenticação sessão token recuperação telegram dashboa
 
 ## Por que {#por-que}
 
-Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só em uma lista de IDs. Quem controlar a conta do Telegram fala com a Juniper com todas as tools. O Petrus decidiu manter o Telegram completo e fortalecer a **garantia de que é ele**: uma identidade única, com segundo fator, para **todo** cliente. Junto com a rede privada ([Produção](producao.html)), são duas camadas independentes.
+Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só em uma lista de IDs. Quem controlar a conta do Telegram fala com a Juniper com todas as tools. A proposta mantém o Telegram completo e fortalece a **garantia de que é o dono**: uma identidade única, com segundo fator, para **todo** cliente. Junto com a rede privada ([Visão geral da produção](producao.html)), são duas camadas independentes.
 
 ## Como fica {#como-fica}
 
@@ -34,8 +35,5 @@ O MFA **não substitui a confirmação** ([Agente](agente.html#confirmacao)). Fa
 
 ## Migração {#migracao}
 
-`auth.mfa.enabled` começa **desligado**; o Petrus cadastra o autenticador e confere tudo com o MFA ainda desligado; só então liga. Desligar é editar o `config.yaml` por SSH.
+`auth.mfa.enabled` começa **desligado**; o usuário cadastra o autenticador e confere tudo com o MFA ainda desligado; só então liga. Desligar é editar o `config.yaml` por SSH.
 
-## Tasks {#tasks}
-
-T-159 (núcleo), T-160 (`juniper auth`), T-161 (WebSocket), T-162 (Telegram e dashboard), T-163 (documentação e aceite). Épica #177.
