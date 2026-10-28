@@ -62,10 +62,24 @@ Implementado no T-150 (`brain/voice/budget.py` e `speech.py`):
 - **Log:** só tamanhos e códigos, nunca o texto.
 - **`juniper voice status`:** mostra se a voz está ligada, quanto do mês foi gasto, se a credencial do Google existe e se a chave da Groq está configurada. Nunca imprime segredos.
 
+## A sessão de voz no servidor {#sessao}
+
+Implementada no T-152 (`brain/clients/voice_session.py`, ligada ao `ChatHandler`; `voice.enabled: true` liga o conjunto no servidor):
+
+1. `voice.start` abre a sessão (uma por conexão: a segunda recebe `voice_busy`; sem `voice.enabled` ou sem como ouvir, `voice_unavailable`). O cérebro responde `voice.ready` com os formatos e de onde vêm STT e TTS.
+2. O áudio do microfone passa pelo detector de fala. Cada fala é transcrita (nuvem, ou `voice.text` se o aparelho transcreve) e vira um **turno de chat comum**: o agente, a confirmação ([ADR-010](adr-010.html)) e a memória só veem texto. Quem pediu «toca Djavan» recebe `voice.transcript`, `chat.started`, `chat.token` (a legenda) e o áudio.
+3. Enquanto o LLM escreve, os tokens viram **frases** que são faladas na ordem (Google ou aparelho, conforme o [orçamento](#orcamento)). Uma frase que já terminou em pontuação é falada depois de 0,4 s de pausa, para ela dizer «Vou procurar» enquanto a tool roda.
+4. **Interromper:** falar por cima dela por `barge_in_ms` corta a fala e cancela o turno; a fala nova é transcrita e vira o próximo turno. «Para», «chega» e «silêncio» (ou `voice.interrupt`) calam sem abrir turno.
+5. **Encerrar:** botão (`voice.end`), comando falado («encerrar a conversa», «tchau, Juniper») ou `voice.idle_timeout_seconds` de silêncio. Os comandos são reconhecidos **sem o LLM** e só valem para a frase inteira.
+6. **Confirmação por voz:** uma pergunta, uma resposta («Posso criar a playlist?» → «sim»); o «sim» é a transcrição seguinte, interpretada por `consent.py`. Nada repete a pergunta.
+7. **Falhas viram fala:** erro do LLM é dito em voz alta; STT da nuvem fora do ar vira «Não consegui te ouvir agora. Pode repetir?» mais `voice.fallback`.
+
+Estados enviados à tela (`voice.state`): `listening`, `thinking`, `speaking`. O detalhe de como o app descarta o áudio de um turno cortado está no [protocolo](protocolo.html#voz).
+
 ## Mensagens {#protocolo}
 
 Extensão compatível do [protocolo](protocolo.html) (sem mudar `protocol_version`). O áudio vai em quadros de **texto** JSON com base64: `voice.start`, `voice.ready`, `voice.audio`, `voice.state`, `voice.transcript`, `voice.say`, `voice.fallback`, `voice.text`, `voice.interrupt`, `voice.end`; erros `voice_unavailable` e `voice_busy`. A lista completa e os campos estão no [ADR-023](adr-023.html#7-protocolo-extensao-compativel-do-adr-012).
 
 ## Tasks {#tasks}
 
-T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.
+T-148 (protocolo, **pronto**: modelos, `schema.json` e testes), T-149 (texto para fala e sintetizador, **pronto**), T-150 (orçamento e voz do aparelho, **pronto**), T-151 (VAD e STT, **pronto**), T-152 (sessão de voz no servidor, **pronto**), T-153 (documentação e aceite). Épica #179.
