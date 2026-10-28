@@ -15,11 +15,25 @@ from __future__ import annotations
 import asyncio
 import webbrowser
 from typing import Any
+from urllib.parse import urlsplit
 
 from brain.config import settings
+from brain.tools import music as music_tools
 from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import register_tool
 from brain.tools.url_policy import check_url, is_trusted
+
+_SEARCH_PAGES = {
+    "music.youtube.com": "/search",
+    "www.youtube.com": "/results",
+    "youtube.com": "/results",
+}
+
+
+def _is_search_page(url: str, host: str | None) -> bool:
+    """A YouTube (Music) search *page*: it opens a list of results and plays nothing."""
+    prefix = _SEARCH_PAGES.get(host or "")
+    return prefix is not None and urlsplit(url).path.rstrip("/") == prefix
 
 
 def _denied(reason: str | None) -> ToolResult:
@@ -36,9 +50,10 @@ class OpenUrl(Tool):
     description = (
         "Abre um link no dispositivo da pessoa: o navegador ou o aplicativo que trata o endereço "
         "(por exemplo, o YouTube Music para um link de música). Use quando ela pedir para abrir "
-        "um site, uma busca ou um vídeo, ou quando você já tiver o link de uma música para tocar. "
-        "Só aceita endereços completos http ou https; nunca invente um endereço, use o que a "
-        "pessoa passou ou o que outra ferramenta devolveu."
+        "um site, uma busca na web ou um vídeo, ou quando você já tiver o link de uma música "
+        "para tocar. Só aceita endereços completos http ou https; nunca invente um endereço, use "
+        "o que a pessoa passou ou o que outra ferramenta devolveu. Para MÚSICA, nunca monte "
+        "links de busca: use antes music_search e abra o link do resultado."
     )
     parameters = {
         "type": "object",
@@ -55,7 +70,20 @@ class OpenUrl(Tool):
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         result = check_url(kwargs.get("url"))
-        return None if result.ok else _denied(result.reason)
+        if not result.ok:
+            return _denied(result.reason)
+        if music_tools.enabled() and _is_search_page(result.url or "", result.host):
+            # The model likes to "search" by building a results-page link, which opens a list and
+            # plays nothing (and may carry a typo). Send it to the tool that finds the track.
+            return ToolResult(
+                success=False,
+                error=(
+                    "Esse endereço é só uma página de busca: não toca nada. Para tocar ou achar "
+                    "uma música, chame music_search e abra o link do resultado que ele devolver."
+                ),
+                metadata={"code": "use_music_search"},
+            )
+        return None
 
     async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
         # The user is asked about, and the device receives, the normalised URL: not a second

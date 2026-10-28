@@ -378,3 +378,78 @@ async def test_without_a_phone_connected_the_juniper_says_so(tmp_path: Path) -> 
         messages = await client.chat("toca algo")
         assert texts(messages) == "O celular está desconectado."
     assert "não está conectado" in tool_result_seen_by_llm(provider)
+
+
+# --- search pages are not music (found in the first real run on the VPS) ----------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://music.youtube.com/search?q=Sheena+is+a+punk+rocker",
+        "https://music.youtube.com/search/",
+        "https://www.youtube.com/results?search_query=ramones",
+    ],
+)
+async def test_a_search_page_is_sent_back_to_music_search_when_music_is_on(
+    url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.tools import music as music_tools
+
+    monkeypatch.setattr(music_tools, "enabled", lambda: True)
+    result = await OpenUrl().precheck(url=url)
+    assert result is not None and not result.success
+    assert result.metadata == {"code": "use_music_search"}
+    assert "music_search" in (result.error or "")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://music.youtube.com/watch?v=abc123",
+        "https://music.youtube.com/playlist?list=PLabcdefghijklmnopqrstuvwxyz012345",
+        "https://example.com/search?q=x",
+        "https://music.youtube.com/searching",
+    ],
+)
+async def test_tracks_playlists_and_other_sites_still_open(
+    url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.tools import music as music_tools
+
+    monkeypatch.setattr(music_tools, "enabled", lambda: True)
+    assert await OpenUrl().precheck(url=url) is None
+
+
+async def test_without_the_music_tools_a_search_page_opens_as_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from brain.tools import music as music_tools
+
+    monkeypatch.setattr(music_tools, "enabled", lambda: False)
+    assert await OpenUrl().precheck(url="https://music.youtube.com/search?q=x") is None
+
+
+async def test_the_model_that_builds_a_search_link_is_redirected_to_music_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real log: "procura X no YouTube Music" became open_url on a results page. The phone
+    must not be touched, and the model gets the way to the right tool."""
+    from brain.tools import music as music_tools
+
+    monkeypatch.setattr(music_tools, "enabled", lambda: True)
+    provider = FakeProvider(
+        [
+            use(
+                "open_url", "k1", url="https://music.youtube.com/search?q=Sheena+is+a+punck+rocker"
+            ),
+            say("Vou procurar direito."),
+        ]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", DEVICE_TOOL)
+        messages = await phone.chat("procura Sheena is a punk rocker dos Ramones no YouTube Music")
+        assert not any(isinstance(m, p.Invoke) for m in messages)
+        assert texts(messages) == "Vou procurar direito."
+    assert "music_search" in tool_result_seen_by_llm(provider)
