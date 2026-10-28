@@ -10,7 +10,7 @@ tags: sessão resume sessionstore mongodb docker compose arquivos json conversas
 
 ## Visão geral {#visao-geral}
 
-A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: `brain/core/session.py` ([Agente](agente.html#session)) e `brain/memory/session.py`. Decisões de fundo no ADR-011.
+A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: `brain/core/session.py` ([Agente](agente.md#session)) e `brain/memory/session.py`. Decisões de fundo no [ADR-011](../decisions/ADR-011.md).
 
 ## Uso {#uso}
 
@@ -35,7 +35,7 @@ Toda conversa é salva sozinha ao fim de cada turno. Sem conversa anterior, `--r
 
 ### O que sai quando passa do limite {#limite}
 
-Primeiro vale o teto de turnos (`max_turns`). Depois, se o histórico ainda passa de `max_tokens`, saem os turnos mais antigos, **inteiros**: a sua mensagem e tudo que veio depois dela, tool calls incluídas. Assim nunca sobra uma resposta de tool sem a chamada que a originou, que o LLM recusaria. O turno em andamento nunca é descartado. Não há resumo por LLM: o que importa de uma conversa antiga vira [memória de longo prazo](memoria-longo-prazo.html).
+Primeiro vale o teto de turnos (`max_turns`). Depois, se o histórico ainda passa de `max_tokens`, saem os turnos mais antigos, **inteiros**: a sua mensagem e tudo que veio depois dela, tool calls incluídas. Assim nunca sobra uma resposta de tool sem a chamada que a originou, que o LLM recusaria. O turno em andamento nunca é descartado. Não há resumo por LLM: o que importa de uma conversa antiga vira [memória de longo prazo](memoria-longo-prazo.md).
 
 ### SessionStore {#sessionstore kind=interface file=brain/memory/session.py}
 
@@ -47,11 +47,11 @@ Um arquivo JSON por conversa em `~/.juniper/sessions/`. A pasta é só sua (perm
 
 ### Ao retomar {#retomar}
 
-Dois cuidados: **a persona não é salva** (vale a atual) e **uma confirmação pendente não volta**. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" (ADR-006).
+Dois cuidados: **a persona não é salva** (vale a atual) e **uma confirmação pendente não volta**. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" ([ADR-006](../decisions/ADR-006.md)).
 
 ## MongoDB {#mongodb}
 
-Com `memory.session.store: mongo`, as conversas ficam no MongoDB em vez de arquivos. É também onde ficam as [memórias de longo prazo](memoria-longo-prazo.html).
+Com `memory.session.store: mongo`, as conversas ficam no MongoDB em vez de arquivos. É também onde ficam as [memórias de longo prazo](memoria-longo-prazo.md).
 
 > **Atenção:** o MongoDB roda num container, então é preciso ter o **Docker** (com o plugin `docker compose`) instalado e rodando. Sem Docker, use `store: file` (o padrão): as conversas ficam em JSON e nada mais é necessário.
 
@@ -149,7 +149,7 @@ memory:
     timeout_ms: 3000      # quanto esperar pelo servidor antes de avisar que caiu
 ```
 
-Usuário e senha ficam só no `.env` (ADR-003); o mesmo par é lido pelo compose. A senha é entregue ao driver à parte, sem ir na URI: `@`, `:` e `/` não precisam de escape. Referência completa em [Configuração](configuracao.html#memory).
+Usuário e senha ficam só no `.env` ([ADR-003](../decisions/ADR-003.md)); o mesmo par é lido pelo compose. A senha é entregue ao driver à parte, sem ir na URI: `@`, `:` e `/` não precisam de escape. Referência completa em [Configuração](configuracao.md#memory).
 
 ## Limitações conhecidas {#limitacoes}
 
@@ -167,3 +167,9 @@ pytest -m integration           # contra o MongoDB local (docker compose up -d)
 ```
 
 Os de integração rodam o mesmo contrato do `FileSessionStore` contra o `MongoSessionStore` (`tests/test_session_store_contract.py`), mais os casos próprios do Mongo (`tests/test_mongo_store.py`). Cada teste usa um banco descartável e o apaga no fim.
+
+## Para saber mais {#para-saber-mais}
+
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Memória](memoria.md) (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
+- [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.

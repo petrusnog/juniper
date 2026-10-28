@@ -10,7 +10,7 @@ tags: embeddings vetor cosseno rag extração recuperação perfil remember reca
 
 ## Visão geral {#visao-geral}
 
-Fatos duráveis sobre você (preferências, projetos, o que você tem e usa) ficam no MongoDB e são achados **por significado** ("framework PHP" acha "Laravel"). Só funciona com `memory.session.store: mongo` ([como ligar](memoria-sessao.html#mongodb)) e `memory.extraction.enabled: true` (o padrão). Decisões de fundo no ADR-011.
+Fatos duráveis sobre você (preferências, projetos, o que você tem e usa) ficam no MongoDB e são achados **por significado** ("framework PHP" acha "Laravel"). Só funciona com `memory.session.store: mongo` ([como ligar](memoria-sessao.md#mongodb)) e `memory.extraction.enabled: true` (o padrão). Decisões de fundo no [ADR-011](../decisions/ADR-011.md).
 
 | Peça | O que faz | Seção |
 |---|---|---|
@@ -268,17 +268,17 @@ Controle explícito: você pede na conversa ("lembra que eu uso ZSH", "esquece o
 
 ### Guardar é silencioso, apagar pergunta {#silenciosa}
 
-`remember` e `update_profile` gravam sem pedir permissão, para a conversa fluir: a persona chama a tool direto e, no máximo, diz "anotado". Quem quer ver ou mexer no que ela sabe usa `juniper memory list`, `forget` e `profile`. Só os `WRITE` podem dispensar a confirmação (`confirm = False`); uma tool `DESTRUCTIVE` que tente é recusada ao carregar. O risco aceito está em [Segurança](seguranca.html#memoria-silenciosa).
+`remember` e `update_profile` gravam sem pedir permissão, para a conversa fluir: a persona chama a tool direto e, no máximo, diz "anotado". Quem quer ver ou mexer no que ela sabe usa `juniper memory list`, `forget` e `profile`. Só os `WRITE` podem dispensar a confirmação (`confirm = False`); uma tool `DESTRUCTIVE` que tente é recusada ao carregar. O risco aceito está em [Segurança](seguranca.md#memoria-silenciosa).
 
 ### Comandos do terminal {#comandos}
 
-Os comandos `juniper memory list|search|forget|export|profile|reindex` estão em [CLI](cli.html#memory). Todos precisam do MongoDB no ar; se não estiver, a mensagem diz o que fazer, sem stacktrace.
+Os comandos `juniper memory list|search|forget|export|profile|reindex` estão em [CLI](cli.md#memory). Todos precisam do MongoDB no ar; se não estiver, a mensagem diz o que fazer, sem stacktrace.
 
 ## Limitações conhecidas {#limitacoes}
 
 - **Depende do LLM** de extração e de julgamento: pode guardar o que não devia ou deixar de guardar. `juniper memory list` e `forget` existem para você auditar.
 - O prompt de extração, o `neighbor_threshold` (0.75) e o `retrieval.threshold` (0.80) ainda não foram calibrados com uso real; os testes usam um LLM roteirizado e um embedder falso.
-- No modo `turn`, há mais chamadas ao LLM e mais CPU local (o embedding de cada candidata roda enquanto você conversa). Se pesar, veja `memory.embeddings.threads` e os [tempos](observabilidade.html#tempos). Também consome mais do limite do provider (importante na Groq).
+- No modo `turn`, há mais chamadas ao LLM e mais CPU local (o embedding de cada candidata roda enquanto você conversa). Se pesar, veja `memory.embeddings.threads` e os [tempos](observabilidade.md#tempos). Também consome mais do limite do provider (importante na Groq).
 - O que foi dito na última mensagem antes de um Ctrl+C pode se perder (a extração dela pode não ter terminado), mas o resto da conversa já está salvo.
 - Uma busca por mensagem: somam-se o tempo do embedding da pergunta (CPU) e a leitura dos vetores no MongoDB.
 - Fica em texto no seu MongoDB e vai ao provider do chat durante a extração.
@@ -292,14 +292,22 @@ pytest -m integration           # com o modelo real (baixa ~120 MB) e o MongoDB 
 
 ## Esquecer um fato e as crenças
 
-Com a [Memória V2](memoria-v2.html) ligada, `forget` (comando ou tool) também solta das crenças a evidência que veio do fato esquecido; a crença que fica sem sustentação é aposentada. Apagar uma crença, ao contrário, nunca apaga fatos.
+Com a [Memória V2](memoria-v2.md) ligada, `forget` (comando ou tool) também solta das crenças a evidência que veio do fato esquecido; a crença que fica sem sustentação é aposentada. Apagar uma crença, ao contrário, nunca apaga fatos.
 
 ## A V2 em cima dos fatos
 
-A [Memória V2](memoria-v2.html) (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (`source.turn`), o algoritmo de sonho reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.
+A [Memória V2](memoria-v2.md) (opt-in) lê estes fatos à noite e forma opiniões, sentimentos, interesses e uma personalidade viva por cima, sem nunca reescrevê-los. O que muda aqui, com ela ligada: cada fato guarda a sessão e o turno de origem (`source.turn`), o algoritmo de sonho reextrai fatos de mensagens longas e de padrões do dia pelo mesmo pipeline, e a extração em segundo plano ganha até 3 tópicos de atenção, sem mudar nenhuma regra de segurança. Desligada, nada disso acontece.
 
 ## Memória bruta e refinada {#refinada}
 
-Cada memória tem a coluna `status_reflexao`: **`bruta`** (como foi salva pela conversa, pela tool `remember` ou pela observação do sonho) ou **`refinada`**. Memórias antigas, sem a coluna, contam como `bruta`, sem migração. Com a [Memória V2](memoria-v2.html), o sonho refina as brutas ([ADR-018](adr-018.html)): a refinada **mantém o texto do fato** e soma `contexto`, `sentimento` (sentimentos reais registrados), `como_eu_era` (a personalidade da época), `ligacoes` e `relevancia`; a bruta fica guardada como `superseded`.
+Cada memória tem a coluna `status_reflexao`: **`bruta`** (como foi salva pela conversa, pela tool `remember` ou pela observação do sonho) ou **`refinada`**. Memórias antigas, sem a coluna, contam como `bruta`, sem migração. Com a [Memória V2](memoria-v2.md), o sonho refina as brutas ([ADR-018](../decisions/ADR-018.md)): a refinada **mantém o texto do fato** e soma `contexto`, `sentimento` (sentimentos reais registrados), `como_eu_era` (a personalidade da época), `ligacoes` e `relevancia`; a bruta fica guardada como `superseded`.
 
 Na conversa, uma refinada aparece no bloco `<memorias>` com o fato e, logo abaixo, a lembrança ("lembrança, contexto: ...; na época você sentiu admiração (forte); você estava um pouco mais reflexiva"), e a `relevancia` pesa até 0,05 no ranking (`similaridade + 0,05 × relevância`), só para desempatar. `juniper memory list` mostra a coluna `Reflexão` e aceita `--reflexao bruta|refinada`; `memory export` inclui o status e a lembrança.
+
+## Para saber mais {#para-saber-mais}
+
+- [Memória](memoria.md) (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
+- [Memória de sessão](memoria-sessao.md) (Documentação Técnica): A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).
+- [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Backup da memória](backup.md) (Produção): Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.

@@ -7,12 +7,12 @@ status: pronta
 tags: api http rest health dashboard rotas json get login cookie paginação limit offset memories beliefs affects persona interests notes dreams journal sessions search prompt
 ---
 
-O cérebro expõe dois servidores HTTP no mesmo processo (`juniper serve`): o do WebSocket, que também responde `/health`, e o do [dashboard](dashboard.html), com uma API JSON **somente leitura**. Para conversar, tocar ferramentas ou mexer na memória, use a [API WebSocket](protocolo.html).
+O cérebro expõe dois servidores HTTP no mesmo processo (`juniper serve`): o do WebSocket, que também responde `/health`, e o do [dashboard](dashboard.md), com uma API JSON **somente leitura**. Para conversar, tocar ferramentas ou mexer na memória, use a [API WebSocket](protocolo.md).
 
 | Servidor | Porta padrão | Configuração |
 |---|---|---|
 | WebSocket + saúde | 8765 | `deployment.server.*` |
-| Dashboard | 8766 | `dashboard.*` ([Configuração](configuracao.html#trace)) |
+| Dashboard | 8766 | `dashboard.*` ([Configuração](configuracao.md#trace)) |
 
 ## Saúde do cérebro {#health}
 
@@ -88,4 +88,12 @@ curl -s -H "Authorization: Bearer $(cat .juniper-dev/state/token)" http://127.0.
 | `/api/search` | `q`, `type` (repetível), `limit` (1 a 20, padrão 8) | Pesquisa em memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado. |
 | `/api/prompt` | `message`, `previous?` | O simulador: os blocos que a Memória V2 acrescentaria ao prompt para aquela mensagem, com a estimativa de tokens. Não grava nada. |
 
-As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `notes`, `dreams` e `journal` dependem da [Memória V2](memoria-v2.html); `memories` depende da [memória de longo prazo](memoria-longo-prazo.html).
+As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `notes`, `dreams` e `journal` dependem da [Memória V2](memoria-v2.md); `memories` depende da [memória de longo prazo](memoria-longo-prazo.md).
+
+## Para saber mais {#para-saber-mais}
+
+- [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+- [API WebSocket](protocolo.md) (Referência): Referência completa do protocolo entre os clientes e o cérebro: conexão, envelope, cada mensagem com os seus campos, erros, códigos de fechamento e reconexão.
+- [Integrar com o cérebro](integrar-cliente.md) (Produção): Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.

@@ -67,7 +67,7 @@ GROQ_API_KEY=
 <ol><li><strong>Só <code>.env</code>.</strong> Rejeitada: listas complexas (como allowlist de shell) ficam horríveis como strings separadas por vírgula. YAML é mais expressivo.</li><li><strong>Só <code>config.yaml</code> (segredos em campos).</strong> Rejeitada: risco de commitar segredos por acidente.</li><li><strong>TOML.</strong> Rejeitada: YAML é mais legível para estruturas aninhadas e já é familiar para o usuário.</li><li><strong>Configuração em código Python.</strong> Rejeitada: viola separação código/config, exige rebuild para trocar valor.</li></ol>
 <hr>
 <h2 id="referencias">Referências</h2>
-<ul><li>ADR-001 — Providers configurados via <code>llm.priority</code></li><li>ADR-006 — Política de segurança usa <code>tools.security.*</code></li><li><code>brain/config.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-003, T-010</li></ul>
+<ul><li><a href="adr-001.html">ADR-001</a> — Providers configurados via <code>llm.priority</code></li><li><a href="adr-006.html">ADR-006</a> — Política de segurança usa <code>tools.security.*</code></li><li><code>brain/config.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-003, T-010</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

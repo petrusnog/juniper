@@ -16,7 +16,7 @@
 <h1>Agenda Google <span class="tag g">pronta</span></h1>
 <p class="lead">Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.</p>
 <h2 id="visao-geral">Visão geral</h2>
-<p>A primeira tool real da Juniper: ler, marcar, alterar e desmarcar os seus compromissos no Google Calendar, inclusive na sua agenda principal. Código em <code>brain/tools/google_calendar.py</code>. Decisões de fundo nos ADR-008 (conta de serviço, agenda "Juniper", relógio) e ADR-010 (gerenciamento completo) em <a href="adr.html">Decisões</a>.</p>
+<p>A primeira tool real da Juniper: ler, marcar, alterar e desmarcar os seus compromissos no Google Calendar, inclusive na sua agenda principal. Código em <code>brain/tools/google_calendar.py</code>. Decisões de fundo nos <a href="adr-008.html">ADR-008</a> (conta de serviço, agenda "Juniper", relógio) e <a href="adr-010.html">ADR-010</a> (gerenciamento completo) em <a href="adr.html">Decisões</a>.</p>
 <p>A Juniper fala com o Google por uma <strong>conta de serviço</strong>: sem tela de consentimento, sem token que expira, sem navegador. O acesso é dado <strong>compartilhando as agendas</strong> com o e-mail da conta. Para criar a conta e a chave, veja <a href="install.html#gcp">Instalação</a>.</p>
 <h2 id="tools">As quatro tools</h2>
 <h3 id="list-events">list_events</h3>
@@ -49,6 +49,8 @@
 python scripts/try_calendar.py      # conversa de demonstração (mostra os tokens de cada chamada)
 pytest tests/test_google_calendar.py -v</code></pre>
 <p>Os testes usam um cliente falso e relógio fixo: listar, criar, conflitos (apagável e não apagável), datas inválidas e passadas, apagar, mapeamento de erros HTTP e a garantia de que a chave não vaza.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="produto-integracoes.html">Integrações</a> (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.</li><li><a href="tools.html">Tools</a> (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li><li><a href="integracoes-producao.html">Integrações Google Cloud e Groq</a> (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

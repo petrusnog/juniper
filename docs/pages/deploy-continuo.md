@@ -7,7 +7,7 @@ status: guia
 tags: deploy contínuo ci cd github actions ghcr imagem workflow deploy.yml deploy.sh rollback healthcheck segredos oauth tailscale ssh known_hosts fork
 ---
 
-Com o servidor de pé ([Deploy do cérebro numa VPS](deploy-vps.html)), o deploy contínuo leva cada merge em `master` para a produção sem passo manual ([ADR-013](adr-013.html), seção 5). É opcional: sem ele, atualize à mão ([Operação](operacao.html#atualizar)).
+Com o servidor de pé ([Deploy do cérebro numa VPS](deploy-vps.md)), o deploy contínuo leva cada merge em `master` para a produção sem passo manual ([ADR-013](../decisions/ADR-013.md), seção 5). É opcional: sem ele, atualize à mão ([Operação](operacao.md#atualizar)).
 
 ## Como funciona {#fluxo}
 
@@ -43,7 +43,7 @@ Com o Tailscale, o runner entra como um nó **efêmero** a cada execução, por 
 
 1. Painel do Tailscale → *Settings → Trust credentials* (em versões antigas, *OAuth clients*) → nova credencial OAuth.
 2. Escopos: **Keys → Auth Keys → Write** e **Devices → Core → Write**. Nenhum outro.
-3. Etiqueta: `tag:ci` (a política do [passo 5.2](deploy-vps.html#rede) já permite que ela alcance o SSH da VPS).
+3. Etiqueta: `tag:ci` (a política do [passo 5.2](deploy-vps.md#rede) já permite que ela alcance o SSH da VPS).
 4. Crie os segredos `TS_OAUTH_CLIENT_ID` e `TS_OAUTH_SECRET`.
 
 Com outra VPN, troque o passo *Entra na tailnet* do `deploy.yml` pelo equivalente da sua VPN; o resto não muda.
@@ -108,3 +108,11 @@ Gere um novo cliente OAuth (ou uma nova chave SSH), atualize o segredo no GitHub
 | `unauthorized` no `docker compose pull` | O pacote do GHCR é privado (passo 4), ou o nome da imagem aponta para outro dono ([fork](#fork)). |
 | `já existe um deploy em andamento` | Outro deploy (do CI ou manual) está rodando; espere. |
 | O deploy voltou para a versão anterior | O cérebro novo não ficou saudável em 90 s: `docker compose -f docker-compose.prod.yml logs brain`. |
+
+## Para saber mais {#para-saber-mais}
+
+- [Como contribuir](contribuindo.md) (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.
+- [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Deploy do cérebro numa VPS](deploy-vps.md) (Produção): Tutorial completo para levar o cérebro a uma VPS de qualquer provedor: acesso e SSH, sistema, Docker, rede privada, firewall, segredos, subida, verificação e varredura de portas.
+- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

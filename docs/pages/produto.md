@@ -7,7 +7,7 @@ status: guia
 tags: produto visão geral leigo como funciona cérebro corpos mensagem agente conversa analogia
 ---
 
-Esta trilha explica a Juniper para quem não programa: o que ela é, como pensa, como age, como lembra e como protege você. Os termos técnicos aparecem só quando ajudam, e o [Glossário](glossario.html) reúne todos.
+Esta trilha explica a Juniper para quem não programa: o que ela é, como pensa, como age, como lembra e como protege você. Os termos técnicos aparecem só quando ajudam, e o [Glossário](glossario.md) reúne todos.
 
 ## Um cérebro, vários corpos {#cerebro-corpos}
 
@@ -17,11 +17,11 @@ Pense num restaurante. O **balcão** recebe o pedido e entrega o prato; a **cozi
 |---|---|---|
 | O balcão | Os **clientes** | Onde você conversa: o terminal do computador, o Telegram, o app no celular. Só levam a mensagem e mostram a resposta. |
 | O chef | O **cérebro** | O programa que entende o pedido, decide o que fazer e escreve a resposta. Roda num servidor, sempre ligado. |
-| O conhecimento do chef | O **modelo de linguagem** | A inteligência que lê e escreve texto ([Modelos de linguagem](produto-llm.html)). |
-| Os equipamentos | As **ferramentas** | Capacidades concretas: mexer na agenda, tocar uma música, buscar no histórico de um projeto ([Ferramentas e permissões](produto-ferramentas.html)). |
-| O caderno | A **memória** | O que ela sabe sobre você e sobre as conversas anteriores ([Memória](produto-memoria.html)). |
+| O conhecimento do chef | O **modelo de linguagem** | A inteligência que lê e escreve texto ([Modelos de linguagem](produto-llm.md)). |
+| Os equipamentos | As **ferramentas** | Capacidades concretas: mexer na agenda, tocar uma música, buscar no histórico de um projeto ([Ferramentas e permissões](produto-ferramentas.md)). |
+| O caderno | A **memória** | O que ela sabe sobre você e sobre as conversas anteriores ([Memória](produto-memoria.md)). |
 
-Como existe **um cérebro só**, a Juniper é a mesma em qualquer lugar: você pode começar uma conversa no terminal e continuar no celular, e ela lembra das mesmas coisas. O balcão nunca cozinha: nenhum app guarda as suas conversas ou toma decisões, tudo isso fica no cérebro ([ADR-007](adr-007.html)).
+Como existe **um cérebro só**, a Juniper é a mesma em qualquer lugar: você pode começar uma conversa no terminal e continuar no celular, e ela lembra das mesmas coisas. O balcão nunca cozinha: nenhum app guarda as suas conversas ou toma decisões, tudo isso fica no cérebro ([ADR-007](../decisions/ADR-007.md)).
 
 ## O caminho de uma mensagem {#caminho}
 
@@ -39,21 +39,21 @@ Se o pedido não precisa de ferramenta ("como foi o seu dia?"), os passos 4 a 6 
 
 ## Ela age, mas pede licença {#licenca}
 
-A Juniper divide o que pode fazer em níveis de risco. Consultar algo (ler a agenda, buscar uma música) acontece direto. Alterar algo (criar um evento, criar uma playlist) só acontece depois de um "sim" seu. Destruir algo (apagar um evento) também pede, com o aviso de que não dá para desfazer. E algumas coisas são proibidas e nunca acontecem. A permissão é dada **na própria conversa**, sem botões: um "sim" claro executa, e qualquer dúvida ("sim, mas só o primeiro") cancela. Os detalhes estão em [Ferramentas e permissões](produto-ferramentas.html).
+A Juniper divide o que pode fazer em níveis de risco. Consultar algo (ler a agenda, buscar uma música) acontece direto. Alterar algo (criar um evento, criar uma playlist) só acontece depois de um "sim" seu. Destruir algo (apagar um evento) também pede, com o aviso de que não dá para desfazer. E algumas coisas são proibidas e nunca acontecem. A permissão é dada **na própria conversa**, sem botões: um "sim" claro executa, e qualquer dúvida ("sim, mas só o primeiro") cancela. Os detalhes estão em [Ferramentas e permissões](produto-ferramentas.md).
 
 ## Personalidade {#personalidade}
 
-A Juniper tem um jeito próprio: fala português do dia a dia, em frases corridas (nunca em listas ou tabelas), com humor leve e curiosidade pela pessoa. Ela é honesta sobre o que é: uma IA, e diz isso quando perguntam com sinceridade. Opcionalmente, a personalidade dela pode **evoluir** com o tempo, formando opiniões, sentimentos e interesses próprios, sempre dentro de regras fixas que não mudam ([Personalidade, opiniões e sentimentos](produto-personalidade.html)).
+A Juniper tem um jeito próprio: fala português do dia a dia, em frases corridas (nunca em listas ou tabelas), com humor leve e curiosidade pela pessoa. Ela é honesta sobre o que é: uma IA, e diz isso quando perguntam com sinceridade. Opcionalmente, a personalidade dela pode **evoluir** com o tempo, formando opiniões, sentimentos e interesses próprios, sempre dentro de regras fixas que não mudam ([Personalidade, opiniões e sentimentos](produto-personalidade.md)).
 
 ## Ela sabe explicar como funciona {#autoconhecimento}
 
-Pergunte "como funciona a sua memória?" ou "por que você pede permissão antes de apagar?" e a Juniper responde com base nesta própria documentação. Ela reconhece a pergunta por palavras-chave e busca os trechos certos no próprio servidor, sem gastar uma chamada extra ao modelo, e nunca revela senhas ou chaves: a documentação só diz onde elas ficam ([Metadocumentação](metadocs.html), [ADR-025](adr-025.html)).
+Pergunte "como funciona a sua memória?" ou "por que você pede permissão antes de apagar?" e a Juniper responde com base nesta própria documentação. Ela reconhece a pergunta por palavras-chave e busca os trechos certos no próprio servidor, sem gastar uma chamada extra ao modelo, e nunca revela senhas ou chaves: a documentação só diz onde elas ficam ([Metadocumentação](metadocs.md), [ADR-025](../decisions/ADR-025.md)).
 
 ## Onde ela roda {#onde-roda}
 
-O cérebro roda num **servidor** (uma VPS, um computador alugado na nuvem, ou qualquer máquina sempre ligada). Esse servidor **não fica exposto na internet**: os seus dispositivos chegam até ele por uma rede privada, como uma linha direta que só eles conhecem ([ADR-013](adr-013.html)). Para uso individual, a Juniper também pode rodar inteira dentro do terminal de um computador, sem servidor.
+O cérebro roda num **servidor** (uma VPS, um computador alugado na nuvem, ou qualquer máquina sempre ligada). Esse servidor **não fica exposto na internet**: os seus dispositivos chegam até ele por uma rede privada, como uma linha direta que só eles conhecem ([ADR-013](../decisions/ADR-013.md)). Para uso individual, a Juniper também pode rodar inteira dentro do terminal de um computador, sem servidor.
 
 ## Para saber mais {#mais}
 
-- O desenho técnico completo: [Visão geral da arquitetura](architecture.html).
-- O porquê de cada escolha: [Decisões (ADRs)](adr.html), em especial o [ADR-007](adr-007.html) (cérebro e corpos) e o [ADR-010](adr-010.html) (confirmação na conversa).
+- O desenho técnico completo: [Visão geral da arquitetura](architecture.md).
+- O porquê de cada escolha: [Decisões (ADRs)](adr.html), em especial o [ADR-007](../decisions/ADR-007.md) (cérebro e corpos) e o [ADR-010](../decisions/ADR-010.md) (confirmação na conversa).

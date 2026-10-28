@@ -9,7 +9,7 @@ tags: instalar install.sh venv python uv gcp conta de serviço docker mongodb de
 
 ## Instalação rápida {#rapida}
 
-Além do [ambiente Docker](primeiros-passos.html), a Juniper pode rodar inteira dentro do processo do terminal: o **modo local** (`deployment.mode: local`), em que o cérebro, a memória e as ferramentas rodam no próprio comando `juniper`, sem servidor. É o jeito mais rápido de usar a Juniper sozinho numa máquina, e é o que o instalador monta. Os clientes remotos (Telegram, app) precisam do modo servidor e ficam de fora.
+Além do [ambiente Docker](primeiros-passos.md), a Juniper pode rodar inteira dentro do processo do terminal: o **modo local** (`deployment.mode: local`), em que o cérebro, a memória e as ferramentas rodam no próprio comando `juniper`, sem servidor. É o jeito mais rápido de usar a Juniper sozinho numa máquina, e é o que o instalador monta. Os clientes remotos (Telegram, app) precisam do modo servidor e ficam de fora.
 
 O instalador monta a Juniper e as dependências a partir de uma máquina limpa. Não precisa ter Python instalado e nada é instalado no sistema: tudo fica dentro de `~/.juniper`, num ambiente virtual. Você precisa só de `git`, `bash` e `curl` (ou `wget`).
 
@@ -24,7 +24,7 @@ Durante a instalação ela pede só o que não tem como descobrir sozinha:
 
 1. **As chaves dos LLMs:** DeepInfra, o cérebro principal (deepinfra.com/dash/api_keys), e Groq, o plano B grátis (console.groq.com/keys). Cole e pronto; Enter pula, e você pode colocar depois em `~/.juniper/.env`.
 2. **O caminho da chave da conta de serviço do GCP** (arquivo `.json` com qualquer nome). Ela cria `~/.juniper/certs/`, valida a chave e a salva como `certs/gcp-key.json`. Ainda não tem a chave? Siga a [conta de serviço no GCP](#gcp) e rode o instalador depois (ou use `--gcp-key`).
-3. **Onde guardar a memória:** em arquivos (o padrão: basta Enter, não instala nada) ou no MongoDB, que precisa do **Docker** instalado e rodando. Se escolher o MongoDB, ela faz o resto ([detalhes](memoria-sessao.html#mongodb)). Sem Docker, escolha arquivos.
+3. **Onde guardar a memória:** em arquivos (o padrão: basta Enter, não instala nada) ou no MongoDB, que precisa do **Docker** instalado e rodando. Se escolher o MongoDB, ela faz o resto ([detalhes](memoria-sessao.md#mongodb)). Sem Docker, escolha arquivos.
 
 Para ler a documentação a qualquer momento: `juniper docs` e acesse `http://localhost:47831`.
 
@@ -81,7 +81,7 @@ bash ~/.juniper/scripts/install.sh --dev
 
 ## Ambiente de desenvolvimento {#dev}
 
-> **Docker:** para subir o cérebro e o MongoDB em contêineres, com o código montado por volume e os clientes remotos, siga [Primeiros passos](primeiros-passos.html).
+> **Docker:** para subir o cérebro e o MongoDB em contêineres, com o código montado por volume e os clientes remotos, siga [Primeiros passos](primeiros-passos.md).
 
 ```bash
 bash ~/.juniper/scripts/install.sh --dev
@@ -91,7 +91,7 @@ ruff check brain/ tests/    # lint
 mypy brain/                 # tipos (strict)
 ```
 
-Uma tarefa só está pronta quando os três passam ([Definition of Done](contribuindo.html#dod)).
+Uma tarefa só está pronta quando os três passam ([Definition of Done](contribuindo.md#dod)).
 
 Sem o instalador (manual):
 
@@ -115,13 +115,13 @@ cp ~/.juniper/.env.example ~/.juniper/.env      # preencha as chaves
 | `~/.local/bin/juniper` | Atalho para o executável. |
 | `~/.zshrc` | Linha que carrega os comandos do shell (`search`, `deploy`...). Troca a linha antiga pela nova. |
 | `~/.zshrc`, `~/.bashrc` | Inclui `~/.local/bin` no PATH, se ainda não estiver. |
-| `~/.juniper/logs/` | Log da instalação e os [logs de uso](observabilidade.html). |
+| `~/.juniper/logs/` | Log da instalação e os [logs de uso](observabilidade.md). |
 
 Antes de alterar um arquivo de shell, o instalador guarda uma cópia ao lado dele (`.zshrc.juniper.bak`). Para desfazer tudo: `bash ~/.juniper/scripts/uninstall.sh`.
 
 ## Conta de serviço no GCP {#gcp}
 
-A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda ([Agenda Google](google-calendar.html)); a mesma configuração vale para o servidor ([Integrações Google Cloud e Groq](integracoes-producao.html#calendar)). Passo a passo no console:
+A Juniper usa uma conta de serviço do Google Cloud para falar com a agenda ([Agenda Google](google-calendar.md)); a mesma configuração vale para o servidor ([Integrações Google Cloud e Groq](integracoes-producao.md#calendar)). Passo a passo no console:
 
 1. **Projeto.** Em console.cloud.google.com, abra o seletor de projetos (topo da página) e escolha um projeto ou crie um novo. Confirme que ele está ativo.
 2. **Ativar a API.** Menu ☰ → APIs e serviços → Biblioteca, procure **Google Calendar API** e clique em Ativar.
@@ -140,7 +140,7 @@ python scripts/check_google.py
 
 - **Ollama** (reserva local, o último da fila): instale em ollama.com e rode `ollama pull llama3.1`. A Juniper usa quando a DeepInfra e a Groq falham.
 - **Agenda do Google:** precisa de conta de serviço e agenda própria ([acima](#gcp)); valide com `python scripts/check_google.py`.
-- **Memória no MongoDB:** o instalador confere o Docker (com o compose e rodando; se não estiver, diz o que falta e mantém os arquivos), cria o usuário e a senha e grava no `.env`, sobe o banco (`docker compose up -d --wait`; a primeira vez baixa a imagem), testa a conexão com o mesmo código que a Juniper usa e só então grava `memory.session.store: mongo`. Mudou de ideia? `juniper install --memory=mongo` (ou `--memory=file`). Rodar de novo com o MongoDB já escolhido só garante que o banco está de pé e **nunca troca a senha**. As conversas que já estão em arquivos não migram. Detalhes em [Memória de sessão](memoria-sessao.html#mongodb).
+- **Memória no MongoDB:** o instalador confere o Docker (com o compose e rodando; se não estiver, diz o que falta e mantém os arquivos), cria o usuário e a senha e grava no `.env`, sobe o banco (`docker compose up -d --wait`; a primeira vez baixa a imagem), testa a conexão com o mesmo código que a Juniper usa e só então grava `memory.session.store: mongo`. Mudou de ideia? `juniper install --memory=mongo` (ou `--memory=file`). Rodar de novo com o MongoDB já escolhido só garante que o banco está de pé e **nunca troca a senha**. As conversas que já estão em arquivos não migram. Detalhes em [Memória de sessão](memoria-sessao.md#mongodb).
 
 ## Se algo der errado {#problemas}
 
@@ -163,3 +163,10 @@ juniper docs
 ```
 
 Serve este livro de bolso localmente em `http://localhost:47831` (a Juniper não abre o navegador sozinha). Ctrl+C encerra. Se a porta estiver ocupada, usa a próxima livre (47832, 47833...) e mostra o endereço certo no terminal.
+
+## Para saber mais {#para-saber-mais}
+
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
+- [CLI](cli.md) (Documentação Técnica): O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.

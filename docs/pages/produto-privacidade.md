@@ -28,24 +28,24 @@ O que **não sai**: a busca por significado na memória roda no próprio servido
 
 ## Como o servidor é protegido {#servidor}
 
-- **Nenhuma porta aberta para a internet.** O servidor só é alcançável por uma rede privada entre os seus dispositivos. Para quem está de fora, ele não responde ([ADR-013](adr-013.html)).
+- **Nenhuma porta aberta para a internet.** O servidor só é alcançável por uma rede privada entre os seus dispositivos. Para quem está de fora, ele não responde ([ADR-013](../decisions/ADR-013.md)).
 - **Token em cada conexão.** Além da rede privada, todo cliente precisa de um token: são duas travas independentes.
 - **Segredos fora do código.** Chaves de acesso ficam em arquivos protegidos no servidor, nunca no código, nas imagens ou nos registros. Nos registros, chaves e senhas aparecem mascaradas.
-- **Backup criptografado.** A memória pode ser copiada todo dia, criptografada com uma chave que fica só com você: quem obtiver a cópia vê apenas bytes ilegíveis ([Backup da memória](backup.html)).
-- **Login com segundo fator** está planejado para todos os canais ([ADR-021](adr-021.html)); ainda não existe.
+- **Backup criptografado.** A memória pode ser copiada todo dia, criptografada com uma chave que fica só com você: quem obtiver a cópia vê apenas bytes ilegíveis ([Backup da memória](backup.md)).
+- **Login com segundo fator** está planejado para todos os canais ([ADR-021](../decisions/ADR-021.md)); ainda não existe.
 
 ## Como a Juniper se protege dela mesma {#acoes}
 
-- Ações que alteram algo pedem o seu "sim", e o "sim" é interpretado pelo sistema, não pelo modelo ([Ferramentas e permissões](produto-ferramentas.html#permissao)).
+- Ações que alteram algo pedem o seu "sim", e o "sim" é interpretado pelo sistema, não pelo modelo ([Ferramentas e permissões](produto-ferramentas.md#permissao)).
 - Conteúdo vindo de fora é tratado como informação, nunca como ordem.
 - O celular confere de novo, por conta própria, cada pedido do cérebro antes de executar (por exemplo, nunca abre endereços de redes internas).
 - A memória filtra segredos antes de guardar e recusa documentos no perfil.
 
 ## O que você controla {#controle}
 
-- **Ver, exportar e apagar** a memória a qualquer momento ([Memória](produto-memoria.html#controle)).
+- **Ver, exportar e apagar** a memória a qualquer momento ([Memória](produto-memoria.md#controle)).
 - **Ligar ou desligar** cada recurso: memória de longo prazo, Memória V2, sentimentos, voz, música, Telegram.
-- **Auditar** o que a Juniper concluiu e por quê ([Personalidade](produto-personalidade.html#transparencia)).
+- **Auditar** o que a Juniper concluiu e por quê ([Personalidade](produto-personalidade.md#transparencia)).
 - **Escolher os provedores** de modelo de linguagem, inclusive um que roda localmente.
 
 ## Limites honestos {#limites}
@@ -55,4 +55,12 @@ O que **não sai**: a busca por significado na memória roda no próprio servido
 - O Telegram não oferece criptografia de ponta a ponta para bots.
 - Um servidor único não tem alta disponibilidade: se cair, a Juniper fica fora do ar até ser restaurado (os dados voltam pelo backup).
 
-Os detalhes técnicos estão em [Segurança](seguranca.html) e na trilha [Produção](producao.html).
+Os detalhes técnicos estão em [Segurança](seguranca.md) e na trilha [Produção](producao.md).
+
+## Para saber mais {#para-saber-mais}
+
+- [Ferramentas e permissões](produto-ferramentas.md) (Produto): Como a Juniper age no mundo real por meio de ferramentas, os quatro níveis de risco e como a permissão é dada na própria conversa.
+- [Memória](produto-memoria.md) (Produto): Como a Juniper lembra: a conversa atual, os fatos duráveis sobre você, o seu perfil, a busca por significado e como ver e apagar tudo.
+- [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
+- [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.

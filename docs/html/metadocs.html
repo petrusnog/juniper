@@ -53,6 +53,8 @@ Não há prompt [y/N]. Quando uma tool pede aprovação, a Juniper pergunta em p
 <ul><li>A busca é por palavras: uma pergunta com vocabulário que a documentação não usa pode trazer trechos fracos. Os sinônimos cobrem os casos mais comuns; a tabela fica em <code>brain/metadocs/index.py</code>.</li><li>O detector é por regras e em português.</li><li>A resposta é tão atual quanto a documentação: manter <code>docs/pages</code> em dia é o que mantém a Juniper especialista em si mesma.</li></ul>
 <h2 id="testes">Testes</h2>
 <pre><code class="lang-bash">pytest tests/test_metadocs.py -v</code></pre>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="contribuindo.html">Como contribuir</a> (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.</li><li><a href="glossario.html">Glossário</a> (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.</li><li><a href="agente.html">Agente</a> (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</li><li><a href="tools.html">Tools</a> (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

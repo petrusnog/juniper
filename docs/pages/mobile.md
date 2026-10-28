@@ -8,16 +8,16 @@ status: pronta
 tags: mobile android react native app celular chat texto voz keystore token executor open_url autoplay kotlin foreground service metro protocolo
 ---
 
-> **Nota:** esta página detalha o [ADR-022](adr-022.html), que substituiu o cliente desktop em Electron ([ADR-015](adr-015.html)). Código em `mobile/`. Para montar o ambiente, veja [Ambiente mobile](mobile-dev.html).
+> **Nota:** esta página detalha o [ADR-022](../decisions/ADR-022.md), que substituiu o cliente desktop em Electron ([ADR-015](../decisions/ADR-015.md)). Código em `mobile/`. Para montar o ambiente, veja [Ambiente mobile](mobile-dev.md).
 
 ## Visão geral {#visao-geral}
 
-O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura entrada e mostra saída, sem lógica de agente e sem acesso ao MongoDB. Ele fala com o cérebro pelo [WebSocket](protocolo.html) e, além de cliente, é o **executor** do celular: cumpre `open_url` ([Executor](executor.html)).
+O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura entrada e mostra saída, sem lógica de agente e sem acesso ao MongoDB. Ele fala com o cérebro pelo [WebSocket](protocolo.md) e, além de cliente, é o **executor** do celular: cumpre `open_url` ([Executor](executor.md)).
 
 | Aba | O que faz |
 |---|---|
-| **Texto** | Lista de conversas, retomar, nova conversa, resposta em *streaming*, cancelar. O "sim" de uma confirmação é uma mensagem comum ([Agente](agente.html#confirmacao)). |
-| **Voz** | Uma conversa contínua: o microfone fica aberto, a Juniper entende, responde e fala, com legenda e interrupção ([Voz por áudio](voz-audio.html)). |
+| **Texto** | Lista de conversas, retomar, nova conversa, resposta em *streaming*, cancelar. O "sim" de uma confirmação é uma mensagem comum ([Agente](agente.md#confirmacao)). |
+| **Voz** | Uma conversa contínua: o microfone fica aberto, a Juniper entende, responde e fala, com legenda e interrupção ([Voz por áudio](voz-audio.md)). |
 
 ## Decisões {#decisoes}
 
@@ -27,7 +27,7 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 - **Executor:** o app registra `open_url` e **revalida a política de URL** com os mesmos casos de teste do cérebro.
 - **Voz em segundo plano** por um serviço em primeiro plano, com notificação.
 - **Aparência:** a paleta clara e escura desta documentação (`src/theme/tokens.ts`), seguindo o tema do sistema.
-- `android:usesCleartextTraffic` é `true` porque o cérebro fala `ws://`: a cifra vem da rede privada que liga o celular ao servidor ([ADR-013](adr-013.html)).
+- `android:usesCleartextTraffic` é `true` porque o cérebro fala `ws://`: a cifra vem da rede privada que liga o celular ao servidor ([ADR-013](../decisions/ADR-013.md)).
 
 ## Conexão {#conexao}
 
@@ -45,7 +45,7 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 
 `src/chat/` e `src/ui/ChatScreen.tsx`:
 
-- **Estado como reducer puro** (`state.ts`): espelha o que o cérebro mandou (mensagens, o turno em andamento, a lista de conversas). O app **não guarda estado de confirmação** ([ADR-010](adr-010.html)).
+- **Estado como reducer puro** (`state.ts`): espelha o que o cérebro mandou (mensagens, o turno em andamento, a lista de conversas). O app **não guarda estado de confirmação** ([ADR-010](../decisions/ADR-010.md)).
 - **Controlador** (`ChatController.ts`): `send` recusa vazio, recusa enquanto ela responde e, sem conexão, não envia nem enfileira; `cancel` manda `chat.cancel`; nova conversa, retomar, listar. Ao conectar, retoma a conversa aberta (ou a última) e pede `session.resume` para trazer o histórico.
 - **Streaming:** cada `chat.token` cresce a bolha da resposta; uma resposta cancelada sem texto some e uma com texto fica marcada «(interrompida)». Erro tipado aparece na conversa; `session.detached` avisa que outro aparelho assumiu.
 - **Tela:** mensagens, campo de texto, botão «Enviar» que vira «Parar» enquanto ela responde, «Conversas» e a linha de estado da conexão sempre no topo.
@@ -65,8 +65,8 @@ O app é um **cliente fino** ([Arquitetura](architecture.html#regras)): captura 
 `src/voice/`, `src/ui/VoiceScreen.tsx` e os módulos Kotlin de áudio:
 
 - **`VoiceController`**: abre a sessão (`voice.start` com 16 kHz mono, a rota de áudio e se o aparelho sabe transcrever e falar), manda o microfone em pedaços de 100 ms (sem enfileirar offline), toca o áudio que volta, mostra o estado (`listening`, `thinking`, `speaking`) e as legendas. Não interpreta o que foi dito: «tchau, Juniper» e «silêncio» são reconhecidos **pelo cérebro**.
-- **Interrupção:** `voice.state` com `listening` **e `turn_id`** significa «esse turno foi cortado»: o app descarta na hora o áudio daquele turno ([protocolo](protocolo.html#voz)). O botão «Parar de falar» manda `voice.interrupt`.
-- **Viva-voz e fone:** sem fone, a voz sai pelo alto-falante e o cérebro ignora o microfone enquanto ela fala ([Voz por áudio](voz-audio.html#viva-voz)). O botão **«Segurar para falar»** só abre o microfone enquanto pressionado, indicado com música tocando no aparelho.
+- **Interrupção:** `voice.state` com `listening` **e `turn_id`** significa «esse turno foi cortado»: o app descarta na hora o áudio daquele turno ([protocolo](protocolo.md#voz)). O botão «Parar de falar» manda `voice.interrupt`.
+- **Viva-voz e fone:** sem fone, a voz sai pelo alto-falante e o cérebro ignora o microfone enquanto ela fala ([Voz por áudio](voz-audio.md#viva-voz)). O botão **«Segurar para falar»** só abre o microfone enquanto pressionado, indicado com música tocando no aparelho.
 - **Encerrar:** botão da tela, botão **Encerrar** da notificação, comando falado ou silêncio (o cérebro manda `voice.end`). A queda da conexão também encerra, com aviso.
 - **Fallbacks:** `voice.fallback` de STT para `local` liga o reconhecimento de fala do Android (`JuniperStt`, pt-BR) e o app passa a mandar `voice.text`; quando volta para `cloud`, o microfone volta ao cérebro. `voice.say` é falado pelo `TextToSpeech` do Android. Com o STT local, o cérebro não ouve áudio e não detecta interrupção por voz (o botão continua valendo).
 - **Kotlin:** `JuniperAudioModule` captura com a fonte `VOICE_COMMUNICATION` (cancelamento de eco e supressão de ruído da plataforma) e toca com `AudioTrack`; `VoiceService` é o serviço em primeiro plano do tipo `microphone` («Juniper está ouvindo»), que mantém a conversa com a tela apagada; `JuniperTtsModule` é a voz do aparelho. Permissões: microfone, notificações (Android 13+) e serviço em primeiro plano.
@@ -85,11 +85,23 @@ Os testes Jest provam a lógica (conexão, conversas, política de URL, voz com 
 
 - O cancelamento de eco depende do aparelho; **fone é recomendado** para interromper falando.
 - Com o app em segundo plano e sem «Exibir sobre outros apps», o Android pode bloquear a abertura da música.
-- O token é colado à mão (sem QR code); o [login com MFA](login.html) é uma proposta.
-- Se o `TextToSpeech` do Android em pt-BR for ruim, o [ADR-023](adr-023.html) prevê trocar por um modelo local.
+- O token é colado à mão (sem QR code); o [login com MFA](login.md) é uma proposta.
+- Se o `TextToSpeech` do Android em pt-BR for ruim, o [ADR-023](../decisions/ADR-023.md) prevê trocar por um modelo local.
 
 ## Testes {#testes}
 
 ```bash
 cd mobile && npm test && npm run typecheck && npx eslint .
 ```
+
+## Para saber mais {#para-saber-mais}
+
+- [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
+- [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
+- [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Voz no terminal](voz.md) (Documentação Técnica): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
+- [Voz por áudio](voz-audio.md) (Documentação Técnica): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.
+- [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
+- [Música](musica.md) (Documentação Técnica): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
+- [Clientes em produção](clientes-producao.md) (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.

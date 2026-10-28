@@ -41,7 +41,7 @@
   }
 }</code></pre>
 <h3 id="regras-de-declaracao">Regras de declaração</h3>
-<ol><li>Cada tool é uma classe Python que herda de <code>brain.tools.base.Tool</code>.</li><li>Metadados obrigatórios na classe:<ul><li><code>name: str</code> — identificador único, snake_case</li><li><code>description: str</code> — descrição em PT-BR (o LLM usa isso para decidir)</li><li><code>parameters: dict</code> — JSON Schema dos parâmetros</li><li><code>tier: Tier</code> — nível de segurança (ver ADR-006)</li></ul></li><li>Método <code>run(**kwargs) -&gt; ToolResult</code> — implementação real.</li><li><strong>Descrição importa.</strong> O LLM decide com base na <code>description</code>. Descrições vagas resultam em uso errado. Cada tool deve descrever o que faz <em>e</em> quando usar.</li></ol>
+<ol><li>Cada tool é uma classe Python que herda de <code>brain.tools.base.Tool</code>.</li><li>Metadados obrigatórios na classe:<ul><li><code>name: str</code> — identificador único, snake_case</li><li><code>description: str</code> — descrição em PT-BR (o LLM usa isso para decidir)</li><li><code>parameters: dict</code> — JSON Schema dos parâmetros</li><li><code>tier: Tier</code> — nível de segurança (ver <a href="adr-006.html">ADR-006</a>)</li></ul></li><li>Método <code>run(**kwargs) -&gt; ToolResult</code> — implementação real.</li><li><strong>Descrição importa.</strong> O LLM decide com base na <code>description</code>. Descrições vagas resultam em uso errado. Cada tool deve descrever o que faz <em>e</em> quando usar.</li></ol>
 <h3 id="geracao-automatica">Geração automática</h3>
 <p>O <code>brain.tools.registry</code> coleta todas as classes registradas (via decorator <code>@register_tool</code>) e gera a lista de schemas para passar ao LLM. Nenhuma tool precisa se registrar manualmente numa lista central.</p>
 <h3 id="toolresult">ToolResult</h3>
@@ -64,7 +64,7 @@ class ToolResult:
 <ol><li><strong>Formato próprio (ad-hoc).</strong> Rejeitada: reinventar a roda, perder compatibilidade com providers, obrigar tradução.</li><li><strong>Anthropic Tool Use format.</strong> Rejeitada: Groq e Ollama não suportam nativamente; obrigaria tradução para os providers principais.</li><li><strong>DSL declarativa em YAML para definir tools.</strong> Rejeitada: as tools precisam de lógica Python real (subprocess, HTTP, etc.). YAML só descreveria metadados, adicionando camada sem benefício.</li><li><strong>Registrar tools manualmente numa lista.</strong> Rejeitada: propenso a erro humano, dificulta adicionar tools.</li></ol>
 <hr>
 <h2 id="referencias">Referências</h2>
-<ul><li>ADR-001 — Providers suportados</li><li>ADR-006 — Tier de segurança por tool</li><li><code>brain/tools/base.py</code>, <code>brain/tools/registry.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-002, T-020, T-021, T-030</li></ul>
+<ul><li><a href="adr-001.html">ADR-001</a> — Providers suportados</li><li>ADR-006 — Tier de segurança por tool</li><li><code>brain/tools/base.py</code>, <code>brain/tools/registry.py</code> — implementação</li><li><code>BACKLOG.md</code> — T-002, T-020, T-021, T-030</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

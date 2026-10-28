@@ -10,9 +10,9 @@ tags: juniper comando terminal chat repl provider resume memory tools docs insta
 
 ## Visão geral {#visao-geral}
 
-O CLI é o cliente de terminal da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Por padrão o cérebro roda dentro do mesmo processo (`deployment.mode: local`); no modo `server` o CLI fala com o brain remoto ([Modo server](#server), [Servidor WebSocket](servidor.html), [API WebSocket](protocolo.html)).
+O CLI é o cliente de terminal da Juniper: um cliente **fino** que lê o que você digita, mostra a resposta chegando token a token e deixa a confirmação de ações acontecer na conversa. Toda a lógica continua em `brain/core`. Arquivo: `brain/clients/cli.py` (Typer + Rich). Por padrão o cérebro roda dentro do mesmo processo (`deployment.mode: local`); no modo `server` o CLI fala com o brain remoto ([Modo server](#server), [Servidor WebSocket](servidor.md), [API WebSocket](protocolo.md)).
 
-Tudo que o terminal diz segue o padrão de [Voz no terminal](voz.html).
+Tudo que o terminal diz segue o padrão de [Voz no terminal](voz.md).
 
 ## Conversar {#conversar}
 
@@ -37,7 +37,7 @@ Qualquer coisa que não seja um comando conhecido é uma mensagem: `juniper oi` 
 | Opção | O que faz |
 |---|---|
 | `--provider`, `-p` `deepinfra`/`groq`/`ollama` | Força um provider, **sem failover** (útil para testar o Ollama sem a Groq responder no lugar). Um nome inválido é recusado antes de qualquer trabalho, listando os válidos. |
-| `--resume`, `-r` | Retoma a conversa mais recente ([Memória de sessão](memoria-sessao.html)). |
+| `--resume`, `-r` | Retoma a conversa mais recente ([Memória de sessão](memoria-sessao.md)). |
 
 ```bash
 juniper -p ollama "oi"
@@ -63,9 +63,9 @@ deployment:
     token_file: ~/.juniper/token   # o token que o servidor criou no primeiro boot
 ```
 
-O endereço é `ws://` (sem TLS): o token e a conversa só ficam protegidos dentro de uma rede privada cifrada (como o Tailscale ou o WireGuard; [Visão geral da produção](producao.html#rede)). Se `deployment.server.host` for um endereço público, o CLI avisa antes de conectar.
+O endereço é `ws://` (sem TLS): o token e a conversa só ficam protegidos dentro de uma rede privada cifrada (como o Tailscale ou o WireGuard; [Visão geral da produção](producao.md#rede)). Se `deployment.server.host` for um endereço público, o CLI avisa antes de conectar.
 
-No ambiente Docker de desenvolvimento ([Primeiros passos](primeiros-passos.html#terminal)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
+No ambiente Docker de desenvolvimento ([Primeiros passos](primeiros-passos.md#terminal)), o token está em `.juniper-dev/state/token`; sem mexer no `config.yaml`: `JUNIPER_DEPLOYMENT__MODE=server JUNIPER_DEPLOYMENT__AUTH__TOKEN_FILE=.juniper-dev/state/token juniper "oi"`.
 
 - **Ctrl+C** durante uma resposta **cancela o turno** (o chat continua); no prompt, sai.
 - **Queda de conexão:** o cliente reconecta sozinho (1, 2, 4, 8, 16 e depois 30 s, com variação; logo depois de um deploy, em até 2 s) e retoma a conversa. Se cair no meio de uma resposta, o turno termina no servidor e, ao reconectar, o CLI mostra a resposta que ficou salva. Sem servidor: "Juniper indisponível no momento".
@@ -79,11 +79,11 @@ No ambiente Docker de desenvolvimento ([Primeiros passos](primeiros-passos.html#
 | Peça | O que faz |
 |---|---|
 | `chat` | Comando do Typer: monta o router, o `Dispatcher(conversational=True)`, a memória e o `Agent`, e chama `converse`. |
-| `converse` | Um turno (mensagem única) ou um laço de turnos (REPL). Entrega cada turno ao [extrator de memória](memoria-longo-prazo.html#backgroundextractor) em segundo plano. |
+| `converse` | Um turno (mensagem única) ou um laço de turnos (REPL). Entrega cada turno ao [extrator de memória](memoria-longo-prazo.md#backgroundextractor) em segundo plano. |
 | `Printer` | Imprime cada token assim que chega, sem interpretar colchetes como markup do Rich (uma resposta com `[bold]` sai literal). |
 | `LineReader` | Lê o teclado numa thread, sem travar o event loop. |
 | `friendly_error` | Traduz falhas do LLM em instruções em PT-BR. |
-| Confirmações | Sem prompt: a Juniper pergunta em palavras e o seu "sim" é interpretado pelo sistema ([Agente](agente.html#confirmacao)). |
+| Confirmações | Sem prompt: a Juniper pergunta em palavras e o seu "sim" é interpretado pelo sistema ([Agente](agente.md#confirmacao)). |
 
 ## Erros em português {#erros}
 
@@ -101,17 +101,17 @@ Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provi
 | Comando | O que faz |
 |---|---|
 | `juniper version` | Mostra a versão. |
-| `juniper tools` | Lista as [tools](tools.html#disponiveis) registradas: nome, tier, locality e descrição. |
-| `juniper search <termos>` | Busca commits ([Comandos git](git.html)). |
-| `juniper deploy <feature> [opções]` | Cherry-pick de feature em develop e stage ([Comandos git](git.html)). |
-| `juniper install [--dev\|--check\|--clean\|--yes\|--memory=...]` | Instala ou repara a Juniper ([Instalação](install.html#opcoes)). |
+| `juniper tools` | Lista as [tools](tools.md#disponiveis) registradas: nome, tier, locality e descrição. |
+| `juniper search <termos>` | Busca commits ([Comandos git](git.md)). |
+| `juniper deploy <feature> [opções]` | Cherry-pick de feature em develop e stage ([Comandos git](git.md)). |
+| `juniper install [--dev\|--check\|--clean\|--yes\|--memory=...]` | Instala ou repara a Juniper ([Instalação](install.md#opcoes)). |
 | `juniper docs` | Serve este livro de bolso em `http://localhost:47831`. |
 | `juniper memory ...` | Memória de longo prazo (abaixo). |
-| `juniper music status` · `juniper music login` | Estado da configuração de música (sem revelar chaves) e login no YouTube para playlists ([Música](musica.html#login)). |
-| `juniper voice status` | Estado da voz: ligada ou não, gasto de caracteres do mês, credenciais presentes (sem revelar chaves) ([Voz por áudio](voz-audio.html#orcamento)). |
-| `juniper music taste [clear]` | O gosto musical anotado e como apagar tudo ([Música](musica.html#gosto)). |
-| `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Servidor WebSocket](servidor.html)). |
-| `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.html)). `--health` sai com 0 se o bot está vivo. |
+| `juniper music status` · `juniper music login` | Estado da configuração de música (sem revelar chaves) e login no YouTube para playlists ([Música](musica.md#login)). |
+| `juniper voice status` | Estado da voz: ligada ou não, gasto de caracteres do mês, credenciais presentes (sem revelar chaves) ([Voz por áudio](voz-audio.md#orcamento)). |
+| `juniper music taste [clear]` | O gosto musical anotado e como apagar tudo ([Música](musica.md#gosto)). |
+| `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Servidor WebSocket](servidor.md)). |
+| `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.md)). `--health` sai com 0 se o bot está vivo. |
 
 ### juniper memory {#memory kind=comando file=brain/clients/cli.py}
 
@@ -139,7 +139,7 @@ juniper memory dream [--dry-run]
 juniper memory prompt "<mensagem>" [--anterior "..."]   # o que a V2 acrescenta ao prompt
 ```
 
-A personalidade viva tem os seus: `juniper persona show` (traços, versão, deriva), `persona history` e `persona revert [--to N] [--yes]` (volta a uma versão anterior como uma versão nova). Os comandos `beliefs`, `concerns`, `affect`, `journal` e `dream` são da [Memória V2](memoria-v2.html): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
+A personalidade viva tem os seus: `juniper persona show` (traços, versão, deriva), `persona history` e `persona revert [--to N] [--yes]` (volta a uma versão anterior como uma versão nova). Os comandos `beliefs`, `concerns`, `affect`, `journal` e `dream` são da [Memória V2](memoria-v2.md): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
 
 | Comando | O que faz |
 |---|---|
@@ -148,7 +148,7 @@ A personalidade viva tem os seus: `juniper persona show` (traços, versão, deri
 | `forget` | Mostra o texto, pergunta "Pode apagar?" (padrão não) e apaga com as versões antigas. `--yes` pula a pergunta. |
 | `export` | JSON com `{"profile": ..., "memories": [...]}`; sem os vetores, a menos que `--vectors`. |
 | `profile` | Mostra, define (`set`) ou apaga (`forget`) o perfil. |
-| `reindex` | Refaz os vetores ([Memória de longo prazo](memoria-longo-prazo.html#reindex)). |
+| `reindex` | Refaz os vetores ([Memória de longo prazo](memoria-longo-prazo.md#reindex)). |
 
 ### juniper docs {#docs kind=comando file=brain/clients/cli.py}
 
@@ -172,3 +172,11 @@ pytest tests/test_cli.py -v
 ```
 
 Cobrem: versão, mensagem única com streaming, colchetes literais, REPL até `/sair` e até EOF, `--provider` inválido e válido, chave ausente (instrução do `.env`, saída 1), REPL sobrevivendo a erro de LLM, as dicas de `friendly_error`, o aviso de irreversível, o reaproveitamento da thread de leitura e um fluxo completo com confirmação negada. Para ver ao vivo, com a chave no `.env`: `juniper "marca um teste amanhã às 10h"`.
+
+## Para saber mais {#para-saber-mais}
+
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
+- [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Voz no terminal](voz.md) (Documentação Técnica): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.

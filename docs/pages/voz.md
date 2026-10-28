@@ -23,7 +23,7 @@ Tudo que a Juniper diz no terminal segue o mesmo padrão. Você sempre sabe quem
 | `🌿 JUNIPER:` | A Juniper | Sempre, em qualquer comando. |
 | `👤 VOCÊ:` | Você, ao digitar | Um único ponto de troca (`voice.user_tag()`) para virar o seu nome quando o perfil existir. |
 
-> **Nota:** isto é a "voz" **escrita** do terminal. A conversa por áudio está em [Voz por áudio](voz-audio.html).
+> **Nota:** isto é a "voz" **escrita** do terminal. A conversa por áudio está em [Voz por áudio](voz-audio.md).
 
 ## Fala gerada × fala fixa {#gerada-fixa}
 
@@ -70,9 +70,15 @@ Os instaladores em bash têm as mesmas duas constantes. Um teste (`test_shell_an
 
 - **Prefixo só quando há texto.** Se o LLM falha antes de escrever, não sobra uma linha `🌿 JUNIPER:` vazia: o erro vem como fala dela.
 - **Eco do nome é removido.** Se o modelo começar a frase com "Juniper:" ou "🌿 JUNIPER:", o terminal descarta, para não duplicar.
-- **Confirmação é diálogo.** Ela pergunta em palavras, você responde "sim" ou "não", e ela conta o resultado. Funciona igual por voz ([Agente](agente.html#confirmacao)).
+- **Confirmação é diálogo.** Ela pergunta em palavras, você responde "sim" ou "não", e ela conta o resultado. Funciona igual por voz ([Agente](agente.md#confirmacao)).
 - **Texto puro.** A fala nunca é interpretada como markup: colchetes e asteriscos aparecem como foram escritos.
 
 ## Fora do padrão (de propósito) {#fora}
 
 Scripts de desenvolvimento (`scripts/try_*.py`, `healthcheck.py`, `check_google.py`) e a saída crua de ferramentas (a lista de commits do `search`, a ajuda do `--help` do Typer) não são fala dela e ficam como estão.
+
+## Para saber mais {#para-saber-mais}
+
+- [CLI](cli.md) (Documentação Técnica): O comando juniper: chat, mensagem única, retomar conversa, comandos de memória, git e utilitários.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
+- [Voz por áudio](voz-audio.md) (Documentação Técnica): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.

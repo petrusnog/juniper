@@ -7,14 +7,14 @@ status: guia
 tags: integração cliente api websocket python exemplo hello chat.send streaming confirmação reconexão executor register invoke dashboard http automação
 ---
 
-O cérebro não tem SDK: qualquer programa que fale WebSocket e JSON pode ser um cliente. Os clientes oficiais (o [CLI](cli.html), o [bot do Telegram](telegram.html) e o [app Android](mobile.html)) usam exatamente o contrato descrito na [API WebSocket](protocolo.html). Este guia mostra o essencial para começar.
+O cérebro não tem SDK: qualquer programa que fale WebSocket e JSON pode ser um cliente. Os clientes oficiais (o [CLI](cli.md), o [bot do Telegram](telegram.md) e o [app Android](mobile.md)) usam exatamente o contrato descrito na [API WebSocket](protocolo.md). Este guia mostra o essencial para começar.
 
 ## Regras de um bom cliente {#regras}
 
-Um cliente da Juniper é **fino** ([ADR-012](adr-012.html)):
+Um cliente da Juniper é **fino** ([ADR-012](../decisions/ADR-012.md)):
 
 - Só envia o que o usuário escreveu e mostra o que o cérebro devolve. Não decide nada, não guarda memória, não acessa o MongoDB.
-- **Não interpreta confirmações.** Quando a Juniper pergunta "Posso marcar?", a resposta do usuário é só o próximo `chat.send`; quem decide se é um "sim" é o cérebro ([ADR-010](adr-010.html)). Nunca mande um "sim" automático.
+- **Não interpreta confirmações.** Quando a Juniper pergunta "Posso marcar?", a resposta do usuário é só o próximo `chat.send`; quem decide se é um "sim" é o cérebro ([ADR-010](../decisions/ADR-010.md)). Nunca mande um "sim" automático.
 - Não enfileira mensagens offline: se a conexão caiu, avise e deixe o usuário reenviar.
 - Guarda o token como segredo (cofre do sistema, variável de ambiente, arquivo `600`); nunca em código, URL ou log.
 - Usa um `device_id` estável por instalação (uma segunda conexão com o mesmo `device_id` derruba a primeira).
@@ -70,7 +70,7 @@ async def ask(text: str) -> None:
 asyncio.run(ask("o que tenho amanhã na agenda?"))
 ```
 
-Para testar contra o ambiente de desenvolvimento: `JUNIPER_TOKEN="$(cat .juniper-dev/state/token)" python exemplo.py` ([Primeiros passos](primeiros-passos.html)). O repositório traz um cliente de teste parecido, `scripts/smoke_server.py`, que também mostra `--resume` e `--health`.
+Para testar contra o ambiente de desenvolvimento: `JUNIPER_TOKEN="$(cat .juniper-dev/state/token)" python exemplo.py` ([Primeiros passos](primeiros-passos.md)). O repositório traz um cliente de teste parecido, `scripts/smoke_server.py`, que também mostra `--resume` e `--health`.
 
 ## Confirmações {#confirmacoes}
 
@@ -84,7 +84,7 @@ Uma ação que altera algo termina o turno com uma pergunta, em texto, dentro de
 ← chat.token  "Pronto, marquei."
 ```
 
-Mostre a pergunta ao usuário e mande a resposta dele como um `chat.send` comum. A pergunta pendente morre se a conexão cair ou se o cliente trocar de conversa ([API WebSocket](protocolo.html#sessoes)).
+Mostre a pergunta ao usuário e mande a resposta dele como um `chat.send` comum. A pergunta pendente morre se a conexão cair ou se o cliente trocar de conversa ([API WebSocket](protocolo.md#sessoes)).
 
 ## Conversas {#conversas}
 
@@ -94,11 +94,11 @@ Mostre a pergunta ao usuário e mande a resposta dele como um `chat.send` comum.
 
 ## Reconexão {#reconexao}
 
-Implemente o recuo da [API WebSocket](protocolo.html#reconexao): 1, 2, 4, 8, 16 e depois 30 s, com variação de ±20%, zerando depois de 30 s estáveis. Trate os códigos de fechamento: `1012` (o servidor está reiniciando, por exemplo num deploy) reconecta quase na hora; `4401` (token), `4409` (substituída) e `4426` (versão) param e avisam. Ao reconectar, mande `hello` com o `session_id` da conversa que estava aberta.
+Implemente o recuo da [API WebSocket](protocolo.md#reconexao): 1, 2, 4, 8, 16 e depois 30 s, com variação de ±20%, zerando depois de 30 s estáveis. Trate os códigos de fechamento: `1012` (o servidor está reiniciando, por exemplo num deploy) reconecta quase na hora; `4401` (token), `4409` (substituída) e `4426` (versão) param e avisam. Ao reconectar, mande `hello` com o `session_id` da conversa que estava aberta.
 
 ## Expor capacidades do dispositivo (executor) {#executor}
 
-Um cliente também pode oferecer tools que rodam no dispositivo dele ([Executor](executor.html), [ADR-014](adr-014.html)). Depois de cada `welcome`, registre:
+Um cliente também pode oferecer tools que rodam no dispositivo dele ([Executor](executor.md), [ADR-014](../decisions/ADR-014.md)). Depois de cada `welcome`, registre:
 
 ```json
 { "type": "register", "tools": [ {
@@ -116,7 +116,7 @@ O contrato completo está em `docs/protocol/schema.json` (JSON Schema, gerado de
 
 ## Ler dados sem conversar {#http}
 
-Para um painel, um relatório ou uma automação que só lê, a [API HTTP](api-http.html) do dashboard entrega a memória em JSON, com `Authorization: Bearer <token>`:
+Para um painel, um relatório ou uma automação que só lê, a [API HTTP](api-http.md) do dashboard entrega a memória em JSON, com `Authorization: Bearer <token>`:
 
 ```bash
 curl -s -H "Authorization: Bearer $JUNIPER_TOKEN" "http://<servidor>:8766/api/memories?limit=10"
@@ -127,6 +127,16 @@ Ela é somente leitura. Mudanças na memória passam pelo WebSocket (`memory.req
 
 ## Segurança {#seguranca}
 
-- Conecte só por uma rede privada cifrada: o protocolo é `ws://` ([Visão geral da produção](producao.html#rede)).
+- Conecte só por uma rede privada cifrada: o protocolo é `ws://` ([Visão geral da produção](producao.md#rede)).
 - Um cliente com o token tem o mesmo poder de qualquer outro: todas as tools, com confirmação. Dê o token só a programas em que você confia.
 - Trate todo texto que vem do cérebro como **texto**: nunca o interprete como HTML ou comando.
+
+## Para saber mais {#para-saber-mais}
+
+- [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
+- [API WebSocket](protocolo.md) (Referência): Referência completa do protocolo entre os clientes e o cérebro: conexão, envelope, cada mensagem com os seus campos, erros, códigos de fechamento e reconexão.
+- [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Clientes em produção](clientes-producao.md) (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.

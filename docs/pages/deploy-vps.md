@@ -7,7 +7,7 @@ status: guia
 tags: deploy vps tutorial ubuntu ssh hardening usuário deploy ufw firewall tailscale wireguard acl docker compose env certs permissões uid 10001 health nmap varredura swap unattended-upgrades dimensionar bench
 ---
 
-Este tutorial parte de uma VPS recém-criada e termina com o cérebro saudável, alcançável pelos seus dispositivos e **sem nenhuma porta da Juniper aberta para a internet** ([Visão geral da produção](producao.html), [ADR-013](adr-013.html)). Os comandos assumem Ubuntu LTS; em outra distribuição, troque o gerenciador de pacotes. A rede privada dos exemplos é o Tailscale; com outra VPN, veja a [nota](#outra-vpn).
+Este tutorial parte de uma VPS recém-criada e termina com o cérebro saudável, alcançável pelos seus dispositivos e **sem nenhuma porta da Juniper aberta para a internet** ([Visão geral da produção](producao.md), [ADR-013](../decisions/ADR-013.md)). Os comandos assumem Ubuntu LTS; em outra distribuição, troque o gerenciador de pacotes. A rede privada dos exemplos é o Tailscale; com outra VPN, veja a [nota](#outra-vpn).
 
 Convenções usadas abaixo:
 
@@ -23,7 +23,7 @@ Convenções usadas abaixo:
 
 ## 1. Criar a VPS {#criar}
 
-No provedor de sua escolha, crie uma VPS x86_64 com Ubuntu LTS, de preferência com **4 vCPU e 8 GB** (o mínimo é 2 vCPU e 4 GB; veja os [requisitos](producao.html#requisitos)). Cadastre a sua chave SSH pública na criação, se o provedor permitir. Prefira cobrança mensal até validar o servidor ([Dimensionar](#dimensionar)).
+No provedor de sua escolha, crie uma VPS x86_64 com Ubuntu LTS, de preferência com **4 vCPU e 8 GB** (o mínimo é 2 vCPU e 4 GB; veja os [requisitos](producao.md#requisitos)). Cadastre a sua chave SSH pública na criação, se o provedor permitir. Prefira cobrança mensal até validar o servidor ([Dimensionar](#dimensionar)).
 
 ## 2. Usuário de deploy e SSH {#usuario}
 
@@ -111,7 +111,7 @@ O comando imprime uma URL: abra-a, entre na sua conta e aprove o dispositivo. O 
 }
 ```
 
-Os seus dispositivos precisam da etiqueta `tag:juniper-client`; se preferir não etiquetá-los, troque o `src` por `autogroup:member`. A 8766 é o [dashboard](dashboard.html); tire-a se não for usá-lo. Teste em *Preview rules* antes de salvar.
+Os seus dispositivos precisam da etiqueta `tag:juniper-client`; se preferir não etiquetá-los, troque o `src` por `autogroup:member`. A 8766 é o [dashboard](dashboard.md); tire-a se não for usá-lo. Teste em *Preview rules* antes de salvar.
 
 **5.3 Ordem no boot.** O Docker só consegue publicar uma porta no IP da VPN se a interface já existir quando ele sobe:
 
@@ -177,7 +177,7 @@ scp ~/.juniper/config.yaml deploy@juniper-brain:~/juniper/config.yaml
 chmod 600 config.yaml && echo "JUNIPER_BASE_CONFIG_FILE=./config.yaml" >> .env
 ```
 
-As credenciais do Google entram em `certs/` ([Integrações Google Cloud e Groq](integracoes-producao.html)). O resultado esperado:
+As credenciais do Google entram em `certs/` ([Integrações Google Cloud e Groq](integracoes-producao.md)). O resultado esperado:
 
 ```text
 ~/juniper/                  deploy:deploy  755   (o repositório: compose, docker/, scripts/)
@@ -204,7 +204,7 @@ docker compose -f docker-compose.prod.yml ps               # brain e mongo "heal
 docker compose -f docker-compose.prod.yml logs --tail=30 brain
 ```
 
-O primeiro `up` constrói a imagem na própria VPS (com o [deploy contínuo](deploy-continuo.html), a imagem passa a vir pronta de um registro). Na primeira subida o cérebro baixa o modelo de embeddings: até terminar, o `/health` diz `degraded` / `warming_up`.
+O primeiro `up` constrói a imagem na própria VPS (com o [deploy contínuo](deploy-continuo.md), a imagem passa a vir pronta de um registro). Na primeira subida o cérebro baixa o modelo de embeddings: até terminar, o `/health` diz `degraded` / `warming_up`.
 
 Do seu computador, com a VPN ligada:
 
@@ -218,7 +218,7 @@ O token dos clientes nasce no primeiro boot, dentro do volume `juniper-state`:
 docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token
 ```
 
-Guarde-o num gerenciador de senhas: todos os clientes precisam dele ([Clientes em produção](clientes-producao.html)).
+Guarde-o num gerenciador de senhas: todos os clientes precisam dele ([Clientes em produção](clientes-producao.md)).
 
 ## 9. Varredura de portas {#varredura}
 
@@ -261,7 +261,7 @@ Repita a varredura depois de cada mudança no compose, no firewall ou na políti
 - [ ] `.env`, `config.yaml` e `certs/*` estão em `600` (pasta `700`) e fora do `git status`.
 - [ ] O token está guardado num gerenciador de senhas.
 
-Próximos passos: [Integrações Google Cloud e Groq](integracoes-producao.html), [Clientes em produção](clientes-producao.html) e [Backup da memória](backup.html).
+Próximos passos: [Integrações Google Cloud e Groq](integracoes-producao.md), [Clientes em produção](clientes-producao.md) e [Backup da memória](backup.md).
 
 ## Dimensionar a VPS {#dimensionar}
 
@@ -293,3 +293,12 @@ Rode uma vez com a pilha parada (sem `--stack`) e outra com a pilha de pé e uma
 | O Docker criou uma **pasta** no lugar de um arquivo | O arquivo montado não existia na hora do `up`. Apague a pasta, crie o arquivo e suba de novo. |
 | `Temporary failure in name resolution` com `juniper-brain` | O nó tem outro nome na VPN: `sudo tailscale set --hostname=juniper-brain`, ou use o IP. |
 | `unhealthy`, ou o cérebro não conecta ao MongoDB | `logs brain` mostra o motivo; quase sempre o usuário ou a senha do MongoDB mudaram depois de o volume ser criado. |
+
+## Para saber mais {#para-saber-mais}
+
+- [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Backup da memória](backup.md) (Produção): Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.
+- [Deploy contínuo](deploy-continuo.md) (Produção): Cada merge em master vira deploy: imagem no registro de contêineres, entrada temporária do CI na rede privada, SSH, backup, troca de versão, healthcheck e rollback automático.
+- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.
