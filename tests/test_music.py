@@ -575,3 +575,77 @@ async def test_closing_releases_the_provider() -> None:
     await music_tools.close()
     await music_tools.close()  # nothing left to close: harmless
     assert closed == [True]
+
+
+# --- albums (T-165): YouTube Music keeps each album as a playlist ------------------------------
+
+
+def playlist_item(playlist_id: str, title: str, channel: str) -> dict[str, Any]:
+    return {
+        "id": {"playlistId": playlist_id},
+        "snippet": {"title": title, "channelTitle": channel},
+    }
+
+
+ALBUMS = [
+    playlist_item("PLmixmixmixmixmixmix", "Beatles Mix - Best of", "Um Canal"),
+    playlist_item("OLAK5uy_abbeyroad0001", "Abbey Road", "The Beatles - Topic"),
+    playlist_item("PLfullalbumfullalbum1", "Abbey Road (Full Album)", "Outro Canal"),
+    playlist_item("OLAK5uy_abbeyroad0001", "Abbey Road (repetido)", "The Beatles - Topic"),
+    {"id": {"videoId": "aaaaaaaaaaa"}, "snippet": {"title": "não é playlist"}},
+    playlist_item("curto", "id curto demais", "X"),
+]
+
+
+async def test_album_search_asks_for_playlists_and_puts_the_official_album_first(
+    tmp_path: Path,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return ok(ALBUMS)
+
+    provider, quota = make_provider(handler, tmp_path)
+    albums = await provider.search_albums("  Abbey Road   The Beatles ", limit=3)
+    [request] = seen
+    params = dict(request.url.params)
+    assert params["type"] == "playlist" and "álbum" in params["q"]
+    assert request.headers["x-goog-api-key"] == KEY and KEY not in str(request.url)
+    assert albums[0].playlist_id == "OLAK5uy_abbeyroad0001" and albums[0].official
+    assert albums[0].artist == "The Beatles" and albums[0].title == "Abbey Road"
+    ids = [a.playlist_id for a in albums]
+    assert len(ids) == len(set(ids)) and "curto" not in ids  # no repeats, no bad ids
+    assert ids[-1] == "PLmixmixmixmixmixmix"  # the "Mix - Best of" compilation goes last
+    assert quota.used() == COST_SEARCH
+
+
+async def test_an_album_plays_through_the_watch_link_not_the_playlist_page(
+    tmp_path: Path,
+) -> None:
+    provider, _ = make_provider(lambda r: ok(ALBUMS), tmp_path)
+    [album, *_] = await provider.search_albums("Abbey Road")
+    assert album.url == "https://music.youtube.com/watch?list=OLAK5uy_abbeyroad0001"
+
+
+@pytest.mark.parametrize("query", ["", "  ", "x" * 121])
+async def test_bad_album_queries_cost_nothing(tmp_path: Path, query: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("não deveria chamar a API")
+
+    provider, quota = make_provider(handler, tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.search_albums(query)
+    assert exc.value.code == "invalid_request" and quota.used() == 0
+
+
+async def test_album_search_failures_are_typed(tmp_path: Path) -> None:
+    provider, _ = make_provider(lambda r: error(403, "quotaExceeded"), tmp_path)
+    with pytest.raises(MusicError) as exc:
+        await provider.search_albums("Abbey Road")
+    assert exc.value.code == "quota_exhausted"
+
+
+async def test_no_albums_is_an_empty_list(tmp_path: Path) -> None:
+    provider, _ = make_provider(lambda r: ok([]), tmp_path)
+    assert await provider.search_albums("zzzz") == []

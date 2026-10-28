@@ -16,6 +16,7 @@ import pytest
 from brain.clients import protocol as p
 from brain.memory.v2.store import InMemoryDocStore
 from brain.music.base import (
+    Album,
     MusicError,
     MusicProvider,
     Playlist,
@@ -53,6 +54,7 @@ class Youtube(MusicProvider):
         self.error: MusicError | None = None
         self.searches: list[tuple[str, int, SearchMode]] = []
         self.created: list[tuple[str, list[str]]] = []
+        self.albums = [Album("OLAK5uy_abbeyroad0001", "Abbey Road", "The Beatles", True)]
 
     async def search(
         self, query: str, *, limit: int = 5, mode: SearchMode = "track"
@@ -66,6 +68,10 @@ class Youtube(MusicProvider):
                 for t in self.tracks
             ]
         return self.tracks
+
+    async def search_albums(self, query: str, *, limit: int = 5) -> list[Album]:
+        self.searches.append((query, limit, "album"))  # type: ignore[arg-type]
+        return self.albums
 
     async def create_playlist(self, title: str, video_ids: list[str]) -> Playlist:
         self.created.append((title, video_ids))
@@ -419,3 +425,89 @@ async def test_play_music_reports_a_quota_error_instead_of_playing(
         phone, _ = await s.executor("celular", PHONE_TOOL)
         await phone.chat("toca Djavan")
     assert tool_result_seen_by_llm(provider) == "ERRO: A cota diária da busca de músicas acabou."
+
+
+ALBUM_LINK = "https://music.youtube.com/watch?list=OLAK5uy_abbeyroad0001"
+
+
+async def test_play_an_album_opens_the_whole_album_on_the_phone(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    provider = FakeProvider(
+        [
+            use("play_music", "k1", query="Abbey Road The Beatles", mode="album"),
+            say("Abbey Road, um clássico de 1969."),
+        ]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.send(type="chat.send", id="c-1", text="toca o álbum Abbey Road")
+        await answer_open_url(phone, ALBUM_LINK)  # the watch?list= link starts it playing
+        await phone.until(p.ChatEnd)
+    assert youtube.searches == [("Abbey Road The Beatles", 5, "album")]
+    assert "Abbey Road" in tool_result_seen_by_llm(provider)
+
+
+async def test_play_an_album_that_does_not_exist_says_so(tmp_path: Path, youtube: Youtube) -> None:
+    youtube.albums = []
+    provider = FakeProvider(
+        [use("play_music", "k1", query="zzzz", mode="album"), say("Não achei.")]
+    )
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.chat("toca o álbum zzzz")
+    assert "Não achei esse álbum" in tool_result_seen_by_llm(provider)
+
+
+async def test_create_a_playlist_and_then_play_it_by_its_id(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    """The failing case from the first drive: the playlist was created but never played."""
+    play_link = f"https://music.youtube.com/watch?list={PL}"
+    provider = FakeProvider(
+        [
+            use("music_playlist_create", "k1", title="Jimi", video_ids=[OCEANO, SINA]),
+            say("Posso criar a playlist «Jimi» com 2 músicas?"),
+            use("play_music", "k2", playlist_id=PL),
+            say("Criei e já estou tocando."),
+        ]
+    )
+    async with Setup(tmp_path, provider) as s:
+        register_music(s)
+        s.registry.register(music_tools.PlayMusic)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.chat("cria a playlist Jimi e toca")
+        await phone.send(type="chat.send", id="c-2", text="sim")
+        await answer_open_url(phone, play_link)
+        await phone.until(p.ChatEnd)
+    assert youtube.created == [("Jimi", [OCEANO, SINA])]
+    seen = [m.content or "" for m in provider.seen[2] if m.role == "tool"]
+    assert any(f"playlist_id={PL}" in text for text in seen)  # the result told the model how
+
+
+@pytest.mark.parametrize("bad", ["", "curto", "a b c d e f g h i j", "x" * 70])
+async def test_play_music_with_a_bad_playlist_id_is_refused(
+    tmp_path: Path, youtube: Youtube, bad: str
+) -> None:
+    provider = FakeProvider([use("play_music", "k1", playlist_id=bad), say("Id ruim.")])
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        messages = await phone.chat("toca a playlist")
+        assert not any(isinstance(m, p.Invoke) for m in messages)
+    assert "id da playlist" in tool_result_seen_by_llm(provider)
+
+
+async def test_play_music_needs_something_to_play(tmp_path: Path, youtube: Youtube) -> None:
+    provider = FakeProvider([use("play_music", "k1"), say("O que toco?")])
+    async with Setup(tmp_path, provider) as s:
+        s.registry.register(music_tools.PlayMusic)
+        s.registry.register(OpenUrl)
+        phone, _ = await s.executor("celular", PHONE_TOOL)
+        await phone.chat("toca")
+    assert "Diga o que tocar" in tool_result_seen_by_llm(provider)

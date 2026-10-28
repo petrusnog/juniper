@@ -77,3 +77,6 @@ yarn-error.log
 # Release signing (local, never committed)
 android/keystore.properties
 *.jks
+
+# Picovoice wake word keyword (trained per account; copied in by hand, see docs/pages/mobile.md)
+*.ppn

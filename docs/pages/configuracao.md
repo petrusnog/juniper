@@ -178,6 +178,7 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.html)). **Desligada 
 | `voice.enabled` | `false` | Liga a sessão de voz (`voice.start`); desligada, o cérebro responde `voice_unavailable`. |
 | `voice.max_spoken_chars` | `800` | Quanto de uma resposta é lido em voz alta (100 a 5.000); o resto fica só na tela e a Juniper avisa. Também poupa o orçamento. |
 | `voice.idle_timeout_seconds` | `60` | Silêncio (ninguém falando) que encerra a conversa de voz (10 a 3.600). |
+| `voice.wake_idle_seconds` | `15` | O mesmo silêncio, para a conversa aberta pela palavra de ativação (5 a 600): sem pedido depois da saudação ela fecha logo e o celular volta a esperar a palavra. |
 | `voice.usage_file` | `~/.juniper/voice/usage.json` | Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício. Na VPS, ponha num volume (como a pasta `music`). |
 | `voice.tts.provider` | `google` | Quem fala: Google Cloud Text-to-Speech. |
 | `voice.tts.voice` | `pt-BR-Chirp3-HD-Leda` | A voz (Chirp 3 HD). |

@@ -50,8 +50,14 @@ class FakeAudio implements AudioDevice {
     }
     this.log.push(`start:${rate}`);
   }
-  async stop() {
-    this.log.push('stop');
+  async stop(keepService?: boolean) {
+    this.log.push(keepService ? 'stop:keep' : 'stop');
+  }
+  async startService(title: string, _text: string) {
+    this.log.push(`service:${title}`);
+  }
+  async stopService() {
+    this.log.push('service:stop');
   }
   onChunk(l: (d: string) => void) {
     this.chunk = l;

@@ -211,6 +211,8 @@ O [roteiro completo de aceite](mobile.html#aceite) tem todos os itens.
 | `music status`: «Conta do YouTube» desconectada | o token de renovação expirou (7 dias em modo teste) ou foi revogado | publique o app (parte 1, passo 5) e rode `music login` de novo |
 | A música abre só quando o app está na frente | o Android bloqueia que um app em segundo plano abra outro | permita «Exibir sobre outros apps» para a Juniper (aviso na aba Voz) |
 | Ela ouve a própria voz e se responde (sem fone) | o microfone capta o alto-falante | o app já usa viva-voz com meio-duplex; se persistir, use fone ou «Segurar para falar» |
+| Quero chamar sem tocar na tela | falta a palavra de chamada | crie a conta e a AccessKey na Picovoice, treine «Juniper» (Android), salve o `.ppn` em `mobile/android/app/src/main/assets/juniper.ppn`, gere o APK de novo e cole a chave em Configurar (passo a passo em [Voz e áudio](voz-audio.html#wake)) |
+| Pedi um álbum e tocou só uma faixa | pedido sem a palavra «álbum» ou playlist | peça «toca o álbum Abbey Road»; playlists suas tocam pelo nome («toca minha playlist X») |
 | Ela interpreta a música que está tocando | o cancelamento de eco não cobre a música de outro app | ligue «Segurar para falar» na aba Voz, ou use fone |
 | Pediu música e ela mandou o link no texto | o pedido veio do terminal ou do Telegram (não abrem links no celular) ou o modelo não usou `play_music` | no app abre sozinho; de outros canais o link é o esperado |
 | Logs com `428` do `oauth2.googleapis.com/token` | o login está esperando você confirmar no navegador | normal; confirme o código no endereço mostrado |

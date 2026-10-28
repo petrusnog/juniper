@@ -5,6 +5,7 @@ import { ChatController } from '../src/chat/ChatController';
 import type { BrainConnection } from '../src/connection/BrainConnection';
 import { VoiceScreen } from '../src/ui/VoiceScreen';
 import { VoiceController } from '../src/voice/VoiceController';
+import { WakeController } from '../src/wake/WakeController';
 
 class Conn {
   state = 'connected';
@@ -28,6 +29,8 @@ class Conn {
 const audio = {
   start: jest.fn(async () => undefined),
   stop: jest.fn(async () => undefined),
+  startService: jest.fn(async () => undefined),
+  stopService: jest.fn(async () => undefined),
   onChunk: () => () => undefined,
   onStopRequested: () => () => undefined,
   hasHeadset: jest.fn(async () => false),
@@ -61,10 +64,26 @@ function mount(connection: 'connected' | 'offline' = 'connected') {
     () => 'c-1',
   );
   chat.start();
+  const wake = new WakeController(
+    conn as unknown as BrainConnection,
+    voice,
+    audio,
+    {
+      available: false,
+      start: jest.fn(),
+      stop: jest.fn(async () => undefined),
+    },
+  );
   let tree!: ReactTestRenderer.ReactTestRenderer;
   ReactTestRenderer.act(() => {
     tree = ReactTestRenderer.create(
-      <VoiceScreen voice={voice} chat={chat} connection={connection} />,
+      <VoiceScreen
+        voice={voice}
+        chat={chat}
+        connection={connection}
+        wake={wake}
+        onWakeChange={jest.fn()}
+      />,
     );
   });
   const texts = () =>

@@ -28,6 +28,7 @@ export function SetupScreen({ initial, onSave, onCancel }: Props) {
   const [port, setPort] = useState(String(initial?.port ?? 8765));
   const [token, setToken] = useState(initial?.token ?? '');
   const [name, setName] = useState(initial?.deviceName ?? 'Celular');
+  const [picovoiceKey, setPicovoiceKey] = useState(initial?.picovoiceKey ?? '');
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -46,6 +47,8 @@ export function SetupScreen({ initial, onSave, onCancel }: Props) {
       token: token.trim(),
       deviceId: initial?.deviceId ?? newDeviceId(),
       deviceName: name.trim() || 'Celular',
+      picovoiceKey: picovoiceKey.trim() || undefined,
+      wakeEnabled: initial?.wakeEnabled,
     });
   };
 
@@ -109,6 +112,20 @@ export function SetupScreen({ initial, onSave, onCancel }: Props) {
         style={input}
         value={name}
         onChangeText={setName}
+      />
+      <Text style={[styles.label, { color: theme.ink }]}>
+        Chave da Picovoice (opcional, para chamar a Juniper falando «Juniper»)
+      </Text>
+      <TextInput
+        testID="picovoice"
+        style={input}
+        value={picovoiceKey}
+        onChangeText={setPicovoiceKey}
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="AccessKey do console da Picovoice"
+        placeholderTextColor={theme.muted}
       />
       {error ? (
         <Text testID="error" style={[styles.error, { color: theme.red }]}>

@@ -30,9 +30,9 @@ function Home({
   onConfigure: () => void;
 }) {
   const theme = useTheme();
-  const { chat, voice, state, reconnect } = useBrain(credentials);
+  const { chat, voice, wake, state, reconnect } = useBrain(credentials);
   const [tab, setTab] = useState<Tab>('text');
-  if (chat === null || voice === null) {
+  if (chat === null || voice === null || wake === null) {
     return <ActivityIndicator style={styles.center} />;
   }
   return (
@@ -46,7 +46,18 @@ function Home({
             onConfigure={onConfigure}
           />
         ) : (
-          <VoiceScreen voice={voice} chat={chat} connection={state} />
+          <VoiceScreen
+            voice={voice}
+            chat={chat}
+            connection={state}
+            wake={wake}
+            onWakeChange={on => {
+              saveCredentials({ ...credentials, wakeEnabled: on }).catch(
+                () => undefined,
+              );
+              (on ? wake.enable() : wake.disable()).catch(() => undefined);
+            }}
+          />
         )}
       </View>
       <View

@@ -11,6 +11,8 @@ import { nativeAudio } from '../voice/nativeAudio';
 import { deviceStt } from '../voice/nativeStt';
 import { deviceTts } from '../voice/nativeTts';
 import { VoiceController } from '../voice/VoiceController';
+import { PorcupineDetector } from '../wake/porcupine';
+import { WakeController } from '../wake/WakeController';
 
 export const APP_VERSION = '0.1.0';
 
@@ -21,6 +23,7 @@ export function useBrain(credentials: Credentials | null) {
     connection: BrainConnection;
     chat: ChatController;
     voice: VoiceController;
+    wake: WakeController;
   } | null>(null);
   const ref = useRef<BrainConnection | null>(null);
 
@@ -48,13 +51,23 @@ export function useBrain(credentials: Credentials | null) {
       deviceTts,
       deviceStt,
     );
+    const wake = new WakeController(
+      connection,
+      voice,
+      nativeAudio,
+      new PorcupineDetector(credentials.picovoiceKey ?? null),
+    );
     deviceTts.probe().catch(() => undefined);
     ref.current = connection;
-    setLive({ connection, chat, voice });
+    setLive({ connection, chat, voice, wake });
+    if (credentials.wakeEnabled) {
+      wake.enable().catch(() => undefined); // hands-free mode was left on: wait for the word
+    }
     const off = connection.onState(setState);
     connection.connect();
     return () => {
       off();
+      wake.disable().catch(() => undefined);
       voice.end().catch(() => undefined);
       chat.stop();
       executor.stop();
@@ -69,6 +82,7 @@ export function useBrain(credentials: Credentials | null) {
     connection: live?.connection ?? null,
     chat: live?.chat ?? null,
     voice: live?.voice ?? null,
+    wake: live?.wake ?? null,
     state,
     reconnect: () => ref.current?.connect(),
   };

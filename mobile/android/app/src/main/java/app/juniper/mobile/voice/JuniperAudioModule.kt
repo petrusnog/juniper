@@ -73,6 +73,33 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod fun removeListeners(count: Int) {}
 
+  /**
+   * Starts the foreground service alone (no capture): the phone waiting for the wake word keeps
+   * the microphone permission in the background through it. The notification says what it is.
+   */
+  @ReactMethod
+  fun startService(title: String, text: String, promise: Promise) {
+    try {
+      ContextCompat.startForegroundService(
+          reactContext,
+          Intent(reactContext, VoiceService::class.java)
+              .putExtra(VoiceService.EXTRA_TITLE, title)
+              .putExtra(VoiceService.EXTRA_TEXT, text))
+      registerStopReceiver()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("service_start_failed", e.message ?: "service_start_failed")
+    }
+  }
+
+  @ReactMethod
+  fun stopService(promise: Promise) {
+    reactContext.startService(
+        Intent(reactContext, VoiceService::class.java).setAction(VoiceService.ACTION_STOP_SERVICE))
+    unregisterStopReceiver()
+    promise.resolve(null)
+  }
+
   @ReactMethod
   fun start(sampleRate: Int, promise: Promise) {
     if (recording) {
@@ -249,15 +276,19 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
     deviceCallback = null
   }
 
+  /** Ends the capture and the route. `keepService`: the wake word keeps waiting in the service. */
   @ReactMethod
-  fun stop(promise: Promise) {
+  fun stop(keepService: Boolean, promise: Promise) {
     stopCapture()
     captureRate = 0
     unwatchDevices()
     resetRoute()
-    reactContext.startService(
-        Intent(reactContext, VoiceService::class.java).setAction(VoiceService.ACTION_STOP_SERVICE))
-    unregisterStopReceiver()
+    if (!keepService) {
+      reactContext.startService(
+          Intent(reactContext, VoiceService::class.java)
+              .setAction(VoiceService.ACTION_STOP_SERVICE))
+      unregisterStopReceiver()
+    }
     promise.resolve(null)
   }
 

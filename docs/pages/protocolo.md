@@ -138,7 +138,7 @@ Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.ht
 
 | Direção | Tipo | Campos | Quando |
 |---|---|---|---|
-| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?`, `route?` | Abre a sessão; `format` é o do microfone. |
+| cliente → servidor | `voice.start` | `id`, `format{encoding,sample_rate,channels}`, `local_stt?`, `local_tts?`, `route?`, `wake?` | Abre a sessão; `format` é o do microfone. `wake: true` diz que a sessão nasceu da palavra de chamada: o cérebro cumprimenta primeiro e encerra sozinho depois de tocar uma música ou após `voice.wake_idle_seconds` sem fala. |
 | servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: o formato do áudio de saída e se STT e TTS são `cloud` ou `local`. |
 | cliente → servidor | `voice.audio` | `seq`, `data` | Áudio do microfone. |
 | servidor → cliente | `voice.audio` | `seq`, `data`, `turn_id`, `last?` | Áudio da resposta; `last` fecha a fala do turno. |
@@ -149,7 +149,7 @@ Extensão **compatível** (sem mudar `protocol_version`) do [ADR-023](adr-023.ht
 | cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
 | cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
 | cliente → servidor | `voice.route` | `route` (`speaker`, `headset`) | A saída de áudio mudou no meio da conversa (fone ligado ou desligado). |
-| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
+| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`, `playback`) | Encerra a sessão. `playback`: a música foi aberta e o comentário terminou; o app volta a esperar a palavra de chamada. |
 
 `voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Um quadro de áudio com base64 inválido, `seq` negativo ou acima do limite é recusado como `bad_request`. Os erros `voice_unavailable` e `voice_busy` estão na [tabela de erros](#erros). `hello.client.kind` passa a documentar também `mobile`.
 
