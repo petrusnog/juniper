@@ -2,6 +2,7 @@
 # Mapa da documentação
 
 Índice de entrada: escolha a linha que responde à sua dúvida e abra só essa nota. Busca por palavra-chave: `python scripts/docs_search.py "sua pergunta"`.
+Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPER.md](JUNIPER.md).
 
 ## Introdução
 

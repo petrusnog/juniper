@@ -34,9 +34,11 @@ def line_of(source: str, anchor: str) -> int:
 
 
 def outline(name: str) -> int:
-    matches = sorted(ROOT.glob(f"docs/pages/{name}.md")) + sorted(
-        ROOT.glob(f"docs/decisions/{name}.md")
-    )
+    matches = [
+        path
+        for pattern in (f"docs/pages/{name}.md", f"docs/decisions/{name}.md", f"docs/{name}.md")
+        for path in sorted(ROOT.glob(pattern))
+    ]
     if not matches:
         print(f"Sem página '{name}'. Veja docs/MAPA.md.", file=sys.stderr)
         return 1
@@ -46,7 +48,9 @@ def outline(name: str) -> int:
         match = None if fence else HEADING.match(line)
         if match:
             level = len(match.group(1))
-            print(f"{number:>5}  {'  ' * (level - 1)}{match.group(2)}")
+            print(
+                f"{number:>5}  {'  ' * (level - 1)}{re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', match.group(2))}"
+            )
     return 0
 
 

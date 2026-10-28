@@ -1,10 +1,8 @@
-# Juniper v4 — Documentação de Referência
+# Juniper v4 — Fonte da Verdade do Projeto
 
-> **Propósito:** fonte única de verdade para codificar as tasks da Juniper. Antes de implementar qualquer task, leia as seções 1–6 (contexto e regras) e a task correspondente na seção 9.
+> **Propósito:** o estado atual do projeto, em uma página, para quem vai trabalhar nele (gente ou agente). Detalhes ficam nas notas ligadas: comece pelo [mapa da documentação](MAPA.md) e vá só ao que precisa.
 > **Idioma:** documentação em PT-BR. Código, comentários, docstrings e logs em inglês. Mensagens ao usuário final em PT-BR.
-> **Última atualização:** 2026-10-07 · **Branch:** `v4` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
-
-> **Documento histórico (Sprint 1).** Descreve o estado e o backlog de 2026-10-07 e ficou para trás: não o leia inteiro. O estado atual está no [mapa da documentação](MAPA.md) (páginas em `pages/`, decisões em `decisions/`); daqui valem ainda os princípios (§4.1), a estrutura do repositório (§5) e as convenções de código (§7).
+> **Última atualização:** 2026-10-28 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
 
 ---
 
@@ -12,350 +10,222 @@
 
 Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
-| Pilar | Descrição |
-|---|---|
-| Sempre disponível | Acessível de qualquer dispositivo (PC, celular, futuro IoT) |
-| Memória persistente | Lembra conversas, preferências e contexto de longo prazo |
-| Voz natural | STT/TTS |
-| Age no mundo real | Abre apps, envia mensagens, controla casa, executa tarefas |
-| Personalidade própria | Sarcástica, técnica, vibrante (persona em `prompts/persona.core.md`) |
-| Plugável | Novas capacidades = novas *tools*, sem tocar no core |
+| Pilar | Descrição | Situação |
+|---|---|---|
+| Sempre disponível | Acessível de qualquer dispositivo | Pronto: cérebro numa VPS, clientes por WebSocket na rede privada ([Produção](pages/producao.md)) |
+| Memória persistente | Lembra conversas, preferências e contexto de longo prazo | Pronto: sessão, longo prazo e Memória V2 ([Memória](pages/memoria.md)) |
+| Voz natural | STT/TTS | Pronto no cérebro e no app ([Voz por áudio](pages/voz-audio.md)) |
+| Age no mundo real | Agenda, música, git, abrir links no celular | Parcial: ver §2 (execução de shell e web ainda não existem) |
+| Personalidade própria | Sarcástica, técnica, vibrante (`prompts/persona.core.md`) | Pronto, com personalidade viva na Memória V2 |
+| Plugável | Nova capacidade = nova *tool*, sem tocar no core | Pronto ([Tools](pages/tools.md)) |
 
 ---
 
-## 2. Estado Atual
+## 2. Estado Atual (2026-10-28)
 
-### Pronto
-| Componente | Status |
+Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `master`, com a exceção do login com MFA (abaixo). As issues abertas no GitHub (#90 a #214) correspondem a trabalho já entregue cujo merge não as fechou; o estado verdadeiro é o desta tabela.
+
+| Marco | O que existe | Issues | ADR | Documentação |
+|---|---|---|---|---|
+| Base do agente | Loop `Agent`/`Dispatcher`/`Session`, 4 tiers, confirmação na conversa, router com failover, relógio | T-011 a T-042 | 001, 002, 003, 006, 007, 009 | [Agente](pages/agente.md), [LLM](pages/llm.md) |
+| Agenda Google | `list_events`, `create_event`, `update_event`, `delete_event`, agendas gerenciadas | T-022 | 008, 010 | [Agenda Google](pages/google-calendar.md) |
+| Memória | Sessão retomável; longo prazo no MongoDB com embeddings locais (ONNX) e RAG; extração; perfil | Sprint 2 | 011 | [Memória](pages/memoria.md) |
+| Servidor e protocolo | WebSocket único (`protocol_version` 1), sessões, memória, executor, voz; heartbeat e reconexão | Sprint 3 | 012 | [API WebSocket](pages/protocolo.md), [Servidor](pages/servidor.md) |
+| Produção | Imagem Docker, compose dev/prod, rede privada, backup, deploy contínuo com rollback | Sprint 3 | 013 | [Produção](pages/producao.md) |
+| Executor e `open_url` | Tools que rodam no dispositivo, com política de URL | Sprint 3 | 014 | [Executor](pages/executor.md) |
+| Telegram | Bot por long polling, com a mesma conversa e as mesmas tools | Sprint 3 | 016 | [Telegram](pages/telegram.md) |
+| Memória V2 | Crenças com certeza por evidência, sentimentos, interesses, personalidade viva, "sonho" noturno | #90 (T-099 a T-115) | 017 | [Memória V2](pages/memoria-v2.md) |
+| Sonho evoluído | Memória refinada (fato e lembrança), estudo progressivo, notas de conhecimento, `study add` | #132 (T-119 a T-129) | 018, 019 | [Memória V2](pages/memoria-v2.md) |
+| Dashboard | Painel web somente leitura (memória, afetos, estudos, pesquisa) na rede privada | #159 (T-130 a T-137) | 020 | [Dashboard](pages/dashboard.md) |
+| App mobile | React Native/Android: chat de texto, executor `open_url`, chat de voz contínuo | #178 (T-143 a T-147) | 022 (substitui o 015) | [App mobile](pages/mobile.md), [Ambiente mobile](pages/mobile-dev.md) |
+| Voz | TTS Google Chirp 3 HD, STT da Groq, VAD, trava de orçamento mensal, `voice.*` no protocolo | #179 (T-148 a T-153) | 023 | [Voz por áudio](pages/voz-audio.md) |
+| Música | YouTube Data API: busca, playlists, OAuth de dispositivo, gosto musical, `play_music` | #180 (T-154 a T-158) | 024 | [Música](pages/musica.md) |
+| Metadocumentação | A Juniper responde sobre si mesma por busca BM25 local na documentação (`docs_search`) | PR #229 | 025 | [Metadocumentação](pages/metadocs.md) |
+| Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
+
+**Tools registradas (18):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação).
+
+**Não implementado (decidido ou planejado, sem código):**
+
+| Item | Situação |
 |---|---|
-| Estrutura de pastas (`brain/`, `shell/`, `docs/`, `scripts/`, `tests/`) | ✅ |
-| `pyproject.toml`, `requirements.txt`, `.gitignore` | ✅ |
-| `scripts/dev.sh` (setup idempotente: venv, symlink global, PATH) | ✅ |
-| `scripts/uninstall.sh` (`--yes`, `--purge-repo`) | ✅ |
-| `brain/llm/{types,errors,base}.py` (T-011), `ollama_provider.py` (T-012), `groq_provider.py` (T-013), streaming (T-014), `router.py` (T-015), `deepinfra_provider.py` (T-016) + testes | ✅ |
-| `brain/tools/base.py` (T-020: `Tool`, `ToolResult`, `Tier`, `Locality`), `registry.py` (T-021: `@register_tool`, auto-descoberta) + testes | ✅ |
-| `brain/config.py` (pydantic-settings, inclui bloco `google` e validação de fuso) + `tests/test_config.py` | ✅ |
-| `brain/core/clock.py` (hora atual com fuso, para o prompt) + `scripts/check_google.py` (valida conta de serviço e agendas) | ✅ |
-| `brain/tools/google_calendar.py` (T-022: `list_events`, `create_event`, `delete_event`) + `tests/test_google_calendar.py` + POC `scripts/try_calendar.py` | ✅ |
-| Binário `juniper` em `~/.local/bin/` | ✅ |
-| ADRs 001, 002, 003, 006, 007 | ✅ |
-| `brain/core/{agent,dispatcher,session}.py` (T-030), `brain/clients/cli.py` (T-040: `chat`, `search`, `deploy`, `tools`), `brain/eventlog.py` (T-031), `brain/tools/juniper_cmds.py` (T-026: `git_search`, `git_deploy`) | ✅ |
-
-### Stubs (pendentes)
-| Componente | Task |
-|---|---|
-| `brain/tools/system.py` (`run_shell`, `open_app`) | T-023, T-027 |
-| `brain/tools/web.py` (`web_fetch`, `web_search`) | T-024, T-025 |
-
-> **Atenção (divergências repo × plano):** o repo hoje contém `brain/tools/shell.py` (stub) e **não** contém `BACKLOG.md` nem `CHANGELOG.md`; os ADRs estão nomeados `ADR-00X.md` (sem slug). Os comandos legados chamam-se `search` e `deploy` (aliases `grep`/`gitgrep`/`deployfeature` no CLI); seus scripts em `shell/` vêm da `origin/master`, mais nova que a v4. Ao tocar nesses pontos, reconcilie e registre no commit.
+| Login global com MFA (épica #177) | Só o desenho, no [ADR-021](decisions/ADR-021.md) e em [Login com MFA](pages/login.md). Não há `brain/auth/` nem TOTP: hoje o WebSocket e o dashboard usam token estático, e o Telegram, lista de IDs. **A issue #177 não está resolvida** (diferente das demais). |
+| `run_shell`, `open_app`, `web_fetch`, `web_search` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,web,shell}.py` são stubs de 4 linhas. |
+| Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
+| Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
 
 ---
 
 ## 3. Stack
 
-- **Python ≥ 3.11** (testado em 3.12.3), venv em `.venv/`. Ambiente: Linux/WSL, ZSH.
-- **Runtime:** `httpx>=0.27`, `pydantic>=2.8`, `pydantic-settings>=2.4`, `pyyaml>=6.0`, `python-dotenv>=1.0`, `rich>=13.7`, `typer>=0.12`, `groq>=0.9`
-- **Dev:** `pytest>=8`, `pytest-asyncio>=0.23` (modo `auto`), `ruff>=0.5`, `mypy>=1.10`
-- **LLM:**
-  - **DeepInfra** (principal, ADR-009): API compatível com a da OpenAI via `httpx`, modelo configurável (`deepseek-ai/DeepSeek-V4-Flash-0731`), tool calling.
-  - **Groq** (segunda opção): `openai/gpt-oss-120b`, tier gratuito, tool calling confiável.
-  - **Ollama** (reserva): `llama3.1`, local, usado quando DeepInfra e Groq falham/offline (recebe prompt compacto).
-  - **Failover:** `llm.priority = [deepinfra, groq, ollama]`.
-- **Hospedagem futura:** VPS (~US$5/mês) rodando o brain; clientes remotos via Tailscale.
+- **Python ≥ 3.11** (CI e imagem de produção em 3.12), venv em `.venv/`. Ambiente de desenvolvimento: Linux/WSL, ZSH, ou Docker ([Ambiente Docker](pages/dev-docker.md)).
+- **Runtime:** `httpx`, `pydantic` v2, `pydantic-settings`, `pyyaml`, `python-dotenv`, `rich`, `typer`, `groq`, `websockets>=14`, `python-telegram-bot` 21–22, `pymongo`, `numpy`, `onnxruntime` + `tokenizers` (embeddings locais), `google-api-python-client` + `google-auth`.
+- **Dev:** `pytest`, `pytest-asyncio` (modo `auto`), `mongomock`, `ruff`, `mypy`. Cerca de 3 mil testes (`pytest -m "not integration"`); os de integração dependem de MongoDB/modelos e ficam fora do CI.
+- **LLM** ([ADR-009](decisions/ADR-009.md)): **DeepInfra** (principal, API compatível com a da OpenAI), **Groq** (segunda opção, `openai/gpt-oss-120b`), **Ollama** (reserva local, prompt compacto). Failover pela ordem de `llm.priority`.
+- **Dados:** MongoDB (sessões, memória, Memória V2); o token OAuth da música (`music.oauth_file`, modo 600) e o token do servidor ficam em arquivos fora do git.
+- **Voz:** Google Cloud TTS (Chirp 3 HD), STT da Groq, VAD no servidor. **Música:** YouTube Data API.
+- **App:** React Native (Android) em `mobile/`, TypeScript, tipos gerados do `docs/protocol/schema.json`.
+- **Produção:** VPS com Docker Compose (`brain`, `mongo`, `telegram` opcional), acesso só pela rede privada (Tailscale), imagem no registro de contêineres, deploy contínuo no merge em `master`.
+- **CI** (`.github/workflows`): `tests.yml` (pytest, 3.12), `docker.yml` (build da imagem quando ela muda), `docs.yml` (publica o livro de bolso no GitHub Pages), `mobile.yml`, `deploy.yml`.
 
 ---
 
 ## 4. Arquitetura
 
 ### 4.1 Princípios inegociáveis
-1. **`core/` ↔ `clients/` separados.** O core é agnóstico de transporte e **nunca importa de `clients/`**. Clientes são finos: capturam input, exibem output.
-2. **Providers intercambiáveis.** O agente fala com `LLMProvider` (abstrato), nunca com `DeepInfraProvider`/`GroqProvider`/`OllamaProvider` diretamente.
-3. **Tools são plugins.** Cada tool declara seu schema e se auto-registra. Tool nova = arquivo novo em `brain/tools/`.
-4. **Shell é HMI, Python é cérebro.** `shell/juniper.sh` é wrapper; lógica vive em `brain/`.
-5. **Um só ponto de config.** Nenhum módulo lê `os.environ`, YAML ou `.env` diretamente — tudo via `from brain.config import settings`.
+1. **`core/` ↔ `clients/` separados.** O core é agnóstico de transporte e **nunca importa de `clients/`**. Clientes são finos: capturam entrada, exibem saída, sem lógica de agente nem acesso ao MongoDB.
+2. **Providers intercambiáveis.** O agente fala com `LLMProvider`, nunca com um provider concreto.
+3. **Tools são plugins.** Cada tool declara seu schema e se auto-registra. Tool nova = arquivo novo em `brain/tools/`. Tool que roda no dispositivo tem `locality = EXECUTOR`; o cliente revalida tudo ([ADR-014](decisions/ADR-014.md)).
+4. **Confirmação é conversa** ([ADR-010](decisions/ADR-010.md)): interpretada por `consent.py`, nunca pelo LLM nem pelo cliente, e não sobrevive a retomada, queda ou troca de conexão.
+5. **Um só ponto de config.** Nenhum módulo lê `os.environ`, YAML ou `.env` diretamente: tudo via `from brain.config import settings`.
+6. **Protocolo versionado** ([ADR-012](decisions/ADR-012.md)): mudança compatível não muda `protocol_version`; o `docs/protocol/schema.json` gerado tem de estar em dia.
+7. **Segredos** só em `.env`, GitHub Secrets ou arquivos montados; nunca em código, imagem ou log.
+8. **Falhas esperadas viram resultado tipado** (`ToolResult(success=False)`, `error` do protocolo), nunca exceção que derruba a conexão.
 
-> **Visão visual:** `docs/html/architecture.html` mostra a arquitetura em camadas da versão final, com o que já está pronto.
-
-### 4.2 Fluxo (Sprint 1, local)
+### 4.2 Fluxo de uma mensagem
 ```
-usuário → clients/cli.py → core/agent.py ──► llm/router.py ──► DeepInfra | Groq | Ollama
-                               │  ▲
-                 tool_calls    ▼  │ ToolResult
-                          core/dispatcher.py → tools/registry.py → Tool.run()
-                               │
-                          logs/*.jsonl
+cliente (CLI | Telegram | app | dashboard) ──WebSocket──► servidor ──► core/agent.py ──► llm/router.py ──► DeepInfra | Groq | Ollama
+                                                                         │  ▲
+                                          memória e docs (contexto)      │  │ ToolResult
+                                                                         ▼  │
+                                                   core/dispatcher.py → tools/registry.py → Tool.run() (cérebro ou executor)
 ```
-Loop agentic: **decide → chama tool → reavalia**, limitado por `agent.max_iterations` (padrão 5).
+Loop agentic: **decide → chama tool → reavalia**, limitado por `agent.max_iterations` (padrão 5). Antes de chamar o LLM entram, só naquele turno, as memórias relevantes e, em pergunta sobre ela mesma, trechos da documentação ([Metadocumentação](pages/metadocs.md)). Visão em camadas: [Arquitetura](pages/architecture.md).
 
-### 4.3 Deployment (ADR-007)
-Cérebro único e sempre vivo (VPS); "corpos" (executores) múltiplos e efêmeros (PC, celular, Raspberry) conectados por WebSocket + HTTPS via Tailscale (sem portas públicas). Auth por token estático em `~/.juniper/token` (Sprint 2+). Modos: `local` (Sprint 1) e `server` (Sprint 2+). Tools têm *locality* (cloud vs. executor) — ver `Locality` em T-020. O protocolo dos clientes (chat, sessões, memória e executor, num único WebSocket) está no **ADR-012**.
+### 4.3 Deployment ([ADR-007](decisions/ADR-007.md), [ADR-013](decisions/ADR-013.md))
+Cérebro único e sempre vivo (VPS); clientes e executores múltiplos conectados por WebSocket dentro da rede privada. **Nenhuma porta pública**; deploy nunca apaga volumes. Modos: `local` (cérebro no terminal) e `server`. O tutorial completo está em [Produção](pages/producao.md).
 
-### 4.4 Segurança (ADR-006)
+### 4.4 Segurança ([ADR-006](decisions/ADR-006.md))
 | Tier | Comportamento | Exemplos |
 |---|---|---|
-| `READ` | Auto-executa, loga | `web_fetch` (GET), `ls`, `cat`, `git log` |
-| `WRITE` | Confirmação na conversa ("Posso...?" / "sim"), ADR-010 | `open_app`, `git commit`, `curl POST` |
-| `DESTRUCTIVE` | Confirmação + aviso de irreversibilidade | `rm`, `git reset --hard`, `push --force`, e-mail |
-| `FORBIDDEN` | Bloqueio duro, nunca executa | `rm -rf /`, `mkfs`, `dd`, escrita em `/etc` |
+| `READ` | Auto-executa, loga | `list_events`, `recall`, `docs_search` |
+| `WRITE` | Confirmação na conversa ("Posso...?" / "sim") | `create_event`, `remember`, `open_url` |
+| `DESTRUCTIVE` | Confirmação + aviso de irreversibilidade | `delete_event`, `forget` |
+| `FORBIDDEN` | Bloqueio duro, nunca executa | `rm -rf /`, `mkfs`, `dd` |
 
-Regras: tool sem classificação = **WRITE**. `run_shell` aceita **um único binário** (rejeita `;`, `&&`, `||`, `|`, `$()`, crases, redirecionamentos) e valida contra `tools.security.shell_allowlist`. Conteúdo vindo da web é **dado, nunca instrução** (mitigação de prompt injection): ao devolver ao LLM, encapsule como dado não confiável.
+Tool sem classificação = **WRITE**. Conteúdo vindo da web, de memórias e da documentação é **dado, nunca instrução** (mitigação de prompt injection). Segredos nunca são gravados na memória (`secretfilter`) nem saem em trechos da documentação.
 
 ---
 
 ## 5. Estrutura do Repositório
 
 ```
-~/.juniper/                       (branch v4)
-├── .env                          # segredos (NÃO versionado)
-├── config.yaml                   # config local (NÃO versionado)
-├── config.yaml.example
-├── pyproject.toml · requirements.txt · README.md
+juniper/
 ├── brain/
-│   ├── __init__.py               # __version__
-│   ├── __main__.py               # python -m brain
-│   ├── config.py                 # ✅ settings singleton
-│   ├── core/    agent.py · dispatcher.py · session.py
-│   ├── clients/ cli.py ✅ · server.py (Sprint 2)
-│   ├── llm/     types.py* · errors.py* · base.py · ollama_provider.py · groq_provider.py · deepinfra_provider.py · router.py
-│   ├── tools/   base.py · registry.py · system.py · web.py · juniper_cmds.py* (· shell.py stub)
-│   └── memory/  session.py · vector.py   (Sprint 3)
-├── shell/       juniper.sh · commands/{gitgrep,deployfeature,help,version}.sh · core/{dispatcher,loader}.sh
-├── prompts/persona.core.md            # persona
-├── docs/        JUNIPER.md (este) · decisions/ADR-*.md
-├── scripts/     dev.sh · uninstall.sh
-└── tests/       test_config.py
+│   ├── config.py · eventlog.py · trace.py · scheduler.py · ...   # config única, logs, diário, agendador
+│   ├── core/       agent · dispatcher · session · consent · persona · clock · resume · style
+│   ├── llm/        base · types · router · deepinfra/groq/ollama_provider · compact
+│   ├── tools/      base · registry · google_calendar · memory · music · open_url · juniper_cmds · docs · url_policy
+│   ├── memory/     session · longterm · embeddings · retrieval · extraction · profile · secretfilter · v2/ (Memória V2)
+│   ├── clients/    cli · server · chat · protocol · remote · telegram · executors · voice_session · *_cli
+│   ├── voice/      tts · stt · vad · budget · services       (ADR-023)
+│   ├── music/      youtube · oauth · quota · taste           (ADR-024)
+│   ├── dashboard/  api · routes · server · static/           (ADR-020)
+│   └── metadocs/   index · detect · context                   (ADR-025)
+├── mobile/         app React Native (Android)
+├── prompts/        persona.core.md · persona.core.compact.md
+├── docker/ · Dockerfile · docker-compose{,.dev,.prod}.yml · config.yaml.example
+├── scripts/        build_docs · docs_search · deploy · install · healthcheck · backup/restore · export_protocol_schema
+├── shell/          wrapper legado (gitgrep, deployfeature)
+├── docs/           JUNIPER.md (este) · MAPA.md · pages/ · decisions/ · protocol/ · html/ (gerado)
+└── tests/
 ```
-`*` = ainda não existe, criar na task indicada.
 
 ---
 
-## 6. Configuração (ADR-003)
+## 6. Configuração ([ADR-003](decisions/ADR-003.md))
 
 - `config.yaml` = preferências; `.env` = segredos. **Precedência:** args do construtor > ENV > `.env` > YAML > defaults.
 - Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` → `llm.ollama.url`.
-- Segredos: `JUNIPER_DEEPINFRA_API_KEY` (https://deepinfra.com/dash/api_keys) e `JUNIPER_GROQ_API_KEY` (https://console.groq.com/keys). Acesso: `settings.deepinfra_api_key` / `settings.groq_api_key` (`.get_secret_value()`).
 - Localização do YAML: `JUNIPER_CONFIG_PATH` → `~/.juniper/config.yaml` → `./config.yaml`.
-- `settings.paths.{home,logs,config}` são calculados, não configuráveis.
+- Blocos de primeiro nível: `llm`, `agent`, `deployment`, `tools`, `google`, `music`, `voice`, `memory`, `trace`, `logging`, `telegram`, `dashboard`, `metadocs`.
+- A lista completa de opções, com padrão e efeito, está em [Configuração](pages/configuracao.md) (o teste de docs falha se uma opção ficar sem documentação). Modelo de exemplo: `config.yaml.example`.
 
-```yaml
-llm:
-  priority: [deepinfra, groq, ollama]   # só estes três são válidos; a ordem é a do failover
-  deepinfra: {model: "deepseek-ai/DeepSeek-V4-Flash-0731", timeout: 30}
-  groq:   {model: openai/gpt-oss-120b, timeout: 30, reasoning_effort: low}
-  ollama: {url: "http://localhost:11434", model: llama3.1, timeout: 300}
-agent:
-  max_iterations: 5
-  language: pt-BR
-  timezone: America/Sao_Paulo
-deployment:
-  mode: local                     # local | server
-  server: {host: 127.0.0.1, port: 8765}
-  auth:   {token_file: ~/.juniper/token}
-google:                           # ADR-008
-  credentials_file: ~/.juniper/certs/gcp-key.json
-  calendar_id: <id da agenda Juniper>
-  read_calendar_ids: []           # agendas só lidas (conflitos)
-  manage_calendar_ids: []         # agendas do usuário em que ela também cria/altera/apaga (ADR-010)
-  default_calendar_id:            # onde caem os novos eventos (vazio = agenda Juniper)
-  default_duration_minutes: 60
-  reminder_minutes: 30
-tools:
-  security:
-    shell_allowlist: [git, ls, cat, grep, rg, fd, jq, find, wc, head, tail]
-    shell_require_confirmation: true
-    confirmation_timeout: 60
-```
-
-**Para adicionar uma opção:** criar/alterar o submodelo pydantic em `brain/config.py`, atualizar `config.yaml.example` e adicionar teste em `tests/test_config.py`.
+**Para adicionar uma opção:** criar/alterar o submodelo pydantic em `brain/config.py`, atualizar `config.yaml.example` e a página de Configuração, e adicionar teste em `tests/test_config.py`.
 
 ---
 
 ## 7. Convenções de Código
 
-- **Tipos estritos:** `mypy --strict` deve passar. `from __future__ import annotations` nos módulos.
+- **Tipos estritos:** `mypy --strict`. `from __future__ import annotations` nos módulos.
 - **Formatação/lint:** ruff, `line-length = 100`, regras `E F I N W UP B C4 SIM`.
 - **Estilo:** pragmático — priorize o que funciona; sem abstração especulativa.
-- **Docstrings:** estilo Google, em inglês.
-- **Nomes:** `snake_case` funções/variáveis, `PascalCase` classes, `UPPER_CASE` constantes.
+- **Docstrings:** estilo Google, em inglês. **Nomes:** `snake_case`, `PascalCase`, `UPPER_CASE`.
 - **Async:** I/O de LLM e tools é `async`. Testes async sem decorator (modo `auto`).
-- **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), prefixados pela task quando aplicável (ex.: `feat(T-011): ...`).
-- **Testes:** nenhum teste pode depender de rede, de chave real (DeepInfra/Groq) ou de Ollama rodando — use mocks (`httpx.MockTransport`, fakes).
-- **Segredos:** nunca logar nem imprimir `groq_api_key` / `deepinfra_api_key`.
+- **Commits:** `T-0xx: descrição` (PR `T-0xx: ...` com `Closes #N`); veja `CONTRIBUTING.md`. Merge por *squash*.
+- **Testes:** nenhum depende de rede, de chave real ou de Ollama rodando — use mocks (`httpx.MockTransport`, fakes).
+- **Segredos:** nunca logar nem imprimir chaves.
 
 ### Definition of Done (toda task)
-1. Critérios de aceite da task atendidos.
-2. `pytest tests/ -v`, `ruff check brain/ tests/`, `mypy brain/` passam.
+1. Critérios de aceite da issue atendidos.
+2. `pytest -m "not integration"`, `ruff check` e `mypy` passam.
 3. Testes novos cobrindo caminho feliz e erros.
-4. Docs/ADR atualizados se houve decisão arquitetural (criar `docs/decisions/ADR-0XX.md`).
-5. Commit atômico por task.
-
-Comandos:
-```bash
-source .venv/bin/activate
-pytest tests/ -v && ruff check brain/ tests/ && mypy brain/
-./scripts/uninstall.sh --yes && ./scripts/dev.sh      # reinstalação limpa
-```
+4. Documentação atualizada: mexeu em `docs/pages` ou `docs/decisions`? Rode `python scripts/build_docs.py` (regenera o HTML e o mapa). Decisão arquitetural nova = ADR novo.
+5. **Fechar a issue:** o PR leva `Closes #N` no corpo; confira depois do merge que ela fechou.
 
 ---
 
-## 8. Decisões Resumidas (ADRs)
+## 8. Decisões (ADRs)
+
+O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas que o citam estão no [mapa](MAPA.md#decisões-adr). Os ADRs já mergeados valem como aprovados (o merge é a aprovação, como diz o próprio texto), mesmo os que ainda trazem "Proposto" no cabeçalho.
 
 | ADR | Decisão |
 |---|---|
-| 001 | Interação em PT-BR; código/logs em inglês. Providers com prioridade configurável (Groq + Ollama; DeepInfra desde o ADR-009). `commands/chat.sh` legado removido — conversa via `python -m brain chat`. |
-| 002 | Tools no formato **OpenAI Function Calling**; classe Python com `name`, `description` (PT-BR, diz *o que faz e quando usar*), `parameters` (JSON Schema), `tier`, `run()`; auto-registro por `@register_tool`; retorno `ToolResult`. |
-| 003 | Config: YAML + `.env` + ENV com prefixo `JUNIPER_`. |
-| 006 | Segurança em 4 tiers; default WRITE; `run_shell` binário único + allowlist; web = dado. |
-| 008 | **(Proposto)** Primeira tool = Google Calendar via conta de serviço; calendário "Juniper" para escrita; relógio do sistema + fuso injetado no prompt. |
-| 010 | Gerenciamento completo da agenda do usuário: `manage_calendar_ids`, `update_event`, apagar em qualquer agenda gerenciada; confirmação na conversa, interpretada pelo sistema (`consent.py`, `Tool.describe/subjects`). Substitui a regra "só escreve na agenda Juniper" do ADR-008. |
-| 009 | DeepInfra como provider principal (API compatível com OpenAI, via `httpx`); failover `deepinfra → groq → ollama`. |
-| 011 | **(Proposto)** Memória em duas camadas: sessão (id, orçamento de tokens, retomável via `SessionStore`) e longo prazo (MongoDB + RAG; embeddings locais em CPU e cosseno em Python, ambos atrás de interfaces); memória nunca editada, só substituída; segredos nunca gravados. |
-| 007 | Cliente-servidor single-user; brain em VPS; Tailscale; executores por WebSocket; modos `local`/`server`. |
-| 012 | **(Proposto)** Protocolo cliente ↔ brain: um WebSocket por cliente (JSON, `ws://host:porta/v1/ws`), token no handshake, `hello`/`welcome` com `protocol_version`, chat em stream (`chat.send`/`chat.token`/`chat.end`), sessões, comandos de memória, erros tipados, heartbeat de 30 s, reconexão com backoff; o turno termina no servidor mesmo com o cliente caído. |
+| [001](decisions/ADR-001.md) | Interação em PT-BR; código/logs em inglês; providers com prioridade configurável. |
+| [002](decisions/ADR-002.md) | Tools no formato OpenAI Function Calling; auto-registro por `@register_tool`; retorno `ToolResult`. |
+| [003](decisions/ADR-003.md) | Config: YAML + `.env` + ENV com prefixo `JUNIPER_`. |
+| [006](decisions/ADR-006.md) | Segurança em 4 tiers; default WRITE; web = dado. |
+| [007](decisions/ADR-007.md) | Cliente-servidor single-user; cérebro em VPS; rede privada; executores por WebSocket. |
+| [008](decisions/ADR-008.md) | Google Calendar via conta de serviço; relógio e fuso no prompt. |
+| [009](decisions/ADR-009.md) | DeepInfra como provider principal; failover `deepinfra → groq → ollama`. |
+| [010](decisions/ADR-010.md) | Gerência completa da agenda do usuário; confirmação na conversa interpretada pelo sistema (`consent.py`). |
+| [011](decisions/ADR-011.md) | Memória em duas camadas (sessão e longo prazo com RAG); memória só substituída, nunca editada; segredos nunca gravados. |
+| [012](decisions/ADR-012.md) | Protocolo cliente ↔ cérebro: um WebSocket por cliente, `protocol_version`, chat em stream, erros tipados, heartbeat. |
+| [013](decisions/ADR-013.md) | Deploy e produção: Docker, nenhuma porta pública, backup, deploy contínuo que nunca apaga volumes. |
+| [014](decisions/ADR-014.md) | Executor do dispositivo e `open_url`; o cliente revalida tier e política. |
+| [015](decisions/ADR-015.md) | Cliente desktop em Electron — **substituído** pelo ADR-022. |
+| [016](decisions/ADR-016.md) | Bot do Telegram como cliente de mensageria. |
+| [017](decisions/ADR-017.md) | Memória V2: crenças, sentimentos, interesses, personalidade viva e o "sonho". |
+| [018](decisions/ADR-018.md) | Memória refinada: fato e lembrança. |
+| [019](decisions/ADR-019.md) | Conhecimento próprio: estudo progressivo e notas. |
+| [020](decisions/ADR-020.md) | Dashboard web somente leitura na rede privada. |
+| [021](decisions/ADR-021.md) | Login global com MFA (TOTP) — **desenho, ainda não implementado**. |
+| [022](decisions/ADR-022.md) | App mobile em React Native (Android); substitui o desktop. |
+| [023](decisions/ADR-023.md) | Voz: Chirp 3 HD, STT, trava de orçamento e áudio no protocolo. |
+| [024](decisions/ADR-024.md) | Música: YouTube Data API, playlists e gosto musical. |
+| [025](decisions/ADR-025.md) | Metadocumentação: busca estatística local e contexto automático. |
 
 ---
 
-## 9. Backlog Sprint 1 — Especificação das Tasks
+## 9. Como Consultar e Trabalhar
 
-Ordem de dependência: **T-011 → T-012/T-013 → T-014 → T-015 → T-020 → T-021 → T-022…T-027 → T-030 → T-031 → T-040 → T-041 → T-042.**
-Prefira tasks pequenas e verificáveis. Antes de começar uma task com decisões em aberto, **pergunte ao usuário** (ele quer participar das decisões).
-
-### T-011 — Interface `LLMProvider`
-**Decisões em aberto** (recomendações entre parênteses): sync vs async (**só async**); streaming por `AsyncIterator` vs callback (**AsyncIterator**); tipos em `base.py` vs `types.py` (**`types.py` separado**); `TokenUsage` com campos opcionais (**sim**).
-
-**Arquivos:** `brain/llm/types.py`, `brain/llm/errors.py`, `brain/llm/base.py`, `tests/test_llm_base.py`.
-
-**Contrato sugerido:**
-```python
-# types.py  (dataclasses ou pydantic; frozen quando possível)
-Role = Literal["system", "user", "assistant", "tool"]
-Message:      role, content: str | None, tool_calls: list[ToolCall] = [], tool_call_id: str | None, name: str | None
-ToolCall:     id: str, name: str, arguments: dict[str, Any]     # arguments já parseado (não string JSON)
-TokenUsage:   prompt_tokens: int | None, completion_tokens: int | None, total_tokens: int | None
-LLMResponse:  message: Message, usage: TokenUsage | None, model: str, provider: str, finish_reason: str | None
-StreamChunk:  delta: str = "", tool_calls: list[ToolCall] = [], usage: TokenUsage | None, finish_reason: str | None
-
-# errors.py
-LLMError(Exception)
- ├─ LLMTimeoutError
- ├─ LLMAuthError          # 401/403 — NÃO faz failover útil, mas é tipado
- ├─ LLMRateLimitError     # 429 — failover
- └─ LLMUnavailableError   # conexão recusada, 5xx — failover
-
-# base.py
-class LLMProvider(ABC):
-    name: ClassVar[str]
-    async def chat(self, messages: list[Message], *, tools: list[dict[str, Any]] | None = None,
-                   temperature: float = 0.7, max_tokens: int | None = None) -> LLMResponse: ...
-    def stream(self, messages, *, tools=None, temperature=0.7, max_tokens=None) -> AsyncIterator[StreamChunk]: ...
-    async def health_check(self) -> bool: ...
-```
-**Aceite:** `LLMProvider` não instanciável; hierarquia de erros testada (`issubclass`); um `FakeProvider` nos testes implementa a interface; tipos serializam para o formato OpenAI (método `to_openai()` em `Message`/`ToolCall`); mypy strict limpo.
-
-### T-012 — `OllamaProvider`
-`POST {url}/api/chat` via `httpx.AsyncClient` com `settings.llm.ollama.{url,model,timeout}`; enviar `tools` no formato ADR-002; converter `tool_calls` da resposta para `ToolCall` (Ollama retorna `arguments` já como dict e pode não trazer `id` → gerar `uuid`). Mapear erros: `httpx.ConnectError`→`LLMUnavailableError`, `TimeoutException`→`LLMTimeoutError`, 5xx→`LLMUnavailableError`. `health_check` via `GET /api/tags`.
-**Aceite:** testes com `httpx.MockTransport` para texto, tool call e cada erro.
-
-### T-013 — `GroqProvider`
-Usar o SDK `groq` (`AsyncGroq`) com chave de `settings.groq_api_key` (erro `LLMAuthError` claro se ausente) e `settings.llm.groq.{model,timeout}`. Em Groq `tool_calls[].function.arguments` é **string JSON** → `json.loads` (tratar JSON inválido como `LLMError`). Mapear `AuthenticationError`→`LLMAuthError`, `RateLimitError`→`LLMRateLimitError`, `APITimeoutError`→`LLMTimeoutError`, `APIConnectionError`/`InternalServerError`→`LLMUnavailableError`.
-**Aceite:** testes com cliente SDK mockado; chave nunca aparece em logs/exceções.
-
-### T-014 — Streaming
-Implementar `stream()` em ambos providers. Ollama: NDJSON linha a linha. Groq: `stream=True`. Acumular `tool_calls` fragmentados e emiti-los completos no chunk final. Último chunk traz `finish_reason` e `usage` quando disponível.
-**Aceite:** concatenar `delta`s == conteúdo de `chat()` equivalente; testes de tool call em stream.
-
-### T-015 — `LLMRouter`
-Itera `settings.llm.priority`; instancia providers por nome (registro `{"deepinfra": DeepInfraProvider, "groq": GroqProvider, "ollama": OllamaProvider}`). Failover para o próximo em `LLMUnavailableError`, `LLMTimeoutError`, `LLMRateLimitError` **e** `LLMAuthError` (provider inutilizável) — mas registra warning. Se todos falham, lança `LLMError` agregando causas. Expõe a mesma interface de `LLMProvider` (`chat`/`stream`). Em `stream`, só faz failover **antes** do primeiro chunk emitido.
-**Aceite:** testes com providers fake cobrindo: 1º ok; 1º falha→2º ok; todos falham; falha no meio do stream não duplica saída.
-
-### T-016 — `DeepInfraProvider` (extra, ADR-009)
-Provider na nuvem via `httpx` contra `https://api.deepinfra.com/v1/openai/chat/completions` (Bearer `JUNIPER_DEEPINFRA_API_KEY`, lazy: sem chave → `LLMAuthError`). SSE com `[DONE]`, tool calls fragmentadas acumuladas por `index`, `arguments` string JSON, `usage` no chunk final ou à parte. 401/402/403 → `LLMAuthError`, 429 → `LLMRateLimitError`, 5xx/conexão → `LLMUnavailableError`, timeout → `LLMTimeoutError`, demais 4xx → `LLMError` sem failover. Entra primeiro em `llm.priority`.
-**Aceite:** testes com `httpx.MockTransport` (`tests/test_deepinfra_provider.py`); a chave nunca aparece em erros ou logs.
-
-### T-020 — Base de Tools
-```python
-class Tier(StrEnum): READ, WRITE, DESTRUCTIVE, FORBIDDEN
-class Locality(StrEnum): CLOUD, EXECUTOR      # onde roda (ADR-007); Sprint 1: tudo local
-@dataclass class ToolResult: success: bool; output: str|None=None; error: str|None=None; metadata: dict|None=None
-class Tool(ABC):
-    name: ClassVar[str]; description: ClassVar[str]; parameters: ClassVar[dict[str, Any]]
-    tier: ClassVar[Tier] = Tier.WRITE; locality: ClassVar[Locality] = Locality.EXECUTOR
-    @abstractmethod async def run(self, **kwargs: Any) -> ToolResult
-    @classmethod def to_schema(cls) -> dict   # formato ADR-002
-```
-Validar no `__init_subclass__` (ou no registro) que `name` é snake_case e `parameters` é objeto JSON Schema.
-**Aceite:** `to_schema()` bate com o formato canônico do ADR-002; tier default WRITE testado.
-
-### T-021 — Registry
-`@register_tool` registra a classe; `registry.get(name)`, `registry.all()`, `registry.schemas()`. Nome duplicado → erro. Auto-descoberta: importar todos os módulos de `brain/tools/` via `pkgutil.iter_modules` (pular `base`, `registry`).
-**Aceite:** adicionar um arquivo de tool novo em teste (tmp package) a torna visível sem editar lista central.
-
-### T-022 — Agenda Google (`list_events`, `create_event`, `delete_event`)
-Primeira tool real (ADR-008, **proposto**): marcar compromissos por conversa. Conta de serviço do Google (chave em `~/.juniper/certs/gcp-key.json`, `600`, no `.gitignore`); escrita só no calendário "Juniper" (`google.calendar_id`); leitura de conflitos também no principal **[a confirmar]**. Bibliotecas síncronas → `asyncio.to_thread`.
-- `list_events` (READ, CLOUD): intervalo → título e horário (sem descrição/local/convidados).
-- `create_event` (WRITE, CLOUD): título, início (ISO 8601 com offset), fim ou duração (padrão 1 h **[a confirmar]**); recusa datas no passado; se houver conflito, **não cria** e devolve `ToolResult(success=False)` com nome, horário e id do evento; descrição com "Agendado pela Juniper".
-- `delete_event` (DESTRUCTIVE, CLOUD): só no calendário Juniper.
-- Pré-requisitos **já prontos**: `brain/core/clock.py`, configuração `google.*` (+ testes), dependências `google-api-python-client` e `google-auth`, conta de serviço e agenda Juniper validadas por `scripts/check_google.py`.
-- Quem faz o quê: **Petrus** cria a conta de serviço, a chave e o calendário e compartilha as agendas; a Juniper cuida do código.
-**Aceite:** testes com o cliente Google mockado: listar; criar sem conflito; conflito não cria e informa nome/horário; apagar só no calendário configurado; data passada recusada; chave nunca aparece em logs/exceções. Provavelmente se divide em subtasks ao começar.
-
-### T-023 — `run_shell`
-Tier dinâmico: classificar o comando (leitura da allowlist → READ; `git commit`/`add` → WRITE; `rm`, `git reset --hard`, `push --force` → DESTRUCTIVE; `rm -rf /`, `mkfs`, `dd`, escrita em `/etc` → FORBIDDEN; binário fora da allowlist → rejeitado). Parse com `shlex.split`; rejeitar operadores compostos; executar com `create_subprocess_exec`, timeout, truncamento de saída (ex.: 20 KB).
-**Aceite:** tabela de testes de classificação; injeções (`ls; rm -rf ~`, `` `x` ``, `$(x)`, `a | b`) rejeitadas.
-
-### T-024 — `web_fetch`
-Tier READ, `Locality.CLOUD`. GET via httpx, timeout, limite de tamanho, só `http/https`; converter HTML→texto simples; **bloquear IPs privados/loopback/link-local (SSRF)**. Saída envolta em marcação de conteúdo não confiável.
-
-### T-025 — `web_search`
-Tier READ, `Locality.CLOUD`. Provider de busca a decidir com o usuário (opções: DuckDuckGo HTML/lib, Tavily, Brave API). Retornar título, URL, snippet (top N). Registrar decisão em ADR se escolher serviço pago/com chave.
-
-### T-026 — Bridge de comandos legados
-Tool(s) que invocam `shell/juniper.sh <cmd>` para `gitgrep` e `deployfeature` (só argumentos validados, sem `shell=True`). `deployfeature` = DESTRUCTIVE/WRITE conforme o que o script faz — **ler o script antes de classificar**.
-
-### T-027 — `open_app`
-Tier WRITE. Parâmetro `target` (URL ou nome do app). WSL: `wslview`/`explorer.exe`/`cmd.exe /c start`; Linux: `xdg-open`. Sem `shell=True` (usar `asyncio.create_subprocess_exec`). Validar que URL tem esquema `http(s)`; nomes de app só `[A-Za-z0-9._-]`.
-**Aceite:** subprocess mockado; entrada com metacaracteres rejeitada.
-
-### T-030 — Agent loop + Dispatcher + Session
-- `Session`: lista de `Message`, system prompt carregado de `prompts/persona.core.md` (+ data/hora no timezone configurado).
-- `Dispatcher`: dado `ToolCall` → busca no registry → checa tier → pede confirmação via **callback injetado** (o core não faz `input()`; o cliente fornece `confirm(tool, args, tier) -> bool` com timeout `confirmation_timeout`) → executa → retorna `Message(role="tool")`. FORBIDDEN nunca executa; tool desconhecida / argumentos inválidos → `ToolResult(success=False)` devolvido ao LLM (não levanta).
-- `Agent.run(user_input)`: loop até o LLM responder sem `tool_calls` ou atingir `max_iterations` (então responde avisando o limite). Suporta streaming de tokens para o cliente via callback/iterator.
-**Aceite:** testes com `FakeProvider` roteirizado: resposta direta; 1 tool call; encadeadas; limite de iterações; confirmação negada; tool FORBIDDEN.
-
-### T-031 — Logging estruturado
-JSONL em `settings.paths.logs/` (um arquivo por dia). Eventos: `llm_request/response` (provider, modelo, latência, usage), `tool_call` (nome, tier, args, decisão, resultado), `error`, `failover`. Redigir segredos. Sem `print` em `brain/` fora de `clients/`.
-
-### T-040 — CLI completo
-`juniper msg` (one-shot) e `juniper` (REPL) com `rich`, streaming de tokens, confirmação na conversa (sem `[y/N]`), `--provider` opcional, saída de erros amigável em PT-BR (ex.: chave Groq ausente → instrução do `.env`).
-
-### T-041 — Subcomandos legados
-`juniper gitgrep ...` e `juniper deployfeature ...` delegando ao `shell/` (comportamento idêntico ao v2).
-
-### T-042 — `juniper tools`
-Lista tools registradas: nome, tier, locality, descrição (tabela `rich`).
+- **Ler a documentação:** mapa → `python scripts/docs_search.py "pergunta"` → só a seção (`Read` com `offset`). Convenções de escrita e de links: [`docs/CLAUDE.md`](CLAUDE.md).
+- **Fluxo:** toda task nasce de uma issue `[T-0xx]`; branch `feature/T0xx` a partir de `master`; PR com `Closes #N` ([Como contribuir](pages/contribuindo.md)).
+- **Antes de começar uma task com decisões em aberto, pergunte ao responsável:** ele quer participar das decisões de design com trade-offs reais.
 
 ---
 
 ## 10. Roadmap
 
-| Sprint | Foco | Camada J.A.R.V.I.S. |
-|---|---|---|
-| 1 | Hello agent (local, CLI) | Cognição básica + primeiro reflexo |
-| 2 | Memória, local (MongoDB + RAG; `memory/`) | Memória de longo prazo |
-| 3 | VPS + multi-dispositivo (`clients/server.py`, WS, auth) | Sempre disponível + olhos (web) |
-| 4 | Voz (STT + TTS + wake word) | HMI natural |
-| 5 | Executores (PC, celular, IoT) | Corpos múltiplos |
-| 6 | Iniciativa + scheduler | Proatividade supervisionada |
+Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app) estão entregues. O que resta:
+
+| Foco | Situação |
+|---|---|
+| Login com MFA (épica #177, ADR-021) | Desenhado; falta implementar `brain/auth/`, o `auth.login` no protocolo, `/login` no Telegram e o código no dashboard. Nada liga o MFA por padrão. |
+| Tools de sistema e web (`run_shell`, `open_app`, `web_fetch`, `web_search`) | Política pronta (ADR-006); implementação pendente. |
+| Wake word | Não iniciada. |
+| Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
+| Calibração da Memória V2 | Os valores numéricos seguem **[a calibrar]** com uso real (ADR-017). |
 
 ---
 
 ## 11. Dívidas Técnicas Conhecidas
 
-1. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
-2. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados pelos ADRs).
-4. Sem CI — rodar pytest/ruff/mypy manualmente (sugestão: GitHub Actions).
-5. ~~`.env.example` ausente~~ — na verdade já existia; o instalador (`scripts/install.sh`, guia em `docs/html/install.html`) o usa para criar o `.env`.
-6. `brain/tools/shell.py` stub coexiste com o plano `system.py` — decidir e remover um.
+1. **Issues abertas que já foram entregues** (#90 a #214, exceto a #177): fechar no GitHub. A causa é o merge sem `Closes #N` no corpo do PR.
+2. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
+3. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados por alguns ADRs).
+4. `brain/tools/{system,web,shell}.py` são stubs que coexistem com o plano de tools de sistema: implementar ou remover.
+5. `mypy brain/` acusa erros herdados de stubs de bibliotecas; o CI roda só `pytest`.
 
 ---
 

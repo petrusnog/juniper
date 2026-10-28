@@ -46,7 +46,8 @@ Regras:
 
 - **ADR só para decidir ou questionar.** Para saber *como é hoje*, leia a página em `docs/pages/`;
   o ADR conta *por que* e o que foi descartado. A página cita o ADR certo.
-- **Nunca leia `docs/html/`** (gerado) nem `docs/JUNIPER.md` inteiro (histórico, ~7 mil tokens).
+- **Nunca leia `docs/html/`** (gerado) nem `docs/JUNIPER.md` inteiro (~5 mil tokens): ele é a fonte da verdade do *estado atual* (marcos, não
+  implementado, dívidas); leia só a §2 ou a §10 com `--outline JUNIPER`/`offset`.
 - Antes de abrir um arquivo de código, procure a seção da página que o descreve: cada título
   técnico traz `file=` com o caminho do código.
 - Mexeu em `docs/pages` ou `docs/decisions`? Veja `docs/CLAUDE.md` (convenções de links) e rode
