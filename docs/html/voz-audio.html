@@ -25,7 +25,7 @@ app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Led
 <h2 id="protocolo">Mensagens</h2>
 <p>Extensão compatível do <a href="protocolo.html">protocolo</a> (sem mudar <code>protocol_version</code>). O áudio vai em quadros de <strong>texto</strong> JSON com base64: <code>voice.start</code>, <code>voice.ready</code>, <code>voice.audio</code>, <code>voice.state</code>, <code>voice.transcript</code>, <code>voice.say</code>, <code>voice.fallback</code>, <code>voice.text</code>, <code>voice.interrupt</code>, <code>voice.end</code>; erros <code>voice_unavailable</code> e <code>voice_busy</code>. A lista completa e os campos estão no <a href="adr-023.html#7-protocolo-extensao-compativel-do-adr-012">ADR-023</a>.</p>
 <h2 id="tasks">Tasks</h2>
-<p>T-148 (protocolo), T-149 (texto para fala e sintetizador), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.</p>
+<p>T-148 (protocolo, <strong>pronto</strong>: modelos, <code>schema.json</code> e testes), T-149 (texto para fala e sintetizador), T-150 (orçamento), T-151 (VAD e STT), T-152 (sessão de voz no servidor), T-153 (documentação e aceite). Épica #179.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

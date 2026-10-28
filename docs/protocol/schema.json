@@ -205,6 +205,8 @@
             "memory_unavailable",
             "not_found",
             "executor_unavailable",
+            "voice_unavailable",
+            "voice_busy",
             "internal"
           ],
           "title": "Code",
@@ -1272,6 +1274,384 @@
       "title": "Trace",
       "type": "object"
     },
+    "VoiceAudio": {
+      "description": "Um pedaço de áudio, nos dois sentidos: o microfone (cliente → servidor, sem `turn_id`) e a\nvoz da Juniper (servidor → cliente, com o `turn_id` do turno que ela está falando).",
+      "properties": {
+        "data": {
+          "maxLength": 200000,
+          "title": "Data",
+          "type": "string"
+        },
+        "last": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "type": {
+          "const": "voice.audio",
+          "default": "voice.audio",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "data"
+      ],
+      "title": "VoiceAudio",
+      "type": "object"
+    },
+    "VoiceEnd": {
+      "description": "Encerra a sessão de voz, de qualquer lado.",
+      "properties": {
+        "reason": {
+          "default": "client",
+          "enum": [
+            "client",
+            "command",
+            "silence",
+            "error",
+            "server"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.end",
+          "default": "voice.end",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "VoiceEnd",
+      "type": "object"
+    },
+    "VoiceFallback": {
+      "description": "Troca de provedor: `local` = o aparelho assume; `cloud` = a nuvem voltou.",
+      "properties": {
+        "component": {
+          "enum": [
+            "stt",
+            "tts"
+          ],
+          "title": "Component",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "local",
+            "cloud"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "quota",
+            "budget",
+            "error",
+            "recovered"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.fallback",
+          "default": "voice.fallback",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "mode",
+        "reason"
+      ],
+      "title": "VoiceFallback",
+      "type": "object"
+    },
+    "VoiceFormat": {
+      "description": "Formato do áudio: PCM 16 bits little-endian, mono. A taxa vem de quem produz o áudio.",
+      "properties": {
+        "channels": {
+          "const": 1,
+          "default": 1,
+          "title": "Channels",
+          "type": "integer"
+        },
+        "encoding": {
+          "const": "pcm_s16le",
+          "default": "pcm_s16le",
+          "title": "Encoding",
+          "type": "string"
+        },
+        "sample_rate": {
+          "maximum": 48000,
+          "minimum": 8000,
+          "title": "Sample Rate",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sample_rate"
+      ],
+      "title": "VoiceFormat",
+      "type": "object"
+    },
+    "VoiceInterrupt": {
+      "properties": {
+        "type": {
+          "const": "voice.interrupt",
+          "default": "voice.interrupt",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "VoiceInterrupt",
+      "type": "object"
+    },
+    "VoiceReady": {
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/VoiceFormat"
+        },
+        "output": {
+          "$ref": "#/$defs/VoiceFormat"
+        },
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "stt": {
+          "enum": [
+            "cloud",
+            "local"
+          ],
+          "title": "Stt",
+          "type": "string"
+        },
+        "tts": {
+          "enum": [
+            "cloud",
+            "local"
+          ],
+          "title": "Tts",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.ready",
+          "default": "voice.ready",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "input",
+        "output",
+        "stt",
+        "tts"
+      ],
+      "title": "VoiceReady",
+      "type": "object"
+    },
+    "VoiceSay": {
+      "description": "Fallback de TTS: o aparelho fala o `text` com a voz dele.",
+      "properties": {
+        "last": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.say",
+          "default": "voice.say",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_id",
+        "text"
+      ],
+      "title": "VoiceSay",
+      "type": "object"
+    },
+    "VoiceStart": {
+      "description": "Abre a sessão de voz da conexão. `format` descreve o áudio que o microfone vai mandar.",
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/VoiceFormat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "local_stt": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local Stt"
+        },
+        "local_tts": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local Tts"
+        },
+        "type": {
+          "const": "voice.start",
+          "default": "voice.start",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "format"
+      ],
+      "title": "VoiceStart",
+      "type": "object"
+    },
+    "VoiceState": {
+      "properties": {
+        "state": {
+          "enum": [
+            "listening",
+            "thinking",
+            "speaking",
+            "idle"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "type": {
+          "const": "voice.state",
+          "default": "voice.state",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "VoiceState",
+      "type": "object"
+    },
+    "VoiceText": {
+      "description": "Fala já transcrita no aparelho (fallback de STT): vira um turno falado.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 32000,
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.text",
+          "default": "voice.text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "VoiceText",
+      "type": "object"
+    },
+    "VoiceTranscript": {
+      "description": "O que o cérebro entendeu que o Petrus disse (a legenda dele).",
+      "properties": {
+        "final": {
+          "default": true,
+          "title": "Final",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.transcript",
+          "default": "voice.transcript",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "VoiceTranscript",
+      "type": "object"
+    },
     "Welcome": {
       "properties": {
         "heartbeat_seconds": {
@@ -1391,6 +1771,16 @@
       "tools.listed": "#/$defs/ToolsListed",
       "tools.request": "#/$defs/ToolsRequest",
       "trace": "#/$defs/Trace",
+      "voice.audio": "#/$defs/VoiceAudio",
+      "voice.end": "#/$defs/VoiceEnd",
+      "voice.fallback": "#/$defs/VoiceFallback",
+      "voice.interrupt": "#/$defs/VoiceInterrupt",
+      "voice.ready": "#/$defs/VoiceReady",
+      "voice.say": "#/$defs/VoiceSay",
+      "voice.start": "#/$defs/VoiceStart",
+      "voice.state": "#/$defs/VoiceState",
+      "voice.text": "#/$defs/VoiceText",
+      "voice.transcript": "#/$defs/VoiceTranscript",
       "welcome": "#/$defs/Welcome"
     },
     "propertyName": "type"
@@ -1464,6 +1854,21 @@
       "$ref": "#/$defs/ToolsRequest"
     },
     {
+      "$ref": "#/$defs/VoiceStart"
+    },
+    {
+      "$ref": "#/$defs/VoiceAudio"
+    },
+    {
+      "$ref": "#/$defs/VoiceText"
+    },
+    {
+      "$ref": "#/$defs/VoiceInterrupt"
+    },
+    {
+      "$ref": "#/$defs/VoiceEnd"
+    },
+    {
       "$ref": "#/$defs/Welcome"
     },
     {
@@ -1504,6 +1909,21 @@
     },
     {
       "$ref": "#/$defs/Trace"
+    },
+    {
+      "$ref": "#/$defs/VoiceReady"
+    },
+    {
+      "$ref": "#/$defs/VoiceState"
+    },
+    {
+      "$ref": "#/$defs/VoiceTranscript"
+    },
+    {
+      "$ref": "#/$defs/VoiceSay"
+    },
+    {
+      "$ref": "#/$defs/VoiceFallback"
     }
   ],
   "title": "Juniper client-brain protocol",
@@ -1521,7 +1941,9 @@
     "session_not_found": false,
     "turn_in_progress": true,
     "unauthorized": false,
-    "unsupported_version": false
+    "unsupported_version": false,
+    "voice_busy": false,
+    "voice_unavailable": false
   },
   "x-max-message-bytes": 1048576,
   "x-protocol-version": 1
