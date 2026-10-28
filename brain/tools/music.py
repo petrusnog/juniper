@@ -107,7 +107,9 @@ def _line(index: int, track: Track) -> str:
 class MusicSearch(Tool):
     name = "music_search"
     description = (
-        "Procura músicas no YouTube Music e devolve até 5 resultados com o link de cada um. "
+        "Procura músicas no YouTube Music e devolve até 5 resultados com o link de cada um. Use "
+        "SEMPRE que a pessoa pedir para procurar, achar ou tocar uma música, artista ou álbum "
+        "(nunca monte um link de busca à mão). "
         "Para TOCAR uma música: chame esta ferramenta, escolha o resultado que melhor combina "
         "com o pedido e chame open_url com o link dele (abre no celular e toca). Em 'mode' use "
         "'radio' para tocar algo parecido, em sequência. Pesquise por nome da música e do artista."
