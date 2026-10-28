@@ -351,6 +351,172 @@ async def test_tools_without_describe_confirm_with_no_summary() -> None:
     assert seen == [None]
 
 
+# --- requires_confirmation(): confirmation that depends on the call ---------------------
+
+
+def make_gated_registry(hook: Any, level: Tier = Tier.WRITE) -> tuple[ToolRegistry, list[str]]:
+    reg = ToolRegistry()
+    ran: list[str] = []
+
+    class Gated(Tool):
+        name = "gated"
+        description = "Faz algo, e só pergunta às vezes."
+        parameters = {"type": "object", "properties": {"id": {"type": "string"}}}
+        tier = level
+
+        async def requires_confirmation(self, **kwargs: Any) -> bool:
+            return await hook(**kwargs)
+
+        async def run(self, **kwargs: Any) -> ToolResult:
+            ran.append(kwargs.get("id", ""))
+            return ToolResult(success=True, output="feito")
+
+    reg.register(Gated)
+    return reg, ran
+
+
+def counting_confirm(asked: list[str]) -> Any:
+    async def confirm(
+        name: str, args: dict[str, Any], tier: Tier, summary: str | None = None
+    ) -> bool:
+        asked.append(args.get("id", ""))
+        return True
+
+    return confirm
+
+
+async def test_a_write_tool_can_skip_the_question_for_a_safe_call() -> None:
+    async def hook(**kwargs: Any) -> bool:
+        return kwargs["id"] != "safe"
+
+    reg, ran = make_gated_registry(hook)
+    asked: list[str] = []
+    dispatcher = Dispatcher(counting_confirm(asked), tool_registry=reg)
+    safe = await dispatcher.dispatch(ToolCall("c1", "gated", {"id": "safe"}))
+    risky = await dispatcher.dispatch(ToolCall("c2", "gated", {"id": "risky"}))
+    assert safe.content == risky.content == "feito"
+    assert ran == ["safe", "risky"]
+    assert asked == ["risky"]  # only the call that needed it was put to the user
+
+
+async def test_a_safe_call_runs_even_without_a_way_to_ask() -> None:
+    async def hook(**kwargs: Any) -> bool:
+        return False
+
+    reg, ran = make_gated_registry(hook)
+    message = await Dispatcher(None, tool_registry=reg).dispatch(
+        ToolCall("c1", "gated", {"id": "x"})
+    )
+    assert message.content == "feito" and ran == ["x"]
+
+
+async def test_a_destructive_tool_always_asks_whatever_the_hook_says() -> None:
+    async def hook(**kwargs: Any) -> bool:
+        return False
+
+    reg, ran = make_gated_registry(hook, level=Tier.DESTRUCTIVE)
+    asked: list[str] = []
+    dispatcher = Dispatcher(counting_confirm(asked), tool_registry=reg)
+    await dispatcher.dispatch(ToolCall("c1", "gated", {"id": "x"}))
+    assert asked == ["x"] and ran == ["x"]
+    denied = await Dispatcher(None, tool_registry=reg).dispatch(
+        ToolCall("c2", "gated", {"id": "y"})
+    )
+    assert "negou" in (denied.content or "") and ran == ["x"]
+
+
+async def test_a_broken_hook_asks_instead_of_skipping_the_question() -> None:
+    async def hook(**kwargs: Any) -> bool:
+        raise RuntimeError("falha na política")
+
+    reg, ran = make_gated_registry(hook)
+    asked: list[str] = []
+    message = await Dispatcher(counting_confirm(asked), tool_registry=reg).dispatch(
+        ToolCall("c1", "gated", {"id": "x"})
+    )
+    assert asked == ["x"] and message.content == "feito" and ran == ["x"]
+    unattended = await Dispatcher(None, tool_registry=reg).dispatch(
+        ToolCall("c2", "gated", {"id": "y"})
+    )
+    assert ran == ["x"] and "negou" in (unattended.content or "")
+
+
+async def test_the_default_hook_follows_the_class_confirm_flag() -> None:
+    reg, ran = make_registry()
+    asked: list[str] = []
+    dispatcher = Dispatcher(counting_confirm(asked), tool_registry=reg)
+    await dispatcher.dispatch(ToolCall("c1", "write_thing", {}))
+    assert ran == ["write_thing"] and asked == [""]
+
+    class Quiet(Tool):
+        name = "quiet"
+        description = "Silenciosa."
+        parameters = {"type": "object", "properties": {}}
+        confirm = False
+
+        async def run(self, **kwargs: Any) -> ToolResult:
+            return ToolResult(success=True, output="ok")
+
+    write = reg.get("write_thing")
+    assert write is not None
+    assert await Quiet().requires_confirmation() is False
+    assert await write().requires_confirmation() is True
+
+
+# --- canonical_arguments(): what is asked about is what runs -----------------------------
+
+
+def make_canonical_registry(hook: Any) -> tuple[ToolRegistry, list[dict[str, Any]]]:
+    reg = ToolRegistry()
+    seen: list[dict[str, Any]] = []
+
+    class Canon(Tool):
+        name = "canon"
+        description = "Normaliza o argumento."
+        parameters = {"type": "object", "properties": {"id": {"type": "string"}}}
+
+        async def canonical_arguments(self, **kwargs: Any) -> dict[str, Any]:
+            return await hook(**kwargs)
+
+        async def run(self, **kwargs: Any) -> ToolResult:
+            seen.append(kwargs)
+            return ToolResult(success=True, output="feito")
+
+    reg.register(Canon)
+    return reg, seen
+
+
+async def test_the_question_and_the_run_use_the_canonical_arguments() -> None:
+    async def hook(**kwargs: Any) -> dict[str, Any]:
+        return {"id": kwargs["id"].strip().lower()}
+
+    reg, seen = make_canonical_registry(hook)
+    asked: list[str] = []
+    await Dispatcher(counting_confirm(asked), tool_registry=reg).dispatch(
+        ToolCall("c1", "canon", {"id": "  ABC "})
+    )
+    assert asked == ["abc"] and seen == [{"id": "abc"}]
+
+
+async def test_a_broken_canonical_hook_keeps_the_original_arguments() -> None:
+    async def hook(**kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("falha")
+
+    reg, seen = make_canonical_registry(hook)
+    asked: list[str] = []
+    await Dispatcher(counting_confirm(asked), tool_registry=reg).dispatch(
+        ToolCall("c1", "canon", {"id": "X"})
+    )
+    assert asked == ["X"] and seen == [{"id": "X"}]
+
+
+async def test_the_default_canonical_arguments_are_the_same_values() -> None:
+    reg, ran = make_registry()
+    write = reg.get("write_thing")
+    assert write is not None
+    assert await write().canonical_arguments(a=1) == {"a": 1}
+
+
 # --- one approval for the whole batch ----------------------------------------------------
 
 
