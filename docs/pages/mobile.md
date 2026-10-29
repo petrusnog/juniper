@@ -26,7 +26,8 @@ O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura en
 - **Credenciais no Android Keystore**, nunca em código ou log.
 - **Executor:** o app registra `open_url` e **revalida a política de URL** com os mesmos casos de teste do cérebro.
 - **Voz em segundo plano** por um serviço em primeiro plano, com notificação.
-- **Aparência:** a paleta clara e escura desta documentação (`src/theme/tokens.ts`), seguindo o tema do sistema.
+- **Aparência:** visual de terminal, num tema único e escuro, qualquer que seja o tema do sistema: fundo preto, o verde neon da logo e a paleta Tango dos terminais, em fonte monoespaçada (`src/theme/tokens.ts`; o [dashboard](dashboard.md#visual) e o livro de bolso usam as mesmas cores).
+- **A marca animada:** `src/ui/BrandMark.tsx` desenha a logo, o nome **Juniper** à direita e um cursor `_` que pisca (a cada 550 ms, como o de um terminal). Fica numa barra no topo da tela principal, visível nas abas Texto e Voz, e grande na tela de configuração. Com «remover animações» ligado no Android, o cursor fica parado. A imagem é `branding/logo.png` (PNG transparente feito de `branding/juniper-neon.jpg`).
 - `android:usesCleartextTraffic` é `true` porque o cérebro fala `ws://`: a cifra vem da rede privada que liga o celular ao servidor ([ADR-013](../decisions/ADR-013.md)).
 
 ## Conexão {#conexao}

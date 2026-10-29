@@ -20,6 +20,7 @@ import {
 } from './src/storage/credentials';
 import { spacing } from './src/theme/tokens';
 import { useTheme } from './src/theme/useTheme';
+import { BrandMark } from './src/ui/BrandMark';
 import { ChatScreen } from './src/ui/ChatScreen';
 import { SetupScreen } from './src/ui/SetupScreen';
 import { UpdateBanner } from './src/ui/UpdateViews';
@@ -97,6 +98,14 @@ function Home({
   }
   return (
     <View style={styles.fill}>
+      <View
+        style={[
+          styles.brandBar,
+          { borderColor: theme.border, backgroundColor: theme.background },
+        ]}
+      >
+        <BrandMark />
+      </View>
       <View style={styles.fill}>
         {tab === 'text' ? (
           <ChatScreen
@@ -225,6 +234,11 @@ export default function App() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1 },
+  brandBar: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth },
   tabText: { fontWeight: '700', letterSpacing: 1 },
   tab: { flex: 1, alignItems: 'center', padding: spacing.lg },

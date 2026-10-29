@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
 <title>Livro de bolso da Juniper — Livro de bolso Juniper</title>
 <meta name="description" content="Documentação da Juniper, organizada por trilhas de leitura.">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/favicon-neon.png">
-<script src="assets/theme.js"></script>
 <!-- GERADO por scripts/build_docs.py a partir de docs/pages/index.md. Não edite este arquivo. -->
 </head>
 <body>
 <main id="content">
 <div class="crumb">Início</div>
-<div class="hero"><img class="logo" src="assets/juniper-neon.png" alt="Juniper: contorno em verde neon sobre fundo preto de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
+<div class="hero"><img class="logo" src="assets/logo.png" alt="Logo da Juniper: contorno em verde neon de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="84" height="84"><h1 class="brand-name">Juniper</h1></div>
 <p>A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (pelo terminal, pelo Telegram, por um app Android ou por voz) e ela decide quais ferramentas usar para resolver o pedido, como a agenda do Google, a música do YouTube, comandos git e a própria memória. Este livro reúne tudo o que é preciso para entender, desenvolver, integrar e implantar a Juniper.</p>
 <div class="callout tip"><p><strong>Dica:</strong> aperte <kbd>Ctrl</kbd>+<kbd>K</kbd> (ou <kbd>/</kbd>) em qualquer página para buscar por termo: nomes de classes (<code>Dispatcher</code>), opções do <code>config.yaml</code> (<code>retrieval.threshold</code>), comandos (<code>juniper memory</code>), mensagens do protocolo (<code>chat.send</code>) ou assuntos (<code>deploy</code>).</p></div>
 <h2 id="comecar">Por onde começar</h2>
@@ -24,7 +25,7 @@
 <p>As páginas são escritas em Markdown em <code>docs/pages/</code> e os ADRs em <code>docs/decisions/</code>. O script <code>scripts/build_docs.py</code> gera o HTML em <code>docs/html/</code>, o menu, o índice de entidades e o índice da busca. Depois de editar uma fonte, rode:</p>
 <pre><code class="lang-bash">python scripts/build_docs.py          # regenera tudo
 python scripts/build_docs.py --check  # só confere se está em dia (o CI roda isto)</code></pre>
-<p>Para criar uma página nova, copie o cabeçalho de outra em <code>docs/pages/</code> (<code>title</code>, <code>group</code>, <code>section</code>, <code>order</code>, <code>description</code>) e escreva. Um título marcado com <code>{#id kind=classe file=caminho}</code> entra no índice de Entidades. O comando <code>juniper docs</code> serve esta pasta em <a href="http://localhost:47831" target="_blank" rel="noopener">http://localhost:47831</a>. Detalhes em <a href="contribuindo.html#documentacao">Como contribuir</a>.</p>
+<p>Para criar uma página nova, copie o cabeçalho de outra em <code>docs/pages/</code> (<code>title</code>, <code>group</code>, <code>section</code>, <code>order</code>, <code>description</code>) e escreva. Um título marcado com <code>{#id kind=classe file=caminho}</code> entra no índice de Entidades. O comando <code>juniper docs</code> serve esta pasta em <a href="http://localhost:47831" target="_blank" rel="noopener">http://localhost:47831</a>. Detalhes em <a href="contribuindo.html#documentacao">Como contribuir</a>. O visual (terminal, verde e preto, tema único e a marca animada com o cursor piscando) é o mesmo do <a href="dashboard.html#visual">dashboard</a> e do app; as cores vêm de <code>mobile/src/theme/tokens.ts</code> e os estilos estão em <code>docs/html/assets/style.css</code>.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

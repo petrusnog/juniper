@@ -7,7 +7,7 @@ tags: início documentação home
 ---
 
 ```html-raw
-<div class="hero"><img class="logo" src="assets/juniper-neon.png" alt="Juniper: contorno em verde neon sobre fundo preto de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="128" height="128"><h1>Livro de bolso da Juniper</h1></div>
+<div class="hero"><img class="logo" src="assets/logo.png" alt="Logo da Juniper: contorno em verde neon de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="84" height="84"><h1 class="brand-name">Juniper</h1></div>
 ```
 
 A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (pelo terminal, pelo Telegram, por um app Android ou por voz) e ela decide quais ferramentas usar para resolver o pedido, como a agenda do Google, a música do YouTube, comandos git e a própria memória. Este livro reúne tudo o que é preciso para entender, desenvolver, integrar e implantar a Juniper.
@@ -38,4 +38,4 @@ python scripts/build_docs.py          # regenera tudo
 python scripts/build_docs.py --check  # só confere se está em dia (o CI roda isto)
 ```
 
-Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `section`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O comando `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831). Detalhes em [Como contribuir](contribuindo.md#documentacao).
+Para criar uma página nova, copie o cabeçalho de outra em `docs/pages/` (`title`, `group`, `section`, `order`, `description`) e escreva. Um título marcado com `{#id kind=classe file=caminho}` entra no índice de Entidades. O comando `juniper docs` serve esta pasta em [http://localhost:47831](http://localhost:47831). Detalhes em [Como contribuir](contribuindo.md#documentacao). O visual (terminal, verde e preto, tema único e a marca animada com o cursor piscando) é o mesmo do [dashboard](dashboard.md#visual) e do app; as cores vêm de `mobile/src/theme/tokens.ts` e os estilos estão em `docs/html/assets/style.css`.

@@ -11,7 +11,7 @@
   window.JUNIPER_FEATURES = NAV; // compatibilidade com páginas antigas
 
   const groups = [...new Set(NAV.map((f) => f.group))];
-  let nav = `<a class="brand" href="index.html"><img class="logo" src="assets/juniper-neon.png" alt="" width="64" height="64"><span>Juniper · Livro de bolso</span></a>
+  let nav = `<a class="brand" href="index.html" aria-label="Juniper, página inicial do livro de bolso"><img class="logo" src="assets/logo.png" alt="" width="40" height="40"><span class="brand-name">Juniper</span></a>
     <div class="sub">Documentação</div>
     <button class="searchbtn" type="button" data-search aria-label="Buscar na documentação"><span>🔍 Buscar</span><kbd>Ctrl K</kbd></button>
     <a class="item ${page === "index.html" ? "active" : ""}" href="index.html">Início</a>`;
@@ -46,16 +46,6 @@
     menuBtn.setAttribute("aria-expanded", String(open));
   });
   side.querySelector(".brand").after(menuBtn);
-
-  // Botão de tema: automático (sistema) → escuro → claro
-  const label = { null: "◐ Tema: automático", dark: "☾ Tema: escuro", light: "☀ Tema: claro" };
-  const btn = document.createElement("button");
-  btn.className = "themebtn";
-  btn.type = "button";
-  const refresh = () => { btn.textContent = label[window.JuniperTheme ? window.JuniperTheme.get() : null]; };
-  btn.addEventListener("click", () => { if (window.JuniperTheme) { window.JuniperTheme.cycle(); refresh(); } });
-  refresh();
-  side.append(btn);
 
   // Créditos
   const credit = document.createElement("div");

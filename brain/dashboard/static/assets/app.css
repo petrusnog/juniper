@@ -48,6 +48,9 @@ a:hover { color: var(--accent); }
   color: var(--accent); text-shadow: 0 0 10px rgb(57 230 57 / 55%);
 }
 .wordmark::before { content: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .wordmark::after { content: "_"; text-indent: 0; margin-left: 2px; animation: blink 1.1s steps(1) infinite; }
+}
 label { display: block; margin: 16px 0 6px; font-weight: 700; color: var(--green); }
 input {
   width: 100%; padding: 12px; font: inherit; color: var(--fg); background: var(--bg);
