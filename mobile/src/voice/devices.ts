@@ -16,7 +16,10 @@ export interface AudioDevice {
   /** Releases the microphone without ending the session (the device recognizer needs it). */
   pauseCapture(): Promise<void>;
   resumeCapture(): Promise<void>;
-  /** Whether headphones (wired or Bluetooth) are the way out right now. */
+  /**
+   * Whether wired or USB headphones are the way out right now (a closed ear, so she can be
+   * interrupted by voice). Bluetooth is a speaker (usually the car) and answers `false`.
+   */
   hasHeadset(): Promise<boolean>;
   /** Loudspeaker (`true`) or whatever is plugged in (`false`); also turns on echo cancellation. */
   applyRoute(speaker: boolean): Promise<void>;
