@@ -97,8 +97,8 @@ async def test_chat_streams_tokens_in_order(tmp_path: Path) -> None:
         assert welcome.session.resumed is False and client.connected
         pieces: list[str] = []
         result = await client.chat("o que tenho amanhã?", pieces.append)
-    # a trailing space travels with the next piece (core/style.py holds it back for the dash rule)
-    assert pieces == ["Amanhã", " tem dentista."]
+    # the start of an answer is held until its first sentence ends (core/leak.py)
+    assert "".join(pieces) == "Amanhã tem dentista."
     assert result.finish == "ok" and result.error is None and result.turn_id
 
 
