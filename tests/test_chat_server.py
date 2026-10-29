@@ -405,9 +405,11 @@ async def test_cancel_stops_generation_and_drops_the_partial_turn(tmp_path: Path
         end = got[-1]
         assert isinstance(end, p.ChatEnd) and end.finish == "cancelled"
         assert not any(isinstance(m, p.Error) for m in got)
-        # o texto parcial não virou histórico
+        # o texto parcial não virou histórico, mas o que o usuário disse fica (T-166)
         conversation = s.handler._live[client.welcome.session.id]
-        assert conversation.agent.session.history == []
+        history = conversation.agent.session.history
+        assert [m.role for m in history] == ["user"]
+        assert "conta uma história" in (history[0].content or "")
         assert not conversation.busy
         # e dá para conversar de novo
         provider.release.set()

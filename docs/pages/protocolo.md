@@ -72,9 +72,11 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 | servidor → cliente | `chat.started` | `reply_to`, `turn_id`, `session_id` | O turno começou. |
 | servidor → cliente | `chat.token` | `turn_id`, `text` | Um pedaço da resposta, em ordem. |
 | servidor → cliente | `chat.end` | `turn_id`, `finish`, `usage?`, `timing?` | O turno terminou. |
-| cliente → servidor | `chat.cancel` | `turn_id` | Interrompe o turno em andamento. |
+| cliente → servidor | `chat.cancel` | `turn_id` | Interrompe o turno em andamento. A mensagem do usuário fica no histórico; a resposta parcial não. |
 
 `finish` é `ok`, `cancelled`, `max_iterations` ou `error`.
+
+**Comandos do servidor no texto.** Um `chat.send` cujo texto é `/vazou [nota]` não vira turno: o servidor guarda o relato de vazamento ([Auditoria de vazamentos](vazamentos.md#relato)) e responde com a sequência normal `chat.started`, `chat.token`, `chat.end`, sem tocar no histórico. Não muda o `protocol_version` nem o schema ([ADR-012](../decisions/ADR-012.md), adendo de 2026-10-29): um cliente que não sabe do comando só vê uma resposta de texto. Esse "turno" não entra no histórico, então um cliente que conta turnos (como o bot do Telegram) não deve contá-lo.
 
 ```json
 { "type": "chat.started", "reply_to": "c-7f3a", "turn_id": "t-12", "session_id": "20261015-101500-ab12cd" }

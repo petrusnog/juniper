@@ -16,6 +16,8 @@ class Sources:
     memory: Any | None = None  # the v1 LongTermMemory (store, embedder, profile)
     data: V2Data | None = None  # the V2 collections
     transcripts: bool = True  # dashboard.transcripts
+    reports: Any | None = None  # the user's leak reports (``LeakReportStore``), MongoDB only
+    audit: Any | None = None  # the automatic leak audit records (``LeakAuditStore``)
 
     @property
     def embedder(self) -> Any | None:

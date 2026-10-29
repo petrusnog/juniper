@@ -1058,3 +1058,154 @@ async def test_dashes_the_model_writes_never_reach_the_client_or_the_history() -
     assert "".join(shown) == reply
     assert agent.session.history[-1].content == reply
     assert not any(d in reply for d in "–—―")
+
+
+# --- a cut turn keeps what the user said (T-166) --------------------------------------------
+
+
+class Hanging(LLMProvider):
+    """Starts answering and never ends: the test cancels the turn."""
+
+    name: ClassVar[str] = "hanging"
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+        raise NotImplementedError
+
+    async def stream(self, messages: list[Message], **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        yield StreamChunk(delta="Deixa eu ver ")
+        self.started.set()
+        await asyncio.Event().wait()
+        yield StreamChunk(delta="nunca chega")
+
+    async def health_check(self) -> bool:
+        return True
+
+
+async def cancelled_turn(interrupt: bool) -> tuple[Agent, list[Any]]:
+    provider = Hanging()
+    sunk: list[Any] = []
+    agent = Agent(
+        provider,
+        Dispatcher(tool_registry=ToolRegistry()),
+        Session("persona"),
+        tool_registry=ToolRegistry(),
+        turn_sink=lambda session_id, turn: sunk.append(turn),
+    )
+    task = asyncio.create_task(agent.run("me ajuda com isso"))
+    await asyncio.wait_for(provider.started.wait(), 3)
+    if interrupt:
+        agent.interrupt()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return agent, sunk
+
+
+async def test_an_interrupted_turn_keeps_the_user_message_but_not_the_half_reply() -> None:
+    agent, sunk = await cancelled_turn(interrupt=True)
+    assert [m.role for m in agent.session.history] == ["user"]
+    assert "me ajuda com isso" in (agent.session.history[0].content or "")
+    assert [(t.user, t.assistant, t.index) for t in sunk] == [("me ajuda com isso", "", 0)]
+    assert [t.user for t in agent.drain_turns()] == ["me ajuda com isso"]  # to the extraction too
+    assert agent.session.turns_total == 1
+
+
+async def test_a_cancellation_that_is_not_the_user_rolls_the_whole_turn_back() -> None:
+    agent, sunk = await cancelled_turn(interrupt=False)  # a timeout, the connection dropping
+    assert agent.session.history == [] and sunk == [] and agent.session.turns_total == 0
+
+
+async def test_the_next_turn_after_an_interruption_is_not_marked_interrupted() -> None:
+    agent, _ = await cancelled_turn(interrupt=True)
+    agent._provider = FakeProvider([say("Pronto.")])
+    assert await agent.run("e agora?") == "Pronto."
+    assert [m.role for m in agent.session.history] == ["user", "user", "assistant"]
+    assert agent.session.turns_total == 2
+
+
+class ToolThenHang(LLMProvider):
+    """Calls the ``echo`` tool, then starts answering and never ends (the user cuts it)."""
+
+    name: ClassVar[str] = "tool-then-hang"
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.hanging = asyncio.Event()
+
+    async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+        raise NotImplementedError
+
+    async def stream(self, messages: list[Message], **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if self.calls == 1:
+            yield StreamChunk(tool_calls=(ToolCall("c1", "echo", {"text": "x"}),))
+            return
+        yield StreamChunk(delta="Deixa eu ver ")
+        self.hanging.set()
+        await asyncio.Event().wait()
+
+    async def health_check(self) -> bool:
+        return True
+
+
+def full_session(turns: int) -> Session:
+    session = Session("persona")
+    for i in range(turns):
+        session.add_user(f"pergunta {i}")
+        session.add(Message("assistant", f"resposta {i}"))
+    return session
+
+
+async def cut_turn_after_a_tool(
+    monkeypatch: pytest.MonkeyPatch, *, interrupt: bool
+) -> tuple[Session, int]:
+    from brain.config import settings
+
+    monkeypatch.setattr(settings.memory.session, "max_turns", 2)  # the history is compacted
+    registry, ran = make_registry()
+    provider = ToolThenHang()
+    session = full_session(5)
+    agent = Agent(provider, Dispatcher(tool_registry=registry), session, tool_registry=registry)
+    task = asyncio.create_task(agent.run("faz isso"))
+    await asyncio.wait_for(provider.hanging.wait(), 3)
+    assert ran == ["echo"]
+    if interrupt:
+        agent.interrupt()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return session, len(ran)
+
+
+def no_orphan_tool_calls(session: Session) -> bool:
+    calls = {c.id for m in session.history for c in m.tool_calls}
+    answered = {m.tool_call_id for m in session.history if m.role == "tool"}
+    return calls == answered
+
+
+async def test_cutting_a_turn_after_a_tool_leaves_no_orphan_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _ = await cut_turn_after_a_tool(monkeypatch, interrupt=True)
+    assert no_orphan_tool_calls(session)
+    last = session.history[-1]
+    assert last.role == "user" and "faz isso" in (last.content or "")  # his words, nothing after
+
+
+async def test_a_failure_after_a_tool_rolls_back_even_when_the_history_was_compacted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _ = await cut_turn_after_a_tool(monkeypatch, interrupt=False)
+    assert no_orphan_tool_calls(session)
+    assert not any("faz isso" in (m.content or "") for m in session.history)  # the whole turn
+
+
+async def test_a_yes_after_an_interrupted_turn_does_not_inherit_the_old_question() -> None:
+    agent, _ = await cancelled_turn(interrupt=True)  # "me ajuda com isso", cut
+    agent._provider = FakeProvider([say("Não sei a que você diz sim. Do que se trata?")])
+    await agent.run("sim")
+    last_user = [m for m in agent.session.history if m.role == "user"][-1]
+    assert "[Sistema:" not in (last_user.content or "")  # no hint: there was no question to answer

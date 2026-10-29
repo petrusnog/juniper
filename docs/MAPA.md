@@ -42,7 +42,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [App mobile](pages/mobile.md): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e…
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
-- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha) e…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -63,7 +63,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Observabilidade](pages/observabilidade.md): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo…
 - [Login com MFA](pages/login.md): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Metadocumentação](pages/metadocs.md): Como a Juniper responde sobre a própria arquitetura: detector de perguntas por palavras-chave, busca BM25 local na documentação…
-- [Auditoria de vazamentos](pages/vazamentos.md): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda…
+- [Auditoria de vazamentos](pages/vazamentos.md): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na…
 
 ## Referência
 
@@ -95,7 +95,7 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-009](decisions/ADR-009.md): DeepInfra como provider principal e nova ordem do failover (Aceito) · `architecture`, `contribuindo`, `integracoes-producao`, `llm`, `produto-llm`
 - [ADR-010](decisions/ADR-010.md): Gerenciamento completo da agenda do usuário (Aceito) · `agente`, `architecture`, `contribuindo`, `google-calendar`, `integracoes-producao`, `integrar-cliente`, `mobile`, `produto-ferramentas`, `produto-integracoes`, `produto`, `protocolo`, `seguranca`, `servidor`, `voz-audio`
 - [ADR-011](decisions/ADR-011.md): Arquitetura de Memória (Proposto) · `memoria-longo-prazo`, `memoria-sessao`, `memoria`, `produto-memoria`
-- [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`
+- [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`, `vazamentos`
 - [ADR-013](decisions/ADR-013.md): Deploy e infraestrutura de produção (Proposto) · `contribuindo`, `deploy-continuo`, `deploy-vps`, `integracoes-producao`, `mobile`, `producao`, `produto-privacidade`, `produto`, `protocolo`, `seguranca`
 - [ADR-014](decisions/ADR-014.md): Executor do desktop e a tool `open_url` (Proposto) · `contribuindo`, `executor`, `integrar-cliente`, `produto-ferramentas`, `produto-integracoes`, `protocolo`, `seguranca`, `tools`
 - [ADR-015](decisions/ADR-015.md): Cliente desktop (Electron) (Substituído pelo [ADR-022]) · `architecture`, `mobile`

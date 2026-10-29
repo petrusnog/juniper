@@ -11,7 +11,9 @@ import dataclasses
 import logging
 import re
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from brain.config import settings
@@ -19,6 +21,7 @@ from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
 from brain.core.leak import LeakGuard
 from brain.core.leak_audit import Block, build_record, detect, quarantined
+from brain.core.leak_report import REPORT_EXCHANGES, Exchange, exchanges_from_history
 from brain.core.session import Session, Turn
 from brain.core.style import DashFilter
 from brain.eventlog import bind_session, event_log
@@ -91,7 +94,20 @@ class Agent:
         self.channel_note: str | None = None
         self._executed_until: int | None = None
         self._used_tools = False
+        self._interrupted = False  # the user cut the turn in progress (voice barge-in, cancel)
+        self._checkpoint = 0  # where the turn in progress starts in the history (its user message)
+        self._current: str | None = None  # the user message of the turn in progress
         self._leaked = False  # a reply of this turn showed machinery (T-165)
+        # The last exchanges as the user saw them, for a leak report (T-167). Unlike the history it
+        # is not compacted and keeps what a quarantined turn said; a resumed conversation starts
+        # from what the saved session still has.
+        self._recent: deque[Exchange] = deque(
+            exchanges_from_history(self.session.history)[-REPORT_EXCHANGES:],
+            maxlen=REPORT_EXCHANGES,
+        )
+        # What the reply in progress has said so far, as delivered and as the model wrote it.
+        self._streaming: list[str] = []
+        self._streaming_raw: list[str] = []
         self._turns: list[Turn] = []
         # Where the time of the last turn went (T-062): total ms and ms per stage.
         self.last_timing: tuple[int, dict[str, int]] | None = None
@@ -103,6 +119,26 @@ class Agent:
         """Forget actions waiting for a "yes". Called when the conversation changes hands or is
         resumed: after that, nothing runs without a new, explicit confirmation (ADR-012)."""
         self._dispatcher.pending = None
+
+    def recent_exchanges(self) -> list[Exchange]:
+        """The last ``REPORT_EXCHANGES`` exchanges, oldest first: the finished ones (a reply the
+        user cut is what she had said until then) and, if a turn is running, that one with what she
+        has said so far (a leak is often what he sees while she is still answering)."""
+        items = list(self._recent)
+        if self._current is not None:  # a `/vazou` sent while she is still answering
+            partial = "".join(self._streaming) or "".join(self._streaming_raw)
+            items.append(Exchange(self._current, partial, interrupted=True))
+        return items[-REPORT_EXCHANGES:]
+
+    def interrupt(self) -> None:
+        """The user is cutting the turn in progress (spoke over her, sent something new, cancelled).
+
+        Call it just before cancelling the task. What he said stays in the conversation and in the
+        transcript (T-166); the half-made reply and the tools of that turn do not. A cancellation
+        that does not come from the user (timeout, the connection dropping) is not an interruption:
+        it still rolls the whole turn back, so a retry does not see half a turn.
+        """
+        self._interrupted = True
 
     def drain_turns(self) -> list[Turn]:
         """The exchanges finished since the last call (for long-term memory extraction)."""
@@ -117,10 +153,13 @@ class Agent:
         """
         bind_session(self.session.id)
         event_log.log("turn_start", input_chars=len(user_input))
-        checkpoint = self.session.checkpoint()
+        self._checkpoint = self.session.checkpoint()
+        self._current = user_input
         self._executed_until = None
         self._used_tools = False
+        self._interrupted = False
         self._leaked = False
+        self._streaming, self._streaming_raw = [], []
         self._stages = Stages()
         self._recall_timings = {}
         self._llm_calls = 0
@@ -128,27 +167,28 @@ class Agent:
             reply = await self._loop(user_input, on_token)
         except BaseException as exc:
             # Actions the user approved already ran: keep that record even if the LLM then fails.
-            keep = self._executed_until if self._executed_until is not None else checkpoint
+            keep = self._executed_until if self._executed_until is not None else self._checkpoint
+            interrupted = isinstance(exc, asyncio.CancelledError) and self._interrupted
+            if interrupted:
+                keep = max(keep, self._checkpoint + 1)  # what the user said is never lost (T-166)
+            self._current = None
             self.session.rollback(keep)
-            event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
+            event_log.log(
+                "error" if not interrupted else "turn_interrupted",
+                where="agent.run",
+                type=type(exc).__name__,
+                message=str(exc),
+            )
+            if interrupted:
+                partial = "".join(self._streaming) or "".join(self._streaming_raw)
+                self._finish_turn(user_input, "", partial=partial)
             with self._stages.stage("persist"):
                 self._persist()
+            if interrupted:
+                await self._sink(self._turns[-1])
             self._log_timing()
             raise
-        self.session.turns_total += 1
-        index = self.session.turns_total - 1
-        if self._leaked:
-            # What she said is kept out of memory (and of the night): the evidence is in the audit.
-            event_log.log("leak_quarantined", turn=index)
-        self._turns.append(
-            Turn(
-                user_input,
-                "" if self._leaked else reply,
-                index=index,
-                used_tools=self._used_tools,
-                leaked=self._leaked,
-            )
-        )
+        self._finish_turn(user_input, reply)
         with self._stages.stage("persist"):
             self._persist()
             await self._sink(self._turns[-1])
@@ -163,6 +203,33 @@ class Agent:
         )
         self._log_timing()
         return reply
+
+    def _finish_turn(self, user_input: str, reply: str, *, partial: str = "") -> None:
+        """Count the turn and queue it for memory (``reply`` is empty for an interrupted one;
+        ``partial`` is what she had said when he cut her off, kept only for a leak report)."""
+        self._current = None
+        self._recent.append(
+            Exchange(
+                user_input,
+                reply or partial,
+                datetime.now(UTC).isoformat(timespec="seconds"),
+                interrupted=not reply,
+            )
+        )
+        self.session.turns_total += 1
+        index = self.session.turns_total - 1
+        if self._leaked:
+            # What she said is kept out of memory (and of the night): the evidence is in the audit.
+            event_log.log("leak_quarantined", turn=index)
+        self._turns.append(
+            Turn(
+                user_input,
+                "" if self._leaked else reply,
+                index=index,
+                used_tools=self._used_tools,
+                leaked=self._leaked,
+            )
+        )
 
     def _log_timing(self) -> None:
         """Record where this turn's time went (the ``timing`` event; the CLI may show it too)."""
@@ -234,6 +301,7 @@ class Agent:
         if scrubbed := session.scrub():
             event_log.log("history_scrubbed", messages=scrubbed)
         session.compact()
+        self._rebase_turn_start()
         schemas = self._registry.schemas() or None
 
         for _ in range(self._max_iterations):
@@ -264,6 +332,20 @@ class Agent:
         if on_token is not None:
             await _emit(on_token, LIMIT_MESSAGE)
         return LIMIT_MESSAGE
+
+    def _rebase_turn_start(self) -> None:
+        """Find this turn again in the history after ``scrub`` and ``compact`` shortened it.
+
+        A rollback goes by index: with the old one, a conversation at its turn limit would keep the
+        half-made tool messages of a turn that failed or was cut (orphan tool calls the next LLM
+        call refuses).
+        """
+        history = self.session.history
+        users = [i for i, m in enumerate(history) if m.role == "user"]
+        if users:
+            self._checkpoint = users[-1]
+        if self._executed_until is not None:  # what ran after "sim" sits after the user message
+            self._executed_until = len(history)
 
     async def _recall(
         self, user_input: str, previous: str | None
@@ -331,7 +413,9 @@ class Agent:
         self, schemas: list[dict[str, object]] | None, on_token: TokenCallback | None
     ) -> Message:
         text: list[str] = []
+        self._streaming = text
         raw: list[str] = []  # what the model wrote, before the guard: evidence for the audit
+        self._streaming_raw = raw
         calls: list[ToolCall] = []
         usage: TokenUsage | None = None
         finish_reason: str | None = None

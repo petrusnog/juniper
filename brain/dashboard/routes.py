@@ -8,15 +8,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from brain.config import settings
 from brain.core.persona import load_core
+from brain.dashboard import occurrences
 from brain.dashboard.api import Api, ApiError, Query, first
 from brain.dashboard.search import SEARCH_TYPES, run_search
-from brain.dashboard.serialize import contains, number, paged
+from brain.dashboard.serialize import contains, number, paged, sanitize
 from brain.dashboard.sources import Sources
+from brain.dashboard.xlsx import MIME as XLSX_MIME
+from brain.dashboard.xlsx import build_xlsx
 from brain.memory.retrieval import estimate_tokens
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import BeliefBook
@@ -35,6 +38,10 @@ MAX_PROMPT_CHARS = 2000
 MAX_QUERY_CHARS = 200
 OFF_V1 = {"enabled": False, "reason": "a memória de longo prazo está desligada"}
 OFF_V2 = {"enabled": False, "reason": "a Memória V2 está desligada"}
+OFF_LEAKS = "as ocorrências precisam do MongoDB (memory.session.store: mongo)"
+MAX_OCCURRENCES = 500  # per source, in the list
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+MAX_EXPORTED = 200  # per source, in the spreadsheet: it holds every message of every occurrence
 
 
 async def _blocking(fn: Callable[[], T]) -> T:
@@ -621,6 +628,66 @@ def build_api(sources: Sources) -> Api:
 
         return await _blocking(read)
 
+    # --- occurrences: the leaks the user reported and the audit found (T-168) ---------------------
+
+    def pick_kind(query: Query) -> str:
+        kind = first(query, "kind", "todos") or "todos"
+        if kind not in (*occurrences.KINDS, "todos"):
+            raise ApiError(400, "kind deve ser relato, automatico ou todos")
+        return kind
+
+    def collect(query: Query, limit: int = MAX_OCCURRENCES) -> list[tuple[str, dict[str, Any]]]:
+        """The occurrences of the filter, newest first: reports and audit records together."""
+        if sources.reports is None and sources.audit is None:
+            raise ApiError(503, OFF_LEAKS)
+        kind = pick_kind(query)
+        days = number(query, "days", 30, 1, 365)
+        pairs: list[tuple[str, dict[str, Any]]] = []
+        if kind in ("todos", "relato") and sources.reports is not None:
+            pairs += [("relato", d) for d in sources.reports.recent(limit=limit)]
+        if kind in ("todos", "automatico") and sources.audit is not None:
+            pairs += [("automatico", d) for d in sources.audit.recent(days=days, limit=limit)]
+        pairs.sort(key=lambda pair: pair[1].get("at") or _EPOCH, reverse=True)
+        return pairs
+
+    def find(occurrence_id: str) -> tuple[str, dict[str, Any]]:
+        if sources.reports is None and sources.audit is None:
+            raise ApiError(503, OFF_LEAKS)
+        wanted = occurrence_id.strip().lower()
+        if sources.reports is not None and (found := sources.reports.get(wanted)) is not None:
+            return "relato", found
+        if sources.audit is not None and (found := sources.audit.get(wanted)) is not None:
+            return "automatico", found
+        raise ApiError(404, "ocorrência não encontrada")
+
+    async def occurrence_list(query: Query) -> Any:
+        def read() -> dict[str, Any]:
+            rows = [occurrences.item(kind, doc) for kind, doc in collect(query)]
+            return {"kinds": list(occurrences.KINDS), **paged(rows, query)}
+
+        return await _blocking(read)
+
+    async def occurrence_detail(query: Query) -> Any:
+        def read() -> dict[str, Any]:
+            kind, doc = find(query["_id"][0])
+            return occurrences.detail(kind, doc)
+
+        return await _blocking(read)
+
+    async def occurrence_export(query: Query) -> tuple[str, str, bytes]:
+        def read() -> tuple[str, str, bytes]:
+            wanted = first(query, "id")
+            pairs = [find(wanted)] if wanted else collect(query, MAX_EXPORTED)
+            sheets = occurrences.workbook(pairs)
+            for sheet in sheets:  # the same masking as every other answer of the dashboard
+                sheet.rows = [[sanitize(cell) for cell in row] for row in sheet.rows]
+            stamp = utcnow().astimezone().strftime("%Y%m%d-%H%M")
+            return f"ocorrencias-juniper-{stamp}.xlsx", XLSX_MIME, build_xlsx(sheets)
+
+        return await _blocking(read)
+
+    api.file_route("/occurrences/export.xlsx", occurrence_export)
+
     for path, handler in {
         "/session": session,
         "/overview": overview,
@@ -643,6 +710,8 @@ def build_api(sources: Sources) -> Api:
         "/journal": journal,
         "/sessions": sessions,
         "/sessions/": session_turns,
+        "/occurrences": occurrence_list,
+        "/occurrences/": occurrence_detail,
     }.items():
         api.route(path, handler)
     return api

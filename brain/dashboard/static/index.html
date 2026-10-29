@@ -3,14 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#000000">
   <title>Juniper — dashboard</title>
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body class="app">
   <a class="skip" href="#view">Ir para o conteúdo</a>
   <header class="topbar">
-    <span class="brand">Juniper</span>
+    <a class="brand" href="#/visao" aria-label="Juniper, ir para a visão geral">
+      <img class="logo" src="/assets/logo.png" alt="" width="40" height="40">
+      <span class="brand-name">Juniper</span>
+    </a>
     <button id="logout" type="button" class="ghost">Sair</button>
   </header>
   <nav id="nav" class="nav" aria-label="Seções"></nav>

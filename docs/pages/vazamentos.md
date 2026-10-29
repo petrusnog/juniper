@@ -3,7 +3,7 @@ title: Auditoria de vazamentos
 group: Documentação Técnica
 section: Núcleo
 order: 9
-description: Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
+description: Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 status: pronta
 tags: vazamento leak leakguard auditoria leak_audit prompt eco tag conhecimento parameter instrução quarentena sonho memória mongodb ttl vazamentos
 ---
@@ -74,6 +74,28 @@ Isso vale mesmo com `leak_audit.enabled: false`: desligar a auditoria só deixa 
 
 O histórico da conversa em andamento não muda: a resposta entregue continua nele, como a pessoa a viu, e o `Session.scrub` segue limpando só os marcadores conhecidos antes de cada turno. Um vazamento que só a auditoria reconhece ainda volta ao modelo na próxima chamada.
 
+## Marcar na hora: /vazou {#relato kind=comando file=brain/core/leak_report.py}
+
+O detector só acusa o que as regras conhecem. Quando **você** vê um vazamento, marque:
+
+| Onde | Como |
+|---|---|
+| Telegram | `/vazou` ou `/vazou o que você viu` |
+| App (texto) | digite `/vazou` ou `/vazou nota` no chat |
+| Voz | diga, sozinho na fala: «isso vazou», «vazou», «marcar vazamento», «registrar vazamento» |
+
+O comando é do **servidor** (`ChatHandler`, [ADR-012](../decisions/ADR-012.md)): vale para qualquer cliente, e o app não precisa de uma versão nova. Ele **não** chega ao modelo e **não** entra no histórico da conversa nem na memória. No app, funciona mesmo com uma resposta ainda em andamento (muitas vezes é ela o vazamento) e o relato leva a troca em andamento, com o que ela já disse. **No Telegram**, o bot atende uma mensagem por vez: com a resposta ainda saindo, ele responde «Ainda estou respondendo» e o relato não é gravado; espere o fim e mande `/vazou` (a resposta completa entra nas 10 interações). Para não encher o banco, cada conversa aceita no máximo **um relato a cada 3 segundos e 30 por hora**; o excedente recebe «Já anotei um vazamento agora há pouco» e não é gravado. Por voz, a frase tem de ser **a fala inteira** (como «encerrar conversa»): uma frase que só menciona vazamento vai ao modelo como qualquer outra. Dito por voz, ela **corta** o que estiver falando, anota e responde em uma frase: «Anotei o vazamento.»
+
+Cada relato guarda, na coleção `leak_reports` do MongoDB:
+
+- as **últimas 10 interações** da conversa (a sua mensagem e a resposta dela, como você viu), mais velhas primeiro. Uma resposta que você cortou falando por cima vem com o que ela tinha dito até ali (ou, se o guarda ainda segurava o começo, o que o modelo tinha escrito) e a marca `interrupted`. Os textos passam por `mask_secrets` e são cortados em 8.000 caracteres;
+- a sessão, o canal (`telegram`, `mobile`…), se foi por voz, a sua nota (até 500 caracteres), a versão e o commit;
+- os ids dos registros automáticos da **mesma sessão** nas últimas 24 h (até 3), para ligar o que você viu ao texto bruto do modelo.
+
+Diferente dos registros automáticos, o relato **não expira**: foi você quem escolheu guardá-lo, e ele pode guardar trechos do prompt interno que o guarda teria cortado. Apague com `juniper vazamentos --apagar <id>` (o dashboard é somente leitura, então não apaga). As interações vêm da memória do processo (até 10 numa conversa em andamento); numa conversa retomada, começam pelo que a sessão salva ainda tem (até 8 turnos). Sem MongoDB, o comando responde que não tem onde guardar.
+
+Os relatos aparecem na tela **Ocorrências** do [dashboard](dashboard.md#paginas), junto com as detecções automáticas, e saem em planilha ([Exportar ocorrências](dashboard.md#exportar)).
+
 ## Consultar {#consultar}
 
 O comando lê o MongoDB do processo onde roda. Na VPS, use o atalho do contêiner ([Operação](operacao.md#atalho)).
@@ -84,6 +106,8 @@ juniper vazamentos --vazados       # só os que chegaram à pessoa
 juniper vazamentos --resumo        # contagem por regra, modelo e canal
 juniper vazamentos --dias 30 -n 100
 juniper vazamentos --ver 3f9a1c2b  # um caso inteiro (o id ou o começo dele)
+juniper vazamentos --relatos       # os relatos que você marcou com /vazou
+juniper vazamentos --apagar 3f9a1c2b   # apaga um relato
 ```
 
 Para cruzar com o resto do turno, o `session` do registro filtra o log técnico: `juniper logs -s <sessão>`.
@@ -109,5 +133,6 @@ Cobrem os vazamentos reais (`</parameter>`, `]` seguido de "Mensagem de sistema�
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
 - [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
+- [Voz por áudio](voz-audio.md) (Documentação Técnica): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.
 - [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde e comandos administrativos.
 - [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.

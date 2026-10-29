@@ -3,7 +3,7 @@ title: Dashboard
 group: Documentação Técnica
 section: Clientes
 order: 27
-description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha) e pesquisa, somente leitura, servido pelo próprio cérebro.
 status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
@@ -30,7 +30,16 @@ O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#das
 
 ## Páginas {#paginas}
 
-A interface é responsiva (de 360 px a telas largas; menu lateral no computador, barra inferior no celular), com tema claro e escuro automático e navegação por teclado. Não usa biblioteca externa: os gráficos são SVG simples.
+A interface é responsiva e *mobile first* (de 360 px a telas largas; barra inferior no celular, menu lateral no computador) e tem navegação por teclado. Não usa biblioteca externa: os gráficos são SVG simples.
+
+## Identidade visual {#visual kind=conceito file=brain/dashboard/static/assets/app.css}
+
+O dashboard tem o **mesmo visual de terminal do app do celular** ([App mobile](mobile.md)), num tema único, escuro, qualquer que seja o tema do sistema:
+
+- **Cores:** fundo preto, o verde neon da logo (`#39e639`) para o que é ação, o item ativo e a fala do usuário, e a paleta Tango dos terminais Linux para o resto (ciano para a fala dela, âmbar para avisos, vermelho para erros, verde claro para o que é positivo). Os valores são exatamente os de `mobile/src/theme/tokens.ts`, e um teste confere que os dois arquivos não se afastam.
+- **Fonte:** monoespaçada do sistema (`ui-monospace`, Cascadia, JetBrains Mono, Menlo, Consolas…), sem baixar nada. Cantos retos, brilho verde no foco, `>` antes dos títulos e do item ativo do menu, `$` nas falas do usuário e um cursor que pisca ao lado do nome.
+- **Logo:** na tela de login, grande, com **JUNIPER** em caixa alta embaixo; no dashboard, **sempre visível** na barra superior (fixa, em qualquer tela e ao rolar), com o nome **Juniper** ao lado direito. Clicar nela volta à visão geral. A imagem (`assets/logo.png`, com fundo transparente) vem de `mobile/branding/juniper-neon.jpg` e é servida pelo próprio dashboard, como o ícone da aba (`favicon.png`): a política de segurança só aceita imagens do próprio endereço.
+- **Movimento:** o cursor piscando respeita `prefers-reduced-motion`.
 
 | Página | O que mostra |
 |---|---|
@@ -41,9 +50,23 @@ A interface é responsiva (de 360 px a telas largas; menu lateral no computador,
 | **Estudos** | Os temas, com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |
 | **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
 | **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
+| **Ocorrências** | Os vazamentos na fala: os que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou (com o texto bruto do modelo e o entregue). A lista filtra por origem; o detalhe mostra a sessão, o canal, a nota ou as regras e as mensagens em balões, e cada tela tem o botão **Baixar planilha (.xlsx)**. Precisa do MongoDB: sem ele a tela explica. |
 | **Pesquisa** | Uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado; o que casa por palavras vem antes. Sem o modelo de embeddings, cai para palavras e avisa. |
 
 Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a página correspondente explica.
+
+## Exportar ocorrências em planilha {#exportar kind=função file=brain/dashboard/occurrences.py}
+
+`GET /api/occurrences/export.xlsx` (com o login do dashboard) devolve um `.xlsx` com duas abas:
+
+| Aba | Uma linha por | Colunas |
+|---|---|---|
+| **Mensagens** | mensagem | Ocorrência, Tipo (`Relato (/vazou)` ou `Detectado`), ID da sessão, Canal, Voz, Data da ocorrência, Ordem, **Autor** (`Usuário`, `Juniper` ou `Juniper (texto bruto do modelo)`), **Mensagem**, Observação |
+| **Ocorrências** | ocorrência | Ocorrência, Tipo, ID da sessão, Canal, Voz, Data, Nota, Regras, se o texto vazou até você, Modelo, Commit, número de mensagens |
+
+Filtros na URL: `kind=relato\|automatico\|todos` (padrão `todos`), `days` (janela das detecções, padrão 30) e `id` (uma ocorrência só, o id curto da lista). A lista mostra até 500 de cada origem; a planilha leva as **200** mais novas de cada (ela traz todas as mensagens de cada ocorrência). As datas saem no fuso do agente.
+
+O arquivo é gerado sem biblioteca extra (`brain/dashboard/xlsx.py`): o texto vai como *texto*, nunca como fórmula (uma mensagem que começa com `=` aparece como foi dita), caracteres que o XML não aceita são trocados, uma célula é cortada antes do limite do Excel e os segredos passam pelo mesmo mascaramento do resto do dashboard.
 
 ## Configuração {#configuracao}
 
@@ -67,15 +90,16 @@ As chaves `dashboard.*` estão em [Configuração](configuracao.md#trace). Para 
 ## Testes {#testes}
 
 ```bash
-pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py -v
+pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py tests/test_dashboard_occurrences.py tests/test_dashboard_xlsx.py -v
 ```
 
 ## Para saber mais {#para-saber-mais}
 
+- [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
 - [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
 - [Clientes em produção](clientes-producao.md) (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.
-- [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

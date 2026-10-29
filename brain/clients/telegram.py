@@ -55,6 +55,7 @@ HELP_TEXT: Final = (
     "Oi! Eu sou a Juniper. Escreva o que precisa, como faria no terminal.\n\n"
     "Comandos:\n"
     "/novo: começa uma conversa nova\n"
+    "/vazou [nota]: marca que uma resposta minha vazou instruções ou texto interno\n"
     "/ajuda: mostra esta mensagem\n\n"
     "Por aqui só entendo texto. Quando uma ação muda algo (como criar um evento), eu pergunto "
     'antes e você responde "sim".'
@@ -319,6 +320,8 @@ class TelegramBridge:
             await self._say(msg.chat_id, HELP_TEXT)
         elif name == "novo":
             await self._new_conversation(msg)
+        elif name == "vazou":  # the server stores the report and answers (T-167)
+            await self._turn(msg, text, counts=False)
         else:
             await self._say(msg.chat_id, UNKNOWN_COMMAND)
 
@@ -344,7 +347,9 @@ class TelegramBridge:
 
     # --- um turno ---
 
-    async def _turn(self, msg: Incoming, text: str) -> None:
+    async def _turn(self, msg: Incoming, text: str, *, counts: bool = True) -> None:
+        """Um turno. ``counts=False`` para um comando do servidor (``/vazou``): ele responde como
+        um turno, mas não entra no histórico, então não conta para a recuperação de queda."""
         user = self._user(msg.user_id)
         if user.lock.locked():  # um turno por vez, sem fila (ADR-016)
             await self._say(msg.chat_id, BUSY_TEXT)
@@ -361,11 +366,11 @@ class TelegramBridge:
             finish = "ok"
             try:
                 result = await client.chat(text, pieces.append)
-                user.known_turns += 1
+                user.known_turns += counts
                 finish = result.finish
                 reply = self._reply_for(result, "".join(pieces))
             except ConnectionLostError:
-                user.known_turns += 1
+                user.known_turns += counts
                 finish = "connection_lost"
                 await self._say(msg.chat_id, LOST_TEXT)
                 reply = await self._recover(client, user.known_turns)

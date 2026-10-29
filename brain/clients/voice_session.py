@@ -29,7 +29,7 @@ from typing import Final, Literal
 
 from brain.clients import protocol as p
 from brain.eventlog import event_log
-from brain.voice.commands import is_end_command, is_stop_command
+from brain.voice.commands import is_end_command, is_leak_command, is_stop_command
 from brain.voice.services import VoiceServices
 from brain.voice.speech import Notice
 from brain.voice.text import SentenceChunker
@@ -79,6 +79,7 @@ class VoiceSession:
         turn_active: Callable[[], bool],
         ended: Callable[[], None],
         clear_pending: Callable[[], None],
+        report_leak: Callable[[], Awaitable[str]] | None = None,
         input_rate: int = VAD_RATE,
         local_stt: bool = False,
         local_tts: bool = False,
@@ -97,6 +98,7 @@ class VoiceSession:
         self._turn_active = turn_active
         self._ended = ended
         self._clear_pending = clear_pending
+        self._report_leak = report_leak
         self._input_rate = input_rate
         self.local_stt = local_stt
         self.local_tts = local_tts
@@ -430,6 +432,9 @@ class VoiceSession:
         if is_end_command(text):
             await self.end("command")
             return
+        if is_leak_command(text) and self._report_leak is not None:
+            await self._leak()
+            return
         if is_stop_command(text):
             self._clear_pending()
             if self._speech is not None or self._turn_active():
@@ -439,6 +444,20 @@ class VoiceSession:
         if self._speech is not None or self._turn_active():
             await self._cut()  # what he says now replaces what she was saying
         await self._submit(text)
+
+    async def _leak(self) -> None:
+        """ "Isso vazou": cut what she is saying (it is probably the leak), keep the report and
+        answer in one short sentence. The command never becomes a chat turn (T-167)."""
+        self._clear_pending()
+        if self._speech is not None or self._turn_active():
+            await self._cut()
+        assert self._report_leak is not None
+        try:
+            answer = await self._report_leak()
+        except Exception as exc:  # noqa: BLE001  (a report problem is a sentence, not a crash)
+            event_log.log("error", where="voice.leak", type=type(exc).__name__)
+            answer = "Não consegui anotar o vazamento agora."
+        await self._say_standalone(answer)
 
     async def _say_standalone(self, text: str) -> None:
         if self._speech is not None or self._turn_active():
