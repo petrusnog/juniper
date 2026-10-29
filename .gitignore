@@ -62,3 +62,6 @@ backup.env
 docs/.obsidian/*
 !docs/.obsidian/app.json
 !docs/.obsidian/graph.json
+
+# APK publicado do app (scripts/publish_app.sh), só existe na VPS
+/app-release/

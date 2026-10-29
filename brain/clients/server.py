@@ -35,6 +35,7 @@ from websockets.http11 import Request, Response
 
 from brain import __version__
 from brain.clients import protocol as p
+from brain.clients.app_update import AppUpdates
 from brain.config import settings
 from brain.core.session import new_session_id
 from brain.eventlog import event_log
@@ -47,6 +48,8 @@ logger = logging.getLogger(__name__)
 
 WS_PATH: Final = "/v1/ws"
 HEALTH_PATH: Final = "/health"
+UPDATE_PATH: Final = "/app/update"
+UPDATE_APK_PATH: Final = "/app/update/apk"
 HEARTBEAT_SECONDS: Final = 30.0
 IDLE_TIMEOUT_SECONDS: Final = 90.0
 HELLO_TIMEOUT_SECONDS: Final = 10.0
@@ -246,6 +249,7 @@ class BrainServer:
         handler: ConnectionHandler | None = None,
         *,
         health: HealthFn | None = None,
+        app_updates: AppUpdates | None = None,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
         idle_timeout_seconds: float = IDLE_TIMEOUT_SECONDS,
         hello_timeout_seconds: float = HELLO_TIMEOUT_SECONDS,
@@ -255,6 +259,7 @@ class BrainServer:
         self._token = token
         self._handler: ConnectionHandler = handler or BaseHandler()
         self._health = health or _default_health
+        self._app_updates = app_updates
         self._heartbeat = heartbeat_seconds
         self._idle_timeout = idle_timeout_seconds
         self._hello_timeout = hello_timeout_seconds
@@ -297,13 +302,40 @@ class BrainServer:
             body = json.dumps({**self._health(), "version": __version__}).encode()
             headers = Headers([("Content-Type", "application/json"), ("Cache-Control", "no-store")])
             return Response(HTTPStatus.OK.value, "OK", headers, body)
-        if path != WS_PATH:
+        if path not in (WS_PATH, UPDATE_PATH, UPDATE_APK_PATH):
             return connection.respond(HTTPStatus.NOT_FOUND, "Not found\n")
         given = _bearer(request.headers)
         if given is None or not hmac.compare_digest(given.encode(), self._token.encode()):
             event_log.log("connection", action="rejected", reason="unauthorized")
             return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+        if path == UPDATE_PATH:
+            return self._update_info()
+        if path == UPDATE_APK_PATH:
+            return self._update_apk(connection)
         return None
+
+    # --- HTTP: a versão publicada do app (ADR-026) ---
+
+    def _update_info(self) -> Response:
+        release = self._app_updates.release() if self._app_updates else None
+        body = json.dumps(release.to_json() if release else {"available": False}).encode()
+        headers = Headers([("Content-Type", "application/json"), ("Cache-Control", "no-store")])
+        return Response(HTTPStatus.OK.value, "OK", headers, body)
+
+    def _update_apk(self, connection: ServerConnection) -> Response:
+        release = self._app_updates.release() if self._app_updates else None
+        data = self._app_updates.apk_bytes(release) if self._app_updates and release else None
+        if release is None or data is None:
+            return connection.respond(HTTPStatus.NOT_FOUND, "No release\n")
+        event_log.log("app_update", action="download", version_code=release.version_code)
+        headers = Headers(
+            [
+                ("Content-Type", "application/vnd.android.package-archive"),
+                ("Content-Length", str(len(data))),
+                ("Cache-Control", "no-store"),
+            ]
+        )
+        return Response(HTTPStatus.OK.value, "OK", headers, data)
 
     # --- ciclo de vida da conexão ---
 

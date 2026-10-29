@@ -16,6 +16,7 @@
 #                        (padrão: docker/config.base.yaml, vazio)
 #   JUNIPER_ENV_FILE     .env com as chaves de LLM (padrão: .env)
 #   JUNIPER_CERTS_DIR    pasta com a chave do Google (padrão: certs)
+#   JUNIPER_APP_DIR      pasta com o APK publicado do app (padrão: app-release; scripts/publish_app.sh)
 #
 # O nome do projeto é outro (juniper-prod) para não encostar nos volumes do docker-compose.yml de
 # desenvolvimento (juniper_juniper-mongo-data).
@@ -61,6 +62,8 @@ services:
       # da voz). Um VOLUME (diretório), nunca um arquivo montado: gravar o token troca o arquivo
       # por outro (rename), o que falha em bind mount de arquivo único. Sobrevive a deploys.
       - juniper-music:/home/juniper/.juniper/music
+      # O APK do app Android e o latest.json (scripts/publish_app.sh), só leitura (ADR-026).
+      - ${JUNIPER_APP_DIR:-./app-release}:/home/juniper/.juniper/app:ro
     healthcheck:
       test:
         - CMD

@@ -1,0 +1,116 @@
+name: Mobile release
+
+# Gera o APK do app Android e o publica no cérebro, para o app se atualizar sozinho (ADR-026).
+# Roda depois que o workflow "Mobile" (tsc, lint, jest) passa verde no master; também à mão:
+# Actions -> Mobile release -> Run workflow (branch master). O primeiro disparo é manual, porque um
+# workflow_run só vale com o arquivo já na branch padrão.
+#
+# Segredos (Settings -> Secrets and variables -> Actions), além dos do Deploy (TS_OAUTH_*, DEPLOY_*):
+#   ANDROID_KEYSTORE_BASE64   o MESMO keystore do app já instalado, em base64 (base64 -w0 arq.keystore)
+#   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Com outra chave o Android recusa a atualização por cima do app instalado.
+on:
+  workflow_run:
+    workflows: ["Mobile"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Uma publicação por vez, sem cancelar a que está no meio.
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: apk
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0   # o código da versão é o número de commits (mobile/android/app/build.gradle)
+      - name: Confere os segredos de assinatura
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Sem eles o Gradle assinaria com a chave de depuração, e os celulares recusariam o APK.
+          for name in KEYSTORE STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::falta o segredo ANDROID_* correspondente a $name (veja o cabeçalho deste workflow)"
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/juniper-release.keystore"
+          {
+            echo "storeFile=$RUNNER_TEMP/juniper-release.keystore"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > mobile/android/keystore.properties
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Instala as dependências do app
+        working-directory: mobile
+        run: npm ci
+      - name: Compila o APK
+        working-directory: mobile/android
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          ./gradlew assembleRelease --no-daemon
+      - name: Versão
+        id: version
+        run: |
+          code="$(git rev-list --count HEAD)"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=0.1.$code" >> "$GITHUB_OUTPUT"
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/app-release.apk"
+      - name: Guarda o APK como artefato (cópia de segurança)
+        uses: actions/upload-artifact@v4
+        with:
+          name: juniper-app-${{ steps.version.outputs.name }}
+          path: ${{ runner.temp }}/app-release.apk
+          retention-days: 14
+      - name: Entra na tailnet (nó temporário, tag:ci)
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Prepara o SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Publica na VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          scp "${ssh_opts[@]}" "$RUNNER_TEMP/app-release.apk" "$remote:/tmp/juniper-app-release.apk"
+          # O script segue por stdin: a VPS não precisa ter o commit novo para publicar.
+          ssh "${ssh_opts[@]}" "$remote" \
+            "bash -s -- /tmp/juniper-app-release.apk $CODE $NAME; rc=\$?; rm -f /tmp/juniper-app-release.apk; exit \$rc" \
+            < scripts/publish_app.sh

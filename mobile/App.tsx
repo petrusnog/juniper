@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -14,6 +14,7 @@ import { isLaunchUrl } from './src/launch/VoiceLauncher';
 import { nativeLauncher } from './src/launch/nativeLauncher';
 import {
   Credentials,
+  httpBase,
   loadCredentials,
   saveCredentials,
 } from './src/storage/credentials';
@@ -21,7 +22,10 @@ import { spacing } from './src/theme/tokens';
 import { useTheme } from './src/theme/useTheme';
 import { ChatScreen } from './src/ui/ChatScreen';
 import { SetupScreen } from './src/ui/SetupScreen';
+import { UpdateBanner } from './src/ui/UpdateViews';
 import { VoiceScreen } from './src/ui/VoiceScreen';
+import { nativeUpdate } from './src/update/nativeUpdate';
+import { UpdateController } from './src/update/UpdateController';
 
 type Tab = 'text' | 'voice';
 
@@ -30,9 +34,11 @@ let initialLinkHandled = false;
 
 function Home({
   credentials,
+  updater,
   onConfigure,
 }: {
   credentials: Credentials;
+  updater: UpdateController;
   onConfigure: () => void;
 }) {
   const theme = useTheme();
@@ -112,6 +118,7 @@ function Home({
           />
         )}
       </View>
+      <UpdateBanner updater={updater} />
       <View
         style={[
           styles.tabs,
@@ -147,6 +154,22 @@ function Root() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [editing, setEditing] = useState(false);
 
+  // One updater per address and token; the automatic check runs once, when it is created.
+  const updater = useMemo(
+    () =>
+      credentials === null
+        ? null
+        : new UpdateController(
+            { base: httpBase(credentials), token: credentials.token },
+            nativeUpdate,
+          ),
+    [credentials?.host, credentials?.port, credentials?.token], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  useEffect(() => {
+    updater?.check({ silent: true }).catch(() => undefined);
+    return () => updater?.dispose();
+  }, [updater]);
+
   useEffect(() => {
     loadCredentials().then(found => {
       setCredentials(found);
@@ -169,11 +192,19 @@ function Root() {
         initial={credentials}
         onSave={save}
         onCancel={credentials ? () => setEditing(false) : undefined}
+        updater={credentials ? updater : null}
       />
     );
   }
+  if (updater === null) {
+    return <ActivityIndicator style={styles.center} color={theme.accent} />;
+  }
   return (
-    <Home credentials={credentials} onConfigure={() => setEditing(true)} />
+    <Home
+      credentials={credentials}
+      updater={updater}
+      onConfigure={() => setEditing(true)}
+    />
   );
 }
 
