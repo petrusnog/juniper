@@ -40,6 +40,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- juniper://voz opens the voice conversation (notification button, shortcut, assistant) -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="juniper" android:host="voz" />
+        </intent-filter>
+        <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
       </activity>
       <service
         android:name=".voice.VoiceService"

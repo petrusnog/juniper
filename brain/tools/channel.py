@@ -27,7 +27,7 @@ class PlaybackFlag:
     """Set by a tool when it started music on the device during this turn.
 
     A voice conversation that starts music ends once she has finished her comment (ADR-023,
-    wake word): the music and the microphone must not share the room.
+    hands-free opening): the music and the microphone must not share the room.
     """
 
     def __init__(self) -> None:

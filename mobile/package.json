@@ -12,8 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@picovoice/porcupine-react-native": "^4.0.0",
-    "@picovoice/react-native-voice-processor": "^1.2.3",
     "@react-native/new-app-screen": "0.88.0",
     "punycode": "^2.3.1",
     "react": "19.3.0",

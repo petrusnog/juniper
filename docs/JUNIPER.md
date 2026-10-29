@@ -213,7 +213,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 |---|---|
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta implementar `brain/auth/`, o `auth.login` no protocolo, `/login` no Telegram e o código no dashboard. Nada liga o MFA por padrão. |
 | Tools de sistema e web (`run_shell`, `open_app`, `web_fetch`, `web_search`) | Política pronta (ADR-006); implementação pendente. |
-| Wake word | Não iniciada. |
+| Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
 | Calibração da Memória V2 | Os valores numéricos seguem **[a calibrar]** com uso real (ADR-017). |
 

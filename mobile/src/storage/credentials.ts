@@ -10,10 +10,8 @@ export interface Credentials {
   token: string;
   deviceId: string;
   deviceName: string;
-  /** Picovoice AccessKey for the wake word (free; typed once in the settings). */
-  picovoiceKey?: string;
-  /** The hands-free mode (wake word) was left on. */
-  wakeEnabled?: boolean;
+  /** The notification with the «Falar» button was left on. */
+  shortcutNotification?: boolean;
 }
 
 const SERVICE = 'app.juniper.mobile.brain';
@@ -60,8 +58,7 @@ export async function loadCredentials(): Promise<Credentials | null> {
       token: data.token,
       deviceId: data.deviceId,
       deviceName: data.deviceName ?? 'Celular',
-      picovoiceKey: data.picovoiceKey,
-      wakeEnabled: data.wakeEnabled === true,
+      shortcutNotification: data.shortcutNotification === true,
     };
   } catch {
     return null; // unreadable store: the app asks for the setup again

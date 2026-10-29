@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Juniper</string>
+    <string name="shortcut_voice_short">Falar</string>
+    <string name="shortcut_voice_long">Falar com a Juniper</string>
 </resources>

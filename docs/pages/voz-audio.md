@@ -62,22 +62,24 @@ Sem fone, a voz sai pelo alto-falante e o microfone ouve a própria Juniper. O q
 
 O que **não** dá para garantir sem fone: falar por cima de uma música alta sem apertar o botão. O Android cancela o eco da voz da Juniper, não o de outro app; sem o botão, a música pode ser tomada por fala (e a transcrição de letra de música não é filtrada). Por isso: fone, ou «Segurar para falar».
 
-## Chamar falando «Juniper» (palavra de chamada) {#wake}
+## Mãos livres: abrir a voz com um toque {#maos-livres}
 
-Com a opção **Chamar falando «Juniper»** ligada na aba Voz, o app fica em **espera**: um serviço em primeiro plano (notificação «Juniper aguardando») escuta o microfone **só no aparelho**, com o detector da Picovoice (Porcupine); nenhum áudio vai ao cérebro nem à nuvem nesse estado. O fluxo, pensado para o celular como interface central e o carro como mero alto-falante:
+O celular é a interface central e o carro é só o alto-falante. Para abrir a conversa sem procurar nada na tela, o app aceita o link **`juniper://voz`**, que traz o app para a frente e abre a sessão de voz já no modo mãos livres (`wake: true`, [protocolo](protocolo.md#voz)). Três jeitos de chegar a ele:
 
-1. Você diz «Juniper». O app para o detector, abre a sessão de voz com `wake: true` e o cérebro **cumprimenta** (uma frase curta, como hoje).
-2. Você pede uma música, álbum ou playlist. Com o microfone **fechado** enquanto ela fala, o cérebro chama `play_music`, que abre o YouTube Music.
-3. Ainda de microfone fechado, ela faz um **comentário curto** e, ao terminar, o cérebro manda `voice.end` com `reason: playback`. O app fecha a sessão de voz e **volta à espera** da palavra de chamada. Ela só volta a interagir depois de um novo «Juniper».
-4. Se você chamou e não disse nada (ou depois de uma conversa sem música), a sessão encerra sozinha após `voice.wake_idle_seconds` (padrão 15 s) de silêncio e volta à espera.
+1. **Botão «Falar» na notificação:** na aba Voz, ligue «Botão «Falar» na notificação». Fica uma notificação fixa com o botão, sem serviço e sem microfone aberto. O Android pede a permissão de notificações na primeira vez.
+2. **Atalho do ícone:** segure o ícone da Juniper e toque em «Falar». Arraste-o para a tela inicial para ter um botão de um toque.
+3. **Pelo Google:** «Ok Google, abre o app Juniper» abre o app, mas **não** inicia a conversa (isso é o Google, não o link). Para falar a frase inteira é preciso uma rotina do Google que abra o link `juniper://voz`. **Não verificado** no Android atual, em que o Gemini está substituindo o Assistente: teste no aparelho.
 
-Em qualquer interação sem fone o microfone fecha enquanto ela fala e reabre quando ela para (ver [acima](#viva-voz)). **Não verificado no aparelho:** com música alta no carro o detector pode falhar em ouvir a palavra; nesse caso use o botão do app.
+O fluxo depois do toque:
 
-**Configurar a Picovoice (uma vez, grátis):**
-1. Crie a conta em console.picovoice.ai e copie a **AccessKey**.
-2. Em «Porcupine», treine a palavra **Juniper** para **Android** e baixe o arquivo `.ppn`.
-3. Salve-o como `mobile/android/app/src/main/assets/juniper.ppn` (o `*.ppn` é ignorado pelo git; gere o APK depois).
-4. No app, em Configurar, cole a AccessKey em «Chave da Picovoice» (fica no armazenamento seguro do aparelho, nunca no código) e ligue a opção na aba Voz. Sem a chave ou sem o arquivo, o app avisa e a espera não liga.
+1. O app abre a sessão com `wake: true` e o cérebro **cumprimenta** (uma frase curta). Se a conexão ainda está subindo (app aberto do zero), o app espera até 8 s por ela.
+2. Você pede uma música, álbum ou playlist. O microfone fica **fechado** enquanto ela fala; o cérebro chama `play_music`, que abre o YouTube Music.
+3. Ainda de microfone fechado, ela faz um **comentário curto** e o cérebro manda `voice.end` com `reason: playback`. O app fecha a conversa e a música segue tocando; ela só volta a ouvir num novo toque.
+4. Se você não disser nada, ou depois de uma conversa sem música, a sessão encerra sozinha após `voice.wake_idle_seconds` (padrão 15 s) de silêncio.
+
+Em qualquer interação sem fone o microfone fecha enquanto ela fala e reabre quando ela para (ver [acima](#viva-voz)).
+
+**Backlog: palavra falada «Juniper».** Detectar a palavra de chamada no aparelho (sem enviar áudio ao cérebro) fica para depois. O plano é um detector local sem conta nem custo (openWakeWord) com um modelo da palavra «Juniper» treinado no Google Colab (cerca de 1 a 3 h de espera, feito à mão, e a precisão com música alta no carro só se vê no aparelho), mais um módulo Kotlin que o carregue. A interface `WakeWordDetector` (`mobile/src/wake/`) já está reservada para ele, e o toque continua como reserva. A Picovoice foi descartada por incerteza de preço.
 
 ## Orçamento e voz do aparelho {#orcamento}
 
