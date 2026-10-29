@@ -8,11 +8,7 @@
 export interface AudioDevice {
   /** Starts the foreground service and the microphone; PCM 16-bit mono at `sampleRate`. */
   start(sampleRate: number): Promise<void>;
-  /** Ends the capture; `keepService` leaves the foreground service up (the wake word is waiting). */
-  stop(keepService?: boolean): Promise<void>;
-  /** The foreground service alone, with its notification (the phone waiting for the wake word). */
-  startService(title: string, text: string): Promise<void>;
-  stopService(): Promise<void>;
+  stop(): Promise<void>;
   /** Chunks of about 100 ms, base64 PCM. Returns the unsubscribe function. */
   onChunk(listener: (base64Pcm: string) => void): () => void;
   /** The person pressed "encerrar" in the notification. */

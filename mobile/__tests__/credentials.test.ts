@@ -43,19 +43,15 @@ test('saves to the keystore only for this device and loads it back', async () =>
     expect.any(String),
     expect.objectContaining({ accessible: 'unlocked-this-device' }),
   );
-  expect(await loadCredentials()).toEqual({ ...creds, wakeEnabled: false });
+  expect(await loadCredentials()).toEqual({
+    ...creds,
+    shortcutNotification: false,
+  });
 });
 
-test('the wake word key and the hands-free choice are kept with the credentials', async () => {
-  await saveCredentials({
-    ...creds,
-    picovoiceKey: 'pv-key',
-    wakeEnabled: true,
-  });
-  expect(await loadCredentials()).toMatchObject({
-    picovoiceKey: 'pv-key',
-    wakeEnabled: true,
-  });
+test('the notification button choice is kept with the credentials', async () => {
+  await saveCredentials({ ...creds, shortcutNotification: true });
+  expect(await loadCredentials()).toMatchObject({ shortcutNotification: true });
 });
 
 test('nothing stored, a corrupt value or an incomplete one means "ask again"', async () => {

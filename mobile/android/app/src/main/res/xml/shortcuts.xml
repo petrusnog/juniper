@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Long-press the app icon: «Falar» (drag it to the home screen for a one-tap button). -->
+    <shortcut
+        android:shortcutId="voice"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="juniper://voz"
+            android:targetPackage="app.juniper.mobile"
+            android:targetClass="app.juniper.mobile.MainActivity" />
+    </shortcut>
+</shortcuts>

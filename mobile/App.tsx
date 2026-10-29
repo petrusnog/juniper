@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -9,6 +10,8 @@ import {
 import { Text } from './src/theme/Text';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useBrain } from './src/app/useBrain';
+import { isLaunchUrl } from './src/launch/VoiceLauncher';
+import { nativeLauncher } from './src/launch/nativeLauncher';
 import {
   Credentials,
   loadCredentials,
@@ -22,6 +25,9 @@ import { VoiceScreen } from './src/ui/VoiceScreen';
 
 type Tab = 'text' | 'voice';
 
+/** The link that opened the app is handled once per process, not on every remount. */
+let initialLinkHandled = false;
+
 function Home({
   credentials,
   onConfigure,
@@ -30,9 +36,57 @@ function Home({
   onConfigure: () => void;
 }) {
   const theme = useTheme();
-  const { chat, voice, wake, state, reconnect } = useBrain(credentials);
+  const { chat, voice, launcher, state, reconnect } = useBrain(credentials);
   const [tab, setTab] = useState<Tab>('text');
-  if (chat === null || voice === null || wake === null) {
+  const [shortcut, setShortcut] = useState(
+    credentials.shortcutNotification === true,
+  );
+  const [shortcutNotice, setShortcutNotice] = useState<string | null>(null);
+
+  // juniper://voz (shortcut, notification button, assistant): open the voice and start talking.
+  useEffect(() => {
+    if (launcher === null) {
+      return undefined;
+    }
+    const open = (url: string | null | undefined) => {
+      if (isLaunchUrl(url)) {
+        setTab('voice');
+        launcher.trigger().catch(() => undefined);
+      }
+    };
+    if (!initialLinkHandled) {
+      initialLinkHandled = true;
+      Linking.getInitialURL()
+        .then(open)
+        .catch(() => undefined);
+    }
+    const sub = Linking.addEventListener('url', event => open(event.url));
+    return () => sub.remove();
+  }, [launcher]);
+
+  const changeShortcut = useCallback(
+    async (on: boolean) => {
+      setShortcutNotice(null);
+      if (on) {
+        const shown = await nativeLauncher.show().catch(() => false);
+        if (!shown) {
+          setShortcutNotice(
+            'Permita as notificações do app para ligar o botão.',
+          );
+          return;
+        }
+      } else {
+        await nativeLauncher.hide().catch(() => undefined);
+      }
+      setShortcut(on);
+      saveCredentials({ ...credentials, shortcutNotification: on }).catch(
+        () => undefined,
+      );
+    },
+    [credentials],
+  );
+
+  if (chat === null || voice === null || launcher === null) {
     return <ActivityIndicator style={styles.center} />;
   }
   return (
@@ -50,12 +104,10 @@ function Home({
             voice={voice}
             chat={chat}
             connection={state}
-            wake={wake}
-            onWakeChange={on => {
-              saveCredentials({ ...credentials, wakeEnabled: on }).catch(
-                () => undefined,
-              );
-              (on ? wake.enable() : wake.disable()).catch(() => undefined);
+            shortcut={shortcut}
+            shortcutNotice={shortcutNotice}
+            onShortcutChange={on => {
+              changeShortcut(on).catch(() => undefined);
             }}
           />
         )}

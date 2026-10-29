@@ -5,7 +5,6 @@ import { ChatController } from '../src/chat/ChatController';
 import type { BrainConnection } from '../src/connection/BrainConnection';
 import { VoiceScreen } from '../src/ui/VoiceScreen';
 import { VoiceController } from '../src/voice/VoiceController';
-import { WakeController } from '../src/wake/WakeController';
 
 class Conn {
   state = 'connected';
@@ -29,8 +28,6 @@ class Conn {
 const audio = {
   start: jest.fn(async () => undefined),
   stop: jest.fn(async () => undefined),
-  startService: jest.fn(async () => undefined),
-  stopService: jest.fn(async () => undefined),
   onChunk: () => () => undefined,
   onStopRequested: () => () => undefined,
   hasHeadset: jest.fn(async () => false),
@@ -51,6 +48,7 @@ const stt = {
 };
 
 function mount(connection: 'connected' | 'offline' = 'connected') {
+  const onShortcutChange = jest.fn();
   const conn = new Conn();
   const voice = new VoiceController(
     conn as unknown as BrainConnection,
@@ -64,16 +62,6 @@ function mount(connection: 'connected' | 'offline' = 'connected') {
     () => 'c-1',
   );
   chat.start();
-  const wake = new WakeController(
-    conn as unknown as BrainConnection,
-    voice,
-    audio,
-    {
-      available: false,
-      start: jest.fn(),
-      stop: jest.fn(async () => undefined),
-    },
-  );
   let tree!: ReactTestRenderer.ReactTestRenderer;
   ReactTestRenderer.act(() => {
     tree = ReactTestRenderer.create(
@@ -81,14 +69,15 @@ function mount(connection: 'connected' | 'offline' = 'connected') {
         voice={voice}
         chat={chat}
         connection={connection}
-        wake={wake}
-        onWakeChange={jest.fn()}
+        shortcut={false}
+        shortcutNotice={null}
+        onShortcutChange={onShortcutChange}
       />,
     );
   });
   const texts = () =>
     tree.root.findAllByType(Text).map(t => [t.props.children].flat().join(''));
-  return { conn, voice, root: tree.root, texts };
+  return { conn, voice, root: tree.root, texts, onShortcutChange };
 }
 
 test('the big button opens the conversation and the screen follows the brain', async () => {
@@ -211,4 +200,12 @@ test('the screen says whether she is on the loudspeaker (no interrupting by voic
   });
   expect(texts().join(' ')).toContain('Viva-voz');
   expect(conn.sent[0]).toMatchObject({ route: 'speaker' });
+});
+
+test('the notification button switch asks the app to turn it on', () => {
+  const { root, onShortcutChange } = mount();
+  ReactTestRenderer.act(() => {
+    root.findByProps({ testID: 'shortcut-switch' }).props.onValueChange(true);
+  });
+  expect(onShortcutChange).toHaveBeenCalledWith(true);
 });

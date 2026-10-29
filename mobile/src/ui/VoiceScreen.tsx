@@ -9,17 +9,16 @@ import { ConnectionState } from '../connection/BrainConnection';
 import { radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
 import { VoiceController, VoicePhase } from '../voice/VoiceController';
-import type { WakeController } from '../wake/WakeController';
-import { useWake } from '../wake/useWake';
 import { useVoice } from '../voice/useVoice';
 
 interface Props {
   voice: VoiceController;
   chat: ChatController;
   connection: ConnectionState;
-  wake: WakeController;
-  /** Persists the choice (the hands-free mode stays on across app restarts). */
-  onWakeChange: (on: boolean) => void;
+  /** The notification with the «Falar» button is on. */
+  shortcut: boolean;
+  shortcutNotice: string | null;
+  onShortcutChange: (on: boolean) => void;
 }
 
 const LABEL: Record<VoicePhase, string> = {
@@ -35,14 +34,14 @@ export function VoiceScreen({
   voice,
   chat,
   connection,
-  wake,
-  onWakeChange,
+  shortcut,
+  shortcutNotice,
+  onShortcutChange,
 }: Props) {
   const theme = useTheme();
   const state = useVoice(voice);
   const chatState = useChat(chat);
   const overlay = useOverlayPermission();
-  const wakeState = useWake(wake);
   const reply = [...chatState.messages]
     .reverse()
     .find(m => m.role === 'assistant');
@@ -142,29 +141,19 @@ export function VoiceScreen({
 
       <View style={styles.controls}>
         <View style={styles.ptt}>
-          <Text style={{ color: theme.ink }}>Chamar falando «Juniper»</Text>
+          <Text style={{ color: theme.ink }}>Botão «Falar» na notificação</Text>
           <Switch
-            testID="wake-switch"
-            value={wakeState.phase !== 'off'}
-            onValueChange={on => onWakeChange(on)}
+            testID="shortcut-switch"
+            value={shortcut}
+            onValueChange={on => onShortcutChange(on)}
           />
         </View>
-        {wakeState.phase !== 'off' ? (
+        {shortcutNotice ? (
           <Text
-            testID="wake-status"
-            style={[styles.small, { color: theme.green }]}
-          >
-            {wakeState.phase === 'standby'
-              ? 'Esperando você dizer «Juniper»… (o microfone só escuta essa palavra)'
-              : 'Conversando. Depois de tocar uma música ela volta a esperar a palavra.'}
-          </Text>
-        ) : null}
-        {wakeState.notice ? (
-          <Text
-            testID="wake-notice"
+            testID="shortcut-notice"
             style={[styles.small, { color: theme.red }]}
           >
-            {wakeState.notice}
+            {shortcutNotice}
           </Text>
         ) : null}
         <View style={styles.ptt}>

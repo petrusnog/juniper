@@ -97,11 +97,10 @@ export class VoiceController {
     this.listeners.forEach(l => l());
   }
 
-  /** Opens the session. `false` (with a notice) if it could not start. */
-  /** Keep the foreground service up when a session ends (the wake word is waiting in it). */
-  keepService = false;
-
-  /** `wake`: the session was opened by the wake word, so the brain greets and closes quickly. */
+  /**
+   * Opens the session. `false` (with a notice) if it could not start. `wake`: opened hands-free
+   * (shortcut or link): the brain greets first and closes the session after the music.
+   */
   async start(options: { wake?: boolean } = {}): Promise<boolean> {
     if (this.active || this.starting) {
       return false;
@@ -385,7 +384,7 @@ export class VoiceController {
     await this.stt.stop().catch(() => undefined);
     this.audio.flush();
     await this.audio.closePlayer().catch(() => undefined);
-    await this.audio.stop(this.keepService).catch(() => undefined);
+    await this.audio.stop().catch(() => undefined);
     this.cut.clear();
     this.set({
       phase: 'off',

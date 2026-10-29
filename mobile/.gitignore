@@ -78,5 +78,3 @@ yarn-error.log
 android/keystore.properties
 *.jks
 
-# Picovoice wake word keyword (trained per account; copied in by hand, see docs/pages/mobile.md)
-*.ppn

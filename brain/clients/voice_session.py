@@ -366,7 +366,7 @@ class VoiceSession:
         """Music started this turn and her comment is said: close the conversation.
 
         The device is still playing what was sent, and the voice must not be cut: wait for it.
-        Then the session ends (the phone goes back to waiting for the wake word) and the music
+        Then the session ends (the app closes the voice screen until the next tap) and the music
         and the microphone never share the room.
         """
         pause = max(0.0, self._play_until - self._clock()) + END_PLAYBACK_PAD_SECONDS
