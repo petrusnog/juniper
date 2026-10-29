@@ -202,3 +202,10 @@ def test_the_new_page_and_the_new_look_styles_exist() -> None:
     css = (ASSETS / "app.css").read_text()
     for selector in (".button", ".bubble.her.raw", ".logo", ".brand-name", ".wordmark"):
         assert selector in css or selector.replace("a.", "") in css, selector
+
+
+def test_the_cursor_blinks_in_the_top_bar_and_on_the_login_wordmark() -> None:
+    css = (ASSETS / "app.css").read_text()
+    assert ".brand-name::after" in css and ".wordmark::after" in css
+    motion = css[css.index("@media (prefers-reduced-motion: no-preference)") :]
+    assert motion.count("animation: blink") == 2  # only when the system allows motion

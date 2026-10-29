@@ -304,7 +304,7 @@ def test_search_index_stays_small(outputs: dict[Path, str]) -> None:
 def test_nav_and_index_are_published_for_the_browser(outputs: dict[Path, str]) -> None:
     data = outputs[build_docs.DATA_FILE]
     assert "window.JUNIPER_NAV = " in data and "window.JUNIPER_SEARCH = " in data
-    for asset in ("layout.js", "search.js", "style.css", "theme.js"):
+    for asset in ("layout.js", "search.js", "style.css", "logo.png"):
         assert (HTML_DIR / "assets" / asset).exists()
     for name in ("index.html", "agente.html", "status.html"):
         text = outputs.get(HTML_DIR / name) or (HTML_DIR / name).read_text(encoding="utf-8")
@@ -395,3 +395,67 @@ def test_shared_obsidian_config_is_valid_and_hides_generated_html() -> None:
     assert app["useMarkdownLinks"] is True and app["newLinkFormat"] == "relative"
     assert "html/" in app["userIgnoreFilters"]
     assert graph["colorGroups"]
+
+
+# --- o visual de terminal e a marca animada (T-170) ------------------------------------------
+
+TOKENS = ROOT / "mobile" / "src" / "theme" / "tokens.ts"
+BOOK_PALETTE = {
+    "background": "--bg", "card": "--card", "ink": "--ink", "muted": "--muted", "border": "--line",
+    "accent": "--accent", "cyan": "--cyan", "blue": "--blue", "violet": "--violet",
+    "green": "--green", "amber": "--amber", "red": "--red",
+}  # fmt: skip
+
+
+def test_the_book_uses_the_palette_of_the_app() -> None:
+    css = (HTML_DIR / "assets" / "style.css").read_text(encoding="utf-8")
+    tokens = TOKENS.read_text(encoding="utf-8")
+    for key, variable in BOOK_PALETTE.items():
+        app = re.search(rf"\b{key}:\s*'(#[0-9a-fA-F]{{6}})'", tokens)
+        mine = re.search(rf"{re.escape(variable)}:\s*(#[0-9a-fA-F]{{6}})\s*;", css)
+        assert app and mine, (key, variable)
+        assert mine.group(1).lower() == app.group(1).lower(), (key, variable)
+
+
+def test_the_book_has_one_dark_look_without_a_theme_toggle(outputs: dict[Path, str]) -> None:
+    css = (HTML_DIR / "assets" / "style.css").read_text(encoding="utf-8")
+    assert "color-scheme:dark" in css and "prefers-color-scheme" not in css
+    assert "monospace" in css and "--mono" in css
+    layout = (HTML_DIR / "assets" / "layout.js").read_text(encoding="utf-8")
+    assert "themebtn" not in layout and "JuniperTheme" not in layout
+    assert not (HTML_DIR / "assets" / "theme.js").exists()
+    for name in ("index.html", "agente.html", "status.html"):
+        text = outputs.get(HTML_DIR / name) or (HTML_DIR / name).read_text(encoding="utf-8")
+        assert '<meta name="color-scheme" content="dark">' in text and "theme.js" not in text
+
+
+def test_the_side_menu_shows_the_animated_mark_instead_of_the_book_title() -> None:
+    layout = (HTML_DIR / "assets" / "layout.js").read_text(encoding="utf-8")
+    brand = layout[
+        layout.index('<a class="brand"') : layout.index("</a>", layout.index('<a class="brand"'))
+    ]
+    assert brand.index('src="assets/logo.png"') < brand.index('class="brand-name">Juniper<')
+    assert "Livro de bolso" not in brand and "·" not in brand
+
+
+def test_the_home_page_has_the_mark_where_the_giant_title_was(outputs: dict[Path, str]) -> None:
+    text = outputs.get(HTML_DIR / "index.html") or (HTML_DIR / "index.html").read_text("utf-8")
+    hero = text[
+        text.index('<div class="hero">') : text.index("</div>", text.index('<div class="hero">'))
+    ]
+    assert hero.index('src="assets/logo.png"') < hero.index('class="brand-name">Juniper<')
+    assert "Livro de bolso da Juniper</h1>" not in text  # the giant title is gone
+
+
+def test_the_cursor_blinks_and_stands_still_when_the_system_asks_for_less_motion() -> None:
+    css = (HTML_DIR / "assets" / "style.css").read_text(encoding="utf-8")
+    assert re.search(r"\.brand-name::after\{content:\"_\"[^}]*animation:blink", css)
+    assert re.search(
+        r"@media \(prefers-reduced-motion:reduce\)\{\.brand-name::after\{animation:none\}\}", css
+    )
+
+
+def test_the_book_logo_is_a_transparent_png() -> None:
+    data = (HTML_DIR / "assets" / "logo.png").read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[25] == 6  # color type 6: RGBA
+    assert len(data) < 150_000

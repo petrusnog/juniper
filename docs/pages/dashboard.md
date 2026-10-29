@@ -34,12 +34,13 @@ A interface é responsiva e *mobile first* (de 360 px a telas largas; barra infe
 
 ## Identidade visual {#visual kind=conceito file=brain/dashboard/static/assets/app.css}
 
-O dashboard tem o **mesmo visual de terminal do app do celular** ([App mobile](mobile.md)), num tema único, escuro, qualquer que seja o tema do sistema:
+O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobile.md) têm o **mesmo visual de terminal**, num tema único e escuro, qualquer que seja o tema do sistema:
 
 - **Cores:** fundo preto, o verde neon da logo (`#39e639`) para o que é ação, o item ativo e a fala do usuário, e a paleta Tango dos terminais Linux para o resto (ciano para a fala dela, âmbar para avisos, vermelho para erros, verde claro para o que é positivo). Os valores são exatamente os de `mobile/src/theme/tokens.ts`, e um teste confere que os dois arquivos não se afastam.
 - **Fonte:** monoespaçada do sistema (`ui-monospace`, Cascadia, JetBrains Mono, Menlo, Consolas…), sem baixar nada. Cantos retos, brilho verde no foco, `>` antes dos títulos e do item ativo do menu, `$` nas falas do usuário e um cursor que pisca ao lado do nome.
 - **Logo:** na tela de login, grande, com **JUNIPER** em caixa alta embaixo; no dashboard, **sempre visível** na barra superior (fixa, em qualquer tela e ao rolar), com o nome **Juniper** ao lado direito. Clicar nela volta à visão geral. A imagem (`assets/logo.png`, com fundo transparente) vem de `mobile/branding/juniper-neon.jpg` e é servida pelo próprio dashboard, como o ícone da aba (`favicon.png`): a política de segurança só aceita imagens do próprio endereço.
-- **Movimento:** o cursor piscando respeita `prefers-reduced-motion`.
+- **A marca animada:** é o par «logo + **Juniper** à direita + cursor `_` piscando», o mesmo nas três interfaces: na barra do dashboard, no menu lateral e na página inicial do livro de bolso, e no topo do app. No login, o cursor pisca ao lado de **JUNIPER**.
+- **Movimento:** o cursor piscando respeita `prefers-reduced-motion` (parado, quando o sistema pede menos movimento).
 
 | Página | O que mostra |
 |---|---|

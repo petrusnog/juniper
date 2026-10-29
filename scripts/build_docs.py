@@ -564,11 +564,12 @@ def wrap(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
 <title>{html.escape(plain(title))} — Livro de bolso Juniper</title>
 <meta name="description" content="{html.escape(plain(description or lead), quote=True)}">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" type="image/png" href="assets/favicon-neon.png">
-<script src="assets/theme.js"></script>
 {MARK.format(src=source)}
 </head>
 <body>
