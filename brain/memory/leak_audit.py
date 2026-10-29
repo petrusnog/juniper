@@ -20,6 +20,10 @@ from brain.memory.mongo import MongoConnection
 
 LEAK_AUDIT_COLLECTION = "leak_audit"
 _INDEX_OPTIONS_CONFLICT = (85, 86)  # IndexOptionsConflict, IndexKeySpecsConflict
+# Only the counters: the summary never needs the texts.
+_SUMMARY_FIELDS = dict.fromkeys(
+    ("rules", "leaked", "quarantined", "guard_triggered", "provider", "model", "channel"), 1
+)
 _HEX = re.compile(r"[0-9a-f]{4,32}")
 
 
@@ -88,13 +92,18 @@ class LeakAuditStore:
 
     def summary(self, *, days: int = 7) -> dict[str, Any]:
         """Counts by rule, model and channel over the period (``juniper vazamentos --resumo``)."""
-        records = self.recent(days=days, limit=10_000)
+        since = datetime.now(UTC) - timedelta(days=days)
+        with self.connection.guard():
+            records = list(
+                self._collection().find({"at": {"$gte": since}}, _SUMMARY_FIELDS).limit(10_000)
+            )
         rules: Counter[str] = Counter()
         for record in records:
             rules.update(record.get("rules") or [])
         return {
             "total": len(records),
             "leaked": sum(1 for r in records if r.get("leaked")),
+            "quarantined": sum(1 for r in records if r.get("quarantined")),
             "blocked": sum(1 for r in records if r.get("guard_triggered")),
             "rules": rules.most_common(),
             "models": Counter(

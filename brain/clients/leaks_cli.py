@@ -6,6 +6,7 @@ runs (on the VPS, inside the brain container) and changes nothing in the protoco
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Annotated, Any, Optional
 from zoneinfo import ZoneInfo
@@ -20,6 +21,14 @@ from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 
 _PREVIEW = 70
+# Terminal control characters (ESC included) never reach the admin's terminal: the texts come
+# from the model, and through it from whatever it read.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _safe(value: object) -> str:
+    """Any stored value, printable as plain text (no Rich markup, no control characters)."""
+    return escape(_CONTROL.sub("�", str(value if value is not None else "")))
 
 
 def _local(moment: datetime) -> str:
@@ -28,7 +37,7 @@ def _local(moment: datetime) -> str:
 
 def _flat(text: str | None, limit: int = _PREVIEW) -> str:
     flat = " ".join((text or "").split())
-    return flat if len(flat) <= limit else f"{flat[:limit]}…"
+    return _safe(flat if len(flat) <= limit else f"{flat[:limit]}…")
 
 
 def _open_store(console: Console) -> Any:
@@ -54,31 +63,42 @@ def _open_store(console: Console) -> Any:
 
 
 def _show(console: Console, record: dict[str, Any]) -> None:
-    status = (
-        "vazou (você viu)" if record.get("leaked") else "só o modelo escreveu (o guarda cortou)"
-    )
-    console.print(f"[bold]Registro {record['_id']}[/bold]  {_local(record['at'])}  {status}")
+    if record.get("quarantined"):
+        status = "vazou e o turno ficou fora da memória"
+    elif record.get("leaked"):
+        status = "algo suspeito chegou a você (o turno seguiu para a memória)"
+    else:
+        status = "só o modelo escreveu (o guarda cortou)"
     console.print(
-        f"Sessão {record.get('session')} · canal {record.get('channel')}"
+        f"[bold]Registro {_safe(record['_id'])}[/bold]  {_local(record['at'])}  {status}",
+        highlight=False,
+    )
+    console.print(
+        f"Sessão {_safe(record.get('session'))} · canal {_safe(record.get('channel'))}"
         f"{' (voz)' if record.get('voice') else ''}"
-        f" · {record.get('provider')}/{record.get('model')}"
-        f" · finish_reason {record.get('finish_reason')} · commit {record.get('commit') or '?'}"
+        f" · {_safe(record.get('provider'))}/{_safe(record.get('model'))}"
+        f" · finish_reason {_safe(record.get('finish_reason'))}"
+        f" · commit {_safe(record.get('commit') or '?')}",
+        highlight=False,
     )
     if record.get("tool_calls"):
-        console.print(f"Tools: {', '.join(record['tool_calls'])}")
+        console.print(f"Tools: {_safe(', '.join(record['tool_calls']))}", highlight=False)
     blocks = ", ".join(f"{b['kind']} ({b['chars']})" for b in record.get("blocks") or [])
-    console.print(f"Blocos de sistema no prompt: {blocks or 'nenhum'}")
+    console.print(f"Blocos de sistema no prompt: {_safe(blocks or 'nenhum')}", highlight=False)
     console.print("\n[bold]Regras disparadas[/bold]")
     for hit in record.get("hits") or []:
         where = "entregue" if hit["where"] == "delivered" else "bruto"
-        console.print(f"  {hit['rule']} ({where}, pos. {hit['at']}): «{escape(hit['excerpt'])}»")
+        console.print(
+            f"  {_safe(hit['rule'])} ({where}, pos. {_safe(hit['at'])}): «{_safe(hit['excerpt'])}»",
+            highlight=False,
+        )
     for title, key in (
         ("Mensagem do usuário", "user_message"),
         ("Texto bruto do modelo", "raw"),
         ("Texto entregue", "delivered"),
     ):
         console.print(f"\n[bold]{title}[/bold]")
-        console.print(escape(record.get(key) or "(vazio)"), soft_wrap=True)
+        console.print(_safe(record.get(key) or "(vazio)"), soft_wrap=True, highlight=False)
 
 
 def install(app: typer.Typer, console: Console) -> None:
@@ -121,14 +141,15 @@ def install(app: typer.Typer, console: Console) -> None:
                 voice.say(
                     console,
                     f"Últimos {days} dia(s): {data['total']} registro(s), {data['leaked']} "
-                    f"chegaram a você, {data['blocked']} com corte do guarda.",
+                    f"chegaram a você ({data['quarantined']} fora da memória), "
+                    f"{data['blocked']} com corte do guarda.",
                 )
                 for title, key in (("Regra", "rules"), ("Modelo", "models"), ("Canal", "channels")):
                     table = Table(header_style="bold")
                     table.add_column(title)
                     table.add_column("Vezes", justify="right")
                     for name, count in data[key]:
-                        table.add_row(escape(str(name)), str(count))
+                        table.add_row(_safe(name), str(count))
                     console.print(table)
                 return
             records = store.recent(days=days, leaked_only=leaked_only, limit=limit)
@@ -141,17 +162,18 @@ def install(app: typer.Typer, console: Console) -> None:
             voice.say(console, f"Nenhum registro nos últimos {days} dia(s).")
             return
         table = Table(header_style="bold")
-        for column in ("Id", "Quando", "Canal", "Modelo", "Vazou", "Regras", "Entregue"):
+        for column in ("Id", "Quando", "Canal", "Modelo", "Vazou", "Memória", "Regras", "Entregue"):
             table.add_column(column, overflow="fold")
         for r in records:
             table.add_row(
-                r["_id"][:8],
+                _safe(r["_id"][:8]),
                 _local(r["at"]),
-                str(r.get("channel")),
-                str(r.get("model")),
+                _safe(r.get("channel")),
+                _safe(r.get("model")),
                 "sim" if r.get("leaked") else "não",
-                ", ".join(r.get("rules") or []),
-                escape(_flat(r.get("delivered"))),
+                "fora" if r.get("quarantined") else "mantida",
+                _safe(", ".join(r.get("rules") or [])),
+                _flat(r.get("delivered")),
             )
         console.print(table)
         voice.say(console, "Para ver um caso inteiro: juniper vazamentos --ver <id>")

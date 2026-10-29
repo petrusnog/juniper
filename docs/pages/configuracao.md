@@ -153,7 +153,7 @@ A auditoria de vazamentos na fala ([Auditoria de vazamentos](vazamentos.md)). Os
 
 | Opção | Padrão | O que faz |
 |---|---|---|
-| `leak_audit.enabled` | `true` | Grava um registro (coleção `leak_audit`) quando o `LeakGuard` corta algo ou o detector amplo acusa. Desligada, o turno em que a pessoa viu algo suspeito **continua** fora da memória; só o registro deixa de existir. |
+| `leak_audit.enabled` | `true` | Grava um registro (coleção `leak_audit`) quando o `LeakGuard` corta algo ou o detector amplo acusa. Desligada, o turno em quarentena (a pessoa viu um vazamento de alta precisão) **continua** fora da memória; só o registro deixa de existir. |
 | `leak_audit.retention_days` | `30` | Dias até cada registro expirar (de 1 a 365), por índice TTL. |
 | `leak_audit.echo_words` | `10` | Quantas palavras seguidas iguais a um bloco de sistema da chamada contam como eco do prompt (de 5 a 50). |
 

@@ -612,6 +612,7 @@ def build_api(sources: Sources) -> Api:
                     # her reply may carry tool output: it stays out, as in the dream
                     "assistant": None if t.used_tools else t.assistant,
                     "used_tools": t.used_tools,
+                    "leaked": t.leaked,
                     "at": t.at,
                 }
                 for t in turns
