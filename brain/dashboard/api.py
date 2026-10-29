@@ -15,6 +15,8 @@ from brain.dashboard.serialize import sanitize
 
 Query = Mapping[str, list[str]]
 Route = Callable[[Query], Awaitable[Any]]
+FileRoute = Callable[[Query], Awaitable[tuple[str, str, bytes]]]
+"""A download: ``(file name, content type, bytes)``. Read-only like every route."""
 
 
 class ApiError(Exception):
@@ -33,12 +35,31 @@ class Api:
     def __init__(self) -> None:
         self._routes: dict[str, Route] = {}
         self._prefixes: dict[str, Route] = {}
+        self._files: dict[str, FileRoute] = {}
 
     def route(self, path: str, handler: Route) -> None:
         (self._prefixes if path.endswith("/") else self._routes)[path] = handler
 
+    def file_route(self, path: str, handler: FileRoute) -> None:
+        self._files[path] = handler
+
     def paths(self) -> list[str]:
-        return sorted([*self._routes, *self._prefixes])
+        return sorted([*self._routes, *self._prefixes, *self._files])
+
+    def is_file(self, path: str) -> bool:
+        return path in self._files
+
+    async def handle_file(
+        self, path: str, query: Query
+    ) -> tuple[int, dict[str, Any] | tuple[str, str, bytes]]:
+        """A download, or ``(status, {"error": ...})`` when the route cannot answer."""
+        handler = self._files.get(path)
+        if handler is None:
+            return 404, {"error": "não existe", "path": path}
+        try:
+            return 200, await handler(query)
+        except ApiError as exc:
+            return exc.status, {"error": exc.message}
 
     async def handle(self, path: str, query: Query) -> tuple[int, Any]:
         handler = self._routes.get(path)

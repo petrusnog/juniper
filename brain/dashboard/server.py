@@ -168,9 +168,10 @@ class DashboardServer:
                 return self._json(401, {"error": "faça login"})
             return self._redirect("/login")
         if path.startswith("/api/"):
-            status, body = await self.api.handle(
-                path.removeprefix("/api"), parse_qs(parts.query, keep_blank_values=False)
-            )
+            api_path, query = path.removeprefix("/api"), parse_qs(parts.query)
+            if self.api.is_file(api_path):
+                return await self._download(api_path, query)
+            status, body = await self.api.handle(api_path, query)
             return self._json(status, body)
         if path in ("/", "/index.html"):
             return self._file("index.html")
@@ -221,6 +222,20 @@ class DashboardServer:
             return self._text(HTTPStatus.NOT_FOUND, "Não achei\n")
         headers = Headers([("Content-Type", kind), ("Cache-Control", "no-cache")])
         return Response(200, "OK", headers, target.read_bytes())
+
+    async def _download(self, path: str, query: dict[str, list[str]]) -> Response:
+        status, body = await self.api.handle_file(path, query)
+        if isinstance(body, dict):
+            return self._json(status, body)
+        name, kind, content = body
+        headers = Headers(
+            [
+                ("Content-Type", kind),
+                ("Content-Disposition", f'attachment; filename="{name}"'),
+                ("Cache-Control", "no-store"),
+            ]
+        )
+        return Response(200, "OK", headers, content)
 
     @staticmethod
     def _json(status: int, body: Any, extra: list[tuple[str, str]] | None = None) -> Response:

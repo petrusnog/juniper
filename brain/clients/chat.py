@@ -938,6 +938,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.dashboard.sources import Sources
 
     handler.sources = Sources(
+        reports=handler._reports,
+        audit=handler._audit,
         memory=commands or memory,
         data=v2.data if v2 else None,
         transcripts=settings.dashboard.transcripts,

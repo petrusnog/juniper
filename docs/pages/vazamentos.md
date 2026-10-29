@@ -94,7 +94,7 @@ Cada relato guarda, na coleção `leak_reports` do MongoDB:
 
 Diferente dos registros automáticos, o relato **não expira**: foi você quem escolheu guardá-lo. Apague com `juniper vazamentos --apagar <id>`. As interações vêm da memória do processo (até 10 numa conversa em andamento); numa conversa retomada, começam pelo que a sessão salva ainda tem (até 8 turnos). Sem MongoDB, o comando responde que não tem onde guardar.
 
-Os relatos aparecem na tela **Ocorrências** do [dashboard](dashboard.md) e saem em planilha.
+Os relatos aparecem na tela **Ocorrências** do [dashboard](dashboard.md#paginas), junto com as detecções automáticas, e saem em planilha ([Exportar ocorrências](dashboard.md#exportar)).
 
 ## Consultar {#consultar}
 

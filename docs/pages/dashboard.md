@@ -3,7 +3,7 @@ title: Dashboard
 group: Documentação Técnica
 section: Clientes
 order: 27
-description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha) e pesquisa, somente leitura, servido pelo próprio cérebro.
 status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
@@ -41,9 +41,23 @@ A interface é responsiva (de 360 px a telas largas; menu lateral no computador,
 | **Estudos** | Os temas, com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |
 | **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
 | **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
+| **Ocorrências** | Os vazamentos na fala: os que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou (com o texto bruto do modelo e o entregue). A lista filtra por origem; o detalhe mostra a sessão, o canal, a nota ou as regras e as mensagens em balões, e cada tela tem o botão **Baixar planilha (.xlsx)**. Precisa do MongoDB: sem ele a tela explica. |
 | **Pesquisa** | Uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado; o que casa por palavras vem antes. Sem o modelo de embeddings, cai para palavras e avisa. |
 
 Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a página correspondente explica.
+
+## Exportar ocorrências em planilha {#exportar kind=função file=brain/dashboard/occurrences.py}
+
+`GET /api/occurrences/export.xlsx` (com o login do dashboard) devolve um `.xlsx` com duas abas:
+
+| Aba | Uma linha por | Colunas |
+|---|---|---|
+| **Mensagens** | mensagem | Ocorrência, Tipo (`Relato (/vazou)` ou `Detectado`), ID da sessão, Canal, Voz, Data da ocorrência, Ordem, **Autor** (`Usuário`, `Juniper` ou `Juniper (texto bruto do modelo)`), **Mensagem**, Observação |
+| **Ocorrências** | ocorrência | Ocorrência, Tipo, ID da sessão, Canal, Voz, Data, Nota, Regras, se o texto vazou até você, Modelo, Commit, número de mensagens |
+
+Filtros na URL: `kind=relato\|automatico\|todos` (padrão `todos`), `days` (janela das detecções, padrão 30) e `id` (uma ocorrência só, o id curto da lista). No máximo 500 de cada origem. As datas saem no fuso do agente.
+
+O arquivo é gerado sem biblioteca extra (`brain/dashboard/xlsx.py`): o texto vai como *texto*, nunca como fórmula (uma mensagem que começa com `=` aparece como foi dita), caracteres que o XML não aceita são trocados, uma célula é cortada antes do limite do Excel e os segredos passam pelo mesmo mascaramento do resto do dashboard.
 
 ## Configuração {#configuracao}
 
@@ -67,7 +81,7 @@ As chaves `dashboard.*` estão em [Configuração](configuracao.md#trace). Para 
 ## Testes {#testes}
 
 ```bash
-pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py -v
+pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py tests/test_dashboard_occurrences.py tests/test_dashboard_xlsx.py -v
 ```
 
 ## Para saber mais {#para-saber-mais}
