@@ -9,7 +9,9 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioFocusRequest
 import android.media.AudioRecord
+import android.media.AudioRouting
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -26,6 +28,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Microphone capture and playback for the voice chat (ADR-022 / ADR-023).
@@ -33,8 +36,9 @@ import java.util.concurrent.LinkedBlockingQueue
  * Capture uses the VOICE_COMMUNICATION source, which turns on the platform's echo cancellation
  * and noise suppression (the effects are also requested explicitly when the device has them);
  * 16-bit mono PCM goes to JavaScript in chunks of ~100 ms as base64. Playback is an AudioTrack in
- * streaming mode with the same voice-communication usage, so the echo canceller knows what is
- * being played. `flush` drops everything queued at once (she was cut off).
+ * streaming mode with the media usage, sent to a Bluetooth device, wired headphones or the
+ * loudspeaker, **never the earpiece** (see `pickOutput`), and it ducks other media while she
+ * speaks (audio focus). `flush` drops everything queued at once (she was cut off).
  *
  * Neither the capture nor the player decides anything: the brain does (voice activity, turns).
  */
@@ -53,6 +57,8 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   private var playQueue = LinkedBlockingQueue<ByteArray>()
   private var playThread: Thread? = null
   @Volatile private var playing = false
+  private var routingGuard: AudioRouting.OnRoutingChangedListener? = null
+  @Volatile private var focusRequest: AudioFocusRequest? = null
 
   private var stopReceiver: BroadcastReceiver? = null
   private var deviceCallback: AudioDeviceCallback? = null
@@ -176,45 +182,80 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
             }
   }
 
-  /** True when something that is not the phone's own speaker is plugged in (wired or Bluetooth). */
-  private fun headsetConnected(): Boolean =
-      audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
-        when (it.type) {
-          AudioDeviceInfo.TYPE_WIRED_HEADSET,
-          AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-          AudioDeviceInfo.TYPE_USB_HEADSET,
-          AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-          AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> true
-          else -> false
+  /**
+   * Where her voice goes. Rule, with no exception: **never the earpiece** (the speaker held to the
+   * ear). Order: a Bluetooth audio device (the car's speakers), then wired or USB headphones, then
+   * the phone's own loudspeaker. The earpiece is not even a candidate.
+   */
+  private fun pickOutput(): AudioDeviceInfo? {
+    val all =
+        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter {
+          it.type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
         }
+    fun first(vararg types: Int) = all.firstOrNull { it.type in types }
+    val bleTypes =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            intArrayOf(AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER)
+        else intArrayOf()
+    return first(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+        ?: first(*bleTypes)
+        ?: first(AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+        ?: first(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+        )
+        ?: first(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+  }
+
+  /**
+   * True only for wired or USB headphones: the ear is closed, so the microphone may stay open
+   * while she speaks (the person can talk over her). Bluetooth counts as a *speaker* (it is
+   * usually the car): the microphone would hear it, so the brain keeps it closed while she talks.
+   */
+  private fun closedEarOutput(): Boolean =
+      when (pickOutput()?.type) {
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET -> true
+        else -> false
       }
 
   @ReactMethod
   fun hasHeadset(promise: Promise) {
-    promise.resolve(headsetConnected())
+    promise.resolve(closedEarOutput())
   }
 
   /**
-   * Plays her voice on the loudspeaker (`speaker = true`) or on whatever is plugged in. The
-   * communication mode is what makes the platform echo canceller work and lets the voice use the
-   * loudspeaker instead of the earpiece. The cérebro also ignores the microphone while she speaks
-   * on the loudspeaker (half-duplex), so her own voice never becomes a question.
+   * Sends her voice to [pickOutput]. A2DP and wired outputs use the normal audio mode (so the
+   * media route and volume apply, and the car speaks in stereo); only a Bluetooth "hands-free"
+   * (SCO) device needs the communication mode. In every case the earpiece is excluded.
    */
-  @ReactMethod
-  fun applyRoute(speaker: Boolean) {
+  private fun enforceOutput() {
     val manager = audioManager
-    manager.mode = AudioManager.MODE_IN_COMMUNICATION
+    val target = pickOutput()
+    val needsCommunicationMode = target?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+    manager.mode =
+        if (needsCommunicationMode) AudioManager.MODE_IN_COMMUNICATION else AudioManager.MODE_NORMAL
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      if (speaker) {
-        manager.availableCommunicationDevices
-            .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-            ?.let { manager.setCommunicationDevice(it) }
+      if (needsCommunicationMode && target != null) {
+        manager.setCommunicationDevice(target)
       } else {
         manager.clearCommunicationDevice()
       }
     } else {
-      manager.isSpeakerphoneOn = speaker // deprecated since API 31, still the way before it
+      // Before API 31 the only safe choice outside A2DP/wired is the loudspeaker.
+      manager.isSpeakerphoneOn = target?.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
     }
+    if (target != null) {
+      track?.setPreferredDevice(target)
+    }
+  }
+
+  /** Kept for the JavaScript side: the choice is the same whatever the route says. */
+  @ReactMethod
+  fun applyRoute(speaker: Boolean) {
+    enforceOutput()
   }
 
   private fun resetRoute() {
@@ -233,11 +274,13 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
     val callback =
         object : AudioDeviceCallback() {
           override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-            emit("juniperAudioRoute", headsetConnected())
+            enforceOutput() // a car or headset appeared: follow it (never the earpiece)
+            emit("juniperAudioRoute", closedEarOutput())
           }
 
           override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-            emit("juniperAudioRoute", headsetConnected())
+            enforceOutput()
+            emit("juniperAudioRoute", closedEarOutput())
           }
         }
     audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
@@ -307,7 +350,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
           AudioTrack.Builder()
               .setAudioAttributes(
                   AudioAttributes.Builder()
-                      .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                      .setUsage(AudioAttributes.USAGE_MEDIA)
                       .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                       .build())
               .setAudioFormat(
@@ -319,16 +362,39 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
               .setBufferSizeInBytes(maxOf(minBuffer, sampleRate / 5 * 2))
               .setTransferMode(AudioTrack.MODE_STREAM)
               .build()
-      audioTrack.play()
       track = audioTrack
+      enforceOutput()
+      // Hard guarantee: if the system ever moves her voice to the earpiece, move it back.
+      val guard =
+          AudioRouting.OnRoutingChangedListener { routing ->
+            if ((routing as? AudioTrack)?.routedDevice?.type ==
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+              enforceOutput()
+            }
+          }
+      audioTrack.addOnRoutingChangedListener(guard, Handler(Looper.getMainLooper()))
+      routingGuard = guard
+      audioTrack.play()
       playQueue = LinkedBlockingQueue()
       playing = true
       playThread =
           Thread {
                 val queue = playQueue
                 while (playing) {
-                  val chunk = try { queue.take() } catch (e: InterruptedException) { break }
+                  // Other media (the music app) is ducked while she speaks, and gets its volume
+                  // back a moment after she stops.
+                  val chunk =
+                      try {
+                        queue.poll(FOCUS_RELEASE_AFTER_MS, TimeUnit.MILLISECONDS)
+                      } catch (e: InterruptedException) {
+                        break
+                      }
                   if (!playing) break
+                  if (chunk == null) {
+                    abandonFocus()
+                    continue
+                  }
+                  requestFocus()
                   audioTrack.write(chunk, 0, chunk.size)
                 }
               }
@@ -372,10 +438,40 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
     playThread = null
     playQueue.clear()
     track?.let {
+      routingGuard?.let { guard -> runCatching { it.removeOnRoutingChangedListener(guard) } }
       runCatching { it.stop() }
       it.release()
     }
+    routingGuard = null
     track = null
+    abandonFocus()
+  }
+
+  /** Asks the system to lower other media while she speaks (a short, "may duck" focus). */
+  private fun requestFocus() {
+    if (focusRequest != null) return
+    val request =
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build())
+            .setOnAudioFocusChangeListener {}
+            .build()
+    if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+      focusRequest = request
+    }
+  }
+
+  private fun abandonFocus() {
+    focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+    focusRequest = null
+  }
+
+  companion object {
+    /** How long after the last chunk the other media gets its volume back. */
+    private const val FOCUS_RELEASE_AFTER_MS = 1200L
   }
 
   override fun invalidate() {

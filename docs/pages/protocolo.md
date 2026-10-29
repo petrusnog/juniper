@@ -169,7 +169,7 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 | servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
 | cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
 | cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
-| cliente → servidor | `voice.route` | `route` | A saída de áudio mudou (fone ligado ou desligado). |
+| cliente → servidor | `voice.route` | `route` | A saída de áudio mudou (fone com fio ligado ou desligado; o Bluetooth conta como `speaker`). |
 | ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`, `playback`) | Encerra a sessão. `playback`: a música foi aberta e o comentário terminou; o app fecha a conversa de voz e a música segue tocando. |
 
 `voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Base64 inválido ou `seq` fora do limite também é `bad_request`. Sem fone (`route` diferente de `headset`, ou ausente), o servidor ignora o microfone enquanto a Juniper fala (e por 1 s depois), e o app também não o envia nessa janela.
