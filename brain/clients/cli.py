@@ -604,8 +604,8 @@ def docs() -> None:
 @app.command()
 def serve() -> None:
     """Sobe o brain como servidor WebSocket para os clientes remotos (deployment.mode: server)."""
-    from brain.clients.chat import open_chat_handler
     from brain.clients.app_update import AppUpdates
+    from brain.clients.chat import open_chat_handler
     from brain.clients.server import BrainServer, ensure_token, run_server
 
     if settings.deployment.mode != "server":
@@ -643,9 +643,7 @@ def serve() -> None:
                     voice.say(console, f"O dashboard não subiu: {exc}", "yellow")
             updates = AppUpdates(settings.app_update.dir)
             await run_server(
-                BrainServer(
-                    host, port, token, handler, health=handler.health, app_updates=updates
-                ),
+                BrainServer(host, port, token, handler, health=handler.health, app_updates=updates),
                 dashboard,
             )
 
