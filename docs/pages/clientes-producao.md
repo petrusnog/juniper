@@ -100,6 +100,8 @@ Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [C
 | «sem conexão» | VPN desligada no celular, endereço errado ou a política da VPN não inclui o aparelho. |
 | Música: «o dispositivo não está conectado» | O app não está aberto e conectado (ele é o executor que abre a música). |
 | A música só abre com o app na frente | Falta «Exibir sobre outros apps». |
+| Quero chamar sem tocar na tela | Palavra de chamada: AccessKey da Picovoice, palavra «Juniper» treinada (Android) salva em `mobile/android/app/src/main/assets/juniper.ppn`, APK novo e a chave em Configurar ([Voz por áudio](voz-audio.md#wake)). |
+| Pedi um álbum e tocou só uma faixa | Peça «toca o álbum X»; playlists suas tocam pelo nome. |
 | Ela ouve a própria voz e se responde | Sem fone, use o botão «Segurar para falar», ou fone. |
 
 ## Dashboard {#dashboard}

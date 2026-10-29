@@ -1,12 +1,6 @@
 import React from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Text } from '../theme/Text';
 import { ChatController } from '../chat/ChatController';
 import { useChat } from '../chat/useChat';
 import { backgroundPermission } from '../executor/MediaAutoplay';
@@ -15,12 +9,17 @@ import { ConnectionState } from '../connection/BrainConnection';
 import { radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
 import { VoiceController, VoicePhase } from '../voice/VoiceController';
+import type { WakeController } from '../wake/WakeController';
+import { useWake } from '../wake/useWake';
 import { useVoice } from '../voice/useVoice';
 
 interface Props {
   voice: VoiceController;
   chat: ChatController;
   connection: ConnectionState;
+  wake: WakeController;
+  /** Persists the choice (the hands-free mode stays on across app restarts). */
+  onWakeChange: (on: boolean) => void;
 }
 
 const LABEL: Record<VoicePhase, string> = {
@@ -32,18 +31,25 @@ const LABEL: Record<VoicePhase, string> = {
 };
 
 /** The voice chat: one big button, the state and the captions of both sides. */
-export function VoiceScreen({ voice, chat, connection }: Props) {
+export function VoiceScreen({
+  voice,
+  chat,
+  connection,
+  wake,
+  onWakeChange,
+}: Props) {
   const theme = useTheme();
   const state = useVoice(voice);
   const chatState = useChat(chat);
   const overlay = useOverlayPermission();
+  const wakeState = useWake(wake);
   const reply = [...chatState.messages]
     .reverse()
     .find(m => m.role === 'assistant');
   const active = state.phase !== 'off';
   const blocked = !active && connection !== 'connected';
   const color = !active
-    ? theme.blue
+    ? theme.accent
     : state.phase === 'speaking'
     ? theme.violet
     : state.phase === 'thinking'
@@ -123,7 +129,7 @@ export function VoiceScreen({ voice, chat, connection }: Props) {
               accessibilityRole="button"
               onPress={() => backgroundPermission.openSettings()}
             >
-              <Text style={{ color: theme.blue }}>Permitir agora</Text>
+              <Text style={{ color: theme.accent }}>Permitir agora</Text>
             </Pressable>
           </View>
         ) : null}
@@ -135,6 +141,32 @@ export function VoiceScreen({ voice, chat, connection }: Props) {
       </ScrollView>
 
       <View style={styles.controls}>
+        <View style={styles.ptt}>
+          <Text style={{ color: theme.ink }}>Chamar falando «Juniper»</Text>
+          <Switch
+            testID="wake-switch"
+            value={wakeState.phase !== 'off'}
+            onValueChange={on => onWakeChange(on)}
+          />
+        </View>
+        {wakeState.phase !== 'off' ? (
+          <Text
+            testID="wake-status"
+            style={[styles.small, { color: theme.green }]}
+          >
+            {wakeState.phase === 'standby'
+              ? 'Esperando você dizer «Juniper»… (o microfone só escuta essa palavra)'
+              : 'Conversando. Depois de tocar uma música ela volta a esperar a palavra.'}
+          </Text>
+        ) : null}
+        {wakeState.notice ? (
+          <Text
+            testID="wake-notice"
+            style={[styles.small, { color: theme.red }]}
+          >
+            {wakeState.notice}
+          </Text>
+        ) : null}
         <View style={styles.ptt}>
           <Text style={{ color: theme.ink }}>Segurar para falar</Text>
           <Switch
@@ -220,7 +252,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   blocked: { opacity: 0.4 },
-  bigText: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
+  bigText: { color: '#000000', fontSize: 20, fontWeight: '700' },
   secondary: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,

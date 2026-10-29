@@ -103,6 +103,7 @@ class Rig:
         cloud_stt: bool = True,
         limit: int = 10_000,
         idle: float = 60.0,
+        wake_idle: float = 15.0,
         with_voice: bool = True,
     ) -> None:
         self.stt = stt or FakeStt()
@@ -115,6 +116,7 @@ class Rig:
             stt=SpeechToText(self.stt if cloud_stt else None, cooldown_seconds=3600),
             max_spoken_chars=800,
             idle_timeout=idle,
+            wake_idle_timeout=wake_idle,
         )
         self.handler = ChatHandler(
             FileSessionStore(tmp_path / "sessions"),
@@ -131,6 +133,8 @@ class Rig:
         await self.server.stop()
 
     async def open(self, **flags: Any) -> tuple[Client, p.VoiceReady]:
+        # Headphones by default: speaking over her cuts her off. The speaker tests say so.
+        flags.setdefault("route", "headset")
         client = await connect_client(self.server, "celular")
         ready = await start(client, **flags)
         return client, ready
@@ -719,3 +723,69 @@ async def test_a_route_change_in_the_middle_switches_the_mode(
         await stream_audio(client, quiet(900), seq)
         end = await client.until(p.ChatEnd)  # with headphones, barge-in works again
         assert end[-1].finish == "cancelled"  # type: ignore[union-attr]
+
+
+# --- wake word sessions and the always-closed microphone while she speaks ---------------------
+
+
+async def test_a_wake_session_greets_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from brain.clients import voice_session
+
+    monkeypatch.setattr(voice_session, "GREETINGS", ("Oi! Pode falar.",))
+    monkeypatch.setattr(voice_session.random, "choice", lambda options: options[0])
+    async with Rig(tmp_path, FakeProvider([]), cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True, wake=True, route="speaker")
+        messages = await collect(client, p.VoiceAudio)
+    assert rig.synth.spoken == ["Oi! Pode falar."]
+    states = [m.state for m in of(messages, p.VoiceState)]
+    assert "speaking" in states  # she talks first; on a speaker the microphone is closed then
+
+
+async def test_a_session_that_was_not_woken_does_not_greet(tmp_path: Path) -> None:
+    async with Rig(tmp_path, FakeProvider([]), cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True)
+        await asyncio.sleep(0.3)
+    assert rig.synth.spoken == []
+
+
+async def test_a_wake_session_with_no_request_closes_soon_and_quietly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.clients import voice_session
+
+    original = voice_session.VoiceSession.__init__
+
+    def fast(self: Any, *args: Any, **kwargs: Any) -> None:
+        kwargs["tick"] = 0.05
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(voice_session.VoiceSession, "__init__", fast)
+    async with Rig(tmp_path, FakeProvider([]), idle=60.0, wake_idle=0.4) as rig:
+        client, _ = await rig.open(wake=True)
+        end = (await client.until(p.VoiceEnd))[-1]
+        assert isinstance(end, p.VoiceEnd) and end.reason == "silence"
+        await wait_for(lambda: not rig.handler._voices)
+
+
+async def test_by_default_the_microphone_is_closed_while_she_speaks_on_any_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No route reported (an old app): the safe behaviour is the half-duplex one."""
+    from brain.clients import voice_session
+
+    monkeypatch.setattr(voice_session, "ECHO_TAIL_SECONDS", 0.2)
+    provider = Gated("não deveria ser usada")
+    async with Rig(tmp_path, provider, stt=FakeStt("primeira", "eco")) as rig:
+        client = await connect_client(rig.server, "celular")
+        await client.send(
+            type="voice.start",
+            id="v-1",
+            format={"encoding": "pcm_s16le", "sample_rate": RATE, "channels": 1},
+        )  # no "route" at all
+        await client.until(p.VoiceReady)
+        await say_phrase(client)
+        await client.until(p.VoiceAudio)
+        seq = await stream_audio(client, tone(900, 7000), 1000)
+        await stream_audio(client, quiet(900), seq)
+        await asyncio.sleep(0.2)
+        assert provider.calls == 1 and rig.stt.texts == ["eco"]  # the echo was never heard

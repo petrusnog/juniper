@@ -23,6 +23,8 @@ Tocar **não exige login**: basta a chave de API (`JUNIPER_YOUTUBE_API_KEY`, no 
 
 Para **tocar**, o modelo chama uma ferramenta só, `play_music`: ela busca, escolhe o melhor resultado (a mesma ordenação da busca) e abre. Antes eram dois passos soltos (`music_search` e depois `open_url`) e o modelo às vezes parava no meio e mandava o link no texto. Agora o passo de abrir não depende dele. `music_search` ficou para **mostrar opções** e para montar playlists.
 
+`play_music` tem três modos (`mode`): `track` (uma faixa, o padrão), `album` (o álbum completo: busca playlists de álbum do YouTube Music, ids `OLAK5uy_...`, e abre a fila inteira) e `radio`. Uma playlist do Petrus (ou um álbum já achado) toca com `playlist_id`. O link que toca é `https://music.youtube.com/watch?list=<id>`, não `/playlist?list=` (esse só mostra a página). Álbum custa 100 unidades de cota por busca, como a de faixas; se nada é achado, o resultado diz e nenhum link é aberto. Se o aparelho for de voz e a música abrir, a sessão de voz termina depois do comentário ([voz](voz-audio.md#wake)).
+
 O que acontece depende de **por onde o pedido chegou**: o cérebro diz isso ao modelo em cada turno («Canal: aplicativo do celular (voz)», «Canal: telegram»...) e as próprias ferramentas se comportam assim:
 
 | Canal | O que `play_music` e `open_url` fazem |

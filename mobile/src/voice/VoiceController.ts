@@ -59,6 +59,7 @@ const END_TEXT: Record<string, string | null> = {
   silence: 'Conversa de voz encerrada por silêncio.',
   error: 'A conversa de voz foi encerrada por um erro.',
   server: 'O servidor encerrou a conversa de voz.',
+  playback: null, // the music started: the conversation closes on purpose, quietly
 };
 
 type Listener = () => void;
@@ -97,7 +98,11 @@ export class VoiceController {
   }
 
   /** Opens the session. `false` (with a notice) if it could not start. */
-  async start(): Promise<boolean> {
+  /** Keep the foreground service up when a session ends (the wake word is waiting in it). */
+  keepService = false;
+
+  /** `wake`: the session was opened by the wake word, so the brain greets and closes quickly. */
+  async start(options: { wake?: boolean } = {}): Promise<boolean> {
     if (this.active || this.starting) {
       return false;
     }
@@ -154,6 +159,7 @@ export class VoiceController {
       local_stt: this.stt.available,
       local_tts: this.tts.available,
       route,
+      ...(options.wake ? { wake: true } : {}),
     });
     this.starting = false;
     if (!sent) {
@@ -238,6 +244,12 @@ export class VoiceController {
     }
     if (this.state.pushToTalk && !this.state.talking) {
       return; // hold-to-talk: the microphone is closed until the button is pressed
+    }
+    if (this.state.route !== 'headset' && this.state.phase !== 'listening') {
+      // Whenever she is not waiting for him (greeting, thinking, answering, commenting) the
+      // microphone is closed: on a speaker it would hear her own voice and the music (and the
+      // brain ignores it too: both ends keep the same rule).
+      return;
     }
     // Nothing is queued while offline: a late chunk is worth nothing.
     this.connection.send({ type: 'voice.audio', seq: this.seq++, data });
@@ -373,7 +385,7 @@ export class VoiceController {
     await this.stt.stop().catch(() => undefined);
     this.audio.flush();
     await this.audio.closePlayer().catch(() => undefined);
-    await this.audio.stop().catch(() => undefined);
+    await this.audio.stop(this.keepService).catch(() => undefined);
     this.cut.clear();
     this.set({
       phase: 'off',

@@ -231,6 +231,17 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
     ("client", {"type": "voice.route", "route": "headset"}),
     ("client", {"type": "voice.end", "reason": "client"}),
     ("server", {"type": "voice.end", "reason": "silence"}),
+    ("server", {"type": "voice.end", "reason": "playback"}),
+    (
+        "client",
+        {
+            "type": "voice.start",
+            "id": "v-9",
+            "format": {"encoding": "pcm_s16le", "sample_rate": 16000, "channels": 1},
+            "wake": True,
+            "route": "speaker",
+        },
+    ),
 ]
 
 

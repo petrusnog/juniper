@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/html/assets/juniper.png" alt="Juniper: ilustração em preto e branco de uma mulher de óculos, com rabo de cavalo e blazer, sorrindo" width="200">
+  <img src="docs/html/assets/juniper-neon.png" alt="Juniper: contorno em verde neon sobre fundo preto de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="200">
 </p>
 
 <h1 align="center">🌿 Juniper</h1>

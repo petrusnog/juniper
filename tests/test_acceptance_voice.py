@@ -8,6 +8,7 @@ synthetic tone: a tone is speech, quiet noise is silence.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,7 +64,7 @@ class VoiceSetup(Setup):
         )
         self.seq = 0
 
-    async def phone(self) -> Any:
+    async def phone(self, **flags: Any) -> Any:
         """A phone: an executor of open_url that also opens the voice conversation."""
         client, _ = await self.executor("celular", PHONE_TOOL)
         await client.send(
@@ -72,6 +73,7 @@ class VoiceSetup(Setup):
             format={"encoding": "pcm_s16le", "sample_rate": 16_000, "channels": 1},
             local_stt=True,
             local_tts=True,
+            **{"route": "headset", **flags},  # tests talk right after she stops (speaker: ~1 s)
         )
         ready = (await client.until(p.VoiceReady))[-1]
         assert isinstance(ready, p.VoiceReady) and (ready.stt, ready.tts) == ("cloud", "cloud")
@@ -225,3 +227,59 @@ async def test_a_stop_command_after_the_question_kills_the_pending_action(
         second = await until_spoken(phone)
         assert "nenhuma ação" in said(second)
     assert youtube.created == []
+
+
+# --- the wake word flow (T-165): greeting, one request, the comment, and back to standby ------
+
+
+async def test_the_wake_flow_greets_plays_comments_and_ends_the_session(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    from brain.clients.voice_session import GREETINGS
+
+    link = music_base.track_url(OCEANO)
+    provider = FakeProvider(
+        [
+            use("play_music", "k1", query="Djavan Oceano"),
+            say("Oceano, do Djavan. Um clássico para a estrada."),
+        ]
+    )
+    async with VoiceSetup(tmp_path, provider, "toca Oceano do Djavan") as s:
+        register_music(s)
+        s.registry.register(music_tools.PlayMusic)
+        phone = await s.phone(wake=True)
+        greeting = await collect_greeting(phone)
+        assert s.synth.spoken[0] in GREETINGS  # she greets first, as before
+        await s.speak(phone)
+        seen = await until_spoken(phone, answer_open_url=link)
+        end = (await phone.until(p.VoiceEnd))[-1]
+    assert greeting and isinstance(end, p.VoiceEnd) and end.reason == "playback"
+    assert "clássico" in said(seen) and s.synth.spoken[-1].startswith("Oceano")
+    assert youtube.searches == [("Djavan Oceano", 5, "track")]
+
+
+async def collect_greeting(client: Any) -> list[p.ServerMessage]:
+    """Everything up to the end of her greeting (the first complete audio)."""
+    seen: list[p.ServerMessage] = []
+    while True:
+        message = await client.recv()
+        seen.append(message)
+        if isinstance(message, p.VoiceAudio) and message.last:
+            return seen
+
+
+async def test_an_ordinary_request_keeps_the_conversation_open(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    provider = FakeProvider([say("São três e meia da tarde, passando rápido.")])
+    async with VoiceSetup(tmp_path, provider, "que horas são") as s:
+        register_music(s)
+        phone = await s.phone(wake=True)
+        await collect_greeting(phone)
+        await s.speak(phone)
+        await until_spoken(phone)
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.8):
+                while True:
+                    message = await phone.recv()
+                    assert not isinstance(message, p.VoiceEnd)  # no music: still open

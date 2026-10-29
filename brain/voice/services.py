@@ -22,6 +22,7 @@ class VoiceServices:
     stt: SpeechToText
     max_spoken_chars: int
     idle_timeout: float
+    wake_idle_timeout: float = 15.0
     _closers: tuple[Synthesizer | Transcriber, ...] = ()
 
     async def aclose(self) -> None:
@@ -43,5 +44,6 @@ def open_voice_services() -> VoiceServices:
         stt=SpeechToText(transcriber),
         max_spoken_chars=cfg.max_spoken_chars,
         idle_timeout=float(cfg.idle_timeout_seconds),
+        wake_idle_timeout=float(cfg.wake_idle_seconds),
         _closers=tuple(p for p in (synthesizer, transcriber) if p is not None),
     )

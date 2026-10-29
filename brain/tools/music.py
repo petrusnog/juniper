@@ -25,6 +25,7 @@ from brain.music.base import (
     Track,
     clean_video_ids,
     is_playlist_id,
+    play_playlist_url,
     playlist_url,
     valid_title,
 )
@@ -173,26 +174,34 @@ class MusicSearch(Tool):
 class PlayMusic(Tool):
     name = "play_music"
     description = (
-        "TOCA uma música: procura no YouTube Music, escolhe o melhor resultado e, se a pessoa "
-        "está no aplicativo do celular, abre e dá o play sozinho. Use SEMPRE que ela pedir para "
-        "tocar, colocar ou ouvir uma música, artista ou álbum. O pedido já é a confirmação: "
-        "não pergunte de novo. Em canais que não abrem links (terminal, Telegram) devolve o "
-        "link para você mandar na resposta. Para só procurar e mostrar opções, use music_search."
+        "TOCA no YouTube Music: uma música, um ÁLBUM inteiro ou uma PLAYLIST. Se a pessoa está no "
+        "aplicativo do celular, abre e dá o play sozinho; em canais que não abrem links "
+        "(terminal, Telegram) devolve o link para você mandar na resposta. Use SEMPRE que ela "
+        "pedir para tocar, colocar ou ouvir algo. O pedido já é a confirmação: não pergunte de "
+        "novo. Em 'mode': 'track' (padrão) uma música; 'album' o álbum inteiro (ex.: query "
+        "'Abbey Road The Beatles'); 'radio' algo parecido, em fila. Para tocar uma playlist da "
+        "pessoa (inclusive a que você acabou de criar), passe 'playlist_id' (music_playlists "
+        "lista os ids; music_playlist_create devolve o id). Para só mostrar opções, use "
+        "music_search."
     )
     parameters = {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "O que tocar: música e artista, ou só o artista.",
+                "description": "O que tocar: música e artista, ou álbum e artista.",
             },
             "mode": {
                 "type": "string",
-                "enum": ["track", "radio"],
-                "description": "'track' (padrão) toca a faixa; 'radio' toca algo parecido.",
+                "enum": ["track", "album", "radio"],
+                "description": "'track' uma música (padrão); 'album' o álbum inteiro; 'radio' algo "
+                "parecido.",
+            },
+            "playlist_id": {
+                "type": "string",
+                "description": "Id de uma playlist da pessoa, para tocá-la (em vez de 'query').",
             },
         },
-        "required": ["query"],
     }
     tier = Tier.WRITE
     locality = Locality.CLOUD
@@ -201,29 +210,55 @@ class PlayMusic(Tool):
     def available(cls) -> bool:
         return enabled()
 
+    async def precheck(self, **kwargs: Any) -> ToolResult | None:
+        playlist_id = kwargs.get("playlist_id")
+        if playlist_id is not None:
+            if not is_playlist_id(playlist_id):
+                return _invalid("O id da playlist não é válido: use o que music_playlists devolve.")
+            return None
+        if not str(kwargs.get("query", "")).strip():
+            return _invalid("Diga o que tocar (música, álbum ou artista) ou o id de uma playlist.")
+        return None
+
     async def requires_confirmation(self, **kwargs: Any) -> bool:
         return False  # "toca X" is the confirmation (the URL is built here, never typed by a model)
 
     async def describe(self, **kwargs: Any) -> str | None:
-        return f"tocar {kwargs.get('query', '')}"
+        return f"tocar {kwargs.get('query') or 'a playlist'}"
 
     async def run(self, **kwargs: Any) -> ToolResult:
-        mode: SearchMode = "radio" if kwargs.get("mode") == "radio" else "track"
+        playlist_id = kwargs.get("playlist_id")
+        if playlist_id is not None:
+            if not is_playlist_id(playlist_id):
+                return _invalid("O id da playlist não é válido.")
+            return await self._deliver(play_playlist_url(str(playlist_id)), "a playlist pedida")
+        query = str(kwargs.get("query", ""))
+        mode = kwargs.get("mode")
         try:
+            if mode == "album":
+                albums = await provider().search_albums(query, limit=settings.music.search_limit)
+                if not albums:
+                    return _nothing("Não achei esse álbum. Tente o nome do álbum e do artista.")
+                album = albums[0]
+                return await self._deliver(album.url, f"o álbum «{album.title}», de {album.artist}")
             tracks = await provider().search(
-                str(kwargs.get("query", "")), limit=settings.music.search_limit, mode=mode
+                query,
+                limit=settings.music.search_limit,
+                mode="radio" if mode == "radio" else "track",
             )
         except MusicError as exc:
             return failure(exc)
         if not tracks:
-            return ToolResult(
-                success=True,
-                output="Não achei nenhuma música para esse pedido. Tente outro nome ou artista.",
-                metadata={"results": 0},
+            return _nothing(
+                "Não achei nenhuma música para esse pedido. Tente outro nome ou artista."
             )
         track = tracks[0]
-        what = f"«{track.title}», de {track.artist}"
-        checked = check_url(track.url)
+        return await self._deliver(track.url, f"«{track.title}», de {track.artist}")
+
+    @staticmethod
+    async def _deliver(url: str, what: str) -> ToolResult:
+        """Open ``url`` on the device of this turn, or hand the link back from other channels."""
+        checked = check_url(url)
         if not checked.ok or checked.url is None:  # never expected: the URL is ours
             return ToolResult(success=False, error="Não consegui montar o link da música.")
         channel = current_channel.get()
@@ -247,11 +282,17 @@ class PlayMusic(Tool):
                 ),
                 metadata={"url": checked.url, "opened": False, **(opened.metadata or {})},
             )
+        if channel.playback is not None:
+            channel.playback.started = True  # a voice conversation ends once she has commented
         return ToolResult(
             success=True,
             output=f"{what}: {opened.output or 'abri no celular.'}",
             metadata={"url": checked.url, "opened": True, **(opened.metadata or {})},
         )
+
+
+def _nothing(message: str) -> ToolResult:
+    return ToolResult(success=True, output=message, metadata={"results": 0})
 
 
 MIN_SUBJECT_CHARS = 3
@@ -381,8 +422,11 @@ class MusicPlaylistCreate(_PlaylistTool):
         note = "" if added == len(ids) else f" ({len(ids) - added} não puderam ser adicionadas)"
         return ToolResult(
             success=True,
-            output=f"Criei a playlist privada «{playlist.title}» com {_plural(added)}{note}: "
-            f"{playlist.url}",
+            output=(
+                f"Criei a playlist privada «{playlist.title}» com {_plural(added)}{note}: "
+                f"{playlist.url} Para tocá-la, chame play_music com "
+                f"playlist_id={playlist.playlist_id}."
+            ),
             metadata={
                 "playlist_id": playlist.playlist_id,
                 "url": playlist.url,

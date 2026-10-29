@@ -22,6 +22,7 @@ from brain.config import settings
 from brain.httplog import logged_transport
 from brain.music.base import (
     MAX_TRACKS_PER_CALL,
+    Album,
     MusicError,
     MusicProvider,
     Playlist,
@@ -113,6 +114,41 @@ def rank(items: list[dict[str, Any]], query: str, limit: int, mode: SearchMode) 
     return [row[3] for row in scored[:limit]]
 
 
+# Playlists that are not albums (mixes, "best of", compilations), unless the query asked for them.
+_NOT_ALBUM = ("mix", "playlist", "best of", "greatest hits", "hits", "cover", "live", "ao vivo")
+_OFFICIAL_ALBUM_ID = "OLAK5uy_"  # YouTube Music's own album playlists start like this
+
+
+def rank_albums(items: list[dict[str, Any]], query: str, limit: int) -> list[Album]:
+    """Turn raw ``search.list`` playlist items into ranked albums: the official ones first."""
+    scored: list[tuple[int, int, int, Album]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(items):
+        playlist_id = (item.get("id") or {}).get("playlistId")
+        snippet = item.get("snippet") or {}
+        if not isinstance(playlist_id, str) or playlist_id in seen or not snippet.get("title"):
+            continue
+        if not is_playlist_id(playlist_id):
+            continue
+        seen.add(playlist_id)
+        title = clean_title(str(snippet["title"]))
+        channel = clean_title(str(snippet.get("channelTitle") or ""))
+        official = playlist_id.startswith(_OFFICIAL_ALBUM_ID)
+        low_title, low_query = title.lower(), query.lower()
+        penalty = sum(
+            1 for w in _NOT_ALBUM if _has_word(low_title, w) and not _has_word(low_query, w)
+        )
+        album = Album(
+            playlist_id=playlist_id,
+            title=title,
+            artist=_TOPIC_SUFFIX.sub("", channel) or "?",
+            official=official,
+        )
+        scored.append((0 if official else 1, penalty, index, album))
+    scored.sort(key=lambda row: row[:3])
+    return [row[3] for row in scored[:limit]]
+
+
 def _reason(response: httpx.Response) -> str:
     try:
         errors = response.json().get("error", {}).get("errors") or []
@@ -196,6 +232,42 @@ class YouTubeProvider(MusicProvider):
         except ValueError as exc:
             raise MusicError("api_error", "O YouTube devolveu uma resposta ilegível.") from exc
         return rank(items if isinstance(items, list) else [], text, limit, mode)
+
+    async def search_albums(self, query: str, *, limit: int = 5) -> list[Album]:
+        text = " ".join(str(query).split())
+        if not text:
+            raise MusicError("invalid_request", "Diga o álbum e o artista.")
+        if len(text) > MAX_QUERY_CHARS:
+            raise MusicError("invalid_request", f"A busca passa de {MAX_QUERY_CHARS} caracteres.")
+        if self._api_key is None:
+            raise MusicError(
+                "not_configured",
+                "A busca de músicas não está configurada: falta a chave da YouTube Data API.",
+            )
+        limit = max(1, min(int(limit), MAX_RESULTS))
+        self._quota.reserve(COST_SEARCH)
+        try:
+            response = await self._client.get(
+                "/search",
+                params={
+                    "part": "snippet",
+                    "type": "playlist",
+                    "maxResults": _FETCH,
+                    "regionCode": self._region,
+                    "q": f"{text} álbum",
+                },
+                headers={"x-goog-api-key": self._api_key},
+            )
+        except httpx.TimeoutException as exc:
+            raise MusicError("network_error", "O YouTube não respondeu a tempo.") from exc
+        except httpx.HTTPError as exc:
+            raise MusicError("network_error", "Não consegui falar com o YouTube agora.") from exc
+        self._check(response)
+        try:
+            items = response.json().get("items", [])
+        except ValueError as exc:
+            raise MusicError("api_error", "O YouTube devolveu uma resposta ilegível.") from exc
+        return rank_albums(items if isinstance(items, list) else [], text, limit)
 
     # --- playlists (need the user's login) ------------------------------------------------
 

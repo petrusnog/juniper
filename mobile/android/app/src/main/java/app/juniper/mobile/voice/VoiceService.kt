@@ -36,6 +36,8 @@ class VoiceService : Service() {
       return START_NOT_STICKY
     }
     createChannel()
+    val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Juniper está ouvindo"
+    val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Conversa de voz em andamento"
     val stop =
         PendingIntent.getBroadcast(
             this,
@@ -53,11 +55,11 @@ class VoiceService : Service() {
     val notification: Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Juniper está ouvindo")
-            .setContentText("Conversa de voz em andamento")
+            .setContentTitle(title)
+            .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)
-            .addAction(0, "Encerrar", stop)
+            .addAction(0, "Parar", stop)
             .build()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -124,5 +126,7 @@ class VoiceService : Service() {
     const val NOTIFICATION_ID = 4201
     const val ACTION_STOP_SERVICE = "app.juniper.mobile.STOP_SERVICE"
     const val ACTION_END_VOICE = "app.juniper.mobile.END_VOICE"
+    const val EXTRA_TITLE = "title"
+    const val EXTRA_TEXT = "text"
   }
 }

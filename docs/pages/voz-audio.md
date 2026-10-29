@@ -57,10 +57,27 @@ Em `brain/voice/vad.py` e `stt.py`:
 Sem fone, a voz sai pelo alto-falante e o microfone ouve a própria Juniper. O que existe contra o laço de «ela se ouve e responde a si mesma»:
 
 1. **Cancelamento de eco do Android:** o app captura com a fonte `VOICE_COMMUNICATION`, liga o modo de comunicação e manda a voz para o **viva-voz** (sem isso o Android usa o alto-falante da chamada, junto ao ouvido). Com fone conectado, a voz vai para o fone.
-2. **Meio-duplex no viva-voz** ([protocolo](protocolo.md#voz)): enquanto ela fala (e por 1 s depois), o cérebro **ignora o microfone**. A voz dela, o eco e a música dessa janela nunca viram fala. O preço: no viva-voz **não dá para interromper falando por cima**, só pelo botão «Parar de falar». Com fone o corte por voz continua.
+2. **Meio-duplex em toda interação sem fone** ([protocolo](protocolo.md#voz)): enquanto ela fala (e por 1 s depois), o microfone fica **fechado**: o cérebro ignora o que chega e o app nem envia. A voz dela, o eco e a música dessa janela nunca viram fala. O preço: **não dá para interromper falando por cima**, só pelo botão «Parar de falar». Só com fone (`route: headset`) o corte por voz continua.
 3. **«Segurar para falar»** (botão na aba Voz): o microfone só vai ao cérebro enquanto o botão está apertado (e ao soltar vão 900 ms de silêncio para o cérebro fechar a fala). É a saída segura quando há **música tocando no celular**: ela não é interpretada, porque o microfone só abre quando você quer. Apertar o botão enquanto ela fala também a interrompe.
 
 O que **não** dá para garantir sem fone: falar por cima de uma música alta sem apertar o botão. O Android cancela o eco da voz da Juniper, não o de outro app; sem o botão, a música pode ser tomada por fala (e a transcrição de letra de música não é filtrada). Por isso: fone, ou «Segurar para falar».
+
+## Chamar falando «Juniper» (palavra de chamada) {#wake}
+
+Com a opção **Chamar falando «Juniper»** ligada na aba Voz, o app fica em **espera**: um serviço em primeiro plano (notificação «Juniper aguardando») escuta o microfone **só no aparelho**, com o detector da Picovoice (Porcupine); nenhum áudio vai ao cérebro nem à nuvem nesse estado. O fluxo, pensado para o celular como interface central e o carro como mero alto-falante:
+
+1. Você diz «Juniper». O app para o detector, abre a sessão de voz com `wake: true` e o cérebro **cumprimenta** (uma frase curta, como hoje).
+2. Você pede uma música, álbum ou playlist. Com o microfone **fechado** enquanto ela fala, o cérebro chama `play_music`, que abre o YouTube Music.
+3. Ainda de microfone fechado, ela faz um **comentário curto** e, ao terminar, o cérebro manda `voice.end` com `reason: playback`. O app fecha a sessão de voz e **volta à espera** da palavra de chamada. Ela só volta a interagir depois de um novo «Juniper».
+4. Se você chamou e não disse nada (ou depois de uma conversa sem música), a sessão encerra sozinha após `voice.wake_idle_seconds` (padrão 15 s) de silêncio e volta à espera.
+
+Em qualquer interação sem fone o microfone fecha enquanto ela fala e reabre quando ela para (ver [acima](#viva-voz)). **Não verificado no aparelho:** com música alta no carro o detector pode falhar em ouvir a palavra; nesse caso use o botão do app.
+
+**Configurar a Picovoice (uma vez, grátis):**
+1. Crie a conta em console.picovoice.ai e copie a **AccessKey**.
+2. Em «Porcupine», treine a palavra **Juniper** para **Android** e baixe o arquivo `.ppn`.
+3. Salve-o como `mobile/android/app/src/main/assets/juniper.ppn` (o `*.ppn` é ignorado pelo git; gere o APK depois).
+4. No app, em Configurar, cole a AccessKey em «Chave da Picovoice» (fica no armazenamento seguro do aparelho, nunca no código) e ligue a opção na aba Voz. Sem a chave ou sem o arquivo, o app avisa e a espera não liga.
 
 ## Orçamento e voz do aparelho {#orcamento}
 

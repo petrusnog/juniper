@@ -74,6 +74,20 @@ class Track:
 
 
 @dataclass(frozen=True)
+class Album:
+    """An album (YouTube Music keeps each one as a playlist): enough to choose and to play it."""
+
+    playlist_id: str
+    title: str
+    artist: str
+    official: bool = False
+
+    @property
+    def url(self) -> str:
+        return play_playlist_url(self.playlist_id)
+
+
+@dataclass(frozen=True)
 class Playlist:
     playlist_id: str
     title: str
@@ -155,6 +169,11 @@ def playlist_url(playlist_id: str) -> str:
     return f"https://music.youtube.com/playlist?list={playlist_id}"
 
 
+def play_playlist_url(playlist_id: str) -> str:
+    """The link that **starts playing** a playlist or album (``/playlist`` only opens its page)."""
+    return f"{MUSIC_URL}?list={playlist_id}"
+
+
 def track_url(video_id: str) -> str:
     return f"{MUSIC_URL}?v={video_id}"
 
@@ -172,6 +191,10 @@ class MusicProvider(ABC):
         self, query: str, *, limit: int = 5, mode: SearchMode = "track"
     ) -> list[Track]:
         """Tracks matching ``query``, best first, at most ``limit``."""
+
+    async def search_albums(self, query: str, *, limit: int = 5) -> list[Album]:
+        """Albums matching ``query``, best first, at most ``limit``."""
+        raise MusicError("not_supported", "Este serviço de música não procura álbuns.")
 
     async def list_playlists(self) -> list[Playlist]:
         raise MusicError("not_supported", "Este serviço de música não lista playlists.")

@@ -1,10 +1,18 @@
-/** Colors of the pocket book (docs/html/assets/style.css), light and dark (ADR-022, section 8). */
+/**
+ * Terminal look of the app: black background, neon green like the logo, and the Tango
+ * palette of Linux terminals for the other colors (docs: Identidade visual).
+ */
 export interface Palette {
   background: string;
   card: string;
   ink: string;
   muted: string;
   border: string;
+  /** Neon green of the logo: primary actions, the active tab, the user's text. */
+  accent: string;
+  /** Text drawn on top of an accent-colored button. */
+  onAccent: string;
+  cyan: string;
   blue: string;
   violet: string;
   green: string;
@@ -12,32 +20,22 @@ export interface Palette {
   red: string;
 }
 
-export const light: Palette = {
-  background: '#f7f6f2',
-  card: '#ffffff',
-  ink: '#1d2330',
-  muted: '#667085',
-  border: '#e3e1d9',
-  blue: '#2563eb',
-  violet: '#7c3aed',
-  green: '#16a34a',
-  amber: '#d97706',
-  red: '#dc2626',
-};
-
-export const dark: Palette = {
-  background: '#14171f',
-  card: '#1d212c',
-  ink: '#e8eaf0',
-  muted: '#9aa3b2',
-  border: '#2c3242',
-  blue: '#60a5fa',
-  violet: '#a78bfa',
-  green: '#4ade80',
-  amber: '#fbbf24',
-  red: '#f87171',
+export const terminal: Palette = {
+  background: '#000000',
+  card: '#06100a',
+  ink: '#d3f2cc',
+  muted: '#6f9a6a',
+  border: '#1d6b2b',
+  accent: '#39e639',
+  onAccent: '#000000',
+  cyan: '#34e2e2',
+  blue: '#729fcf',
+  violet: '#ad7fa8',
+  green: '#8ae234',
+  amber: '#fce94f',
+  red: '#ef2929',
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
-export const radius = { card: 14, bubble: 18 } as const;
+export const radius = { card: 3, bubble: 3 } as const;
 export const mono = 'monospace';

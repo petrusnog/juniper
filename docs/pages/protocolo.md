@@ -160,7 +160,7 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 
 | Direção | `type` | Campos | Quando |
 |---|---|---|---|
-| cliente → servidor | `voice.start` | `id`, `format` {`encoding`: `pcm_s16le`, `sample_rate` (8000–48000), `channels`: 1}, `local_stt?`, `local_tts?`, `route?` (`speaker`, `headset`) | Abre a sessão; `format` é o do microfone (prefira 16 kHz). |
+| cliente → servidor | `voice.start` | `id`, `format` {`encoding`: `pcm_s16le`, `sample_rate` (8000–48000), `channels`: 1}, `local_stt?`, `local_tts?`, `route?` (`speaker`, `headset`), `wake?` | Abre a sessão; `format` é o do microfone (prefira 16 kHz). `wake: true`: a sessão nasceu da palavra de chamada; o cérebro cumprimenta primeiro e encerra sozinho depois de tocar uma música ou após `voice.wake_idle_seconds` sem fala. |
 | servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: formatos e se STT e TTS são `cloud` ou `local`. |
 | ambos | `voice.audio` | `seq`, `data`, `turn_id?`, `last?` | Do cliente: o microfone. Do servidor: a fala do turno; `last` fecha a fala. |
 | servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo. `listening` **com** `turn_id` = descarte o áudio daquele turno (foi cortado). |
@@ -170,9 +170,9 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 | cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
 | cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
 | cliente → servidor | `voice.route` | `route` | A saída de áudio mudou (fone ligado ou desligado). |
-| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`) | Encerra a sessão. |
+| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`, `playback`) | Encerra a sessão. `playback`: a música foi aberta e o comentário terminou; o app volta a esperar a palavra de chamada. |
 
-`voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Base64 inválido ou `seq` fora do limite também é `bad_request`. Em `route: speaker`, o servidor ignora o microfone enquanto a Juniper fala (e por 1 s depois).
+`voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Base64 inválido ou `seq` fora do limite também é `bad_request`. Sem fone (`route` diferente de `headset`, ou ausente), o servidor ignora o microfone enquanto a Juniper fala (e por 1 s depois), e o app também não o envia nessa janela.
 
 ## Diário de mensagens {#trace}
 

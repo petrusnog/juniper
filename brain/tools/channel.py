@@ -23,12 +23,24 @@ class Gateway(Protocol):
         """Run ``tool_name`` on the device of this turn; returns a `ToolResult`, never raises."""
 
 
+class PlaybackFlag:
+    """Set by a tool when it started music on the device during this turn.
+
+    A voice conversation that starts music ends once she has finished her comment (ADR-023,
+    wake word): the music and the microphone must not share the room.
+    """
+
+    def __init__(self) -> None:
+        self.started = False
+
+
 @dataclass(frozen=True)
 class Channel:
     kind: str | None  # hello.client.kind: "mobile", "cli", "telegram"...
     voice: bool = False
     can_open: bool = False  # a device of this very connection can open links
     gateway: Gateway | None = None
+    playback: PlaybackFlag | None = None
 
 
 current_channel: contextvars.ContextVar[Channel | None] = contextvars.ContextVar(

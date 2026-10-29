@@ -8,7 +8,9 @@ import { AudioDevice } from './devices';
 
 interface NativeAudio {
   start(sampleRate: number): Promise<void>;
-  stop(): Promise<void>;
+  stop(keepService: boolean): Promise<void>;
+  startService(title: string, text: string): Promise<void>;
+  stopService(): Promise<void>;
   pauseCapture(): Promise<void>;
   resumeCapture(): Promise<void>;
   hasHeadset(): Promise<boolean>;
@@ -44,8 +46,23 @@ export const nativeAudio: AudioDevice = {
     await ensurePermissions();
     await native.start(sampleRate);
   },
-  async stop() {
-    await (NativeModules.JuniperAudio as NativeAudio | undefined)?.stop();
+  async stop(keepService = false) {
+    await (NativeModules.JuniperAudio as NativeAudio | undefined)?.stop(
+      keepService,
+    );
+  },
+  async startService(title, text) {
+    const native = NativeModules.JuniperAudio as NativeAudio | undefined;
+    if (!native) {
+      throw new Error('native_module_missing');
+    }
+    await ensurePermissions();
+    await native.startService(title, text);
+  },
+  async stopService() {
+    await (
+      NativeModules.JuniperAudio as NativeAudio | undefined
+    )?.stopService();
   },
   onChunk(listener) {
     const emitter = new NativeEventEmitter(NativeModules.JuniperAudio);
