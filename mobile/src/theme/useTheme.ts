@@ -1,7 +1,6 @@
-import { useColorScheme } from 'react-native';
-import { dark, light, Palette } from './tokens';
+import { Palette, terminal } from './tokens';
 
-/** The palette that follows the system theme. */
+/** The terminal palette. The app has a single look, regardless of the system theme. */
 export function useTheme(): Palette {
-  return useColorScheme() === 'dark' ? dark : light;
+  return terminal;
 }

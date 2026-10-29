@@ -6,10 +6,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Text, TextInput } from '../theme/Text';
 import { ChatController } from '../chat/ChatController';
 import { ChatMessage, isBusy } from '../chat/state';
 import { useChat } from '../chat/useChat';
@@ -29,14 +28,14 @@ function Bubble({ message, theme }: { message: ChatMessage; theme: Palette }) {
   const mine = message.role === 'user';
   const background =
     message.role === 'user'
-      ? theme.blue
+      ? theme.background
       : message.role === 'error'
       ? theme.card
       : message.role === 'notice'
       ? theme.background
       : theme.card;
   const color = mine
-    ? '#ffffff'
+    ? theme.accent
     : message.role === 'error'
     ? theme.red
     : theme.ink;
@@ -46,7 +45,10 @@ function Bubble({ message, theme }: { message: ChatMessage; theme: Palette }) {
       style={[
         styles.bubble,
         mine ? styles.mine : styles.theirs,
-        { backgroundColor: background, borderColor: theme.border },
+        {
+          backgroundColor: background,
+          borderColor: mine ? theme.accent : theme.border,
+        },
       ]}
     >
       <Text selectable style={[styles.body, { color }]}>
@@ -112,7 +114,7 @@ export function ChatScreen({
             onPress={onReconnect}
             style={styles.headerButton}
           >
-            <Text style={{ color: theme.blue }}>Reconectar</Text>
+            <Text style={{ color: theme.accent }}>Reconectar</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -123,14 +125,14 @@ export function ChatScreen({
           }}
           style={styles.headerButton}
         >
-          <Text style={{ color: theme.blue }}>Conversas</Text>
+          <Text style={{ color: theme.accent }}>Conversas</Text>
         </Pressable>
         <Pressable
           testID="configure"
           onPress={onConfigure}
           style={styles.headerButton}
         >
-          <Text style={{ color: theme.blue }}>Configurar</Text>
+          <Text style={{ color: theme.accent }}>Configurar</Text>
         </Pressable>
       </View>
 
@@ -180,7 +182,7 @@ export function ChatScreen({
             testID="send"
             accessibilityRole="button"
             onPress={send}
-            style={[styles.send, { backgroundColor: theme.blue }]}
+            style={[styles.send, { backgroundColor: theme.accent }]}
           >
             <Text style={styles.sendText}>Enviar</Text>
           </Pressable>
@@ -205,7 +207,7 @@ export function ChatScreen({
               }}
               style={styles.headerButton}
             >
-              <Text style={{ color: theme.blue }}>Nova conversa</Text>
+              <Text style={{ color: theme.accent }}>Nova conversa</Text>
             </Pressable>
             <Pressable
               onPress={() => setListOpen(false)}
@@ -272,7 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.bubble,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   mine: { alignSelf: 'flex-end' },
   theirs: { alignSelf: 'flex-start' },
@@ -289,7 +291,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.card,
   },
-  sendText: { color: '#ffffff', fontWeight: '600' },
+  sendText: { color: '#000000', fontWeight: '700' },
   session: {
     padding: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,

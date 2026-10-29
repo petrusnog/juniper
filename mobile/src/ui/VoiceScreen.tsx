@@ -1,12 +1,6 @@
 import React from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Text } from '../theme/Text';
 import { ChatController } from '../chat/ChatController';
 import { useChat } from '../chat/useChat';
 import { backgroundPermission } from '../executor/MediaAutoplay';
@@ -55,7 +49,7 @@ export function VoiceScreen({
   const active = state.phase !== 'off';
   const blocked = !active && connection !== 'connected';
   const color = !active
-    ? theme.blue
+    ? theme.accent
     : state.phase === 'speaking'
     ? theme.violet
     : state.phase === 'thinking'
@@ -135,7 +129,7 @@ export function VoiceScreen({
               accessibilityRole="button"
               onPress={() => backgroundPermission.openSettings()}
             >
-              <Text style={{ color: theme.blue }}>Permitir agora</Text>
+              <Text style={{ color: theme.accent }}>Permitir agora</Text>
             </Pressable>
           </View>
         ) : null}
@@ -258,7 +252,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   blocked: { opacity: 0.4 },
-  bigText: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
+  bigText: { color: '#000000', fontSize: 20, fontWeight: '700' },
   secondary: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,

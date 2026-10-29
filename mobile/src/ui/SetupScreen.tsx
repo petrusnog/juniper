@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../theme/Text';
 import {
   newDeviceId,
   validateAddress,
@@ -137,7 +131,7 @@ export function SetupScreen({ initial, onSave, onCancel }: Props) {
           testID="save"
           accessibilityRole="button"
           onPress={submit}
-          style={[styles.button, { backgroundColor: theme.blue }]}
+          style={[styles.button, { backgroundColor: theme.accent }]}
         >
           <Text style={styles.buttonText}>Salvar e conectar</Text>
         </Pressable>
@@ -174,5 +168,5 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.card,
   },
-  buttonText: { color: '#ffffff', fontWeight: '600' },
+  buttonText: { color: '#000000', fontWeight: '700' },
 });
