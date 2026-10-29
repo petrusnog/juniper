@@ -185,3 +185,23 @@ def test_the_apk_is_read_once_while_the_file_does_not_change(tmp_path: Path) -> 
     first = updates.apk_bytes(release)
     assert first == APK
     assert updates.apk_bytes(release) is first  # the same copy, not read again
+
+
+async def test_the_handshake_deadline_leaves_time_to_download_the_apk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the APK is sent inside the websockets handshake, whose 10 s deadline cut it."""
+    from brain.clients import server as server_module
+
+    seen: dict[str, object] = {}
+    real_serve = server_module.serve
+
+    async def spy(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        return await real_serve(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(server_module, "serve", spy)
+    server = BrainServer("127.0.0.1", 0, TOKEN, app_updates=AppUpdates(tmp_path))
+    await server.start()
+    await server.stop()
+    assert float(seen["open_timeout"]) >= 120  # type: ignore[arg-type]

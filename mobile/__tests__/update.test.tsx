@@ -204,9 +204,13 @@ test('a bad download or checksum goes back to "available" with the reason', asyn
   await controller.install();
   expect(controller.state.phase).toBe('available');
   expect(controller.state.notice).toContain('não bate');
-  native.installError = { code: 'whatever' };
+  native.installError = {
+    code: 'download_failed',
+    message: 'SocketTimeoutException',
+  } as never;
   await controller.install();
   expect(controller.state.notice).toContain('baixar');
+  expect(controller.state.notice).toContain('(SocketTimeoutException)');
 });
 
 test('the system refusing the install is reported and can be retried', async () => {
