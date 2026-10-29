@@ -133,7 +133,7 @@ O LLM não sabe que dia é. O agente injeta `clock.describe()` (ex.: `domingo, 1
 
 - Várias tool calls da mesma resposta rodam em sequência, não em paralelo.
 - A validação de argumentos é rasa: confere presença, nome e tipo do nível de cima, não schemas aninhados. A tool continua responsável por validar o conteúdo.
-- O histórico vive no processo e é salvo pelo `SessionStore`. No modo local, Ctrl+C no meio de uma resposta encerra o programa; no modo servidor, cancela só o turno (`chat.cancel`).
+- O histórico vive no processo e é salvo pelo `SessionStore`. No modo local, Ctrl+C no meio de uma resposta encerra o programa; no modo servidor, cancela só o turno (`chat.cancel`). Cortar um turno (`chat.cancel`, ou falar por cima na voz) **mantém a mensagem do usuário** no histórico e na transcrição, com resposta vazia (`Agent.interrupt`); falha de LLM, *timeout* e queda da conexão desfazem o turno inteiro, para um retry não ver meio turno.
 
 ## Testes {#testes}
 

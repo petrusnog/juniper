@@ -470,6 +470,7 @@ class ChatHandler:
             return  # o turno já acabou (ou não é seu): cancelar de novo é inofensivo
         if run.task is not None and not run.task.done():
             run.cancelled = True
+            conversation.agent.interrupt()  # what he said stays; the half-made reply does not
             run.task.cancel()
 
     async def _deliver(
@@ -649,6 +650,7 @@ class ChatHandler:
         if run is None or run.task is None or run.task.done():
             return
         run.cancelled = True
+        conversation.agent.interrupt()  # he spoke over her: his words are kept (T-166)
         run.task.cancel()
         # Bounded: this runs in the connection's receive loop, which must keep reading (and
         # answering pings) even if a tool takes a while to give up.

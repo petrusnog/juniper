@@ -9,14 +9,16 @@ synthetic tone: a tone is speech, quiet noise is silence.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
 from brain.clients import protocol as p
+from brain.llm.base import LLMProvider
+from brain.llm.types import LLMResponse, Message, StreamChunk
 from brain.memory.v2.store import InMemoryDocStore
 from brain.music import base as music_base
 from brain.music.taste import TasteBook
@@ -283,3 +285,56 @@ async def test_an_ordinary_request_keeps_the_conversation_open(
                 while True:
                     message = await phone.recv()
                     assert not isinstance(message, p.VoiceEnd)  # no music: still open
+
+
+# --- what he says is never lost (T-166) -----------------------------------------------------
+
+
+class StuckThenAnswers(LLMProvider):
+    """The first call starts answering and never ends (he talks over it); the next ones answer."""
+
+    name: ClassVar[str] = "stuck"
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.calls = 0
+        self.first_started = asyncio.Event()
+
+    async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+        raise NotImplementedError
+
+    async def stream(self, messages: list[Message], **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if self.calls == 1:
+            yield StreamChunk(delta="Deixa eu ver ")
+            self.first_started.set()
+            await asyncio.Event().wait()  # until the turn is cancelled
+        yield StreamChunk(delta=self.reply, finish_reason="stop")
+
+    async def health_check(self) -> bool:
+        return True
+
+
+async def test_speaking_over_her_keeps_what_he_said_in_the_conversation_and_the_transcript(
+    tmp_path: Path, youtube: Youtube
+) -> None:
+    provider = StuckThenAnswers("Anotado, Petrus.")
+    sunk: list[Any] = []
+    async with VoiceSetup(tmp_path, provider, "primeira parte do pedido", "e a segunda parte") as s:
+        s.handler._turn_sink = lambda session_id, turn: sunk.append((session_id, turn))
+        phone = await s.phone()
+        await s.speak(phone)
+        await asyncio.wait_for(provider.first_started.wait(), 3)
+        await s.speak(phone)  # he talks over the turn in progress
+        await until_spoken(phone)
+        conversation = s.handler._live[phone.welcome.session.id]
+        history = conversation.agent.session.history
+    users = [m.content or "" for m in history if m.role == "user"]
+    assert len(users) == 2
+    assert "primeira parte do pedido" in users[0] and "e a segunda parte" in users[1]
+    assert [m.content for m in history if m.role == "assistant"] == ["Anotado, Petrus."]
+    # the transcript got both: the cut one without a reply, the next one with it
+    assert [(t.user, t.assistant) for _, t in sunk] == [
+        ("primeira parte do pedido", ""),
+        ("e a segunda parte", "Anotado, Petrus."),
+    ]

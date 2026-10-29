@@ -91,6 +91,7 @@ class Agent:
         self.channel_note: str | None = None
         self._executed_until: int | None = None
         self._used_tools = False
+        self._interrupted = False  # the user cut the turn in progress (voice barge-in, cancel)
         self._leaked = False  # a reply of this turn showed machinery (T-165)
         self._turns: list[Turn] = []
         # Where the time of the last turn went (T-062): total ms and ms per stage.
@@ -103,6 +104,16 @@ class Agent:
         """Forget actions waiting for a "yes". Called when the conversation changes hands or is
         resumed: after that, nothing runs without a new, explicit confirmation (ADR-012)."""
         self._dispatcher.pending = None
+
+    def interrupt(self) -> None:
+        """The user is cutting the turn in progress (spoke over her, sent something new, cancelled).
+
+        Call it just before cancelling the task. What he said stays in the conversation and in the
+        transcript (T-166); the half-made reply and the tools of that turn do not. A cancellation
+        that does not come from the user (timeout, the connection dropping) is not an interruption:
+        it still rolls the whole turn back, so a retry does not see half a turn.
+        """
+        self._interrupted = True
 
     def drain_turns(self) -> list[Turn]:
         """The exchanges finished since the last call (for long-term memory extraction)."""
@@ -120,6 +131,7 @@ class Agent:
         checkpoint = self.session.checkpoint()
         self._executed_until = None
         self._used_tools = False
+        self._interrupted = False
         self._leaked = False
         self._stages = Stages()
         self._recall_timings = {}
@@ -129,26 +141,25 @@ class Agent:
         except BaseException as exc:
             # Actions the user approved already ran: keep that record even if the LLM then fails.
             keep = self._executed_until if self._executed_until is not None else checkpoint
+            interrupted = isinstance(exc, asyncio.CancelledError) and self._interrupted
+            if interrupted:
+                keep = max(keep, checkpoint + 1)  # what the user said is never lost (T-166)
             self.session.rollback(keep)
-            event_log.log("error", where="agent.run", type=type(exc).__name__, message=str(exc))
+            event_log.log(
+                "error" if not interrupted else "turn_interrupted",
+                where="agent.run",
+                type=type(exc).__name__,
+                message=str(exc),
+            )
+            if interrupted:
+                self._finish_turn(user_input, "")
             with self._stages.stage("persist"):
                 self._persist()
+            if interrupted:
+                await self._sink(self._turns[-1])
             self._log_timing()
             raise
-        self.session.turns_total += 1
-        index = self.session.turns_total - 1
-        if self._leaked:
-            # What she said is kept out of memory (and of the night): the evidence is in the audit.
-            event_log.log("leak_quarantined", turn=index)
-        self._turns.append(
-            Turn(
-                user_input,
-                "" if self._leaked else reply,
-                index=index,
-                used_tools=self._used_tools,
-                leaked=self._leaked,
-            )
-        )
+        self._finish_turn(user_input, reply)
         with self._stages.stage("persist"):
             self._persist()
             await self._sink(self._turns[-1])
@@ -163,6 +174,23 @@ class Agent:
         )
         self._log_timing()
         return reply
+
+    def _finish_turn(self, user_input: str, reply: str) -> None:
+        """Count the turn and queue it for memory (``reply`` is empty for an interrupted one)."""
+        self.session.turns_total += 1
+        index = self.session.turns_total - 1
+        if self._leaked:
+            # What she said is kept out of memory (and of the night): the evidence is in the audit.
+            event_log.log("leak_quarantined", turn=index)
+        self._turns.append(
+            Turn(
+                user_input,
+                "" if self._leaked else reply,
+                index=index,
+                used_tools=self._used_tools,
+                leaked=self._leaked,
+            )
+        )
 
     def _log_timing(self) -> None:
         """Record where this turn's time went (the ``timing`` event; the CLI may show it too)."""

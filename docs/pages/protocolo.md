@@ -72,7 +72,7 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 | servidor → cliente | `chat.started` | `reply_to`, `turn_id`, `session_id` | O turno começou. |
 | servidor → cliente | `chat.token` | `turn_id`, `text` | Um pedaço da resposta, em ordem. |
 | servidor → cliente | `chat.end` | `turn_id`, `finish`, `usage?`, `timing?` | O turno terminou. |
-| cliente → servidor | `chat.cancel` | `turn_id` | Interrompe o turno em andamento. |
+| cliente → servidor | `chat.cancel` | `turn_id` | Interrompe o turno em andamento. A mensagem do usuário fica no histórico; a resposta parcial não. |
 
 `finish` é `ok`, `cancelled`, `max_iterations` ou `error`.
 

@@ -1058,3 +1058,69 @@ async def test_dashes_the_model_writes_never_reach_the_client_or_the_history() -
     assert "".join(shown) == reply
     assert agent.session.history[-1].content == reply
     assert not any(d in reply for d in "–—―")
+
+
+# --- a cut turn keeps what the user said (T-166) --------------------------------------------
+
+
+class Hanging(LLMProvider):
+    """Starts answering and never ends: the test cancels the turn."""
+
+    name: ClassVar[str] = "hanging"
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+        raise NotImplementedError
+
+    async def stream(self, messages: list[Message], **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        yield StreamChunk(delta="Deixa eu ver ")
+        self.started.set()
+        await asyncio.Event().wait()
+        yield StreamChunk(delta="nunca chega")
+
+    async def health_check(self) -> bool:
+        return True
+
+
+async def cancelled_turn(interrupt: bool) -> tuple[Agent, list[Any]]:
+    provider = Hanging()
+    sunk: list[Any] = []
+    agent = Agent(
+        provider,
+        Dispatcher(tool_registry=ToolRegistry()),
+        Session("persona"),
+        tool_registry=ToolRegistry(),
+        turn_sink=lambda session_id, turn: sunk.append(turn),
+    )
+    task = asyncio.create_task(agent.run("me ajuda com isso"))
+    await asyncio.wait_for(provider.started.wait(), 3)
+    if interrupt:
+        agent.interrupt()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return agent, sunk
+
+
+async def test_an_interrupted_turn_keeps_the_user_message_but_not_the_half_reply() -> None:
+    agent, sunk = await cancelled_turn(interrupt=True)
+    assert [m.role for m in agent.session.history] == ["user"]
+    assert "me ajuda com isso" in (agent.session.history[0].content or "")
+    assert [(t.user, t.assistant, t.index) for t in sunk] == [("me ajuda com isso", "", 0)]
+    assert [t.user for t in agent.drain_turns()] == ["me ajuda com isso"]  # to the extraction too
+    assert agent.session.turns_total == 1
+
+
+async def test_a_cancellation_that_is_not_the_user_rolls_the_whole_turn_back() -> None:
+    agent, sunk = await cancelled_turn(interrupt=False)  # a timeout, the connection dropping
+    assert agent.session.history == [] and sunk == [] and agent.session.turns_total == 0
+
+
+async def test_the_next_turn_after_an_interruption_is_not_marked_interrupted() -> None:
+    agent, _ = await cancelled_turn(interrupt=True)
+    agent._provider = FakeProvider([say("Pronto.")])
+    assert await agent.run("e agora?") == "Pronto."
+    assert [m.role for m in agent.session.history] == ["user", "user", "assistant"]
+    assert agent.session.turns_total == 2
