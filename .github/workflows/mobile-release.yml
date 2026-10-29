@@ -25,16 +25,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: apk
-    # Só um push no próprio repositório (nunca um PR de fork cuja branch se chame master) ou um
-    # disparo manual na master: este job tem o keystore do app e a chave SSH da VPS.
+  # `workflow_run` não aceita filtro de caminhos, e o "Mobile" também roda quando só o schema do
+  # protocolo ou o próprio workflow mudam. Este job olha o que o commit mexeu: só mudança em
+  # mobile/ gera APK novo. O disparo manual sempre publica.
+  changes:
+    name: mudou o app?
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      mobile: ${{ steps.diff.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "disparo manual: publica"
+            echo "mobile=true" >> "$GITHUB_OUTPUT"
+          # O que o merge trouxe para o master: a diferença para o primeiro pai (o master de antes).
+          elif git diff --quiet HEAD^1 HEAD -- mobile/; then
+            echo "nada mudou em mobile/: não há APK novo para publicar"
+            echo "mobile=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only HEAD^1 HEAD -- mobile/ | head -20
+            echo "mobile=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: apk
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +101,18 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/juniper-release.keystore"
+          # Tolera espaços, quebras de linha e o "%" que o zsh imprime depois de uma linha sem
+          # quebra (o que sobra de lixo faz o keytool recusar logo abaixo, com a causa dita).
+          printf '%s' "$KEYSTORE" | tr -d '[:space:]' | base64 -d -i > "$RUNNER_TEMP/juniper-release.keystore" || true
+          if [ ! -s "$RUNNER_TEMP/juniper-release.keystore" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 não é um base64 válido: gere de novo com 'base64 -w0 seu.keystore' e cole só a saída"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/juniper-release.keystore" \
+              -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::o keystore não abre com ANDROID_KEYSTORE_PASSWORD e ANDROID_KEY_ALIAS (ou o conteúdo do segredo está corrompido)"
+            exit 1
+          fi
           {
             echo "storeFile=$RUNNER_TEMP/juniper-release.keystore"
             echo "storePassword=$STORE_PASSWORD"

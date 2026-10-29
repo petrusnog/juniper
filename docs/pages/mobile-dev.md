@@ -149,7 +149,7 @@ Para instalar sem o Metro (um build de *release*, com o JavaScript embutido):
 
 Em produção, o APK não precisa sair do seu computador: o workflow **Mobile release** (`.github/workflows/mobile-release.yml`) o compila e o publica no cérebro, e o app se atualiza sozinho ([ADR-026](../decisions/ADR-026.md), [App mobile](mobile.md#atualizacao)).
 
-1. Roda depois que o workflow **Mobile** (tsc, lint e Jest) fica verde no `master`, ou à mão em Actions → Mobile release → Run workflow.
+1. Roda depois que o workflow **Mobile** (tsc, lint e Jest) fica verde no `master`, **e só se o commit mexeu em `mobile/`** (um job confere a diferença para o `master` de antes; mudança só no schema do protocolo, em docs ou no próprio workflow não gera APK). À mão, em Actions → Mobile release → Run workflow, sempre publica.
 2. Monta o `keystore.properties` a partir dos segredos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` e falha se faltar algum. O keystore tem de ser **o mesmo** do app instalado.
 3. Compila com `./gradlew assembleRelease`. O `versionCode` é o número de commits (`git rev-list --count HEAD`, por isso o CI clona o histórico inteiro) e o `versionName` é `0.1.<código>`; sem `git`, o código é 1.
 4. Entra na rede privada como o deploy faz, copia o APK por `scp` e roda `scripts/publish_app.sh` na VPS por `ssh` (o script segue por stdin). Ele grava `app-release.apk` e `latest.json` na pasta que o cérebro serve e ignora um código menor ou igual ao publicado.
