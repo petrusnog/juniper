@@ -74,7 +74,18 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/juniper-release.keystore"
+          # Tolera espaços, quebras de linha e o "%" que o zsh imprime depois de uma linha sem
+          # quebra (o que sobra de lixo faz o keytool recusar logo abaixo, com a causa dita).
+          printf '%s' "$KEYSTORE" | tr -d '[:space:]' | base64 -d -i > "$RUNNER_TEMP/juniper-release.keystore" || true
+          if [ ! -s "$RUNNER_TEMP/juniper-release.keystore" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 não é um base64 válido: gere de novo com 'base64 -w0 seu.keystore' e cole só a saída"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/juniper-release.keystore" \
+              -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::o keystore não abre com ANDROID_KEYSTORE_PASSWORD e ANDROID_KEY_ALIAS (ou o conteúdo do segredo está corrompido)"
+            exit 1
+          fi
           {
             echo "storeFile=$RUNNER_TEMP/juniper-release.keystore"
             echo "storePassword=$STORE_PASSWORD"
