@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -60,7 +61,7 @@ def test_the_shell_is_accessible_and_responsive() -> None:
     index = (STATIC_DIR / "index.html").read_text()
     assert 'class="skip"' in index and 'aria-label="Seções"' in index and 'tabindex="-1"' in index
     css = (ASSETS / "app.css").read_text()
-    assert "prefers-color-scheme: dark" in css and "@media (min-width: 800px)" in css
+    assert "@media (min-width: 800px)" in css  # mobile first: the side menu is the addition
     assert "focus-visible" in css and "max-width: 600px" in css
 
 
@@ -124,3 +125,80 @@ def test_the_search_page_sends_many_types_and_the_api_helper_supports_lists() ->
     assert "Array.isArray(value)" in api and "query.append" in api
     page = (ASSETS / "pages" / "search.js").read_text()
     assert "type: [...state.types]" in page and "data.warning" in page
+
+
+# --- the terminal look and the logo (T-169) -------------------------------------------------------
+
+TOKENS = Path(__file__).resolve().parents[1] / "mobile" / "src" / "theme" / "tokens.ts"
+# the app's palette key -> the dashboard's CSS variable
+PALETTE = {
+    "background": "--bg", "card": "--card", "ink": "--fg", "muted": "--muted", "border": "--line",
+    "accent": "--accent", "onAccent": "--on-accent", "cyan": "--cyan", "blue": "--blue",
+    "violet": "--violet", "green": "--green", "amber": "--amber", "red": "--red",
+}  # fmt: skip
+
+
+def css_variable(css: str, name: str) -> str:
+    match = re.search(rf"{re.escape(name)}:\s*(#[0-9a-fA-F]{{6}})\s*;", css)
+    assert match, name
+    return match.group(1).lower()
+
+
+def test_the_palette_is_the_one_of_the_phone_app() -> None:
+    """One look for both clients: the dashboard reads the same colors as the app's tokens."""
+    tokens = TOKENS.read_text()
+    css = (ASSETS / "app.css").read_text()
+    for key, variable in PALETTE.items():
+        app = re.search(rf"\b{key}:\s*'(#[0-9a-fA-F]{{6}})'", tokens)
+        assert app, key
+        assert css_variable(css, variable) == app.group(1).lower(), (key, variable)
+
+
+def test_there_is_a_single_dark_terminal_look_with_a_monospace_font() -> None:
+    css = (ASSETS / "app.css").read_text()
+    assert "color-scheme: dark" in css and "prefers-color-scheme" not in css
+    assert "monospace" in css and "--mono" in css
+    assert "url(" not in css and "@import" not in css  # nothing external: the CSP forbids it
+    for page in MARKUP:
+        assert '<meta name="color-scheme" content="dark">' in page.read_text(), page.name
+
+
+def test_the_logo_is_in_the_top_bar_with_the_name_on_its_right() -> None:
+    index = (STATIC_DIR / "index.html").read_text()
+    header = index[index.index('<header class="topbar">') : index.index("</header>")]
+    assert header.index('src="/assets/logo.png"') < header.index(">Juniper<")  # logo, then name
+    assert 'class="brand"' in header and 'href="#/visao"' in header
+    css = (ASSETS / "app.css").read_text()
+    topbar = re.search(r"\.topbar \{[^}]*\}", css)
+    assert topbar and "position: fixed" in topbar.group(0)  # visible on every screen, scrolling
+    assert 'rel="icon"' in index
+
+
+def test_the_login_has_the_logo_with_the_name_in_capitals_below() -> None:
+    login = (STATIC_DIR / "login.html").read_text()
+    assert login.index('src="/assets/logo.png"') < login.index(">JUNIPER<")
+    assert 'alt="Logo da Juniper"' in login and 'rel="icon"' in login
+    css = (ASSETS / "app.css").read_text()
+    wordmark = re.search(r"\.wordmark \{[^}]*\}", css)
+    assert wordmark and "uppercase" in wordmark.group(0)
+
+
+@pytest.mark.parametrize("name", ["logo.png", "favicon.png"])
+async def test_the_logo_is_served_before_the_login_as_an_image(name: str) -> None:
+    dash = DashboardServer("127.0.0.1", 0, TOKEN)
+    assert await dash.start()
+    try:
+        status, headers, body = await get(dash, f"/assets/{name}")  # the login page needs it
+        assert status == 200 and headers["content-type"] == "image/png"
+        assert body[:8] == b"\x89PNG\r\n\x1a\n" and len(body) < 150_000
+        assert "img-src 'self'" in headers["content-security-policy"]
+        status, _, login = await get(dash, "/login")
+        assert status == 200 and b"/assets/logo.png" in login
+    finally:
+        await dash.stop()
+
+
+def test_the_new_page_and_the_new_look_styles_exist() -> None:
+    css = (ASSETS / "app.css").read_text()
+    for selector in (".button", ".bubble.her.raw", ".logo", ".brand-name", ".wordmark"):
+        assert selector in css or selector.replace("a.", "") in css, selector
