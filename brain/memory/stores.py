@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.session import FileSessionStore, SessionStore
+
+if TYPE_CHECKING:
+    from brain.memory.leak_audit import LeakAuditStore
 
 
 def open_session_store() -> SessionStore:
@@ -39,3 +44,17 @@ def close_session_store(store: SessionStore) -> None:
     close = getattr(store, "close", None)
     if callable(close):
         close()
+
+
+def open_leak_audit(store: SessionStore) -> LeakAuditStore | None:
+    """Where the leak audit records go (T-165): MongoDB, on the session store's connection.
+
+    None when the audit is off or the conversations are in files (then only the ``leak_audit``
+    event, without text, reaches the log).
+    """
+    connection = getattr(store, "connection", None)
+    if not settings.leak_audit.enabled or connection is None:
+        return None
+    from brain.memory.leak_audit import LeakAuditStore
+
+    return LeakAuditStore(connection)

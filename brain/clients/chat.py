@@ -160,8 +160,11 @@ class ChatHandler:
         v2_context: V2Context | None = None,
         voice: VoiceServices | None = None,
         self_docs: Callable[[str], str | None] | None = None,
+        leak_sink: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         self._store = store
+        # Where the leak audit records go (T-165); None = only the event in the log.
+        self._leak_sink = leak_sink
         # Documentation excerpts for questions about herself (ADR-025); None in most tests.
         self._self_docs = self_docs
         self._voice = voice
@@ -314,6 +317,7 @@ class ChatHandler:
             memory=self._recall,
             turn_sink=self._turn_sink,
             self_docs=self._self_docs,
+            leak_sink=self._leak_sink,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -774,7 +778,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         open_long_term_memory,
         open_memory_for_commands,
     )
-    from brain.memory.stores import close_session_store, open_session_store
+    from brain.memory.stores import close_session_store, open_leak_audit, open_session_store
     from brain.memory.v2 import open_v2_runtime
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
@@ -807,6 +811,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
     v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
     voice_services = open_voice_services() if settings.voice.enabled else None
+    leak_audit = open_leak_audit(store)
     handler = ChatHandler(
         store,
         router,
@@ -817,6 +822,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         v2_context=v2.context if v2 else None,
         voice=voice_services,
         self_docs=docs_context,
+        leak_sink=leak_audit.add if leak_audit is not None else None,
     )
     from brain.dashboard.sources import Sources
 

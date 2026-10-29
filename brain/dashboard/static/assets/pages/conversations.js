@@ -17,7 +17,7 @@ async function thread(id) {
         h("div", { class: "turn" },
           h("p", { class: "muted small", text: `turno ${t.index} · ${when(t.at)}` }),
           h("p", { class: "bubble me", text: t.user }),
-          t.assistant ? h("p", { class: "bubble her", text: t.assistant }) : h("p", { class: "muted small", text: t.used_tools ? "(a resposta usou ferramentas e fica de fora)" : "(sem resposta)" }),
+          t.assistant ? h("p", { class: "bubble her", text: t.assistant }) : h("p", { class: "muted small", text: t.leaked ? "(a resposta foi separada: vazamento)" : t.used_tools ? "(a resposta usou ferramentas e fica de fora)" : "(sem resposta)" }),
         ),
       );
     }

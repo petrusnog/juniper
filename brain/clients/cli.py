@@ -49,7 +49,7 @@ from brain.memory.longterm import (
     open_memory_for_commands,
 )
 from brain.memory.profile import ProfileError, render
-from brain.memory.stores import close_session_store, open_session_store
+from brain.memory.stores import close_session_store, open_leak_audit, open_session_store
 from brain.memory.v2 import open_v2_runtime, v2_enabled
 from brain.metadocs import docs_context
 from brain.timing import EXTRACTION_LABELS, summarize, summarize_turn
@@ -440,6 +440,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         memory=v2.context if v2 else memory,
         turn_sink=v2.sink if v2 else None,
         self_docs=docs_context,
+        leak_sink=leak_audit.add if (leak_audit := open_leak_audit(store)) else None,
     )
     if note is not None:
         printer.say(note)
@@ -1094,6 +1095,10 @@ def memory_export(
 from brain.clients import memory_v2_cli  # noqa: E402
 
 memory_v2_cli.install(app, memory_app, console)
+
+from brain.clients import leaks_cli  # noqa: E402
+
+leaks_cli.install(app, console)
 
 from brain.clients import music_cli  # noqa: E402
 

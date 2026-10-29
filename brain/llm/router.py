@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
+from contextvars import ContextVar
 from typing import Any, ClassVar
 
 from brain.config import settings
@@ -33,6 +34,8 @@ PROVIDERS: dict[str, type[LLMProvider]] = {
 
 # Errors that make a provider unusable for this call; the next one gets a chance.
 # Any other LLMError (bad request, malformed response) would repeat elsewhere: it propagates.
+# Who served the latest call of the current task (the router is shared by every conversation).
+_served: ContextVar[tuple[str, str | None] | None] = ContextVar("llm_served", default=None)
 _FAILOVER_ERRORS = (LLMUnavailableError, LLMTimeoutError, LLMRateLimitError, LLMAuthError)
 
 
@@ -54,9 +57,20 @@ class LLMRouter(LLMProvider):
         self._providers = list(providers)
         # Name of the provider that served the latest call (None before the first success).
         self.last_provider: str | None = None
+        self.last_model: str | None = None
         # Optional hook for clients: ``(failed_provider, error, next_provider_or_None)``. Lets a UI
         # tell the user that a slower fallback is taking over instead of going silent.
         self.on_failover: Callable[[str, LLMError, str | None], None] | None = None
+
+    @property
+    def model(self) -> str | None:
+        """The model of the provider that served the latest call (of any task)."""
+        return self.last_model
+
+    def served(self) -> tuple[str | None, str | None]:
+        """Provider and model that served the latest call of *this* task. The router is shared
+        by every conversation of the server; ``last_provider`` is whoever finished last."""
+        return _served.get() or (self.last_provider, self.last_model)
 
     @property
     def providers(self) -> tuple[LLMProvider, ...]:
@@ -83,7 +97,8 @@ class LLMRouter(LLMProvider):
                 response = await provider.chat(
                     send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 )
-                self.last_provider = provider.name
+                self.last_provider, self.last_model = provider.name, provider.model
+                _served.set((provider.name, provider.model))
                 return response
             except _FAILOVER_ERRORS as exc:
                 self._record_failure(index, exc, failures)
@@ -106,7 +121,8 @@ class LLMRouter(LLMProvider):
                     send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 ):
                     started = True
-                    self.last_provider = provider.name
+                    self.last_provider, self.last_model = provider.name, provider.model
+                    _served.set((provider.name, provider.model))
                     yield chunk
                 return
             except _FAILOVER_ERRORS as exc:

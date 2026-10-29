@@ -303,6 +303,8 @@ def check_marked(text: object, max_chars: int = MAX_MARKED_CHARS) -> Rejection |
 # --- the material the night may read ----------------------------------------------------------
 
 OMITTED = "(respondeu usando ferramentas; o texto da resposta fica de fora)"
+# Her reply leaked machinery (T-165): it was separated, and the night must not read into the gap.
+LEAK_OMITTED = "(a resposta dela foi separada por vazamento de instruções; fica de fora)"
 
 
 @dataclass(frozen=True)
@@ -334,7 +336,10 @@ def build_night_material(
             user = user[:max_chars_per_message]
         lines.append(f"[t{turn.index}] Usuário: {user}")
         indexes.append(turn.index)
-        if turn.used_tools:
+        if turn.leaked:
+            omitted += 1
+            lines.append(f"[t{turn.index}] Juniper: {LEAK_OMITTED}")
+        elif turn.used_tools:
             omitted += 1
             lines.append(f"[t{turn.index}] Juniper: {OMITTED}")
         else:

@@ -66,6 +66,9 @@ COPY prompts ./prompts
 # As fontes da documentação, para a Juniper responder sobre si mesma (ADR-025). Sem segredos.
 COPY docs/pages ./docs/pages
 COPY docs/decisions ./docs/decisions
+# O commit em execução, para a auditoria de vazamentos (T-165) dizer de qual versão veio cada caso.
+# Fica depois dos COPY: muda a cada commit e não deve invalidar o cache das camadas de cima.
+ENV GIT_COMMIT=${GIT_SHA}
 
 USER juniper
 WORKDIR /home/juniper

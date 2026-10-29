@@ -111,6 +111,7 @@ Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provi
 | `juniper voice status` | Estado da voz: ligada ou não, gasto de caracteres do mês, credenciais presentes (sem revelar chaves) ([Voz por áudio](voz-audio.md#orcamento)). |
 | `juniper music taste [clear]` | O gosto musical anotado e como apagar tudo ([Música](musica.md#gosto)). |
 | `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Servidor WebSocket](servidor.md)). |
+| `juniper vazamentos [--vazados\|--resumo\|--ver <id>]` | As respostas em que escapou maquinaria na fala, com o texto bruto do modelo ([Auditoria de vazamentos](vazamentos.md#consultar)). Lê o MongoDB do processo. |
 | `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.md)). `--health` sai com 0 se o bot está vivo. |
 
 ### juniper memory {#memory kind=comando file=brain/clients/cli.py}

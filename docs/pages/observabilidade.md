@@ -210,6 +210,7 @@ Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token),
 
 ## Para saber mais {#para-saber-mais}
 
+- [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
 - [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.

@@ -18,6 +18,7 @@ from brain.config import settings
 from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
 from brain.core.leak import LeakGuard
+from brain.core.leak_audit import Block, build_record, detect, quarantined
 from brain.core.session import Session, Turn
 from brain.core.style import DashFilter
 from brain.eventlog import bind_session, event_log
@@ -26,6 +27,7 @@ from brain.llm.types import Message, TokenUsage, ToolCall
 from brain.memory.retrieval import RecalledContext
 from brain.memory.session import SessionStore
 from brain.timing import Stages
+from brain.tools.channel import current_channel
 from brain.tools.registry import ToolRegistry
 from brain.tools.registry import registry as default_registry
 from brain.trace import message_trace, quote
@@ -46,6 +48,7 @@ NOTHING_PENDING_HINT = (
     "chame a ferramenta agora, citando os mesmos itens.]"
 )
 
+SINK_TIMEOUT = 1.0  # seconds the turn waits for the leak audit store (T-165)
 EMPTY_REPLY_MESSAGE = "Me perdi aqui e não consegui responder direito. Pode repetir?"
 LIMIT_MESSAGE = (
     "Dei voltas demais e parei antes de terminar. Reformula o pedido ou divide em passos menores?"
@@ -66,8 +69,11 @@ class Agent:
         memory: ContextProvider | None = None,
         turn_sink: Callable[[str, Turn], Any] | None = None,
         self_docs: Callable[[str], str | None] | None = None,
+        leak_sink: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         self._provider = provider
+        # Stores the evidence of a suspicious answer (T-165, core/leak_audit.py); None = log only.
+        self._leak_sink = leak_sink
         self._dispatcher = dispatcher
         self.session = session or Session()
         self._registry = tool_registry or default_registry
@@ -85,6 +91,7 @@ class Agent:
         self.channel_note: str | None = None
         self._executed_until: int | None = None
         self._used_tools = False
+        self._leaked = False  # a reply of this turn showed machinery (T-165)
         self._turns: list[Turn] = []
         # Where the time of the last turn went (T-062): total ms and ms per stage.
         self.last_timing: tuple[int, dict[str, int]] | None = None
@@ -113,6 +120,7 @@ class Agent:
         checkpoint = self.session.checkpoint()
         self._executed_until = None
         self._used_tools = False
+        self._leaked = False
         self._stages = Stages()
         self._recall_timings = {}
         self._llm_calls = 0
@@ -128,8 +136,18 @@ class Agent:
             self._log_timing()
             raise
         self.session.turns_total += 1
+        index = self.session.turns_total - 1
+        if self._leaked:
+            # What she said is kept out of memory (and of the night): the evidence is in the audit.
+            event_log.log("leak_quarantined", turn=index)
         self._turns.append(
-            Turn(user_input, reply, index=self.session.turns_total - 1, used_tools=self._used_tools)
+            Turn(
+                user_input,
+                "" if self._leaked else reply,
+                index=index,
+                used_tools=self._used_tools,
+                leaked=self._leaked,
+            )
         )
         with self._stages.stage("persist"):
             self._persist()
@@ -313,6 +331,7 @@ class Agent:
         self, schemas: list[dict[str, object]] | None, on_token: TokenCallback | None
     ) -> Message:
         text: list[str] = []
+        raw: list[str] = []  # what the model wrote, before the guard: evidence for the audit
         calls: list[ToolCall] = []
         usage: TokenUsage | None = None
         finish_reason: str | None = None
@@ -334,6 +353,7 @@ class Agent:
                 first_token = False
                 self._stages.add("llm_first_token", (time.monotonic() - started) * 1000)
             if chunk.delta:
+                raw.append(chunk.delta)
                 spoken = dashes.feed(guard.feed(chunk.delta))
                 if spoken:
                     text.append(spoken)
@@ -349,7 +369,7 @@ class Agent:
         self._stages.add("llm", (time.monotonic() - started) * 1000)
         event_log.log(
             "llm_response",
-            provider=getattr(self._provider, "last_provider", None) or self._provider.name,
+            provider=_served_by(self._provider)[0],
             latency_ms=round((time.monotonic() - started) * 1000),
             finish_reason=finish_reason,
             usage=None if usage is None else dataclasses.asdict(usage),
@@ -357,13 +377,123 @@ class Agent:
             chars=sum(len(t) for t in text),
             leak_blocked=guard.triggered,
         )
+        await self._audit(
+            messages, "".join(raw), "".join(text), guard.triggered, finish_reason, calls
+        )
         return Message("assistant", "".join(text) or None, tool_calls=tuple(calls))
+
+    async def _audit(
+        self,
+        messages: list[Message],
+        raw: str,
+        delivered: str,
+        guard_triggered: bool,
+        finish_reason: str | None,
+        calls: list[ToolCall],
+    ) -> None:
+        """Record a call whose text looks like machinery (T-165) and, when the person saw a
+        high-precision leak, mark the turn (kept out of memory). Never changes the answer nor
+        breaks the turn; a slow store holds the turn at most ``SINK_TIMEOUT`` seconds."""
+        if not (raw or delivered):
+            return
+        try:
+            system = self._system_blocks(messages)
+            hits = detect(
+                raw,
+                delivered,
+                [(kind, text) for kind, text in system],
+                echo_words=settings.leak_audit.echo_words,
+            )
+            if quarantined(hits):
+                self._leaked = True
+            if not settings.leak_audit.enabled or (not hits and not guard_triggered):
+                return
+            blocks = [Block(kind, len(text)) for kind, text in system]
+            provider, model = _served_by(self._provider)
+            channel = current_channel.get()
+            record = build_record(
+                hits=hits,
+                guard_triggered=guard_triggered,
+                raw=raw,
+                delivered=delivered,
+                session_id=self.session.id,
+                channel=channel.kind if channel is not None else None,
+                voice=channel.voice if channel is not None else False,
+                provider=provider,
+                model=model,
+                finish_reason=finish_reason,
+                tool_calls=[c.name for c in calls],
+                blocks=blocks,
+                user_message=_last_user_message(self.session),
+                run=event_log.run_id,
+            )
+            event_log.log(
+                "leak_audit",
+                id=record["_id"],
+                leaked=record["leaked"],
+                quarantined=record["quarantined"],
+                guard=guard_triggered,
+                rules=record["rules"],
+                provider=record["provider"],
+                model=record["model"],
+                channel=record["channel"],
+            )
+            if self._leak_sink is not None:
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._leak_sink, record), timeout=SINK_TIMEOUT
+                )
+        except Exception as exc:  # noqa: BLE001  (the audit must never cost her the answer)
+            event_log.log("error", where="leak_audit", type=type(exc).__name__, message=str(exc))
+
+    def _system_blocks(self, messages: list[Message]) -> list[tuple[str, str]]:
+        """The system messages of a call as ``(kind, text)``, named after what they are."""
+        named = {
+            id(m): kind
+            for kind, m in (
+                ("profile", self._profile_message),
+                ("memories", self._memory_message),
+                ("docs", self._docs_message),
+            )
+            if m is not None
+        }
+        blocks: list[tuple[str, str]] = []
+        for index, message in enumerate(messages):
+            if message.role != "system":
+                continue
+            kind = named.get(id(message))
+            if kind is None:
+                if index == 0:
+                    kind = "persona"
+                elif self.channel_note is not None and message.content == self.channel_note:
+                    kind = "channel"
+                else:
+                    kind = "system"
+            blocks.append((kind, message.content or ""))
+        return blocks
 
 
 async def _emit(callback: TokenCallback, token: str) -> None:
     result = callback(token)
     if result is not None:
         await result
+
+
+def _served_by(provider: LLMProvider) -> tuple[str, str | None]:
+    """Which provider and model served this task's latest call (the router knows it per task,
+    so two conversations streaming at once do not swap their names)."""
+    served = getattr(provider, "served", None)
+    if callable(served):
+        name, model = served()
+        return name or provider.name, model
+    return provider.name, provider.model
+
+
+def _last_user_message(session: Session) -> str | None:
+    """The user's latest message as the model read it (date stamp included)."""
+    for message in reversed(session.history):
+        if message.role == "user" and message.content:
+            return message.content
+    return None
 
 
 def _last_user_text(session: Session) -> str | None:
