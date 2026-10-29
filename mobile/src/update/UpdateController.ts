@@ -45,6 +45,8 @@ type FetchFn = (
 
 export const CHECK_TIMEOUT_MS = 8000;
 const SHA256 = /^[0-9a-f]{64}$/;
+/** The same ceiling the brain applies (brain/clients/app_update.py). */
+const MAX_APK_BYTES = 200 * 1024 * 1024;
 
 const INSTALL_ERRORS: Record<string, string> = {
   install_permission:
@@ -241,7 +243,8 @@ export function parsePublished(body: unknown): PublishedVersion | null {
     !SHA256.test(sha256) ||
     typeof size !== 'number' ||
     !Number.isInteger(size) ||
-    size < 1
+    size < 1 ||
+    size > MAX_APK_BYTES
   ) {
     throw new Error('bad_answer');
   }

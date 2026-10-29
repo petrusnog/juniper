@@ -175,3 +175,13 @@ async def test_the_apk_is_404_when_nothing_valid_is_published(tmp_path: Path) ->
         assert (await asyncio.to_thread(_get, base + "/app/update/apk"))[0] == 404
     finally:
         await server.stop()
+
+
+def test_the_apk_is_read_once_while_the_file_does_not_change(tmp_path: Path) -> None:
+    publish(tmp_path)
+    updates = AppUpdates(tmp_path)
+    release = updates.release()
+    assert release is not None
+    first = updates.apk_bytes(release)
+    assert first == APK
+    assert updates.apk_bytes(release) is first  # the same copy, not read again

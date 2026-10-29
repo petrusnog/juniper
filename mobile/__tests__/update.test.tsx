@@ -240,6 +240,7 @@ test('parsePublished accepts only what the brain sends', () => {
     {},
     { ...PUBLISHED, sha256: 'xyz' },
     { ...PUBLISHED, size: 0 },
+    { ...PUBLISHED, size: 200 * 1024 * 1024 + 1 },
     { ...PUBLISHED, version_code: 1.5 },
     { ...PUBLISHED, version_name: 3 },
   ]) {

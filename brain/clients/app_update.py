@@ -50,6 +50,9 @@ class AppUpdates:
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
+        # O APK lido (uma cópia só, por arquivo): downloads em paralelo não multiplicam a memória
+        # nem o tempo de leitura no laço de eventos.
+        self._cache: tuple[tuple[int, int], bytes] | None = None
 
     def release(self) -> AppRelease | None:
         """A versão publicada, ou `None` se não há nada válido (nunca levanta)."""
@@ -80,8 +83,16 @@ class AppUpdates:
         return release
 
     def apk_bytes(self, release: AppRelease) -> bytes | None:
+        path = self.directory / APK_NAME
         try:
-            data = (self.directory / APK_NAME).read_bytes()
+            stat = path.stat()
+            key = (stat.st_mtime_ns, stat.st_size)
+            if self._cache is not None and self._cache[0] == key:
+                return self._cache[1]
+            data = path.read_bytes()
         except OSError:
             return None
-        return data if len(data) == release.size else None
+        if len(data) != release.size:
+            return None
+        self._cache = (key, data)
+        return data

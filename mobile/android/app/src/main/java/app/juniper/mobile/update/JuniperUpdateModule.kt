@@ -103,6 +103,10 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
       promise.reject("install_permission", "install_permission")
       return
     }
+    if (size <= 0 || size > MAX_APK_BYTES) {
+      promise.reject("size_mismatch", "bad_size")
+      return
+    }
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       promise.reject("download_failed", "bad_url")
       return
@@ -130,6 +134,8 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
       val connection = URL(url).openConnection() as HttpURLConnection
       connection.connectTimeout = 10_000
       connection.readTimeout = 30_000
+      // The token travels in a header: never follow a redirect with it.
+      connection.instanceFollowRedirects = false
       connection.setRequestProperty("Authorization", "Bearer $token")
       try {
         if (connection.responseCode != 200) {
@@ -137,6 +143,7 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
         }
         val digest = MessageDigest.getInstance("SHA-256")
         var received = 0L
+        val deadline = System.currentTimeMillis() + DOWNLOAD_DEADLINE_MS
         connection.inputStream.use { input ->
           session.openWrite("juniper.apk", 0, size).use { output ->
             val buffer = ByteArray(64 * 1024)
@@ -145,6 +152,7 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
               val read = input.read(buffer)
               if (read < 0) break
               received += read
+              if (System.currentTimeMillis() > deadline) throw UpdateError("download_failed", "deadline")
               if (received > size) throw UpdateError("size_mismatch", "too_long")
               digest.update(buffer, 0, read)
               output.write(buffer, 0, read)
@@ -164,6 +172,8 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
         connection.disconnect()
       }
 
+      // FLAG_MUTABLE is required here: the system fills in the install status extras. The intent
+      // is explicit (our own receiver class), so it cannot be redirected elsewhere.
       val flags =
           PendingIntent.FLAG_UPDATE_CURRENT or
               (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
@@ -201,6 +211,9 @@ class JuniperUpdateModule(private val reactContext: ReactApplicationContext) :
   companion object {
     const val EVENT_PROGRESS = "juniperUpdateProgress"
     const val EVENT_STATUS = "juniperUpdateStatus"
+    // The brain refuses anything bigger too (brain/clients/app_update.py).
+    const val MAX_APK_BYTES = 200L * 1024 * 1024
+    const val DOWNLOAD_DEADLINE_MS = 10L * 60 * 1000
   }
 }
 

@@ -135,7 +135,8 @@ curl -s -H "Authorization: Bearer $TOKEN" http://<endereço-do-servidor>:8765/ap
 | O workflow falha em «Confere os segredos» | Falta algum segredo `ANDROID_*`. |
 | O Android recusa a instalação | O APK publicado foi assinado com outra chave: use o keystore do app instalado (ou desinstale e reinstale uma vez). |
 | `{"available": false}` | Nada publicado, pasta errada ou arquivo incompleto: confira `JUNIPER_APP_DIR` e os dois arquivos. |
-| «já publicado… nada a fazer» no log | O código publicado é maior ou igual ao do build. |
+| «já publicado… nada a fazer» no log | O código publicado é o mesmo do build (uma repetição do disparo): normal. |
+| O job «Publica na VPS» falha com «recusado: a versão … é menor» | O código do build (número de commits) ficou abaixo do publicado, por exemplo depois de reescrever o histórico. O Android não aceita voltar de versão: veja o `latest.json` na pasta e o histórico do git. |
 
 O primeiro build do CI ainda não foi executado: pode precisar de ajustes (licenças e NDK do Android SDK).
 

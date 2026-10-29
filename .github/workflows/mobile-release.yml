@@ -27,7 +27,14 @@ concurrency:
 jobs:
   release:
     name: apk
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Só um push no próprio repositório (nunca um PR de fork cuja branch se chame master) ou um
+    # disparo manual na master: este job tem o keystore do app e a chave SSH da VPS.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,13 +55,6 @@ jobs:
               exit 1
             fi
           done
-          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/juniper-release.keystore"
-          {
-            echo "storeFile=$RUNNER_TEMP/juniper-release.keystore"
-            echo "storePassword=$STORE_PASSWORD"
-            echo "keyAlias=$KEY_ALIAS"
-            echo "keyPassword=$KEY_PASSWORD"
-          } > mobile/android/keystore.properties
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -67,11 +67,28 @@ jobs:
       - name: Instala as dependências do app
         working-directory: mobile
         run: npm ci
+      - name: Grava o keystore (só agora, depois de instalar as dependências)
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/juniper-release.keystore"
+          {
+            echo "storeFile=$RUNNER_TEMP/juniper-release.keystore"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > mobile/android/keystore.properties
       - name: Compila o APK
         working-directory: mobile/android
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           ./gradlew assembleRelease --no-daemon
+      - name: Apaga o keystore do runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/juniper-release.keystore" mobile/android/keystore.properties
       - name: Versão
         id: version
         run: |
@@ -109,8 +126,10 @@ jobs:
         run: |
           ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          scp "${ssh_opts[@]}" "$RUNNER_TEMP/app-release.apk" "$remote:/tmp/juniper-app-release.apk"
+          # Um arquivo temporário novo e só do usuário (nada de caminho previsível em /tmp).
+          tmp="$(ssh "${ssh_opts[@]}" "$remote" 'mktemp /tmp/juniper-app.XXXXXXXXXX')"
+          scp "${ssh_opts[@]}" "$RUNNER_TEMP/app-release.apk" "$remote:$tmp"
           # O script segue por stdin: a VPS não precisa ter o commit novo para publicar.
           ssh "${ssh_opts[@]}" "$remote" \
-            "bash -s -- /tmp/juniper-app-release.apk $CODE $NAME; rc=\$?; rm -f /tmp/juniper-app-release.apk; exit \$rc" \
+            "bash -s -- '$tmp' '$CODE' '$NAME'; rc=\$?; rm -f '$tmp'; exit \$rc" \
             < scripts/publish_app.sh

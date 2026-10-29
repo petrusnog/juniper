@@ -24,13 +24,18 @@ SIZE="$(stat -c %s "$APK")"
 SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
 [ "$SIZE" -gt 0 ] && [ "$SIZE" -le $((200 * 1024 * 1024)) ] || { echo "tamanho fora do limite: $SIZE" >&2; exit 2; }
 
-# Um APK com o mesmo código que o publicado, ou com código menor, não substitui nada: o Android
-# recusa "voltar" de versão, e o app ficaria preso oferecendo um arquivo que não instala.
+# O Android recusa "voltar" de versão, então um código menor que o publicado jamais instalaria:
+# é erro (o histórico do git encolheu?). O mesmo código é a repetição de um disparo: nada a fazer.
 if [ -f "$DIR/latest.json" ]; then
   CURRENT="$(sed -n 's/.*"version_code": *\([0-9][0-9]*\).*/\1/p' "$DIR/latest.json" | head -n 1)"
-  if [ -n "$CURRENT" ] && [ "$CODE" -le "$CURRENT" ]; then
-    echo "já publicado: versão $CURRENT >= $CODE, nada a fazer"
+  [ -n "$CURRENT" ] || { echo "$DIR/latest.json está ilegível; apague-o e publique de novo" >&2; exit 1; }
+  if [ "$CODE" -eq "$CURRENT" ]; then
+    echo "já publicado: versão $CURRENT, nada a fazer"
     exit 0
+  fi
+  if [ "$CODE" -lt "$CURRENT" ]; then
+    echo "recusado: a versão $CODE é menor que a publicada ($CURRENT)" >&2
+    exit 1
   fi
 fi
 
