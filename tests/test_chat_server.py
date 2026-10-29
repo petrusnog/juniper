@@ -159,11 +159,10 @@ async def test_message_returns_ordered_tokens_then_end(tmp_path: Path) -> None:
     started, *tokens, end = got
     assert isinstance(started, p.ChatStarted)
     assert started.reply_to == "c-7f3a" and started.session_id == client.welcome.session.id
-    # a trailing space travels with the next piece (core/style.py holds it back for the dash rule)
-    assert [t.text for t in tokens if isinstance(t, p.ChatToken)] == [
-        "Amanhã você",
-        " tem dentista.",
-    ]
+    # the start of an answer is held until its first sentence ends (core/leak.py)
+    assert (
+        "".join(t.text for t in tokens if isinstance(t, p.ChatToken)) == "Amanhã você tem dentista."
+    )
     assert all(isinstance(t, p.ChatToken) and t.turn_id == started.turn_id for t in tokens)
     assert isinstance(end, p.ChatEnd) and end.finish == "ok" and end.turn_id == started.turn_id
 
