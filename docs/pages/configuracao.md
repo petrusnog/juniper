@@ -259,6 +259,14 @@ A Juniper consultando a própria documentação ([Metadocumentação](metadocs.m
 | `metadocs.top_k` | `3` | Quantas seções entram por consulta (1 a 8). |
 | `metadocs.max_chars` | `1500` | Teto, em caracteres, dos trechos somados entregues ao modelo (300 a 6.000). |
 
+## app_update {#app-update-config}
+
+De onde o cérebro serve o APK do app Android ([API HTTP](api-http.md#app-update), [ADR-026](../decisions/ADR-026.md)). O servidor só lê a pasta.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `app_update.dir` | `~/.juniper/app` | Pasta com `app-release.apk` e `latest.json`, escritos por `scripts/publish_app.sh`. Vazia ou ausente: `GET /app/update` responde `{"available": false}`. Em produção é `/home/juniper/.juniper/app`, montada somente leitura do diretório do host definido por `JUNIPER_APP_DIR` (padrão `./app-release`, [Visão geral da produção](producao.md#dados)). |
+
 ## Como adicionar uma opção {#adicionar}
 
 1. Crie ou altere o submodelo pydantic em `brain/config.py`.

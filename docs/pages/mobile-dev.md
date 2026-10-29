@@ -4,7 +4,7 @@ group: Ambiente Local
 order: 4
 description: Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
 status: guia
-tags: android sdk emulador celular adb metro fast refresh react native node jdk gradle sdkmanager avd apk keystore assinatura testes jest eslint typecheck protocolo wsl
+tags: atualização pipeline release android sdk emulador celular adb metro fast refresh react native node jdk gradle sdkmanager avd apk keystore assinatura testes jest eslint typecheck protocolo wsl
 ---
 
 O app da Juniper fica em `mobile/`: React Native com TypeScript, Android apenas (`minSdk` 26), com módulos nativos em Kotlin ([App mobile](mobile.md)). Esta página prepara a máquina para desenvolvê-lo. Para ligá-lo ao cérebro local, siga [Primeiros passos](primeiros-passos.md#android).
@@ -144,6 +144,19 @@ Para instalar sem o Metro (um build de *release*, com o JavaScript embutido):
    ```
 
    O APK sai em `mobile/android/app/build/outputs/apk/release/app-release.apk`. A instalação no celular está em [Clientes em produção](clientes-producao.md#app).
+
+### Pelo pipeline (auto-atualização) {#apk-pipeline}
+
+Em produção, o APK não precisa sair do seu computador: o workflow **Mobile release** (`.github/workflows/mobile-release.yml`) o compila e o publica no cérebro, e o app se atualiza sozinho ([ADR-026](../decisions/ADR-026.md), [App mobile](mobile.md#atualizacao)).
+
+1. Roda depois que o workflow **Mobile** (tsc, lint e Jest) fica verde no `master`, ou à mão em Actions → Mobile release → Run workflow.
+2. Monta o `keystore.properties` a partir dos segredos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` e falha se faltar algum. O keystore tem de ser **o mesmo** do app instalado.
+3. Compila com `./gradlew assembleRelease`. O `versionCode` é o número de commits (`git rev-list --count HEAD`, por isso o CI clona o histórico inteiro) e o `versionName` é `0.1.<código>`; sem `git`, o código é 1.
+4. Entra na rede privada como o deploy faz, copia o APK por `scp` e roda `scripts/publish_app.sh` na VPS por `ssh` (o script segue por stdin). Ele grava `app-release.apk` e `latest.json` na pasta que o cérebro serve e ignora um código menor ou igual ao publicado.
+
+O APK também fica como artefato do workflow por 14 dias. O passo a passo dos segredos e do primeiro disparo está em [Clientes em produção](clientes-producao.md#app-atualizar). Um build local (`assembleRelease`) usa o mesmo `versionCode` por commits: um APK local mais antigo que o publicado será «atualizado» para o publicado.
+
+> O workflow ainda não rodou de verdade: o primeiro build do CI pode pedir ajustes (licenças e NDK do Android SDK).
 
 ## Problemas comuns {#problemas}
 
