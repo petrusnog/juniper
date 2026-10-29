@@ -120,7 +120,7 @@ O cérebro serve o APK mais recente na rede privada e o app se atualiza ([App mo
    | `ANDROID_KEY_PASSWORD` | A senha da chave. |
 
    Tem de ser o **mesmo** keystore do app instalado: com outra chave o Android recusa a atualização por cima.
-2. **Pasta no servidor:** o compose monta `JUNIPER_APP_DIR` (padrão `app-release`, ao lado do `docker-compose.prod.yml`) em `/home/juniper/.juniper/app`, só leitura. O `publish_app.sh` a cria; suba o cérebro com o compose atual para a montagem existir.
+2. **Pasta no servidor:** o compose monta `JUNIPER_APP_DIR` (padrão `app-release`, ao lado do `docker-compose.prod.yml`) em `/home/juniper/.juniper/app`, só leitura. O `publish_app.sh` a cria; suba o cérebro com o compose atual para a montagem existir. Se o Docker criou a pasta antes (dono `root`), o usuário do deploy não consegue escrever nela e o publicador avisa: rode uma vez na VPS `sudo chown $(id -un): ~/juniper/app-release`.
 3. **Primeiro disparo manual:** Actions → Mobile release → Run workflow (branch `master`). Um workflow disparado por outro só vale com o arquivo na branch padrão. Depois disso, cada merge no `master` com o **Mobile** verde publica sozinho.
 4. **Instale à mão um APK novo uma vez** (passos acima): o app instalado antes desse recurso não sabe se atualizar.
 

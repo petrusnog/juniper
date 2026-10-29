@@ -18,7 +18,13 @@ NAME="${3:-}"
 
 DIR="${JUNIPER_APP_DIR:-$HOME/juniper/app-release}"
 mkdir -p "$DIR"
-chmod 755 "$DIR"   # o container lê com outro usuário (uid 10001)
+# O container lê com outro usuário (uid 10001): a pasta precisa ser legível por todos. Só o dono
+# pode mudar isso; se a pasta foi criada pelo Docker (dono root), o `chown` abaixo resolve uma vez.
+if [ ! -w "$DIR" ]; then
+  echo "sem permissão de escrita em $DIR (dono: $(stat -c %U "$DIR")). Na VPS, uma vez: sudo chown $(id -un): \"$DIR\"" >&2
+  exit 1
+fi
+chmod 755 "$DIR" 2>/dev/null || echo "aviso: não consegui ajustar as permissões de $DIR (confira que o container consegue ler)" >&2
 
 SIZE="$(stat -c %s "$APK")"
 SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
