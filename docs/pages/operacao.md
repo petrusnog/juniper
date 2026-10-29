@@ -51,6 +51,7 @@ curl -s http://<IP-PRIVADO>:8765/health                      # de um dispositivo
 | Ensinar um texto à Juniper | `docker compose -f docker-compose.prod.yml exec -T brain python -m brain study add - --topic "Tema" < texto.txt` |
 | Auditar a Memória V2 | `juniper memory beliefs`, `memory affect`, `memory journal`, `persona show` |
 | Ver o que a V2 acrescenta ao prompt | `juniper memory prompt "<mensagem>"` |
+| Investigar vazamentos na fala | `juniper vazamentos`, `--resumo`, `--ver <id>` ([Auditoria de vazamentos](vazamentos.md)) |
 
 O sonho roda sozinho às `memory.v2.night.at` (03:00) quando a V2 está ligada, depois do backup diário ([Memória V2](memoria-v2.md), [Backup da memória](backup.md)).
 

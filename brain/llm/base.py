@@ -23,6 +23,11 @@ class LLMProvider(ABC):
     # Slow local providers (CPU) ask the router for a shorter persona and tool descriptions.
     compact_prompt: ClassVar[bool] = False
 
+    @property
+    def model(self) -> str | None:
+        """The model this provider asks for (shown in the leak audit); None if it has none."""
+        return getattr(self, "_model", None)
+
     @abstractmethod
     async def chat(
         self,

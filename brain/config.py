@@ -750,6 +750,19 @@ class LoggingSettings(BaseModel):
         return f"{hour:02d}:{minute:02d}"
 
 
+class LeakAuditSettings(BaseModel):
+    """A auditoria de vazamentos na fala (T-165): guarda as evidências, não muda a resposta."""
+
+    # Registra as respostas em que o LeakGuard cortou algo ou o detector amplo viu maquinaria
+    # (tags, instruções, trechos do prompt). O registro guarda o texto bruto do modelo e a
+    # mensagem do usuário: fica no MongoDB (coleção `leak_audit`) e some sozinho depois de
+    # `retention_days`. Sem MongoDB, só o evento `leak_audit` (sem texto) vai ao log técnico.
+    enabled: bool = True
+    retention_days: int = Field(default=30, ge=1, le=365)
+    # Quantas palavras seguidas iguais a um bloco de sistema contam como "eco do prompt".
+    echo_words: int = Field(default=10, ge=5, le=50)
+
+
 class TelegramSettings(BaseModel):
     """O bot do Telegram, um cliente do protocolo (ADR-016). O token do bot fica no .env."""
 
@@ -846,6 +859,7 @@ class Settings(BaseSettings):
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    leak_audit: LeakAuditSettings = Field(default_factory=LeakAuditSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     app_update: AppUpdateSettings = Field(default_factory=AppUpdateSettings)
     metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)

@@ -48,6 +48,9 @@ class Turn:
     # True when tools ran during the turn: her reply may then carry what the tools returned
     # (an event title, a commit message), which must never feed the subjective layers.
     used_tools: bool = False
+    # Her reply leaked machinery (T-165, core/leak_audit.py). ``assistant`` is then empty: the
+    # user's words still count, but nothing she said in that turn reaches long-term memory.
+    leaked: bool = False
 
 
 def load_system_prompt(path: Path = PERSONA_PATH) -> str:

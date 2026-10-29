@@ -54,9 +54,15 @@ class LLMRouter(LLMProvider):
         self._providers = list(providers)
         # Name of the provider that served the latest call (None before the first success).
         self.last_provider: str | None = None
+        self.last_model: str | None = None
         # Optional hook for clients: ``(failed_provider, error, next_provider_or_None)``. Lets a UI
         # tell the user that a slower fallback is taking over instead of going silent.
         self.on_failover: Callable[[str, LLMError, str | None], None] | None = None
+
+    @property
+    def model(self) -> str | None:
+        """The model of the provider that served the latest call."""
+        return self.last_model
 
     @property
     def providers(self) -> tuple[LLMProvider, ...]:
@@ -83,7 +89,7 @@ class LLMRouter(LLMProvider):
                 response = await provider.chat(
                     send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 )
-                self.last_provider = provider.name
+                self.last_provider, self.last_model = provider.name, provider.model
                 return response
             except _FAILOVER_ERRORS as exc:
                 self._record_failure(index, exc, failures)
@@ -106,7 +112,7 @@ class LLMRouter(LLMProvider):
                     send_messages, tools=send_tools, temperature=temperature, max_tokens=max_tokens
                 ):
                     started = True
-                    self.last_provider = provider.name
+                    self.last_provider, self.last_model = provider.name, provider.model
                     yield chunk
                 return
             except _FAILOVER_ERRORS as exc:

@@ -662,6 +662,9 @@ class TranscriptTurn:
         False  # her reply may carry tool output: it must not feed the subjective layers
     )
     at: datetime = field(default_factory=utcnow)
+    # Her reply leaked machinery (T-165): it is kept out (``assistant`` is empty) and lives only
+    # in the leak audit, so the nightly pass never learns from it.
+    leaked: bool = False
 
     @property
     def id(self) -> str:
@@ -679,6 +682,7 @@ class TranscriptTurn:
             "assistant": self.assistant,
             "used_tools": self.used_tools,
             "at": self.at,
+            "leaked": self.leaked,
         }
 
     @classmethod
@@ -691,6 +695,7 @@ class TranscriptTurn:
                 assistant=str(doc.get("assistant", "")),
                 used_tools=bool(doc.get("used_tools", False)),
                 at=as_dt(doc["at"]),
+                leaked=bool(doc.get("leaked", False)),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise V2DataError(f"turno da transcrição corrompido ({doc.get('_id')}): {exc}") from exc

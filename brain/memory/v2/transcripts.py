@@ -35,6 +35,7 @@ class TranscriptWriter:
                 assistant=turn.assistant,
                 used_tools=turn.used_tools,
                 at=now,
+                leaked=turn.leaked,
             )
         )
         mark = self.data.watermarks.get(session_id) or Watermark(session_id)

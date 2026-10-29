@@ -147,6 +147,16 @@ O bot do Telegram ([Telegram](telegram.md), [ADR-016](../decisions/ADR-016.md)).
 | `telegram.delete_after_hours` | `0` | Apagar a mensagem do usuário e a resposta do bot depois de N horas (de 0 a 48). `0` desliga. O Telegram só deixa o bot apagar mensagens com menos de 48 h, então o prazo efetivo é limitado a 47,5 h. O agendamento fica em memória: se o bot reiniciar, o que estava marcado **não** é apagado. |
 | `telegram.allowed_user_ids` | `[]` | IDs **numéricos** do Telegram de quem pode falar com o bot. **Lista vazia = ninguém** (nunca "todos"). Pelo ambiente: `JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]`. |
 
+## leak_audit {#leak-audit-config}
+
+A auditoria de vazamentos na fala ([Auditoria de vazamentos](vazamentos.md)). Os registros guardam texto de conversa e ficam no MongoDB.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `leak_audit.enabled` | `true` | Grava um registro (coleção `leak_audit`) quando o `LeakGuard` corta algo ou o detector amplo acusa. Desligada, o turno em que a pessoa viu algo suspeito **continua** fora da memória; só o registro deixa de existir. |
+| `leak_audit.retention_days` | `30` | Dias até cada registro expirar (de 1 a 365), por índice TTL. |
+| `leak_audit.echo_words` | `10` | Quantas palavras seguidas iguais a um bloco de sistema da chamada contam como eco do prompt (de 5 a 50). |
+
 ## tools {#tools}
 
 | Opção | Padrão | O que faz |
