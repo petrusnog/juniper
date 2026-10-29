@@ -19,6 +19,10 @@ jest.mock(
   () => require('react-native-safe-area-context/jest/mock').default,
 );
 
+// These trees are never unmounted, and the real brand mark would keep its blinking timer alive
+// (the BrandMark tests cover it with fake timers).
+jest.mock('../src/ui/BrandMark', () => ({ BrandMark: () => null }));
+
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text, TextInput } from 'react-native';

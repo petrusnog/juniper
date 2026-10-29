@@ -9,6 +9,7 @@ import {
 import { radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
 import type { UpdateController } from '../update/UpdateController';
+import { BrandMark } from './BrandMark';
 import { UpdateSettings } from './UpdateViews';
 
 interface Props {
@@ -62,6 +63,9 @@ export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
+      <View style={styles.brand}>
+        <BrandMark size="large" />
+      </View>
       <Text style={[styles.title, { color: theme.ink }]}>
         Conectar à Juniper
       </Text>
@@ -140,6 +144,7 @@ export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
 
 const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.sm },
+  brand: { alignItems: 'center', marginBottom: spacing.lg },
   title: { fontSize: 24, fontWeight: '700' },
   help: { fontSize: 14, marginBottom: spacing.md },
   label: { fontSize: 14, fontWeight: '600', marginTop: spacing.sm },

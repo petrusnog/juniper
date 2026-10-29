@@ -87,7 +87,6 @@ export function ChatScreen({
     <KeyboardAvoidingView style={styles.fill} behavior="padding">
       <View style={[styles.header, { borderColor: theme.border }]}>
         <View style={styles.fill}>
-          <Text style={[styles.title, { color: theme.ink }]}>Juniper</Text>
           <Text
             testID="status"
             style={[
