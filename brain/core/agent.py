@@ -11,7 +11,9 @@ import dataclasses
 import logging
 import re
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from brain.config import settings
@@ -19,6 +21,7 @@ from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
 from brain.core.leak import LeakGuard
 from brain.core.leak_audit import Block, build_record, detect, quarantined
+from brain.core.leak_report import REPORT_EXCHANGES, Exchange, exchanges_from_history
 from brain.core.session import Session, Turn
 from brain.core.style import DashFilter
 from brain.eventlog import bind_session, event_log
@@ -93,6 +96,16 @@ class Agent:
         self._used_tools = False
         self._interrupted = False  # the user cut the turn in progress (voice barge-in, cancel)
         self._leaked = False  # a reply of this turn showed machinery (T-165)
+        # The last exchanges as the user saw them, for a leak report (T-167). Unlike the history it
+        # is not compacted and keeps what a quarantined turn said; a resumed conversation starts
+        # from what the saved session still has.
+        self._recent: deque[Exchange] = deque(
+            exchanges_from_history(self.session.history)[-REPORT_EXCHANGES:],
+            maxlen=REPORT_EXCHANGES,
+        )
+        # What the reply in progress has said so far, as delivered and as the model wrote it.
+        self._streaming: list[str] = []
+        self._streaming_raw: list[str] = []
         self._turns: list[Turn] = []
         # Where the time of the last turn went (T-062): total ms and ms per stage.
         self.last_timing: tuple[int, dict[str, int]] | None = None
@@ -104,6 +117,11 @@ class Agent:
         """Forget actions waiting for a "yes". Called when the conversation changes hands or is
         resumed: after that, nothing runs without a new, explicit confirmation (ADR-012)."""
         self._dispatcher.pending = None
+
+    def recent_exchanges(self) -> list[Exchange]:
+        """The last ``REPORT_EXCHANGES`` finished exchanges, oldest first, plus the reply that was
+        in progress if the user cut it (a leak is often what he heard just before cutting)."""
+        return list(self._recent)
 
     def interrupt(self) -> None:
         """The user is cutting the turn in progress (spoke over her, sent something new, cancelled).
@@ -133,6 +151,7 @@ class Agent:
         self._used_tools = False
         self._interrupted = False
         self._leaked = False
+        self._streaming, self._streaming_raw = [], []
         self._stages = Stages()
         self._recall_timings = {}
         self._llm_calls = 0
@@ -152,7 +171,8 @@ class Agent:
                 message=str(exc),
             )
             if interrupted:
-                self._finish_turn(user_input, "")
+                partial = "".join(self._streaming) or "".join(self._streaming_raw)
+                self._finish_turn(user_input, "", partial=partial)
             with self._stages.stage("persist"):
                 self._persist()
             if interrupted:
@@ -175,8 +195,17 @@ class Agent:
         self._log_timing()
         return reply
 
-    def _finish_turn(self, user_input: str, reply: str) -> None:
-        """Count the turn and queue it for memory (``reply`` is empty for an interrupted one)."""
+    def _finish_turn(self, user_input: str, reply: str, *, partial: str = "") -> None:
+        """Count the turn and queue it for memory (``reply`` is empty for an interrupted one;
+        ``partial`` is what she had said when he cut her off, kept only for a leak report)."""
+        self._recent.append(
+            Exchange(
+                user_input,
+                reply or partial,
+                datetime.now(UTC).isoformat(timespec="seconds"),
+                interrupted=not reply,
+            )
+        )
         self.session.turns_total += 1
         index = self.session.turns_total - 1
         if self._leaked:
@@ -359,7 +388,9 @@ class Agent:
         self, schemas: list[dict[str, object]] | None, on_token: TokenCallback | None
     ) -> Message:
         text: list[str] = []
+        self._streaming = text
         raw: list[str] = []  # what the model wrote, before the guard: evidence for the audit
+        self._streaming_raw = raw
         calls: list[ToolCall] = []
         usage: TokenUsage | None = None
         finish_reason: str | None = None

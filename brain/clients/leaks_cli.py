@@ -62,6 +62,52 @@ def _open_store(console: Console) -> Any:
     return LeakAuditStore(connection)
 
 
+def _list_reports(console: Console, reports: list[dict[str, Any]]) -> None:
+    if not reports:
+        voice.say(console, "Nenhum relato ainda. No Telegram ou no app, escreva /vazou.")
+        return
+    table = Table(header_style="bold")
+    for column in ("Id", "Quando", "Canal", "Voz", "Interações", "Nota"):
+        table.add_column(column, overflow="fold")
+    for r in reports:
+        table.add_row(
+            _safe(r["_id"][:8]),
+            _local(r["at"]),
+            _safe(r.get("channel")),
+            "sim" if r.get("voice") else "não",
+            str(len(r.get("exchanges") or [])),
+            _flat(r.get("note")),
+        )
+    console.print(table)
+    voice.say(console, "Para ver um relato inteiro: juniper vazamentos --ver <id>")
+
+
+def _show_report(console: Console, report: dict[str, Any]) -> None:
+    console.print(
+        f"[bold]Relato {_safe(report['_id'])}[/bold]  {_local(report['at'])}"
+        f"  (você marcou com /vazou{' ou por voz' if report.get('voice') else ''})",
+        highlight=False,
+    )
+    console.print(
+        f"Sessão {_safe(report.get('session'))} · canal {_safe(report.get('channel'))}"
+        f" · commit {_safe(report.get('commit') or '?')}",
+        highlight=False,
+    )
+    if report.get("note"):
+        console.print(f"Nota: {_safe(report['note'])}", highlight=False)
+    if report.get("audit"):
+        ids = ", ".join(str(i)[:8] for i in report["audit"])
+        console.print(f"Registros automáticos da mesma sessão: {_safe(ids)}", highlight=False)
+    for index, exchange in enumerate(report.get("exchanges") or [], start=1):
+        stamp = f" · {_safe(exchange['at'])}" if exchange.get("at") else ""
+        cut = " (você cortou a resposta)" if exchange.get("interrupted") else ""
+        console.print(f"\n[bold]Interação {index}[/bold]{stamp}{cut}")
+        console.print(f"Você: {_safe(exchange.get('user'))}", soft_wrap=True, highlight=False)
+        console.print(
+            f"Juniper: {_safe(exchange.get('assistant'))}", soft_wrap=True, highlight=False
+        )
+
+
 def _show(console: Console, record: dict[str, Any]) -> None:
     if record.get("quarantined"):
         status = "vazou e o turno ficou fora da memória"
@@ -106,7 +152,14 @@ def install(app: typer.Typer, console: Console) -> None:
     def leaks(
         record_id: Annotated[
             Optional[str],  # noqa: UP045
-            typer.Option("--ver", help="Mostra um registro inteiro (o id ou o começo dele)."),
+            typer.Option("--ver", help="Mostra um registro ou relato inteiro (o id ou o começo)."),
+        ] = None,
+        reports: Annotated[
+            bool, typer.Option("--relatos", help="Lista os relatos que você marcou (/vazou).")
+        ] = False,
+        delete: Annotated[
+            Optional[str],  # noqa: UP045
+            typer.Option("--apagar", help="Apaga um relato (o id ou o começo dele)."),
         ] = None,
         summary: Annotated[
             bool, typer.Option("--resumo", help="Conta por regra, modelo e canal.")
@@ -125,16 +178,35 @@ def install(app: typer.Typer, console: Console) -> None:
         Cada registro guarda o texto bruto do modelo, o texto entregue e o que disparou. Rode onde
         o MongoDB está (na VPS: dentro do contêiner do brain).
         """
+        from brain.memory.leak_audit import LeakReportStore
+
         store = _open_store(console)
+        report_store = LeakReportStore(store.connection)
         try:
+            if delete is not None:
+                if not report_store.delete(delete.strip().lower()):
+                    voice.say(
+                        console, "Não achei esse relato (ou o começo do id é ambíguo).", "red"
+                    )
+                    raise typer.Exit(1)
+                voice.say(console, "Relato apagado.")
+                return
             if record_id is not None:
-                record = store.get(record_id.strip().lower())
-                if record is None:
+                wanted = record_id.strip().lower()
+                record = store.get(wanted)
+                if record is not None:
+                    _show(console, record)
+                    return
+                report = report_store.get(wanted)
+                if report is None:
                     voice.say(
                         console, "Não achei esse registro (ou o começo do id é ambíguo).", "red"
                     )
                     raise typer.Exit(1)
-                _show(console, record)
+                _show_report(console, report)
+                return
+            if reports:
+                _list_reports(console, report_store.recent(limit=limit))
                 return
             if summary:
                 data = store.summary(days=days)

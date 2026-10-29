@@ -66,7 +66,7 @@ O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém est
 | **Queda no meio da resposta** | O turno termina no servidor; o bot recupera a resposta pelo histórico quando a conexão volta. |
 | **Mensagens encaminhadas, áudio, foto, arquivo** | Recebem um aviso ("só entendo texto") e não chegam ao cérebro. |
 
-Comandos: `/ajuda` (e `/start`) mostra a ajuda; `/novo` começa uma conversa nova.
+Comandos: `/ajuda` (e `/start`) mostra a ajuda; `/novo` começa uma conversa nova; `/vazou [nota]` marca que uma resposta vazou instruções ou texto interno ([Auditoria de vazamentos](vazamentos.md#relato)): o servidor guarda as últimas 10 interações e o bot mostra a confirmação.
 
 ## Limites e proteções {#protecoes}
 

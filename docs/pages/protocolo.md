@@ -76,6 +76,8 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 
 `finish` é `ok`, `cancelled`, `max_iterations` ou `error`.
 
+**Comandos do servidor no texto.** Um `chat.send` cujo texto é `/vazou [nota]` não vira turno: o servidor guarda o relato de vazamento ([Auditoria de vazamentos](vazamentos.md#relato)) e responde com a sequência normal `chat.started`, `chat.token`, `chat.end`, sem tocar no histórico. Não muda o `protocol_version` nem o schema: um cliente que não sabe do comando só vê uma resposta de texto.
+
 ```json
 { "type": "chat.started", "reply_to": "c-7f3a", "turn_id": "t-12", "session_id": "20261015-101500-ab12cd" }
 { "type": "chat.token", "turn_id": "t-12", "text": "Amanhã você tem " }

@@ -9,7 +9,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.session import FileSessionStore, SessionStore
 
 if TYPE_CHECKING:
-    from brain.memory.leak_audit import LeakAuditStore
+    from brain.memory.leak_audit import LeakAuditStore, LeakReportStore
 
 
 def open_session_store() -> SessionStore:
@@ -58,3 +58,16 @@ def open_leak_audit(store: SessionStore) -> LeakAuditStore | None:
     from brain.memory.leak_audit import LeakAuditStore
 
     return LeakAuditStore(connection)
+
+
+def open_leak_reports(store: SessionStore) -> LeakReportStore | None:
+    """Where the ``/vazou`` reports go (T-167): MongoDB, on the session store's connection.
+
+    None when the conversations are in files: the command then says it has nowhere to save.
+    """
+    connection = getattr(store, "connection", None)
+    if connection is None:
+        return None
+    from brain.memory.leak_audit import LeakReportStore
+
+    return LeakReportStore(connection)

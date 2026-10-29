@@ -1,8 +1,11 @@
-"""The leak audit records in MongoDB (T-165): collection ``leak_audit``, expiring by TTL.
+"""The leak audit records in MongoDB: ``leak_audit`` (T-165, expiring by TTL) and ``leak_reports``
+(T-167, the user's own "isso vazou" reports).
 
-The agent builds each record (``brain/core/leak_audit.py``) and hands it to ``LeakAuditStore.add``
-(its ``leak_sink``). Records hold the model's raw text and the user's message, so they expire
-on their own after ``leak_audit.retention_days`` (a TTL index on ``at``).
+The agent builds each audit record (``brain/core/leak_audit.py``) and hands it to
+``LeakAuditStore.add`` (its ``leak_sink``). They hold the model's raw text and the user's message,
+so they expire on their own after ``leak_audit.retention_days`` (a TTL index on ``at``). A report
+(``brain/core/leak_report.py``) is something the person chose to keep, with the last ten exchanges
+of the conversation: it does not expire; ``LeakReportStore.delete`` removes one.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from brain.config import settings
 from brain.memory.mongo import MongoConnection
 
 LEAK_AUDIT_COLLECTION = "leak_audit"
+LEAK_REPORTS_COLLECTION = "leak_reports"
 _INDEX_OPTIONS_CONFLICT = (85, 86)  # IndexOptionsConflict, IndexKeySpecsConflict
 # Only the counters: the summary never needs the texts.
 _SUMMARY_FIELDS = dict.fromkeys(
@@ -90,6 +94,18 @@ class LeakAuditStore:
             matches = list(collection.find({"_id": {"$regex": f"^{record_id}"}}).limit(2))
         return matches[0] if len(matches) == 1 else None
 
+    def for_session(self, session_id: str, *, limit: int = 3, hours: int = 24) -> list[str]:
+        """The ids of the latest records of one conversation (a report points at them)."""
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        with self.connection.guard():
+            cursor = (
+                self._collection()
+                .find({"session": session_id, "at": {"$gte": since}}, {"_id": 1})
+                .sort("at", DESCENDING)
+                .limit(limit)
+            )
+            return [str(doc["_id"]) for doc in cursor]
+
     def summary(self, *, days: int = 7) -> dict[str, Any]:
         """Counts by rule, model and channel over the period (``juniper vazamentos --resumo``)."""
         since = datetime.now(UTC) - timedelta(days=days)
@@ -111,3 +127,49 @@ class LeakAuditStore:
             ).most_common(),
             "channels": Counter(str(r.get("channel")) for r in records).most_common(),
         }
+
+
+class LeakReportStore:
+    """The user's reports (``/vazou``). Same borrowed connection as ``LeakAuditStore``."""
+
+    def __init__(self, connection: MongoConnection | None = None) -> None:
+        self.connection = connection if connection is not None else MongoConnection()
+        self._indexed = False
+
+    def _collection(self) -> Any:
+        collection = self.connection.collection(LEAK_REPORTS_COLLECTION)
+        if not self._indexed:
+            collection.create_index([("at", DESCENDING)])
+            collection.create_index([("session", 1), ("at", DESCENDING)])
+            self._indexed = True
+        return collection
+
+    def add(self, report: dict[str, Any]) -> None:
+        """Errors propagate as ``MemoryUnavailableError``: the handler tells the user."""
+        with self.connection.guard():
+            self._collection().insert_one(report)
+
+    def recent(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """The latest reports, newest first."""
+        with self.connection.guard():
+            return list(self._collection().find().sort("at", DESCENDING).limit(limit))
+
+    def get(self, report_id: str) -> dict[str, Any] | None:
+        """One report by its id or by a unique prefix of it."""
+        if not _HEX.fullmatch(report_id):
+            return None
+        with self.connection.guard():
+            collection = self._collection()
+            found = collection.find_one({"_id": report_id})
+            if found is not None:
+                return found
+            matches = list(collection.find({"_id": {"$regex": f"^{report_id}"}}).limit(2))
+        return matches[0] if len(matches) == 1 else None
+
+    def delete(self, report_id: str) -> bool:
+        """Remove one report (the full id or a unique prefix). ``False`` if there is none."""
+        found = self.get(report_id)
+        if found is None:
+            return False
+        with self.connection.guard():
+            return bool(self._collection().delete_one({"_id": found["_id"]}).deleted_count)

@@ -17,7 +17,7 @@ import re
 import secrets
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
@@ -27,6 +27,7 @@ from brain.clients.voice_session import VoiceSession
 from brain.config import settings
 from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent, ContextProvider
 from brain.core.dispatcher import Dispatcher
+from brain.core.leak_report import build_report, leak_command
 from brain.core.resume import NO_PREVIOUS_NOTE, resume_note
 from brain.core.session import Session, Turn
 from brain.eventlog import event_log
@@ -51,6 +52,7 @@ from brain.tools.registry import registry as default_registry
 from brain.trace import message_trace, quote
 
 if TYPE_CHECKING:
+    from brain.memory.leak_audit import LeakAuditStore, LeakReportStore
     from brain.memory.v2.context import V2Context
     from brain.voice.services import VoiceServices
 
@@ -75,6 +77,20 @@ NO_CONVERSATION_MESSAGE = (
     "Esta conexão não tem uma conversa (outra conexão assumiu). Use session.new ou session.resume."
 )
 BUSY_MESSAGE = "Ainda estou respondendo à mensagem anterior. Espera eu terminar ou cancela."
+LEAK_NO_STORE = "Não tenho onde guardar o relato agora: preciso do MongoDB."
+LEAK_FAILED = "Não consegui guardar o relato agora. Tenta de novo daqui a pouco?"
+LEAK_SPOKEN_SAVED = "Anotei o vazamento."
+LEAK_SPOKEN_FAILED = "Não consegui anotar o vazamento agora."
+
+
+def leak_saved_message(report_id: str, count: int) -> str:
+    if not count:
+        return f"Anotei o vazamento ({report_id[:8]}), mas esta conversa ainda não tem interações."
+    plural = "interação" if count == 1 else "interações"
+    return (
+        f"Anotei o vazamento ({report_id[:8]}) com as últimas {count} {plural} desta conversa. "
+        "Ele aparece em Ocorrências, no dashboard."
+    )
 
 
 @dataclass
@@ -138,6 +154,25 @@ def visible_history(session: Session) -> list[p.HistoryItem]:
     return items
 
 
+@dataclass(frozen=True)
+class LeakOutcome:
+    """The result of a leak report, worded for the channel that asked (text or voice)."""
+
+    status: Literal["saved", "no_store", "failed"]
+    report_id: str = ""
+    count: int = 0
+    voice: bool = False
+
+    def text(self) -> str:
+        if self.status == "saved":
+            return (
+                LEAK_SPOKEN_SAVED if self.voice else leak_saved_message(self.report_id, self.count)
+            )
+        if self.status == "no_store":
+            return LEAK_NO_STORE
+        return LEAK_SPOKEN_FAILED if self.voice else LEAK_FAILED
+
+
 def count_turns(session: Session) -> int:
     return sum(1 for m in session.history if m.role == "user")
 
@@ -161,8 +196,13 @@ class ChatHandler:
         voice: VoiceServices | None = None,
         self_docs: Callable[[str], str | None] | None = None,
         leak_sink: Callable[[dict[str, Any]], Any] | None = None,
+        leak_reports: LeakReportStore | None = None,
+        leak_audit: LeakAuditStore | None = None,
     ) -> None:
         self._store = store
+        # Where `/vazou` reports go (T-167), and the audit records they point at; None = no MongoDB.
+        self._reports = leak_reports
+        self._audit = leak_audit
         # Where the leak audit records go (T-165); None = only the event in the log.
         self._leak_sink = leak_sink
         # Documentation excerpts for questions about herself (ADR-025); None in most tests.
@@ -429,6 +469,10 @@ class ChatHandler:
                     p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id)
                 )
                 return
+            note = leak_command(message.text) if voice is None else None
+            if note is not None:  # `/vazou`: a command of the server, never a turn (T-167)
+                await self._leak_command(conn, conversation, message, note)
+                return
             if conversation.busy:
                 message_trace.step(
                     "Servidor · conversa",
@@ -462,6 +506,63 @@ class ChatHandler:
                     conversation.turn = None
                 raise
             run.task = self._start(self._run_turn(conversation, run, message.text))
+
+    async def _leak_command(
+        self, conn: Connection, conversation: Conversation, message: p.ChatSend, note: str
+    ) -> None:
+        """Answer `/vazou [nota]` like a short turn. It is not saved in the conversation, does
+        not reach the model and is allowed while an answer is still running (it is often what the
+        person wants to say right then)."""
+        outcome = await self._report_leak(conn, conversation, note, voice=False)
+        turn_id = f"t-{secrets.token_hex(4)}"
+        await conn.send(
+            p.ChatStarted(reply_to=message.id, turn_id=turn_id, session_id=conversation.id)
+        )
+        await conn.send(p.ChatToken(turn_id=turn_id, text=outcome.text()))
+        await conn.send(p.ChatEnd(turn_id=turn_id, finish="ok"))
+
+    async def _report_leak(
+        self, conn: Connection, conversation: Conversation, note: str, *, voice: bool
+    ) -> LeakOutcome:
+        """Store the report of this conversation: its last exchanges and the audit records."""
+        if self._reports is None:
+            return LeakOutcome("no_store", voice=voice)
+        exchanges = conversation.agent.recent_exchanges()
+        audit_ids: list[str] = []
+        if self._audit is not None:
+            try:
+                audit_ids = await asyncio.to_thread(self._audit.for_session, conversation.id)
+            except Exception as exc:  # noqa: BLE001  (the report is worth more without the links)
+                event_log.log("error", where="leak_report.audit", type=type(exc).__name__)
+        report = build_report(
+            exchanges=exchanges,
+            session_id=conversation.id,
+            channel=conn.kind,
+            voice=voice,
+            note=note,
+            audit_ids=audit_ids,
+        )
+        try:
+            await asyncio.to_thread(self._reports.add, report)
+        except Exception as exc:  # noqa: BLE001  (a store problem is an answer, not a crash)
+            event_log.log("error", where="leak_report", type=type(exc).__name__)
+            return LeakOutcome("failed", voice=voice)
+        event_log.log(
+            "leak_report",
+            id=report["_id"],
+            exchanges=len(report["exchanges"]),
+            channel=conn.kind,
+            voice=voice,
+            audit=len(audit_ids),
+        )
+        return LeakOutcome("saved", report["_id"], len(report["exchanges"]), voice)
+
+    async def _voice_report(self, conn: Connection) -> str:
+        """What she says after "isso vazou": the report is stored, the answer is one sentence."""
+        conversation: Conversation | None = conn.state
+        if conversation is None:
+            return LEAK_SPOKEN_FAILED
+        return (await self._report_leak(conn, conversation, "", voice=True)).text()
 
     def _chat_cancel(self, conn: Connection, message: p.ChatCancel) -> None:
         conversation: Conversation | None = conn.state
@@ -592,6 +693,7 @@ class ChatHandler:
             send=conn.send,
             submit=lambda text: self._voice_turn(conn, text),
             cancel_turn=lambda: self._cancel_running_turn(conn),
+            report_leak=lambda: self._voice_report(conn),
             turn_active=lambda: self._turn_running(conn),
             ended=lambda: self._voice_ended(conn),
             clear_pending=lambda: self._clear_pending(conn),
@@ -780,7 +882,12 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         open_long_term_memory,
         open_memory_for_commands,
     )
-    from brain.memory.stores import close_session_store, open_leak_audit, open_session_store
+    from brain.memory.stores import (
+        close_session_store,
+        open_leak_audit,
+        open_leak_reports,
+        open_session_store,
+    )
     from brain.memory.v2 import open_v2_runtime
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
@@ -825,6 +932,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         voice=voice_services,
         self_docs=docs_context,
         leak_sink=leak_audit.add if leak_audit is not None else None,
+        leak_reports=open_leak_reports(store),
+        leak_audit=leak_audit,
     )
     from brain.dashboard.sources import Sources
 

@@ -45,6 +45,33 @@ _STOP: Final = frozenset(
 )
 
 
+_LEAK: Final = frozenset(
+    {
+        "vazou",
+        "vazamento",
+        "isso vazou",
+        "deu vazamento",
+        "teve vazamento",
+        "houve vazamento",
+        "isso e um vazamento",
+        "marcar vazamento",
+        "marca vazamento",
+        "marcar o vazamento",
+        "marca o vazamento",
+        "registrar vazamento",
+        "registra vazamento",
+        "registrar o vazamento",
+        "registra o vazamento",
+        "reportar vazamento",
+        "reporta vazamento",
+        "reportar o vazamento",
+        "reporta o vazamento",
+        "anota o vazamento",
+        "anotar o vazamento",
+    }
+)
+
+
 def _core(text: str) -> str:
     return " ".join(w for w in normalise(text).split() if w not in _FILLER)
 
@@ -57,3 +84,8 @@ def is_end_command(text: str) -> bool:
 def is_stop_command(text: str) -> bool:
     """ "Para", "chega", "silêncio"...: cut what she is saying, keep the session."""
     return _core(text) in _STOP
+
+
+def is_leak_command(text: str) -> bool:
+    """ "Isso vazou", "marcar vazamento"...: report that her last answer leaked (T-167)."""
+    return _core(text) in _LEAK
