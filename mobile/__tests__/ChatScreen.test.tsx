@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Text } from 'react-native';
+import { KeyboardAvoidingView, Text } from 'react-native';
 import { ChatController } from '../src/chat/ChatController';
 import type { BrainConnection } from '../src/connection/BrainConnection';
 import { ChatScreen } from '../src/ui/ChatScreen';
@@ -46,6 +46,12 @@ function mount(connection: 'connected' | 'offline' = 'connected') {
     root.findAllByType(Text).map(t => [t.props.children].flat().join(''));
   return { fake, chat, root, texts };
 }
+
+test('the screen lifts the message box above the keyboard on Android too', () => {
+  // With edge-to-edge (Android 15+) `adjustResize` does nothing: the screen has to make room.
+  const { root } = mount();
+  expect(root.findByType(KeyboardAvoidingView).props.behavior).toBe('padding');
+});
 
 test('typing and sending shows the message and clears the box', () => {
   const { fake, root, texts } = mount();
