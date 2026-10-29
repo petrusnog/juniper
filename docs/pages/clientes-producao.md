@@ -104,6 +104,42 @@ Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [C
 | Pedi um álbum e tocou só uma faixa | Peça «toca o álbum X»; playlists suas tocam pelo nome. |
 | Ela ouve a própria voz e se responde | Sem fone, use o botão «Segurar para falar», ou fone. |
 
+### Atualizar o app {#app-atualizar}
+
+O cérebro serve o APK mais recente na rede privada e o app se atualiza ([App mobile](mobile.md#atualizacao), [API HTTP](api-http.md#app-update), [ADR-026](../decisions/ADR-026.md)). Quem publica é o workflow **Mobile release** ([Ambiente mobile](mobile-dev.md#apk-pipeline)).
+
+**Uma vez só:**
+
+1. **Segredos** do GitHub (Settings → Secrets and variables → Actions), além dos do [deploy contínuo](deploy-continuo.md) (`TS_OAUTH_*`, `DEPLOY_*`):
+
+   | Segredo | Conteúdo |
+   |---|---|
+   | `ANDROID_KEYSTORE_BASE64` | O keystore do app já instalado, em base64: `base64 -w0 ~/juniper-release.keystore`. |
+   | `ANDROID_KEYSTORE_PASSWORD` | A senha do keystore. |
+   | `ANDROID_KEY_ALIAS` | O alias da chave. |
+   | `ANDROID_KEY_PASSWORD` | A senha da chave. |
+
+   Tem de ser o **mesmo** keystore do app instalado: com outra chave o Android recusa a atualização por cima.
+2. **Pasta no servidor:** o compose monta `JUNIPER_APP_DIR` (padrão `app-release`, ao lado do `docker-compose.prod.yml`) em `/home/juniper/.juniper/app`, só leitura. O `publish_app.sh` a cria; suba o cérebro com o compose atual para a montagem existir.
+3. **Primeiro disparo manual:** Actions → Mobile release → Run workflow (branch `master`). Um workflow disparado por outro só vale com o arquivo na branch padrão. Depois disso, cada merge no `master` com o **Mobile** verde publica sozinho.
+4. **Instale à mão um APK novo uma vez** (passos acima): o app instalado antes desse recurso não sabe se atualizar.
+
+**No dia a dia:** ao abrir, o app mostra «Nova versão X disponível»; toque em **Atualizar**, permita «instalar apps desconhecidos» (o app abre a tela do sistema) e confirme a instalação. Em Configurar → Atualizações há «Buscar atualizações». Para conferir o que está publicado:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" http://<endereço-do-servidor>:8765/app/update
+```
+
+| Sintoma | Causa e solução |
+|---|---|
+| O workflow falha em «Confere os segredos» | Falta algum segredo `ANDROID_*`. |
+| O Android recusa a instalação | O APK publicado foi assinado com outra chave: use o keystore do app instalado (ou desinstale e reinstale uma vez). |
+| `{"available": false}` | Nada publicado, pasta errada ou arquivo incompleto: confira `JUNIPER_APP_DIR` e os dois arquivos. |
+| «já publicado… nada a fazer» no log | O código publicado é o mesmo do build (uma repetição do disparo): normal. |
+| O job «Publica na VPS» falha com «recusado: a versão … é menor» | O código do build (número de commits) ficou abaixo do publicado, por exemplo depois de reescrever o histórico. O Android não aceita voltar de versão: veja o `latest.json` na pasta e o histórico do git. |
+
+O primeiro build do CI ainda não foi executado: pode precisar de ajustes (licenças e NDK do Android SDK).
+
 ## Dashboard {#dashboard}
 
 1. Libere a porta **8766** na política da VPN para os seus dispositivos (a política do [passo 5.2](deploy-vps.md#rede) já inclui).
@@ -116,6 +152,7 @@ Para HTTPS (por exemplo, para "instalar" o painel no celular), ponha na frente u
 
 - [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
+- [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
 - [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
 - [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
 - [Integrar com o cérebro](integrar-cliente.md) (Produção): Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.

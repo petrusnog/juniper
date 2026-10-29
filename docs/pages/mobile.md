@@ -5,7 +5,7 @@ section: Clientes
 order: 24
 description: O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
 status: pronta
-tags: mobile android react native app celular chat texto voz keystore token executor open_url autoplay kotlin foreground service metro protocolo
+tags: mobile android react native app celular atualização update apk chat texto voz keystore token executor open_url autoplay kotlin foreground service metro protocolo
 ---
 
 > **Nota:** esta página detalha o [ADR-022](../decisions/ADR-022.md), que substituiu o cliente desktop em Electron ([ADR-015](../decisions/ADR-015.md)). Código em `mobile/`. Para montar o ambiente, veja [Ambiente mobile](mobile-dev.md).
@@ -72,6 +72,17 @@ O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura en
 - **Fallbacks:** `voice.fallback` de STT para `local` liga o reconhecimento de fala do Android (`JuniperStt`, pt-BR) e o app passa a mandar `voice.text`; quando volta para `cloud`, o microfone volta ao cérebro. `voice.say` é falado pelo `TextToSpeech` do Android. Com o STT local, o cérebro não ouve áudio e não detecta interrupção por voz (o botão continua valendo).
 - **Kotlin:** `JuniperAudioModule` captura com a fonte `VOICE_COMMUNICATION` (cancelamento de eco e supressão de ruído da plataforma) e toca com `AudioTrack`; `VoiceService` é o serviço em primeiro plano do tipo `microphone` («Juniper está ouvindo»), que mantém a conversa com a tela apagada; `JuniperTtsModule` é a voz do aparelho. Permissões: microfone, notificações (Android 13+) e serviço em primeiro plano.
 
+## Atualização {#atualizacao}
+
+`src/update/`, `src/ui/UpdateViews.tsx` e o módulo Kotlin `JuniperUpdateModule` ([ADR-026](../decisions/ADR-026.md)). O cérebro serve o APK dentro da rede privada ([API HTTP](api-http.md#app-update)); o app só decide se há versão nova e a entrega ao Android.
+
+- **Verificação:** ao abrir, o `UpdateController` pergunta `GET /app/update` (com o token) em silêncio, usando o mesmo endereço e porta do WebSocket. Há versão nova quando o `version_code` publicado é maior que o instalado; então aparece a faixa «Nova versão X disponível» com o botão **Atualizar**. Em **Configurar**, a seção «Atualizações» mostra a versão instalada e o botão «Buscar atualizações».
+- **Instalação:** o módulo baixa o APK direto para uma sessão do `PackageInstaller`, confere o **SHA-256** (e o tamanho) antes de confirmar e entrega ao instalador do sistema, que ainda pede a confirmação da pessoa. Em Android 12+ o sistema pode dispensar essa pergunta nas atualizações seguintes se o app for o instalador do app instalado; é comportamento do sistema, não verificado.
+- **Permissão:** exige «instalar apps desconhecidos» para a Juniper; sem ela o app abre a tela do sistema e pede para tocar em Atualizar de novo.
+- **Segurança:** o Android só aceita atualização assinada com a mesma chave do app instalado; o token protege o download; o tráfego é HTTP puro, mas dentro da rede privada (o mesmo modelo do WebSocket).
+- **Versão:** `versionCode` é o número de commits do repositório e `versionName` é `0.1.<código>` (`mobile/android/app/build.gradle`). Um build local mais antigo que o publicado será «atualizado» para o publicado.
+- **Limites:** o app instalado antes desse módulo precisa de um APK novo instalado à mão uma vez. O módulo Kotlin e o pipeline ainda não foram executados num aparelho nem no CI. Publicar: [Ambiente mobile](mobile-dev.md#apk-pipeline) e [Clientes em produção](clientes-producao.md#app-atualizar).
+
 ## Roteiro de aceite no aparelho {#aceite}
 
 Os testes Jest provam a lógica (conexão, conversas, política de URL, voz com áudio falso). Áudio real, serviço em primeiro plano, autoplay e o comportamento do Android só se verificam no aparelho:
@@ -81,6 +92,7 @@ Os testes Jest provam a lógica (conexão, conversas, política de URL, voz com 
 3. **Música:** «toca Oceano do Djavan» → o YouTube Music abre e toca sozinho (ou a Juniper diz que está pronta para tocar). Pedir um endereço proibido («abre file:///etc/passwd») e ver que nada abre.
 4. **Voz:** «que horas são» com legenda; falar por cima dela (com fone); «silêncio»; apagar a tela e continuar; «tchau, Juniper», o botão da notificação e um minuto em silêncio; pedir uma playlist e responder «sim»; com e sem fone.
 5. **Falhas:** servidor parado no meio de uma conversa; trocar de rede (Wi-Fi ↔ dados); fechar o app e abrir de novo (retoma a última conversa); cérebro sem a chave da Groq ou sem o orçamento do Google (voz do aparelho assume).
+6. **Atualização:** publicar uma versão com código maior e ver a faixa «Nova versão» ao abrir; tocar em Atualizar, permitir «instalar apps desconhecidos», confirmar e conferir a versão em Configurar; com a VPN desligada, «Buscar atualizações» deve falhar sem travar o app.
 
 ## Limites e decisões em aberto {#limites}
 
@@ -97,6 +109,7 @@ cd mobile && npm test && npm run typecheck && npx eslint .
 
 ## Para saber mais {#para-saber-mais}
 
+- [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
 - [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.

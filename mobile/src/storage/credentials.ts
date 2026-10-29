@@ -34,6 +34,11 @@ export function serverUrl(c: Pick<Credentials, 'host' | 'port'>): string {
   return `ws://${c.host.trim()}:${c.port}/v1/ws`;
 }
 
+/** The brain's HTTP address (the same port as the WebSocket): `/app/update` lives there. */
+export function httpBase(c: Pick<Credentials, 'host' | 'port'>): string {
+  return `http://${c.host.trim()}:${c.port}`;
+}
+
 export function newDeviceId(random: () => number = Math.random): string {
   const part = () =>
     Math.floor(random() * 0x100000000)

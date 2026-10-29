@@ -72,6 +72,18 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// The version code is the number of commits: it only grows, so the app can tell a newer APK from
+// the one installed (auto-update, ADR-026). CI needs the full history (fetch-depth 0); without
+// git it falls back to 1.
+def juniperVersionCode = 1
+try {
+    def count = "git rev-list --count HEAD".execute(null, rootProject.projectDir).text.trim()
+    if (count.isInteger() && count.toInteger() > 0) {
+        juniperVersionCode = count.toInteger()
+    }
+} catch (Exception ignored) {
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -82,8 +94,8 @@ android {
         applicationId "app.juniper.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode juniperVersionCode
+        versionName "0.1.${juniperVersionCode}".toString()
     }
     // Release signing comes from android/keystore.properties (not in git; see docs/pages/mobile.md):
     //   storeFile=/path/juniper-release.keystore, storePassword=..., keyAlias=..., keyPassword=...

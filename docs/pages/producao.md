@@ -86,6 +86,8 @@ Volumes nomeados do projeto `juniper-prod`; reiniciar ou reconstruir o cérebro 
 | `juniper-models` | O modelo de embeddings (baixa uma vez). |
 | `juniper-music` | O login do YouTube, a cota diária da música e o gasto mensal da voz. |
 
+Além dos volumes, o compose monta **somente leitura** uma pasta do host (`JUNIPER_APP_DIR`, padrão `./app-release`) em `/home/juniper/.juniper/app`: o APK do app Android e o `latest.json`, que o pipeline de publicação grava ([Clientes em produção](clientes-producao.md#app-atualizar)). Não é dado do cérebro e não entra no backup; o deploy não a apaga.
+
 ## O roteiro {#roteiro}
 
 | # | Página | Resultado |

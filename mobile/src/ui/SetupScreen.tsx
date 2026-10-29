@@ -8,15 +8,19 @@ import {
 } from '../storage/credentials';
 import { radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
+import type { UpdateController } from '../update/UpdateController';
+import { UpdateSettings } from './UpdateViews';
 
 interface Props {
   initial?: Credentials | null;
   onSave: (credentials: Credentials) => void;
   onCancel?: () => void;
+  /** The self-update (only once the app is configured: it talks to the brain's address). */
+  updater?: UpdateController | null;
 }
 
 /** First run: the server address (Tailscale) and the token, pasted by hand (ADR-022, section 3). */
-export function SetupScreen({ initial, onSave, onCancel }: Props) {
+export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
   const theme = useTheme();
   const [host, setHost] = useState(initial?.host ?? '');
   const [port, setPort] = useState(String(initial?.port ?? 8765));
@@ -129,6 +133,7 @@ export function SetupScreen({ initial, onSave, onCancel }: Props) {
           </Pressable>
         ) : null}
       </View>
+      {updater ? <UpdateSettings updater={updater} /> : null}
     </ScrollView>
   );
 }

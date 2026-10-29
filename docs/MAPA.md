@@ -67,7 +67,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 ## Referência
 
 - [API WebSocket](pages/protocolo.md): Referência completa do protocolo entre os clientes e o cérebro: conexão, envelope, cada mensagem com os seus campos, erros…
-- [API HTTP](pages/api-http.md): As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de…
+- [API HTTP](pages/api-http.md): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação…
 - [Configuração](pages/configuracao.md): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
 
 ## Produção
@@ -108,3 +108,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-023](decisions/ADR-023.md): Voz da Juniper (Google Chirp 3 HD, STT, orçamento e áudio no protocolo) (Proposto) · `integracoes-producao`, `mobile`, `produto-canais`, `protocolo`, `voz-audio`
 - [ADR-024](decisions/ADR-024.md): Música (YouTube Data API, playlists e gosto musical) (Proposto) · `executor`, `integracoes-producao`, `musica`, `produto-integracoes`
 - [ADR-025](decisions/ADR-025.md): Metadocumentação: a Juniper responde sobre si mesma (Proposto) · `architecture`, `configuracao`, `metadocs`, `produto`
+- [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`

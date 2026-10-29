@@ -157,6 +157,14 @@ class DashboardSettings(BaseModel):
     allowed_hosts: list[str] = Field(default_factory=list)
 
 
+class AppUpdateSettings(BaseModel):
+    """De onde o cérebro serve o APK do app Android (ADR-026); só leitura."""
+
+    # Pasta com `app-release.apk` e `latest.json`. Na VPS, o diretório do host montado no
+    # container (JUNIPER_APP_DIR no compose).
+    dir: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "app")
+
+
 class DeploymentSettings(BaseModel):
     """Modo de deployment do brain."""
 
@@ -839,6 +847,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
+    app_update: AppUpdateSettings = Field(default_factory=AppUpdateSettings)
     metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)
 
     # Segredos (sempre via env)

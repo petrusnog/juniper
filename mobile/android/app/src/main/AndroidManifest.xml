@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Self-update: hands the downloaded APK to the system installer (ADR-026) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- "Display over other apps": lets the music open while the app is in the background -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -49,6 +51,7 @@
         </intent-filter>
         <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
       </activity>
+      <receiver android:name=".update.UpdateResultReceiver" android:exported="false" />
       <service
         android:name=".voice.VoiceService"
         android:exported="false"

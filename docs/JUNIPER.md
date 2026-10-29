@@ -41,6 +41,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Voz | TTS Google Chirp 3 HD, STT da Groq, VAD, trava de orçamento mensal, `voice.*` no protocolo | #179 (T-148 a T-153) | 023 | [Voz por áudio](pages/voz-audio.md) |
 | Música | YouTube Data API: busca, playlists, OAuth de dispositivo, gosto musical, `play_music` | #180 (T-154 a T-158) | 024 | [Música](pages/musica.md) |
 | Metadocumentação | A Juniper responde sobre si mesma por busca BM25 local na documentação (`docs_search`) | PR #229 | 025 | [Metadocumentação](pages/metadocs.md) |
+| Atualização do app | O cérebro serve o APK (`/app/update`, `/app/update/apk`, Bearer); o workflow «Mobile release» compila e publica; o app confere o SHA-256 e entrega ao Android. **Proposto; Kotlin e workflow nunca executados** | branch `feature/app-update` | 026 (proposto) | [App mobile](pages/mobile.md#atualizacao), [Clientes em produção](pages/clientes-producao.md#app-atualizar) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
 **Tools registradas (18):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação).
@@ -53,6 +54,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | `run_shell`, `open_app`, `web_fetch`, `web_search` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,web,shell}.py` são stubs de 4 linhas. |
 | Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
 | Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
+| Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
 
 ---
 
@@ -117,15 +119,16 @@ juniper/
 │   ├── llm/        base · types · router · deepinfra/groq/ollama_provider · compact
 │   ├── tools/      base · registry · google_calendar · memory · music · open_url · juniper_cmds · docs · url_policy
 │   ├── memory/     session · longterm · embeddings · retrieval · extraction · profile · secretfilter · v2/ (Memória V2)
-│   ├── clients/    cli · server · chat · protocol · remote · telegram · executors · voice_session · *_cli
+│   ├── clients/    cli · server · chat · protocol · remote · telegram · executors · voice_session · app_update (ADR-026) · *_cli
 │   ├── voice/      tts · stt · vad · budget · services       (ADR-023)
 │   ├── music/      youtube · oauth · quota · taste           (ADR-024)
 │   ├── dashboard/  api · routes · server · static/           (ADR-020)
 │   └── metadocs/   index · detect · context                   (ADR-025)
-├── mobile/         app React Native (Android)
+├── mobile/         app React Native (Android); update/ = auto-atualização (ADR-026)
+├── .github/workflows/   tests · docker · docs · deploy · mobile · mobile-release (ADR-026)
 ├── prompts/        persona.core.md · persona.core.compact.md
 ├── docker/ · Dockerfile · docker-compose{,.dev,.prod}.yml · config.yaml.example
-├── scripts/        build_docs · docs_search · deploy · install · healthcheck · backup/restore · export_protocol_schema
+├── scripts/        build_docs · docs_search · deploy · install · healthcheck · backup/restore · export_protocol_schema · publish_app (ADR-026)
 ├── shell/          wrapper legado (gitgrep, deployfeature)
 ├── docs/           JUNIPER.md (este) · MAPA.md · pages/ · decisions/ · protocol/ · html/ (gerado)
 └── tests/
@@ -194,6 +197,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [023](decisions/ADR-023.md) | Voz: Chirp 3 HD, STT, trava de orçamento e áudio no protocolo. |
 | [024](decisions/ADR-024.md) | Música: YouTube Data API, playlists e gosto musical. |
 | [025](decisions/ADR-025.md) | Metadocumentação: busca estatística local e contexto automático. |
+| [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
 
 ---
 

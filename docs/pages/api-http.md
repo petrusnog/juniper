@@ -2,9 +2,9 @@
 title: API HTTP
 group: Referência
 order: 3
-description: As rotas HTTP do cérebro: a saúde do servidor e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
+description: As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
 status: pronta
-tags: api http rest health dashboard rotas json get login cookie paginação limit offset memories beliefs affects persona interests notes dreams journal sessions search prompt
+tags: api http rest health dashboard rotas json get login cookie paginação app update apk limit offset memories beliefs affects persona interests notes dreams journal sessions search prompt
 ---
 
 O cérebro expõe dois servidores HTTP no mesmo processo (`juniper serve`): o do WebSocket, que também responde `/health`, e o do [dashboard](dashboard.md), com uma API JSON **somente leitura**. Para conversar, tocar ferramentas ou mexer na memória, use a [API WebSocket](protocolo.md).
@@ -32,7 +32,26 @@ curl -s http://127.0.0.1:8765/health
 | `ok` / `off` | Pronto, sem memória de longo prazo. |
 | `degraded` / `warming_up` | O modelo de embeddings ainda está carregando (ou baixando, na primeira vez). A conversa funciona sem memória. Continua HTTP 200, para o contêiner não ser reiniciado. |
 
-Qualquer outro caminho que não `/health` ou `/v1/ws` responde 404.
+Qualquer outro caminho que não `/health`, `/v1/ws`, `/app/update` ou `/app/update/apk` responde 404.
+
+## Atualização do app {#app-update}
+
+Na porta do WebSocket, o cérebro serve o APK do [app Android](mobile.md#atualizacao) ([ADR-026](../decisions/ADR-026.md)). As duas rotas exigem `Authorization: Bearer <token dos clientes>` (sem ele ou com token errado: 401) e só leem a pasta `app_update.dir` ([Configuração](configuracao.md#app-update-config)).
+
+| Rota | Resposta |
+|---|---|
+| `GET /app/update` | 200 com a versão publicada, ou `{"available": false}` se não há nada válido. |
+| `GET /app/update/apk` | 200 com o arquivo (`application/vnd.android.package-archive`); 404 se não há versão publicada. Cada download vira um evento `app_update` no log. |
+
+```bash
+curl -s -H "Authorization: Bearer $(cat .juniper-dev/state/token)" http://127.0.0.1:8765/app/update
+```
+
+```json
+{ "available": true, "version_code": 321, "version_name": "0.1.321", "sha256": "…", "size": 61234567, "released_at": "2026-10-29T12:00:00Z" }
+```
+
+Uma publicação só é oferecida se o `latest.json` e o APK existem e o tamanho do arquivo bate com o `size` (um envio pela metade nunca é servido). Como publicar: [Clientes em produção](clientes-producao.md#app-atualizar).
 
 ## Dashboard {#dashboard}
 
@@ -94,6 +113,7 @@ As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `note
 
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
 - [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
 - [API WebSocket](protocolo.md) (Referência): Referência completa do protocolo entre os clientes e o cérebro: conexão, envelope, cada mensagem com os seus campos, erros, códigos de fechamento e reconexão.
 - [Integrar com o cérebro](integrar-cliente.md) (Produção): Guia prático para escrever um cliente ou integrar outro sistema à Juniper pela API WebSocket, com um exemplo completo em Python, confirmação, reconexão, executor e a API HTTP.

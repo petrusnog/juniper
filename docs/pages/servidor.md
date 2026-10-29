@@ -24,7 +24,7 @@ No modo `server`, o comando `juniper serve` sobe o cérebro como um processo pr�
 
 ## Conexão {#conexao kind=classe file=brain/clients/server.py}
 
-1. **HTTP antes do upgrade.** `GET /health` responde sem autenticação. Qualquer outro caminho que não `/v1/ws` recebe 404. Em `/v1/ws`, o cabeçalho `Authorization: Bearer <token>` é comparado em tempo constante com o token do servidor; sem ele, 401 e nada de WebSocket.
+1. **HTTP antes do upgrade.** `GET /health` responde sem autenticação. `GET /app/update` e `GET /app/update/apk` (o download do app Android, com o mesmo Bearer, [API HTTP](api-http.md#app-update)) também passam por aqui. Qualquer outro caminho que não `/v1/ws` recebe 404. Em `/v1/ws`, o cabeçalho `Authorization: Bearer <token>` é comparado em tempo constante com o token do servidor; sem ele, 401 e nada de WebSocket.
 2. **Handshake.** O cliente manda `hello` com `protocol_version` e a identificação (`client.kind`, `device_id`); o servidor responde `welcome` com a conversa aberta ou retomada. Versão incompatível fecha com `4426`; uma segunda conexão com o mesmo `device_id` substitui a primeira (`4409`).
 3. **Heartbeat.** O servidor manda `ping` a cada 30 s; 90 s sem nenhum sinal fecham a conexão (`4408`).
 4. **Mensagens.** Cada quadro é validado contra o protocolo; um quadro malformado recebe `error` com `bad_request`, sem fechar a conexão. O handler precisa **voltar logo**: trabalho longo (um turno do agente) roda numa tarefa acompanhada pela conexão, para o servidor continuar lendo `pong` e `chat.cancel`.
