@@ -168,10 +168,18 @@ export class UpdateController {
       });
     } catch (error) {
       this.release();
-      const code = (error as { code?: string } | null)?.code ?? '';
+      const { code = '', message = '' } = (error ?? {}) as {
+        code?: string;
+        message?: string;
+      };
+      // The short technical reason (e.g. SocketTimeoutException) helps to tell a cut connection
+      // from a refusal.
+      const detail = message && message !== code ? ` (${message})` : '';
       this.set({
         phase: 'available',
-        notice: INSTALL_ERRORS[code] ?? INSTALL_ERRORS.download_failed,
+        notice: `${
+          INSTALL_ERRORS[code] ?? INSTALL_ERRORS.download_failed
+        }${detail}`,
       });
     }
   }

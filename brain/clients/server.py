@@ -50,6 +50,11 @@ WS_PATH: Final = "/v1/ws"
 HEALTH_PATH: Final = "/health"
 UPDATE_PATH: Final = "/app/update"
 UPDATE_APK_PATH: Final = "/app/update/apk"
+# O download do APK (dezenas de MB, às vezes por um celular lento) acontece dentro do "handshake"
+# do websockets, que tem o prazo `open_timeout` (10 s por padrão): o arquivo chegava cortado no
+# meio. Um prazo maior vale para todos os handshakes; aceitável porque o servidor só existe dentro
+# da rede privada (ADR-013) e o `hello` do WebSocket tem o seu próprio prazo, de 10 s.
+OPEN_TIMEOUT_SECONDS: Final = 600.0
 HEARTBEAT_SECONDS: Final = 30.0
 IDLE_TIMEOUT_SECONDS: Final = 90.0
 HELLO_TIMEOUT_SECONDS: Final = 10.0
@@ -250,6 +255,7 @@ class BrainServer:
         *,
         health: HealthFn | None = None,
         app_updates: AppUpdates | None = None,
+        open_timeout_seconds: float = OPEN_TIMEOUT_SECONDS,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
         idle_timeout_seconds: float = IDLE_TIMEOUT_SECONDS,
         hello_timeout_seconds: float = HELLO_TIMEOUT_SECONDS,
@@ -260,6 +266,7 @@ class BrainServer:
         self._handler: ConnectionHandler = handler or BaseHandler()
         self._health = health or _default_health
         self._app_updates = app_updates
+        self._open_timeout = open_timeout_seconds
         self._heartbeat = heartbeat_seconds
         self._idle_timeout = idle_timeout_seconds
         self._hello_timeout = hello_timeout_seconds
@@ -277,6 +284,7 @@ class BrainServer:
             self.port,
             process_request=self._process_request,
             max_size=p.MAX_MESSAGE_BYTES,
+            open_timeout=self._open_timeout,
             ping_interval=None,  # o heartbeat é o da aplicação (ADR-012, seção 4)
         )
         for socket in self._server.sockets:
