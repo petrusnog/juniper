@@ -84,7 +84,7 @@ O detector só acusa o que as regras conhecem. Quando **você** vê um vazamento
 | App (texto) | digite `/vazou` ou `/vazou nota` no chat |
 | Voz | diga, sozinho na fala: «isso vazou», «vazou», «marcar vazamento», «registrar vazamento» |
 
-O comando é do **servidor** (`ChatHandler`): vale para qualquer cliente, e o app não precisa de uma versão nova. Ele **não** chega ao modelo, **não** entra no histórico da conversa nem na memória, e funciona mesmo com uma resposta ainda em andamento (muitas vezes é ela o vazamento). Por voz, a frase tem de ser **a fala inteira** (como «encerrar conversa»): uma frase que só menciona vazamento vai ao modelo como qualquer outra. Dito por voz, ela **corta** o que estiver falando, anota e responde em uma frase: «Anotei o vazamento.»
+O comando é do **servidor** (`ChatHandler`, [ADR-012](../decisions/ADR-012.md)): vale para qualquer cliente, e o app não precisa de uma versão nova. Ele **não** chega ao modelo e **não** entra no histórico da conversa nem na memória. No app, funciona mesmo com uma resposta ainda em andamento (muitas vezes é ela o vazamento) e o relato leva a troca em andamento, com o que ela já disse. **No Telegram**, o bot atende uma mensagem por vez: com a resposta ainda saindo, ele responde «Ainda estou respondendo» e o relato não é gravado; espere o fim e mande `/vazou` (a resposta completa entra nas 10 interações). Para não encher o banco, cada conversa aceita no máximo **um relato a cada 3 segundos e 30 por hora**; o excedente recebe «Já anotei um vazamento agora há pouco» e não é gravado. Por voz, a frase tem de ser **a fala inteira** (como «encerrar conversa»): uma frase que só menciona vazamento vai ao modelo como qualquer outra. Dito por voz, ela **corta** o que estiver falando, anota e responde em uma frase: «Anotei o vazamento.»
 
 Cada relato guarda, na coleção `leak_reports` do MongoDB:
 
@@ -92,7 +92,7 @@ Cada relato guarda, na coleção `leak_reports` do MongoDB:
 - a sessão, o canal (`telegram`, `mobile`…), se foi por voz, a sua nota (até 500 caracteres), a versão e o commit;
 - os ids dos registros automáticos da **mesma sessão** nas últimas 24 h (até 3), para ligar o que você viu ao texto bruto do modelo.
 
-Diferente dos registros automáticos, o relato **não expira**: foi você quem escolheu guardá-lo. Apague com `juniper vazamentos --apagar <id>`. As interações vêm da memória do processo (até 10 numa conversa em andamento); numa conversa retomada, começam pelo que a sessão salva ainda tem (até 8 turnos). Sem MongoDB, o comando responde que não tem onde guardar.
+Diferente dos registros automáticos, o relato **não expira**: foi você quem escolheu guardá-lo, e ele pode guardar trechos do prompt interno que o guarda teria cortado. Apague com `juniper vazamentos --apagar <id>` (o dashboard é somente leitura, então não apaga). As interações vêm da memória do processo (até 10 numa conversa em andamento); numa conversa retomada, começam pelo que a sessão salva ainda tem (até 8 turnos). Sem MongoDB, o comando responde que não tem onde guardar.
 
 Os relatos aparecem na tela **Ocorrências** do [dashboard](dashboard.md#paginas), junto com as detecções automáticas, e saem em planilha ([Exportar ocorrências](dashboard.md#exportar)).
 

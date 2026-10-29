@@ -95,6 +95,8 @@ class Agent:
         self._executed_until: int | None = None
         self._used_tools = False
         self._interrupted = False  # the user cut the turn in progress (voice barge-in, cancel)
+        self._checkpoint = 0  # where the turn in progress starts in the history (its user message)
+        self._current: str | None = None  # the user message of the turn in progress
         self._leaked = False  # a reply of this turn showed machinery (T-165)
         # The last exchanges as the user saw them, for a leak report (T-167). Unlike the history it
         # is not compacted and keeps what a quarantined turn said; a resumed conversation starts
@@ -119,9 +121,14 @@ class Agent:
         self._dispatcher.pending = None
 
     def recent_exchanges(self) -> list[Exchange]:
-        """The last ``REPORT_EXCHANGES`` finished exchanges, oldest first, plus the reply that was
-        in progress if the user cut it (a leak is often what he heard just before cutting)."""
-        return list(self._recent)
+        """The last ``REPORT_EXCHANGES`` exchanges, oldest first: the finished ones (a reply the
+        user cut is what she had said until then) and, if a turn is running, that one with what she
+        has said so far (a leak is often what he sees while she is still answering)."""
+        items = list(self._recent)
+        if self._current is not None:  # a `/vazou` sent while she is still answering
+            partial = "".join(self._streaming) or "".join(self._streaming_raw)
+            items.append(Exchange(self._current, partial, interrupted=True))
+        return items[-REPORT_EXCHANGES:]
 
     def interrupt(self) -> None:
         """The user is cutting the turn in progress (spoke over her, sent something new, cancelled).
@@ -146,7 +153,8 @@ class Agent:
         """
         bind_session(self.session.id)
         event_log.log("turn_start", input_chars=len(user_input))
-        checkpoint = self.session.checkpoint()
+        self._checkpoint = self.session.checkpoint()
+        self._current = user_input
         self._executed_until = None
         self._used_tools = False
         self._interrupted = False
@@ -159,10 +167,11 @@ class Agent:
             reply = await self._loop(user_input, on_token)
         except BaseException as exc:
             # Actions the user approved already ran: keep that record even if the LLM then fails.
-            keep = self._executed_until if self._executed_until is not None else checkpoint
+            keep = self._executed_until if self._executed_until is not None else self._checkpoint
             interrupted = isinstance(exc, asyncio.CancelledError) and self._interrupted
             if interrupted:
-                keep = max(keep, checkpoint + 1)  # what the user said is never lost (T-166)
+                keep = max(keep, self._checkpoint + 1)  # what the user said is never lost (T-166)
+            self._current = None
             self.session.rollback(keep)
             event_log.log(
                 "error" if not interrupted else "turn_interrupted",
@@ -198,6 +207,7 @@ class Agent:
     def _finish_turn(self, user_input: str, reply: str, *, partial: str = "") -> None:
         """Count the turn and queue it for memory (``reply`` is empty for an interrupted one;
         ``partial`` is what she had said when he cut her off, kept only for a leak report)."""
+        self._current = None
         self._recent.append(
             Exchange(
                 user_input,
@@ -291,6 +301,7 @@ class Agent:
         if scrubbed := session.scrub():
             event_log.log("history_scrubbed", messages=scrubbed)
         session.compact()
+        self._rebase_turn_start()
         schemas = self._registry.schemas() or None
 
         for _ in range(self._max_iterations):
@@ -321,6 +332,20 @@ class Agent:
         if on_token is not None:
             await _emit(on_token, LIMIT_MESSAGE)
         return LIMIT_MESSAGE
+
+    def _rebase_turn_start(self) -> None:
+        """Find this turn again in the history after ``scrub`` and ``compact`` shortened it.
+
+        A rollback goes by index: with the old one, a conversation at its turn limit would keep the
+        half-made tool messages of a turn that failed or was cut (orphan tool calls the next LLM
+        call refuses).
+        """
+        history = self.session.history
+        users = [i for i, m in enumerate(history) if m.role == "user"]
+        if users:
+            self._checkpoint = users[-1]
+        if self._executed_until is not None:  # what ran after "sim" sits after the user message
+            self._executed_until = len(history)
 
     async def _recall(
         self, user_input: str, previous: str | None

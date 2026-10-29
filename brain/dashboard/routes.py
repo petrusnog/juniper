@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from brain.config import settings
@@ -39,7 +39,9 @@ MAX_QUERY_CHARS = 200
 OFF_V1 = {"enabled": False, "reason": "a memória de longo prazo está desligada"}
 OFF_V2 = {"enabled": False, "reason": "a Memória V2 está desligada"}
 OFF_LEAKS = "as ocorrências precisam do MongoDB (memory.session.store: mongo)"
-MAX_OCCURRENCES = 500  # per source, in the list and in the spreadsheet
+MAX_OCCURRENCES = 500  # per source, in the list
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+MAX_EXPORTED = 200  # per source, in the spreadsheet: it holds every message of every occurrence
 
 
 async def _blocking(fn: Callable[[], T]) -> T:
@@ -634,7 +636,7 @@ def build_api(sources: Sources) -> Api:
             raise ApiError(400, "kind deve ser relato, automatico ou todos")
         return kind
 
-    def collect(query: Query) -> list[tuple[str, dict[str, Any]]]:
+    def collect(query: Query, limit: int = MAX_OCCURRENCES) -> list[tuple[str, dict[str, Any]]]:
         """The occurrences of the filter, newest first: reports and audit records together."""
         if sources.reports is None and sources.audit is None:
             raise ApiError(503, OFF_LEAKS)
@@ -642,12 +644,10 @@ def build_api(sources: Sources) -> Api:
         days = number(query, "days", 30, 1, 365)
         pairs: list[tuple[str, dict[str, Any]]] = []
         if kind in ("todos", "relato") and sources.reports is not None:
-            pairs += [("relato", d) for d in sources.reports.recent(limit=MAX_OCCURRENCES)]
+            pairs += [("relato", d) for d in sources.reports.recent(limit=limit)]
         if kind in ("todos", "automatico") and sources.audit is not None:
-            pairs += [
-                ("automatico", d) for d in sources.audit.recent(days=days, limit=MAX_OCCURRENCES)
-            ]
-        pairs.sort(key=lambda pair: pair[1]["at"], reverse=True)
+            pairs += [("automatico", d) for d in sources.audit.recent(days=days, limit=limit)]
+        pairs.sort(key=lambda pair: pair[1].get("at") or _EPOCH, reverse=True)
         return pairs
 
     def find(occurrence_id: str) -> tuple[str, dict[str, Any]]:
@@ -677,7 +677,7 @@ def build_api(sources: Sources) -> Api:
     async def occurrence_export(query: Query) -> tuple[str, str, bytes]:
         def read() -> tuple[str, str, bytes]:
             wanted = first(query, "id")
-            pairs = [find(wanted)] if wanted else collect(query)
+            pairs = [find(wanted)] if wanted else collect(query, MAX_EXPORTED)
             sheets = occurrences.workbook(pairs)
             for sheet in sheets:  # the same masking as every other answer of the dashboard
                 sheet.rows = [[sanitize(cell) for cell in row] for row in sheet.rows]

@@ -15,6 +15,8 @@ import contextlib
 import logging
 import re
 import secrets
+import time
+from collections import deque
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -79,7 +81,10 @@ NO_CONVERSATION_MESSAGE = (
 BUSY_MESSAGE = "Ainda estou respondendo à mensagem anterior. Espera eu terminar ou cancela."
 LEAK_NO_STORE = "Não tenho onde guardar o relato agora: preciso do MongoDB."
 LEAK_FAILED = "Não consegui guardar o relato agora. Tenta de novo daqui a pouco?"
+LEAK_TOO_OFTEN = "Já anotei um vazamento agora há pouco. Espera um instante?"
 LEAK_SPOKEN_SAVED = "Anotei o vazamento."
+LEAK_MIN_GAP_SECONDS: Final = 3.0  # between two reports of the same conversation
+LEAK_MAX_PER_HOUR: Final = 30  # a loop (or a TV saying "isso vazou") must not fill the database
 LEAK_SPOKEN_FAILED = "Não consegui anotar o vazamento agora."
 
 
@@ -158,7 +163,7 @@ def visible_history(session: Session) -> list[p.HistoryItem]:
 class LeakOutcome:
     """The result of a leak report, worded for the channel that asked (text or voice)."""
 
-    status: Literal["saved", "no_store", "failed"]
+    status: Literal["saved", "no_store", "failed", "too_often"]
     report_id: str = ""
     count: int = 0
     voice: bool = False
@@ -170,6 +175,8 @@ class LeakOutcome:
             )
         if self.status == "no_store":
             return LEAK_NO_STORE
+        if self.status == "too_often":
+            return LEAK_TOO_OFTEN
         return LEAK_SPOKEN_FAILED if self.voice else LEAK_FAILED
 
 
@@ -203,6 +210,7 @@ class ChatHandler:
         # Where `/vazou` reports go (T-167), and the audit records they point at; None = no MongoDB.
         self._reports = leak_reports
         self._audit = leak_audit
+        self._report_times: dict[str, deque[float]] = {}
         # Where the leak audit records go (T-165); None = only the event in the log.
         self._leak_sink = leak_sink
         # Documentation excerpts for questions about herself (ADR-025); None in most tests.
@@ -527,6 +535,8 @@ class ChatHandler:
         """Store the report of this conversation: its last exchanges and the audit records."""
         if self._reports is None:
             return LeakOutcome("no_store", voice=voice)
+        if self._leak_throttled(conversation.id):
+            return LeakOutcome("too_often", voice=voice)
         exchanges = conversation.agent.recent_exchanges()
         audit_ids: list[str] = []
         if self._audit is not None:
@@ -556,6 +566,18 @@ class ChatHandler:
             audit=len(audit_ids),
         )
         return LeakOutcome("saved", report["_id"], len(report["exchanges"]), voice)
+
+    def _leak_throttled(self, session_id: str) -> bool:
+        """At most one report per ``LEAK_MIN_GAP_SECONDS`` and ``LEAK_MAX_PER_HOUR`` per hour for
+        each conversation. A refused report does not count."""
+        now = time.monotonic()
+        times = self._report_times.setdefault(session_id, deque(maxlen=LEAK_MAX_PER_HOUR))
+        if times and now - times[-1] < LEAK_MIN_GAP_SECONDS:
+            return True
+        if len(times) == LEAK_MAX_PER_HOUR and now - times[0] < 3600:
+            return True
+        times.append(now)
+        return False
 
     async def _voice_report(self, conn: Connection) -> str:
         """What she says after "isso vazou": the report is stored, the answer is one sentence."""

@@ -64,7 +64,7 @@ Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a
 | **Mensagens** | mensagem | Ocorrência, Tipo (`Relato (/vazou)` ou `Detectado`), ID da sessão, Canal, Voz, Data da ocorrência, Ordem, **Autor** (`Usuário`, `Juniper` ou `Juniper (texto bruto do modelo)`), **Mensagem**, Observação |
 | **Ocorrências** | ocorrência | Ocorrência, Tipo, ID da sessão, Canal, Voz, Data, Nota, Regras, se o texto vazou até você, Modelo, Commit, número de mensagens |
 
-Filtros na URL: `kind=relato\|automatico\|todos` (padrão `todos`), `days` (janela das detecções, padrão 30) e `id` (uma ocorrência só, o id curto da lista). No máximo 500 de cada origem. As datas saem no fuso do agente.
+Filtros na URL: `kind=relato\|automatico\|todos` (padrão `todos`), `days` (janela das detecções, padrão 30) e `id` (uma ocorrência só, o id curto da lista). A lista mostra até 500 de cada origem; a planilha leva as **200** mais novas de cada (ela traz todas as mensagens de cada ocorrência). As datas saem no fuso do agente.
 
 O arquivo é gerado sem biblioteca extra (`brain/dashboard/xlsx.py`): o texto vai como *texto*, nunca como fórmula (uma mensagem que começa com `=` aparece como foi dita), caracteres que o XML não aceita são trocados, uma célula é cortada antes do limite do Excel e os segredos passam pelo mesmo mascaramento do resto do dashboard.
 

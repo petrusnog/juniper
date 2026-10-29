@@ -95,7 +95,7 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-009](decisions/ADR-009.md): DeepInfra como provider principal e nova ordem do failover (Aceito) · `architecture`, `contribuindo`, `integracoes-producao`, `llm`, `produto-llm`
 - [ADR-010](decisions/ADR-010.md): Gerenciamento completo da agenda do usuário (Aceito) · `agente`, `architecture`, `contribuindo`, `google-calendar`, `integracoes-producao`, `integrar-cliente`, `mobile`, `produto-ferramentas`, `produto-integracoes`, `produto`, `protocolo`, `seguranca`, `servidor`, `voz-audio`
 - [ADR-011](decisions/ADR-011.md): Arquitetura de Memória (Proposto) · `memoria-longo-prazo`, `memoria-sessao`, `memoria`, `produto-memoria`
-- [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`
+- [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`, `vazamentos`
 - [ADR-013](decisions/ADR-013.md): Deploy e infraestrutura de produção (Proposto) · `contribuindo`, `deploy-continuo`, `deploy-vps`, `integracoes-producao`, `mobile`, `producao`, `produto-privacidade`, `produto`, `protocolo`, `seguranca`
 - [ADR-014](decisions/ADR-014.md): Executor do desktop e a tool `open_url` (Proposto) · `contribuindo`, `executor`, `integrar-cliente`, `produto-ferramentas`, `produto-integracoes`, `protocolo`, `seguranca`, `tools`
 - [ADR-015](decisions/ADR-015.md): Cliente desktop (Electron) (Substituído pelo [ADR-022]) · `architecture`, `mobile`

@@ -25,7 +25,7 @@ MAX_TEXT_CHARS: Final = 8000  # per message: a report is evidence, not a copy of
 
 _COMMAND = re.compile(r"^/vazou(?:@\w+)?(?:\s+(?P<note>.*))?$", re.IGNORECASE | re.DOTALL)
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
-_SYSTEM_HINT = re.compile(r"\s*\[Sistema:[^\]]*\]\s*$")  # the agent appends it to a bare "sim"
+MAX_NOTE_INPUT: Final = 2000  # read before masking, so a secret is never cut in the middle
 
 
 @dataclass(frozen=True)
@@ -38,12 +38,22 @@ class Exchange:
     interrupted: bool = False  # he cut her off: ``assistant`` is only what she had said so far
 
 
+def strip_hint(text: str) -> str:
+    """``text`` without the ``[Sistema: ...]`` hint the agent appends to a bare "sim". Linear: a
+    regex anchored at the end would be quadratic on a long run of spaces."""
+    stripped = text.rstrip()
+    start = stripped.rfind("[Sistema:")
+    if start >= 0 and stripped.endswith("]") and "]" not in stripped[start:-1]:
+        return stripped[:start].rstrip()
+    return text
+
+
 def leak_command(text: str) -> str | None:
     """The note of a ``/vazou [nota]`` message ("" without one), or ``None`` if it is not one."""
     match = _COMMAND.match(text.strip())
     if match is None:
         return None
-    return " ".join((match.group("note") or "").split())[:MAX_NOTE_CHARS]
+    return " ".join((match.group("note") or "").split())[:MAX_NOTE_INPUT]
 
 
 def exchanges_from_history(history: Sequence[Any]) -> list[Exchange]:
@@ -60,7 +70,7 @@ def exchanges_from_history(history: Sequence[Any]) -> list[Exchange]:
     for message in history:
         if message.role == "user" and message.content:
             close()
-            text = _SYSTEM_HINT.sub("", _DATE_PREFIX.sub("", message.content, count=1))
+            text = strip_hint(_DATE_PREFIX.sub("", message.content, count=1))
             user, replies = text, []
         elif message.role == "assistant" and message.content and not message.tool_calls:
             replies.append(message.content)

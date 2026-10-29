@@ -22,6 +22,7 @@ from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from brain.config import settings
+from brain.core.leak_report import strip_hint
 from brain.dashboard.xlsx import Cell, Sheet
 
 ID_CHARS: Final = 16
@@ -33,7 +34,6 @@ PREVIEW_CHARS: Final = 140
 RAW_NOTE: Final = "o modelo escreveu isto antes do guarda cortar"
 
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
-_SYSTEM_HINT = re.compile(r"\s*\[Sistema:[^\]]*\]\s*$")
 
 
 def short_id(document: Mapping[str, Any]) -> str:
@@ -51,7 +51,7 @@ def _preview(text: object) -> str:
 
 def _user_text(text: object) -> str:
     """The user's message without the date stamp the system puts before it."""
-    return _SYSTEM_HINT.sub("", _DATE_PREFIX.sub("", str(text or ""), count=1))
+    return strip_hint(_DATE_PREFIX.sub("", str(text or ""), count=1))
 
 
 def local(moment: Any) -> str:

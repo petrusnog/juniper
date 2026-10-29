@@ -12,6 +12,7 @@ import typer
 from rich.console import Console
 from typer.testing import CliRunner
 
+from brain.clients import chat as chat_module
 from brain.clients import leaks_cli
 from brain.clients import protocol as p
 from brain.clients import telegram as tg
@@ -438,3 +439,67 @@ def test_the_command_line_lists_shows_and_deletes_reports(monkeypatch: pytest.Mo
     )
     assert reports.recent() == []
     assert "Nenhum relato" in run_cli(audit, "--relatos", monkeypatch=monkeypatch)
+
+
+# --- limits and the running turn (review fixes) --------------------------------------------------
+
+
+def test_the_hint_is_stripped_in_linear_time() -> None:
+    import time
+
+    from brain.core.leak_report import strip_hint
+
+    assert strip_hint('sim [Sistema: se esse "sim" confirma algo.]') == "sim"
+    assert strip_hint("sim") == "sim" and strip_hint("a [Sistema: x] b") == "a [Sistema: x] b"
+    nasty = " " * 31_000 + "x"
+    started = time.perf_counter()
+    assert strip_hint(nasty) == nasty and strip_hint("x" + " \n" * 15_000) is not None
+    assert time.perf_counter() - started < 0.2  # a regex anchored at the end took over a second
+
+
+def test_a_secret_that_crosses_the_note_limit_is_masked_before_the_cut() -> None:
+    secret = "sk-proj-abcdefghijklmnopqrstuvwxyz123456"
+    note = leak_command(f"/vazou {'a' * 480} {secret}")
+    assert note is not None
+    report = build_report(exchanges=[], session_id="s", channel=None, voice=False, note=note)
+    assert "sk-proj" not in report["note"] and len(report["note"]) <= 500
+
+
+async def test_a_burst_of_reports_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reports, audit = stores()
+    async with Scenario(FakeProvider([say("Oi.")]), tmp_path, leak_reports=reports) as s:
+        client = await connect_client(s.server)
+        await client.chat("oi")
+        first = await client.chat("/vazou", id="c-2")
+        second = await client.chat("/vazou", id="c-3")  # right away: the same one
+        assert "Anotei" in texts(first) and "Já anotei" in texts(second)
+        assert len(reports.recent()) == 1
+
+        monkeypatch.setattr(chat_module, "LEAK_MIN_GAP_SECONDS", 0.0)
+        monkeypatch.setattr(chat_module, "LEAK_MAX_PER_HOUR", 3)
+        s.handler._report_times.clear()
+        answers = [texts(await client.chat("/vazou", id=f"d-{i}")) for i in range(5)]
+        assert [("Anotei" in a) for a in answers] == [True, True, True, False, False]
+        assert len(reports.recent()) == 4  # the refused ones are not stored
+
+
+async def test_a_report_sent_while_she_is_answering_includes_the_turn_in_progress(
+    tmp_path: Path,
+) -> None:
+    from tests.test_chat_server import GatedProvider
+
+    reports, audit = stores()
+    provider = GatedProvider()
+    async with Scenario(provider, tmp_path, leak_reports=reports) as s:
+        client = await connect_client(s.server)
+        await client.send(type="chat.send", id="c-1", text="conta uma história")
+        await provider.started.wait()
+        await client.chat("/vazou", id="c-2")
+        provider.release.set()
+        await client.until(p.ChatEnd)
+    [report] = reports.recent()
+    [exchange] = report["exchanges"]
+    assert exchange["user"] == "conta uma história"
+    assert exchange["assistant"] == "parcial " and exchange["interrupted"] is True

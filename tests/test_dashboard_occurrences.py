@@ -282,3 +282,22 @@ async def test_the_list_over_http_is_json(server: tuple[DashboardServer, World])
     status, headers, body = await get(dash, "/api/occurrences", headers=BEARER)
     assert status == 200 and headers["content-type"].startswith("application/json")
     assert json.loads(body)["items"][0]["kind"] == "relato"
+
+
+async def test_the_export_is_capped_per_source(world: World) -> None:
+    from brain.dashboard.routes import MAX_EXPORTED
+
+    for _ in range(MAX_EXPORTED + 5):
+        world.reports.add(make_report())
+    _, (_, _, content) = await world.api.handle_file("/occurrences/export.xlsx", {})  # type: ignore[misc]
+    rows = list(read_workbook(content)["Ocorrências"].iter_rows(values_only=True))
+    assert len(rows) == MAX_EXPORTED + 1  # the header and the newest ones
+
+
+async def test_a_document_without_a_date_does_not_break_the_list(world: World) -> None:
+    broken = make_report()
+    del broken["at"]
+    world.reports.add(broken)
+    world.reports.add(make_report())
+    status, body = await world.get("/occurrences")
+    assert status == 200 and len(body["items"]) == 2
