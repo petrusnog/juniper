@@ -16,7 +16,7 @@
 <h1>Memória de sessão <span class="tag g">pronta</span></h1>
 <p class="lead">A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).</p>
 <h2 id="visao-geral">Visão geral</h2>
-<p>A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: <code>brain/core/session.py</code> (<a href="agente.html#session">Agente</a>) e <code>brain/memory/session.py</code>. Decisões de fundo no ADR-011.</p>
+<p>A memória de curto prazo: a Juniper lembra da conversa que está acontecendo, não estoura o limite do LLM e, se você fechar o terminal, pode retomar de onde parou. Arquivos: <code>brain/core/session.py</code> (<a href="agente.html#session">Agente</a>) e <code>brain/memory/session.py</code>. Decisões de fundo no <a href="adr-011.html">ADR-011</a>.</p>
 <h2 id="uso">Uso</h2>
 <pre><code class="lang-bash">juniper                         # conversa nova (a anterior fica guardada)
 juniper --resume                # retoma a conversa mais recente (atalho: -r)
@@ -31,7 +31,7 @@ juniper -r &quot;e o prazo?&quot;         # retoma e já manda uma mensagem</cod
 <h3 id="filesessionstore">FileSessionStore</h3>
 <p>Um arquivo JSON por conversa em <code>~/.juniper/sessions/</code>. A pasta é só sua (permissão <code>700</code>, arquivos <code>600</code>) e a escrita é <strong>atômica</strong>: uma queda no meio deixa a versão anterior, nunca um arquivo pela metade. O id vira nome de arquivo, então é validado (<code>[A-Za-z0-9_-]</code>) e um id como <code>../algo</code> não escapa da pasta. Um arquivo corrompido é ignorado ao buscar a conversa mais recente.</p>
 <h3 id="retomar">Ao retomar</h3>
-<p>Dois cuidados: <strong>a persona não é salva</strong> (vale a atual) e <strong>uma confirmação pendente não volta</strong>. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" (ADR-006).</p>
+<p>Dois cuidados: <strong>a persona não é salva</strong> (vale a atual) e <strong>uma confirmação pendente não volta</strong>. Se a Juniper tinha perguntado "posso apagar?", depois de retomar nada é executado sem um novo "sim" (<a href="adr-006.html">ADR-006</a>).</p>
 <h2 id="mongodb">MongoDB</h2>
 <p>Com <code>memory.session.store: mongo</code>, as conversas ficam no MongoDB em vez de arquivos. É também onde ficam as <a href="memoria-longo-prazo.html">memórias de longo prazo</a>.</p>
 <div class="callout warn"><p><strong>Atenção:</strong> o MongoDB roda num container, então é preciso ter o <strong>Docker</strong> (com o plugin <code>docker compose</code>) instalado e rodando. Sem Docker, use <code>store: file</code> (o padrão): as conversas ficam em JSON e nada mais é necessário.</p></div>
@@ -88,13 +88,15 @@ memory:
     uri: mongodb://localhost:27017
     database: juniper
     timeout_ms: 3000      # quanto esperar pelo servidor antes de avisar que caiu</code></pre>
-<p>Usuário e senha ficam só no <code>.env</code> (ADR-003); o mesmo par é lido pelo compose. A senha é entregue ao driver à parte, sem ir na URI: <code>@</code>, <code>:</code> e <code>/</code> não precisam de escape. Referência completa em <a href="configuracao.html#memory">Configuração</a>.</p>
+<p>Usuário e senha ficam só no <code>.env</code> (<a href="adr-003.html">ADR-003</a>); o mesmo par é lido pelo compose. A senha é entregue ao driver à parte, sem ir na URI: <code>@</code>, <code>:</code> e <code>/</code> não precisam de escape. Referência completa em <a href="configuracao.html#memory">Configuração</a>.</p>
 <h2 id="limitacoes">Limitações conhecidas</h2>
 <ul><li>Retoma só a mais recente; escolher outra pela lista (<code>list_sessions</code> já existe) fica para depois.</li><li>Sem expiração e sem migração dos JSONs antigos: as conversas ficam até você apagar.</li><li>A estimativa de tokens é aproximada (código e emoji podem pesar mais); o orçamento padrão tem folga.</li><li>As chamadas ao Mongo são síncronas: com o banco fora do ar, cada gravação pode esperar até <code>timeout_ms</code> (3 s).</li><li>O documento é substituído a cada turno: o que saiu do histórico sai também do banco.</li></ul>
 <h2 id="testes">Testes</h2>
 <pre><code class="lang-bash">pytest -m &quot;not integration&quot;     # sem banco: o que o CI roda
 pytest -m integration           # contra o MongoDB local (docker compose up -d)</code></pre>
 <p>Os de integração rodam o mesmo contrato do <code>FileSessionStore</code> contra o <code>MongoSessionStore</code> (<code>tests/test_session_store_contract.py</code>), mais os casos próprios do Mongo (<code>tests/test_mongo_store.py</code>). Cada teste usa um banco descartável e o apaga no fim.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="agente.html">Agente</a> (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</li><li><a href="memoria.html">Memória</a> (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.</li><li><a href="memoria-longo-prazo.html">Memória de longo prazo</a> (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.</li></ul>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

@@ -14,7 +14,7 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-009</div>
 <h1>ADR-009 — DeepInfra como provider principal e nova ordem do failover</h1>
-<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd>ADR-001 (providers), ADR-002 (tools), ADR-003 (config), T-011, T-013, T-015, T-016</dd></dl>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span></dd><dt>Data</dt><dd>2026-10-12</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 1 — "Hello Agent"</dd><dt>Relaciona-se com</dt><dd><a href="adr-001.html">ADR-001</a> (providers), <a href="adr-002.html">ADR-002</a> (tools), <a href="adr-003.html">ADR-003</a> (config), T-011, T-013, T-015, T-016</dd></dl>
 <h2 id="contexto">Contexto</h2>
 <p>A Juniper falava com dois LLMs: Groq (nuvem, primário) e Ollama (local, reserva). Na prática, o limite do plano gratuito da Groq e o Ollama em CPU (lento, com pouca RAM) deixaram a experiência frágil: quando a Groq cai, o fallback leva minutos para o primeiro token.</p>
 <p>A DeepInfra oferece uma API compatível com a da OpenAI (<code>https://api.deepinfra.com/v1/openai</code>), com streaming SSE e tool calling, o que encaixa no contrato <code>LLMProvider</code> sem mudar o resto do cérebro.</p>

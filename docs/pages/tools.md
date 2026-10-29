@@ -10,9 +10,9 @@ tags: ferramenta registry register_tool schema function calling precheck confirm
 
 ## Visão geral {#visao-geral}
 
-Uma **tool** é uma capacidade que o LLM pode escolher usar ([ADR-002](adr-002.html)) (consultar a agenda, buscar commits, guardar uma memória). Cada tool é uma classe que declara o que faz, que parâmetros recebe e que nível de segurança tem. Para criar uma nova basta **um arquivo novo** em `brain/tools/`: ela se registra sozinha e nada no cérebro muda.
+Uma **tool** é uma capacidade que o LLM pode escolher usar ([ADR-002](../decisions/ADR-002.md)) (consultar a agenda, buscar commits, guardar uma memória). Cada tool é uma classe que declara o que faz, que parâmetros recebe e que nível de segurança tem. Para criar uma nova basta **um arquivo novo** em `brain/tools/`: ela se registra sozinha e nada no cérebro muda.
 
-O fluxo: o arquivo da tool tem `@register_tool` na classe → o [registry](#toolregistry) guarda nome → classe → o [Dispatcher](agente.html#dispatcher) pega a classe pelo nome e executa → o LLM só enxerga o que `registry.schemas()` devolve.
+O fluxo: o arquivo da tool tem `@register_tool` na classe → o [registry](#toolregistry) guarda nome → classe → o [Dispatcher](agente.md#dispatcher) pega a classe pelo nome e executa → o LLM só enxerga o que `registry.schemas()` devolve.
 
 ## Tool {#tool kind=classe file=brain/tools/base.py}
 
@@ -51,7 +51,7 @@ class OpenApp(Tool):
 
 - `precheck(**args)`: roda **antes** de te perguntar. Pode recusar uma entrada inválida ou em conflito (devolvendo um `ToolResult(success=False)`) sem te incomodar e sem gastar uma volta do LLM.
 - `describe(**args)`: resumo de uma linha do que a chamada fará, usado na pergunta de confirmação.
-- `subjects(**args)`: os nomes que a pergunta precisa citar para o seu "sim" valer para aquilo (veja [confirmação](agente.html#confirmacao)).
+- `subjects(**args)`: os nomes que a pergunta precisa citar para o seu "sim" valer para aquilo (veja [confirmação](agente.md#confirmacao)).
 
 ### O que o LLM enxerga: `to_schema()` {#to-schema}
 
@@ -83,7 +83,7 @@ O retorno único de toda tool (ADR-002), imutável: `success`, `output`, `error`
 
 ## Tier {#tier kind=classe file=brain/tools/base.py}
 
-Enum `StrEnum` com os quatro níveis do ADR-006 (valores em minúsculas, para serializar bem no log).
+Enum `StrEnum` com os quatro níveis do [ADR-006](../decisions/ADR-006.md) (valores em minúsculas, para serializar bem no log).
 
 | Tier | Comportamento | Exemplos |
 |---|---|---|
@@ -92,11 +92,11 @@ Enum `StrEnum` com os quatro níveis do ADR-006 (valores em minúsculas, para se
 | `DESTRUCTIVE` | Pede o "sim" com aviso de irreversibilidade. Nunca dispensa a confirmação. | `delete_event`, `git_deploy`, `forget` |
 | `FORBIDDEN` | Nunca executa, nem com confirmação. | — |
 
-Uma tool sem classificação é tratada como `WRITE`, para forçar uma revisão consciente em vez de executar por esquecimento. Detalhes em [Segurança](seguranca.html).
+Uma tool sem classificação é tratada como `WRITE`, para forçar uma revisão consciente em vez de executar por esquecimento. Detalhes em [Segurança](seguranca.md).
 
 ## Locality {#locality kind=classe file=brain/tools/base.py}
 
-Onde a tool roda ([ADR-007](adr-007.html)): `CLOUD` (no cérebro: agenda, memória, música) ou `EXECUTOR` (no dispositivo do usuário: git local, abrir uma URL). No modo local tudo roda no mesmo processo; no modo servidor, as de `EXECUTOR` são enviadas ao dispositivo conectado que as registrou ([Executor](executor.html), [ADR-014](adr-014.html)).
+Onde a tool roda ([ADR-007](../decisions/ADR-007.md)): `CLOUD` (no cérebro: agenda, memória, música) ou `EXECUTOR` (no dispositivo do usuário: git local, abrir uma URL). No modo local tudo roda no mesmo processo; no modo servidor, as de `EXECUTOR` são enviadas ao dispositivo conectado que as registrou ([Executor](executor.md), [ADR-014](../decisions/ADR-014.md)).
 
 ## ToolRegistry {#toolregistry kind=classe file=brain/tools/registry.py}
 
@@ -132,26 +132,26 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 
 | Tool | Tier | Locality | O que faz | Página |
 |---|---|---|---|---|
-| `list_events` | READ | CLOUD | Lista compromissos de um intervalo. | [Agenda Google](google-calendar.html) |
-| `create_event` | WRITE | CLOUD | Marca um compromisso (checa conflitos). | [Agenda Google](google-calendar.html) |
-| `update_event` | WRITE | CLOUD | Muda título, horário ou observações. | [Agenda Google](google-calendar.html) |
-| `delete_event` | DESTRUCTIVE | CLOUD | Apaga um evento (irreversível). | [Agenda Google](google-calendar.html) |
-| `git_search` | READ | EXECUTOR | Busca commits por termo. | [Comandos git](git.html) |
-| `git_deploy` | DESTRUCTIVE | EXECUTOR | Cherry-pick de feature em develop/stage. | [Comandos git](git.html) |
-| `play_music` | WRITE (sem perguntar) | CLOUD | **Toca** uma música: busca, escolhe a melhor e, se o pedido veio do app do celular, abre e dá o play; de outros canais devolve o link para a resposta. O pedido já é a confirmação. | [Música](musica.html#play-music) |
-| `music_search` | READ | CLOUD | Procura músicas no YouTube Music e devolve links (só aparece com `music.enabled` e a chave configurada). | [Música](musica.html) |
-| `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.html#playlists) |
-| `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.html#playlists) |
-| `music_playlist_add` | WRITE | CLOUD | Adiciona músicas a uma playlist existente (até 25 por vez). | [Música](musica.html#playlists) |
-| `music_feedback` | WRITE (sem confirmar) | CLOUD | Anota o gosto musical a partir do que o usuário pede e comenta (precisa de MongoDB). | [Música](musica.html#gosto) |
-| `open_url` | WRITE (sem perguntar em domínio de confiança) | EXECUTOR | Abre um link no dispositivo (no celular, o app que trata o endereço, como o YouTube Music). | [Executor](executor.html#open-url) |
-| `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
-| `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
-| `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
-| `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.html#tools-de-memoria) |
-| `docs_search` | READ | CLOUD | Busca na própria documentação, por palavras-chave, para responder sobre si mesma. | [Metadocumentação](metadocs.html#docs-search) |
+| `list_events` | READ | CLOUD | Lista compromissos de um intervalo. | [Agenda Google](google-calendar.md) |
+| `create_event` | WRITE | CLOUD | Marca um compromisso (checa conflitos). | [Agenda Google](google-calendar.md) |
+| `update_event` | WRITE | CLOUD | Muda título, horário ou observações. | [Agenda Google](google-calendar.md) |
+| `delete_event` | DESTRUCTIVE | CLOUD | Apaga um evento (irreversível). | [Agenda Google](google-calendar.md) |
+| `git_search` | READ | EXECUTOR | Busca commits por termo. | [Comandos git](git.md) |
+| `git_deploy` | DESTRUCTIVE | EXECUTOR | Cherry-pick de feature em develop/stage. | [Comandos git](git.md) |
+| `play_music` | WRITE (sem perguntar) | CLOUD | **Toca** uma música: busca, escolhe a melhor e, se o pedido veio do app do celular, abre e dá o play; de outros canais devolve o link para a resposta. O pedido já é a confirmação. | [Música](musica.md#play-music) |
+| `music_search` | READ | CLOUD | Procura músicas no YouTube Music e devolve links (só aparece com `music.enabled` e a chave configurada). | [Música](musica.md) |
+| `music_playlists` | READ | CLOUD | Lista as playlists do YouTube Music (precisa do login). | [Música](musica.md#playlists) |
+| `music_playlist_create` | WRITE | CLOUD | Cria uma playlist privada com as músicas dadas (até 25). | [Música](musica.md#playlists) |
+| `music_playlist_add` | WRITE | CLOUD | Adiciona músicas a uma playlist existente (até 25 por vez). | [Música](musica.md#playlists) |
+| `music_feedback` | WRITE (sem confirmar) | CLOUD | Anota o gosto musical a partir do que o usuário pede e comenta (precisa de MongoDB). | [Música](musica.md#gosto) |
+| `open_url` | WRITE (sem perguntar em domínio de confiança) | EXECUTOR | Abre um link no dispositivo (no celular, o app que trata o endereço, como o YouTube Music). | [Executor](executor.md#open-url) |
+| `remember` | WRITE (sem confirmar) | CLOUD | Guarda um fato na memória de longo prazo. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
+| `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
+| `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
+| `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
+| `docs_search` | READ | CLOUD | Busca na própria documentação, por palavras-chave, para responder sobre si mesma. | [Metadocumentação](metadocs.md#docs-search) |
 
-Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.html) está ligada.
+Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.md) está ligada.
 
 ## Limitações conhecidas {#limitacoes}
 
@@ -168,3 +168,16 @@ pytest tests/test_tools_base.py tests/test_tools_registry.py -v
 ```
 
 Cobrem: classe não instanciável, `to_schema()` igual ao formato do ADR-002 (e cópia independente), tier padrão `WRITE`, cada regra de validação, registrar e consultar, nome duplicado, registro idempotente e a auto-descoberta com pacotes temporários (arquivo novo aparece sem lista central).
+
+## Para saber mais {#para-saber-mais}
+
+- [Ferramentas e permissões](produto-ferramentas.md) (Produto): Como a Juniper age no mundo real por meio de ferramentas, os quatro níveis de risco e como a permissão é dada na própria conversa.
+- [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
+- [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
+- [Metadocumentação](metadocs.md) (Documentação Técnica): Como a Juniper responde sobre a própria arquitetura: detector de perguntas por palavras-chave, busca BM25 local na documentação, contexto automático e a tool docs_search.
+- [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
+- [Agenda Google](google-calendar.md) (Documentação Técnica): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
+- [Música](musica.md) (Documentação Técnica): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
+- [Comandos git](git.md) (Documentação Técnica): search e deploy no terminal e pelo agente (git_search e git_deploy).

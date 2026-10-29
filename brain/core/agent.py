@@ -17,6 +17,7 @@ from typing import Any, Protocol
 from brain.config import settings
 from brain.core.consent import interpret_reply
 from brain.core.dispatcher import Dispatcher, PendingBatch, tool_message
+from brain.core.leak import LeakGuard
 from brain.core.session import Session, Turn
 from brain.core.style import DashFilter
 from brain.eventlog import bind_session, event_log
@@ -45,6 +46,7 @@ NOTHING_PENDING_HINT = (
     "chame a ferramenta agora, citando os mesmos itens.]"
 )
 
+EMPTY_REPLY_MESSAGE = "Me perdi aqui e não consegui responder direito. Pode repetir?"
 LIMIT_MESSAGE = (
     "Dei voltas demais e parei antes de terminar. Reformula o pedido ou divide em passos menores?"
 )
@@ -211,11 +213,22 @@ class Agent:
                 )
             else:
                 consent = None
+        if scrubbed := session.scrub():
+            event_log.log("history_scrubbed", messages=scrubbed)
         session.compact()
         schemas = self._registry.schemas() or None
 
         for _ in range(self._max_iterations):
             message = await self._complete(schemas, on_token)
+            if not message.content and not message.tool_calls:
+                # Nothing to say (an empty reply, or all of it was machinery cut by the guard):
+                # one more try, then a plain sentence. An empty turn is never saved.
+                event_log.log("llm_empty_reply")
+                message = await self._complete(schemas, on_token)
+            if not message.content and not message.tool_calls:
+                message = Message("assistant", EMPTY_REPLY_MESSAGE)
+                if on_token is not None:
+                    await _emit(on_token, EMPTY_REPLY_MESSAGE)
             session.add(message)
             if not message.tool_calls:
                 return await self._ensure_question(message, on_token)
@@ -314,13 +327,14 @@ class Agent:
         started = time.monotonic()
         first_token = True
         self._llm_calls += 1
+        guard = LeakGuard()  # keeps markup and prompt text out of her speech (core/leak.py)
         dashes = DashFilter()  # the persona forbids dashes; this makes it hold (core/style.py)
         async for chunk in self._provider.stream(messages, tools=schemas):
             if first_token and (chunk.delta or chunk.tool_calls):
                 first_token = False
                 self._stages.add("llm_first_token", (time.monotonic() - started) * 1000)
             if chunk.delta:
-                spoken = dashes.feed(chunk.delta)
+                spoken = dashes.feed(guard.feed(chunk.delta))
                 if spoken:
                     text.append(spoken)
                     if on_token is not None:
@@ -328,7 +342,7 @@ class Agent:
             calls.extend(chunk.tool_calls)
             usage = chunk.usage or usage
             finish_reason = chunk.finish_reason or finish_reason
-        if rest := dashes.flush():
+        if rest := dashes.feed(guard.flush()) + dashes.flush():
             text.append(rest)
             if on_token is not None:
                 await _emit(on_token, rest)
@@ -341,6 +355,7 @@ class Agent:
             usage=None if usage is None else dataclasses.asdict(usage),
             tool_calls=[c.name for c in calls],
             chars=sum(len(t) for t in text),
+            leak_blocked=guard.triggered,
         )
         return Message("assistant", "".join(text) or None, tool_calls=tuple(calls))
 

@@ -7,7 +7,7 @@ status: guia
 tags: produção integrações google cloud gcp conta de serviço calendar agenda youtube data api oauth música text-to-speech voz groq whisper stt credenciais certs env cota orçamento
 ---
 
-Todas as integrações rodam **no cérebro**, então valem para qualquer cliente. Cada uma é opcional e independente. As credenciais seguem a regra de sempre: chaves no `.env`, contas de serviço em `certs/` (montada só para leitura), nunca no Git nem na imagem ([ADR-003](adr-003.html), [ADR-013](adr-013.html)).
+Todas as integrações rodam **no cérebro**, então valem para qualquer cliente. Cada uma é opcional e independente. As credenciais seguem a regra de sempre: chaves no `.env`, contas de serviço em `certs/` (montada só para leitura), nunca no Git nem na imagem ([ADR-003](../decisions/ADR-003.md), [ADR-013](../decisions/ADR-013.md)).
 
 ## Visão geral das credenciais {#credenciais}
 
@@ -20,7 +20,7 @@ Todas as integrações rodam **no cérebro**, então valem para qualquer cliente
 | Conta de serviço da voz (JSON) | Sintetizar a fala | Google Cloud → Contas de serviço | `certs/gcp-voice.json` |
 | Chave da Groq | Transcrever a fala (e, se quiser, como LLM) | `console.groq.com/keys` | `.env`: `JUNIPER_GROQ_API_KEY` |
 
-Os comandos administrativos abaixo rodam **dentro do contêiner** do cérebro. Com o [atalho](operacao.html#atalho), `juniper <comando>` equivale a `docker compose -f docker-compose.prod.yml exec brain python -m brain <comando>`.
+Os comandos administrativos abaixo rodam **dentro do contêiner** do cérebro. Com o [atalho](operacao.md#atalho), `juniper <comando>` equivale a `docker compose -f docker-compose.prod.yml exec brain python -m brain <comando>`.
 
 Depois de mexer no `.env`, em `certs/` ou no `config.yaml`, recrie o cérebro:
 
@@ -34,12 +34,12 @@ Num projeto do Google Cloud (crie um em `console.cloud.google.com`), ative em *A
 
 ## Agenda do Google {#calendar}
 
-A Juniper usa uma **conta de serviço**: sem tela de consentimento nem token que expira; o acesso é dado compartilhando as agendas com o e-mail da conta ([ADR-008](adr-008.html), [ADR-010](adr-010.html)).
+A Juniper usa uma **conta de serviço**: sem tela de consentimento nem token que expira; o acesso é dado compartilhando as agendas com o e-mail da conta ([ADR-008](../decisions/ADR-008.md), [ADR-010](../decisions/ADR-010.md)).
 
 1. **Conta de serviço:** *IAM e administrador → Contas de serviço → Criar*. Não precisa de papel no projeto. Em *Chaves → Adicionar chave → JSON*, baixe o arquivo (é a única vez que ele aparece).
 2. **Agenda da Juniper:** no Google Calendar, crie uma agenda (por exemplo, "Juniper") e, em *Compartilhar com pessoas específicas*, adicione o e-mail da conta de serviço com **"Fazer alterações em eventos"**. O ID da agenda está em *Integrar agenda*.
 3. **As suas agendas** (opcional): compartilhe com a conta de serviço com "Fazer alterações em eventos" (para ela gerenciar) ou "Ver todos os detalhes" (só para checar conflitos).
-4. **Configuração** no seu `config.yaml` do servidor (a camada base; veja [Configuração em camadas](producao.html#configuracao)):
+4. **Configuração** no seu `config.yaml` do servidor (a camada base; veja [Configuração em camadas](producao.md#configuracao)):
 
    ```yaml
    google:
@@ -66,11 +66,11 @@ A Juniper usa uma **conta de serviço**: sem tela de consentimento nem token que
 | Erro de acesso à agenda | A agenda não foi compartilhada com o e-mail da conta de serviço. |
 | Horário errado nos eventos | `agent.timezone` errado. |
 
-Detalhes do comportamento: [Agenda Google](google-calendar.html).
+Detalhes do comportamento: [Agenda Google](google-calendar.md).
 
 ## Música (YouTube) {#musica}
 
-A busca usa a YouTube Data API oficial; tocar no celular depende do [app Android](clientes-producao.html#app) conectado ([ADR-024](adr-024.html)).
+A busca usa a YouTube Data API oficial; tocar no celular depende do [app Android](clientes-producao.md#app) conectado ([ADR-024](../decisions/ADR-024.md)).
 
 1. **Chave de API:** *Credenciais → Criar credenciais → Chave de API*; restrinja-a à *YouTube Data API v3*.
 2. **Cliente OAuth** (só para playlists): *Credenciais → ID do cliente OAuth*, tipo **"TVs e dispositivos de entrada limitada"**. Na tela de consentimento, **publique o app** (status "Em produção"; é gratuito e não o torna público): em modo de teste, o token de renovação expira em 7 dias. No login aparece "app não verificado": *Avançado → Acessar*.
@@ -87,11 +87,11 @@ A busca usa a YouTube Data API oficial; tocar no celular depende do [app Android
 5. **Login** (só para playlists): `juniper music login` mostra um código e um endereço do Google; confirme no navegador. Enquanto você não confirma, o log mostra respostas `428` do `oauth2.googleapis.com/token`: é o esperado. O token se renova sozinho e fica no volume `juniper-music`.
 6. **Testar sem celular:** `juniper "procura Oceano do Djavan no YouTube Music"` (peça "procura", não "toca": sem o app conectado, tocar devolve só o link).
 
-**Cota:** 10.000 unidades por dia (busca 100, escrita 50), zerada à meia-noite do Pacífico. A Juniper para em 9.000 (`music.daily_quota_limit`) e avisa com o erro `quota_exhausted`. Detalhes: [Música](musica.html).
+**Cota:** 10.000 unidades por dia (busca 100, escrita 50), zerada à meia-noite do Pacífico. A Juniper para em 9.000 (`music.daily_quota_limit`) e avisa com o erro `quota_exhausted`. Detalhes: [Música](musica.md).
 
 ## Voz {#voz}
 
-A conversa por voz do app passa pelo cérebro: o Google sintetiza a fala (voz Chirp 3 HD) e a Groq transcreve o que o usuário diz (Whisper) ([ADR-023](adr-023.html)).
+A conversa por voz do app passa pelo cérebro: o Google sintetiza a fala (voz Chirp 3 HD) e a Groq transcreve o que o usuário diz (Whisper) ([ADR-023](../decisions/ADR-023.md)).
 
 1. **Conta de serviço da voz:** como na agenda, crie uma conta de serviço (pode ser outra, no projeto com faturamento e a Text-to-Speech ativa) e baixe a chave JSON.
 2. **No servidor:**
@@ -110,8 +110,16 @@ A conversa por voz do app passa pelo cérebro: o Google sintetiza a fala (voz Ch
 
 4. Recrie o cérebro e confira: `juniper voice status` deve mostrar «Credencial do Google: encontrada», «Chave da Groq: configurada» e o gasto do mês.
 
-**Orçamento:** o cérebro conta os caracteres enviados ao Google por mês (padrão: até 1.250.000, `voice.tts.monthly_chars_limit`) e guarda o gasto no volume `juniper-music`, para sobreviver a deploys. Ao atingir o teto, ou se o Google ou a Groq falharem, a voz do próprio celular assume e a Juniper avisa uma vez. O áudio vai à Groq e o texto das respostas ao Google: confira a política de retenção de cada um. Detalhes: [Voz por áudio](voz-audio.html).
+**Orçamento:** o cérebro conta os caracteres enviados ao Google por mês (padrão: até 1.250.000, `voice.tts.monthly_chars_limit`) e guarda o gasto no volume `juniper-music`, para sobreviver a deploys. Ao atingir o teto, ou se o Google ou a Groq falharem, a voz do próprio celular assume e a Juniper avisa uma vez. O áudio vai à Groq e o texto das respostas ao Google: confira a política de retenção de cada um. Detalhes: [Voz por áudio](voz-audio.md).
 
 ## Modelo de linguagem {#llm}
 
-O `config.prod.yaml` usa `llm.priority: [deepinfra, groq]` (o Ollama roda na máquina de quem o usa, não no servidor). Basta uma das chaves (`JUNIPER_DEEPINFRA_API_KEY`, `JUNIPER_GROQ_API_KEY`); com as duas, a segunda é o failover. Para a reflexão noturna da Memória V2, `llm.reflection.provider` e `model` escolhem um modelo mais capaz ([LLM](llm.html), [ADR-009](adr-009.html)).
+O `config.prod.yaml` usa `llm.priority: [deepinfra, groq]` (o Ollama roda na máquina de quem o usa, não no servidor). Basta uma das chaves (`JUNIPER_DEEPINFRA_API_KEY`, `JUNIPER_GROQ_API_KEY`); com as duas, a segunda é o failover. Para a reflexão noturna da Memória V2, `llm.reflection.provider` e `model` escolhem um modelo mais capaz ([LLM](llm.md), [ADR-009](../decisions/ADR-009.md)).
+
+## Para saber mais {#para-saber-mais}
+
+- [Integrações](produto-integracoes.md) (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.
+- [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
+- [Agenda Google](google-calendar.md) (Documentação Técnica): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.

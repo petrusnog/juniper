@@ -1,0 +1,72 @@
+{
+  "collapse-filter": false,
+  "search": "-file:MAPA -file:JUNIPER",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": true,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "[group:Introdução]",
+      "color": {
+        "a": 1,
+        "rgb": 6000111
+      }
+    },
+    {
+      "query": "[group:\"Ambiente Local\"]",
+      "color": {
+        "a": 1,
+        "rgb": 3122815
+      }
+    },
+    {
+      "query": "[group:Produto]",
+      "color": {
+        "a": 1,
+        "rgb": 15246141
+      }
+    },
+    {
+      "query": "[group:\"Documentação Técnica\"]",
+      "color": {
+        "a": 1,
+        "rgb": 9333720
+      }
+    },
+    {
+      "query": "[group:Referência]",
+      "color": {
+        "a": 1,
+        "rgb": 14046846
+      }
+    },
+    {
+      "query": "[group:Produção]",
+      "color": {
+        "a": 1,
+        "rgb": 4044233
+      }
+    },
+    {
+      "query": "path:decisions",
+      "color": {
+        "a": 1,
+        "rgb": 9080728
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": false,
+  "textFadeMultiplier": -0.5,
+  "nodeSizeMultiplier": 1.1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.4,
+  "repelStrength": 12,
+  "linkStrength": 1,
+  "linkDistance": 200,
+  "scale": 1,
+  "close": false
+}

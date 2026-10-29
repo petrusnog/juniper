@@ -57,3 +57,8 @@ sessions/
 # Dumps do Mongo feitos pelo scripts/deploy.sh na VPS
 backups/
 backup.env
+
+# Obsidian (visualizador da documentação): só a configuração compartilhada vai para o git
+docs/.obsidian/*
+!docs/.obsidian/app.json
+!docs/.obsidian/graph.json

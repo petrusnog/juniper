@@ -10,6 +10,7 @@ budget, whole turns at a time, oldest first. Saving and resuming a conversation 
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import uuid
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from brain.config import settings
 from brain.core import clock
+from brain.core.leak import clean
 from brain.core.persona import CORE_PATH, load_core
 from brain.llm.types import Message
 
@@ -120,6 +122,27 @@ class Session:
 
     def _user_indexes(self) -> list[int]:
         return [i for i, m in enumerate(self.history) if m.role == "user"]
+
+    def scrub(self) -> int:
+        """Remove from the history what must never be said (see ``core/leak.py``).
+
+        A reply that leaked before (or that came back empty) would otherwise be sent again with
+        every call, and the model imitates its own history. Returns how many messages changed.
+        """
+        changed = 0
+        kept: list[Message] = []
+        for message in self.history:
+            if message.role == "assistant" and not message.tool_calls:
+                text = clean(message.content or "")
+                if not text:
+                    changed += bool(message.content)
+                    continue  # nothing was said: an empty turn is only noise to imitate
+                if text != message.content:
+                    changed += 1
+                    message = dataclasses.replace(message, content=text)
+            kept.append(message)
+        self.history[:] = kept
+        return changed
 
     def compact(self) -> None:
         """Cap the turns, drop old tool exchanges and fit the token budget.

@@ -14,7 +14,7 @@
 <main id="content">
 <div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-011</div>
 <h1>ADR-011 — Arquitetura de Memória</h1>
-<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (itens marcados <strong>[a confirmar]</strong> aguardam decisão dos mantenedores; o merge deste ADR é a aprovação)</dd><dt>Data</dt><dd>2026-10-13</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 2 — "Memória" (O Hipocampo)</dd><dt>Relaciona-se com</dt><dd>ADR-003 (config), ADR-006 (segurança), ADR-007 (deployment), T-050 a T-060</dd></dl>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> (itens marcados <strong>[a confirmar]</strong> aguardam decisão dos mantenedores; o merge deste ADR é a aprovação)</dd><dt>Data</dt><dd>2026-10-13</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Sprint 2 — "Memória" (O Hipocampo)</dd><dt>Relaciona-se com</dt><dd><a href="adr-003.html">ADR-003</a> (config), <a href="adr-006.html">ADR-006</a> (segurança), <a href="adr-007.html">ADR-007</a> (deployment), T-050 a T-060</dd></dl>
 <h2 id="contexto">Contexto</h2>
 <p>Hoje a Juniper só lembra do que está na conversa aberta, e <code>Session</code> guarda no máximo 8 turnos em RAM. Fechou o terminal, esqueceu tudo. O marco da Sprint 2 é outro: lembrar que o usuário prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, e usar isso sem que ele repita.</p>
 <p>Isso mistura dois problemas diferentes, com ciclos de vida diferentes:</p>

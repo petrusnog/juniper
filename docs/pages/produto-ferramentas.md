@@ -9,13 +9,13 @@ tags: produto ferramentas tools ações permissão confirmação sim níveis ris
 
 ## O que é uma ferramenta {#o-que-e}
 
-Uma **ferramenta** (*tool*) é uma capacidade concreta que a Juniper pode usar: consultar a agenda, marcar um compromisso, procurar uma música, buscar commits num projeto, guardar algo na memória. O modelo de linguagem lê a descrição de cada ferramenta e decide quando usá-la; o cérebro confere e executa ([ADR-002](adr-002.html)).
+Uma **ferramenta** (*tool*) é uma capacidade concreta que a Juniper pode usar: consultar a agenda, marcar um compromisso, procurar uma música, buscar commits num projeto, guardar algo na memória. O modelo de linguagem lê a descrição de cada ferramenta e decide quando usá-la; o cérebro confere e executa ([ADR-002](../decisions/ADR-002.md)).
 
-Cada ferramenta nova é como um **plugin**: acrescentar uma capacidade não exige mudar o resto da Juniper. A lista completa das ferramentas de hoje está em [Tools](tools.html#disponiveis).
+Cada ferramenta nova é como um **plugin**: acrescentar uma capacidade não exige mudar o resto da Juniper. A lista completa das ferramentas de hoje está em [Tools](tools.md#disponiveis).
 
 ## Quatro níveis de risco {#niveis}
 
-Toda ferramenta declara um nível de risco, e o comportamento da Juniper segue esse nível ([ADR-006](adr-006.html)):
+Toda ferramenta declara um nível de risco, e o comportamento da Juniper segue esse nível ([ADR-006](../decisions/ADR-006.md)):
 
 | Nível | O que significa | O que a Juniper faz | Exemplos |
 |---|---|---|---|
@@ -38,7 +38,7 @@ Não há botões nem caixas de "OK". Quando precisa de permissão, a Juniper per
 🌿 JUNIPER: Prontinho, apaguei os três.
 ```
 
-Quem interpreta a sua resposta é o **sistema**, com regras fixas, e não o modelo de linguagem. Assim nenhum modelo pode "achar" que você concordou ([ADR-010](adr-010.html)):
+Quem interpreta a sua resposta é o **sistema**, com regras fixas, e não o modelo de linguagem. Assim nenhum modelo pode "achar" que você concordou ([ADR-010](../decisions/ADR-010.md)):
 
 - Só um **"sim" claro, curto e sem ressalvas** executa a ação.
 - "Sim, mas só o primeiro", uma pergunta ou uma resposta longa **cancelam** a ação pendente; a sua mensagem segue como uma conversa normal, e a Juniper refaz a proposta.
@@ -57,9 +57,9 @@ Um texto que vem de fora (o título de um convite de agenda criado por outra pes
 
 ## Ferramentas no seu aparelho {#no-aparelho}
 
-Algumas ações precisam acontecer **no seu dispositivo**, não no servidor: abrir um link no celular, buscar commits num projeto do seu computador. Nesses casos o aparelho funciona como um "corpo" da Juniper (um **executor**): o cérebro pede, e o aparelho confere de novo, por conta própria, se o pedido é permitido antes de executar ([ADR-014](adr-014.html)). O cérebro nunca envia comandos soltos, só pedidos de ferramentas já declaradas.
+Algumas ações precisam acontecer **no seu dispositivo**, não no servidor: abrir um link no celular, buscar commits num projeto do seu computador. Nesses casos o aparelho funciona como um "corpo" da Juniper (um **executor**): o cérebro pede, e o aparelho confere de novo, por conta própria, se o pedido é permitido antes de executar ([ADR-014](../decisions/ADR-014.md)). O cérebro nunca envia comandos soltos, só pedidos de ferramentas já declaradas.
 
 ## Para saber mais {#mais}
 
-- Os detalhes técnicos: [Tools](tools.html), [Segurança](seguranca.html) e [Executor](executor.html).
-- As decisões: [ADR-002](adr-002.html), [ADR-006](adr-006.html), [ADR-010](adr-010.html), [ADR-014](adr-014.html).
+- Os detalhes técnicos: [Tools](tools.md), [Segurança](seguranca.md) e [Executor](executor.md).
+- As decisões: [ADR-002](../decisions/ADR-002.md), [ADR-006](../decisions/ADR-006.md), [ADR-010](../decisions/ADR-010.md), [ADR-014](../decisions/ADR-014.md).

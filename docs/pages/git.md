@@ -68,7 +68,7 @@ O script `deploy` pergunta coisas (criar branch? como resolver conflito?). Quand
 - O repositório é o diretório atual.
 - A saída do `deploy` (cortada em 20 KB) volta inteira ao LLM, que gasta tokens para resumi-la.
 - Depende do `zsh` instalado, como na v2.
-- As tools são `EXECUTOR`: precisam rodar **na sua máquina**. No modo servidor elas dependem de o CLI se registrar como executor, o que ainda não foi implementado ([Executor](executor.html#cli-executor)); hoje funcionam no modo local.
+- As tools são `EXECUTOR`: precisam rodar **na sua máquina**. No modo servidor elas dependem de o CLI se registrar como executor, o que ainda não foi implementado ([Executor](executor.md#cli-executor)); hoje funcionam no modo local.
 
 ## Testes {#testes}
 
@@ -77,3 +77,9 @@ pytest tests/test_juniper_cmds.py tests/test_cli.py -v
 ```
 
 Usam repositórios git temporários de verdade, sem rede: busca (sem cores, OU entre termos, sem resultado, metacaracteres literais, termos inválidos, fora de repo), as validações do deploy e um deploy completo contra um remoto local, inclusive rodá-lo duas vezes sem duplicar commits e a recusa de criar branch sem terminal.
+
+## Para saber mais {#para-saber-mais}
+
+- [Integrações](produto-integracoes.md) (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.
+- [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
+- [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".

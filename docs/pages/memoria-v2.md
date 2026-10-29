@@ -8,7 +8,7 @@ status: pronta
 tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento metacognição inconsciente algoritmo de sonho camadas personalidade sentimentos interesses adr-017
 ---
 
-> **Nota:** esta página acompanha a [ADR-017](adr-017.html), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.html): o prompt, a extração e os comandos são os de antes.
+> **Nota:** esta página acompanha a [ADR-017](../decisions/ADR-017.md), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.md): o prompt, a extração e os comandos são os de antes.
 
 ## Visão geral {#visao-geral}
 
@@ -23,7 +23,7 @@ A memória v1 guarda **fatos**. A V2 acrescenta camadas em que cada uma é uma *
 5. PERSONALIDADE   traços e narrativa recente (viva)
 ```
 
-O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, o que estudou quando o assunto toca, um interesse) e só atualiza na hora os fatos, a resposta a uma pergunta de verificação e reações emocionais sutis (até 0,3); **à noite** o [algoritmo de sonho](memoria-v2.html#passada-noturna) (o *Juniper dream*, antes chamado passada noturna) relê o que o usuário escreveu, propõe, o código valida e aplica, refina as memórias em lembranças, avança um passo no estudo de cada tema e ela acorda um pouco diferente. As mudanças intensas (até 1,0) são do sonho. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
+O ciclo, em uma frase: **de dia** ela conversa com as camadas à vista (opiniões, estado, personalidade, o que estudou quando o assunto toca, um interesse) e só atualiza na hora os fatos, a resposta a uma pergunta de verificação e reações emocionais sutis (até 0,3); **à noite** o [algoritmo de sonho](memoria-v2.md#passada-noturna) (o *Juniper dream*, antes chamado passada noturna) relê o que o usuário escreveu, propõe, o código valida e aplica, refina as memórias em lembranças, avança um passo no estudo de cada tema e ela acorda um pouco diferente. As mudanças intensas (até 1,0) são do sonho. O marco é testado de ponta a ponta (`tests/test_acceptance_memory_v2.py`), e cada um dos 10 princípios do ADR tem ao menos um teste que o garante.
 
 Tudo mora no **MongoDB** (o mesmo banco da v1), em coleções por camada; só o núcleo é arquivo (`prompts/persona.core.md`). A V2 exige `memory.session.store: mongo`: com arquivos, ligar `memory.v2.enabled` é recusado com uma mensagem clara. O código está em `brain/memory/v2/`.
 
@@ -94,7 +94,7 @@ O algoritmo de sonho só lê o que o usuário **escreveu** e as respostas dela, 
 
 ## O algoritmo de sonho {#passada-noturna kind=módulo file=brain/memory/v2/night.py}
 
-O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. No servidor, pelo atalho do contêiner ([Operação](operacao.html#atalho)).
+O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. No servidor, pelo atalho do contêiner ([Operação](operacao.md#atalho)).
 
 ```text
 coleta  →  fases (observar, refletir, sentir, interesses, estudar, personalidade, refinar)  →  aplicação pelo código  →  diário
@@ -108,7 +108,7 @@ coleta  →  fases (observar, refletir, sentir, interesses, estudar, personalida
 | **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
 | **Orçamento** | `memory.v2.night.max_tokens` e `max_minutes`. Estourou, a fase termina com o estado `budget` e o resto fica para a noite seguinte. |
 | **Dois modelos** | O barato (o do chat) para a observação; `llm.reflection` (provider e modelo) para refletir e estudar, e sem ele usa o do chat. Um modelo de raciocínio pode devolver o "pensamento" antes da resposta: ele é removido antes de qualquer JSON ser lido. |
-| **Registro** | Cada execução grava um `dream_run` (fases, tokens, erros), uma entrada no **diário** (`journal`) e um evento `dream` no [log técnico](observabilidade.html#log-tecnico). |
+| **Registro** | Cada execução grava um `dream_run` (fases, tokens, erros), uma entrada no **diário** (`journal`) e um evento `dream` no [log técnico](observabilidade.md#log-tecnico). |
 
 ### Dry run {#dry-run}
 
@@ -224,7 +224,7 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 | `juniper persona history` | As versões e os eventos que causaram cada mudança. |
 | `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
 
-**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](adr-017.html)).
+**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](../decisions/ADR-017.md)).
 
 ## Interesses próprios {#interesses kind=módulo file=brain/memory/v2/interests.py}
 
@@ -234,7 +234,7 @@ A Juniper desenvolve interesses por conta própria. O usuário pode dizer "odeio
 - **A posição vem da personalidade dela e muda devagar.** O modelo avançado devolve o `appeal` (de -1 a 1: o quanto alguém com o jeito e as preocupações dela gostaria do que leu); o código o transforma em evidência a favor (`alpha`) ou contra (`beta`) do gosto, como numa crença. Só há posição com evidência acumulada (`n ≥ 1`); `like` a partir de 0,65, `dislike` até 0,35, `mixed` no meio, com inércia (manter uma posição custa menos que assumi-la), então uma noite contrária não vira tudo. Estudo morno (|appeal| < 0,15) não conta. Ambivalência é permitida.
 - **Exposição e esquecimento:** voltar ao tema aumenta a `intensity` (uma vez por dia); sem contato ela cai pela metade a cada `half_life_days` (45), contada uma vez por intervalo.
 - **Limites:** até `max_seeds_per_night` (5) temas novos e `max_per_night` (10) estudados por noite: os nunca estudados primeiro, depois os de maior intensidade; o mesmo tema só avança de novo depois de `study_gap_hours` (18).
-- **Estudo progressivo (ADR-019):** cada tema tem um `level` (passos já dados, sem teto) e **a cada noite todos os temas ativos avançam um passo**. Dia 1: ficção científica (passo 1). Dia 2: entram psicodelia e jardinagem (passo 1) e ficção científica vai ao passo 2. Dia 3: todos avançam. Cada passo recebe as notas anteriores e as perguntas em aberto, e o foco muda com o nível: 1 visão geral, 2 história e figuras, 3 obras e conceitos, 4 debates e críticas, 5 conexões e gosto, 6 em diante aprofundar o que ficou em aberto.
+- **Estudo progressivo ([ADR-019](../decisions/ADR-019.md)):** cada tema tem um `level` (passos já dados, sem teto) e **a cada noite todos os temas ativos avançam um passo**. Dia 1: ficção científica (passo 1). Dia 2: entram psicodelia e jardinagem (passo 1) e ficção científica vai ao passo 2. Dia 3: todos avançam. Cada passo recebe as notas anteriores e as perguntas em aberto, e o foco muda com o nível: 1 visão geral, 2 história e figuras, 3 obras e conceitos, 4 debates e críticas, 5 conexões e gosto, 6 em diante aprofundar o que ficou em aberto.
 - **Notas de conhecimento:** o passo devolve afirmações curtas, cada uma com a **incerteza** (`baixa`, `média`, `alta`; sem marcação vale `alta`), e perguntas em aberto para o passo seguinte (elas substituem as antigas). Guardam `source` (`modelo` ou `documento`), o passo que as escreveu e um vetor para busca. Duplicatas são descartadas; passando de `max_notes_per_topic` (40) o código tira as mais antigas e mais incertas. Afirmar ter vivido algo recusa o passo inteiro (sem nota, sem nível).
 - **Temas técnicos ficam de fora:** código, ferramentas e sistemas (`excluded_terms`) não viram semente nem são estudados à noite; o ensino explícito do usuário (`study add`) não passa por essa regra.
 - **Excesso é cortado, não descartado:** uma razão com mais de 160 caracteres, ou um resumo com mais de 300, é encurtado na última palavra inteira; só afirmar que viveu, links ou segredos derrubam o estudo.
@@ -253,7 +253,7 @@ O mundo próprio dela decide o que ela percebe (o *Umwelt*), nos dois sentidos.
 ## Refinamento: de fato bruto a lembrança {#refinamento kind=módulo file=brain/memory/v2/refine.py}
 
 Uma memória bruta é só o fato ("O usuário compõe música psicodélica"). A fase `refine` do sonho
-acrescenta a camada de *lembrar* (ADR-018): o contexto em que o fato surgiu, o que ela sentiu de
+acrescenta a camada de *lembrar* ([ADR-018](../decisions/ADR-018.md)): o contexto em que o fato surgiu, o que ela sentiu de
 verdade, como ela era, a que ele se liga e o quanto importa. **O fato nunca é reescrito e nada é
 inventado:**
 
@@ -293,7 +293,7 @@ Para o que o modelo não sabia, o usuário entrega um texto: `juniper study add 
 
 ## Configuração {#configuracao}
 
-Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.
+Tudo fica em `memory.v2.*` ([Configuração](configuracao.md)). Os números iniciais (pesos, meias-vidas, limiares e tetos) são um **ponto de partida a calibrar com uso real**, e cada um está explicado na tabela da configuração.
 
 - **Ligar:** `memory.v2.enabled: true` com `memory.session.store: mongo`. Rode antes `juniper memory dream --dry-run` para ver o que ela concluiria sem gravar nada, e só então deixe o sonho rodar sozinho (`memory.v2.night.at`, 03:00, depois do backup das 02:30).
 - **Modelos:** o barato (o da conversa) lê, extrai e julga respostas curtas; o avançado (`llm.reflection`) reflete, estuda e propõe. O código decide: nada que o LLM proponha altera uma camada além dos limites.
@@ -303,7 +303,7 @@ Tudo fica em `memory.v2.*` ([Configuração](configuracao.html)). Os números in
 
 - **Só o que o usuário escreveu alimenta as camadas subjetivas.** Saída de tool, título de evento da agenda e (no futuro) páginas da web nunca viram opinião, sentimento nem personalidade. A resposta dela é omitida do material nos turnos em que houve tool.
 - **Guardas de conteúdo por código:** só sobre o usuário e as decisões dele (nunca julgamento de terceiros), sem rótulo clínico, em primeira pessoa, sem segredos, ordens, documentos ou perguntas. Segredos são mascarados antes de qualquer chamada de LLM e os motivos de recusa vão ao log só como códigos.
-- **Tudo é visível, reversível e apagável:** `memory beliefs|concerns|affect|interests|journal`, `persona show|history|revert`, `memory forget` (com cascata) e `memory export`. A memória inteira tem [backup criptografado](backup.html).
+- **Tudo é visível, reversível e apagável:** `memory beliefs|concerns|affect|interests|journal`, `persona show|history|revert`, `memory forget` (com cascata) e `memory export`. A memória inteira tem [backup criptografado](backup.md).
 - **O que ela é:** uma IA, e diz que sim quando perguntam com sinceridade. Sobre estar viva, cogita sem afirmar nem negar. O gosto dela é de segunda mão: ela leu, não ouviu nem viveu.
 - **Limites conhecidos:** a V2 exige MongoDB; a pergunta de verificação pendente não sobrevive a um reinício; o detector de sofrimento é por regras e erra para o lado de acolher; a posição em interesses vem do conhecimento do modelo, sem web; um único usuário (não há multiusuário); e a qualidade das opiniões depende do modelo avançado e de uso real para calibrar.
 
@@ -321,3 +321,10 @@ Para a V2 ser sentida desde o primeiro dia, quatro ajustes (todos configuráveis
 - **Passo maior:** os traços andam até 0,06 por sonho (`persona.max_step`, `step_factor` 0,1).
 
 Nada disso toca tools, tiers ou confirmação (a bateria de regressão continua valendo). Para ver o resultado exato, use `juniper memory prompt`.
+
+## Para saber mais {#para-saber-mais}
+
+- [Personalidade, opiniões e sentimentos](produto-personalidade.md) (Produto): A Memória V2 explicada sem código: opiniões com grau de certeza, sentimentos que passam, interesses próprios, uma personalidade que evolui e o "sonho" noturno que junta tudo.
+- [Memória](memoria.md) (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
+- [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
+- [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.

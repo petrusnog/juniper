@@ -36,7 +36,7 @@ Uma "carta" da conversa.
 | `tool_call_id` | A qual pedido uma resposta `tool` responde |
 | `name` | Nome da tool (em `tool`) |
 
-`to_openai()` converte para o formato OpenAI function calling (ADR-002). O ciclo de uma tool: o `assistant` pede (`tool_calls`), a mensagem `tool` devolve o resultado com o mesmo `tool_call_id`, e o ciclo se repete até o modelo responder só com texto.
+`to_openai()` converte para o formato OpenAI function calling ([ADR-002](../decisions/ADR-002.md)). O ciclo de uma tool: o `assistant` pede (`tool_calls`), a mensagem `tool` devolve o resultado com o mesmo `tool_call_id`, e o ciclo se repete até o modelo responder só com texto.
 
 ### ToolCall {#toolcall kind=classe file=brain/llm/types.py}
 
@@ -88,7 +88,7 @@ O contrato. Um provider que não implementa os três métodos nem consegue ser c
 
 ### DeepInfraProvider {#deepinfraprovider kind=classe file=brain/llm/deepinfra_provider.py}
 
-O LLM principal na nuvem (ADR-009). API compatível com a da OpenAI via `httpx`, sem SDK.
+O LLM principal na nuvem ([ADR-009](../decisions/ADR-009.md)). API compatível com a da OpenAI via `httpx`, sem SDK.
 
 | Item | Valor |
 |---|---|
@@ -143,7 +143,7 @@ Um provider "de mentira" que esconde vários de verdade. Implementa a mesma inte
 - **No stream, só troca antes do primeiro chunk.** Depois de já ter entregue texto, relança o erro: reenviar a pergunta repetiria o começo da resposta.
 - Se **todos** falham, sai um `LLMError` com a causa de cada provider.
 - `last_provider` diz quem atendeu a última chamada; `providers` lista (somente leitura); `health_check()` consulta todos em paralelo e vale `True` se **algum** estiver saudável; `aclose()` fecha todos.
-- `on_failover(falhou, erro, próximo)` é um gancho para o cliente avisar o usuário ("A DeepInfra recusou as credenciais. Vou tentar a Groq.") em vez de ficar em silêncio. Toda troca também vai para o [log](observabilidade.html) (evento `failover`).
+- `on_failover(falhou, erro, próximo)` é um gancho para o cliente avisar o usuário ("A DeepInfra recusou as credenciais. Vou tentar a Groq.") em vez de ficar em silêncio. Toda troca também vai para o [log](observabilidade.md) (evento `failover`).
 
 ```python
 router = LLMRouter()                  # lê llm.priority
@@ -175,7 +175,7 @@ llm:
     timeout: 300
 ```
 
-Segredos no `.env`: `JUNIPER_DEEPINFRA_API_KEY` e `JUNIPER_GROQ_API_KEY`. Sem a chave da DeepInfra a Juniper não quebra: o provider falha com "chave ausente" e o router começa pela Groq. Se você já tinha um `config.yaml`, a linha `priority` dele vence o padrão do código. Referência completa em [Configuração](configuracao.html#llm).
+Segredos no `.env`: `JUNIPER_DEEPINFRA_API_KEY` e `JUNIPER_GROQ_API_KEY`. Sem a chave da DeepInfra a Juniper não quebra: o provider falha com "chave ausente" e o router começa pela Groq. Se você já tinha um `config.yaml`, a linha `priority` dele vence o padrão do código. Referência completa em [Configuração](configuracao.md#llm).
 
 ```bash
 juniper -p deepinfra "oi"    # força só a DeepInfra, sem failover
@@ -195,3 +195,12 @@ pytest tests/test_llm_base.py tests/test_ollama_provider.py tests/test_groq_prov
 ```
 
 Sem rede nem chave: `httpx.MockTransport` para Ollama e DeepInfra, um cliente falso do SDK (com as exceções reais) para a Groq e providers falsos para o router (1º responde; 1º falha e o 2º responde; todos falham; falha no meio do stream não duplica saída).
+
+## Para saber mais {#para-saber-mais}
+
+- [Modelos de linguagem (LLM)](produto-llm.md) (Produto): O que é um modelo de linguagem, quais a Juniper usa, por que ela tem mais de um e o que isso significa para custo, velocidade e privacidade.
+- [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Integrações Google Cloud e Groq](integracoes-producao.md) (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.

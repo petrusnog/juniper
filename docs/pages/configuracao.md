@@ -9,7 +9,7 @@ tags: config yaml env variáveis ambiente settings pydantic JUNIPER_ opções
 
 ## Visão geral {#visao-geral}
 
-A configuração tem **um só ponto de acesso**: `from brain.config import settings` (`brain/config.py`, pydantic-settings). Nenhum outro módulo lê variável de ambiente, YAML ou `.env` diretamente (ADR-003).
+A configuração tem **um só ponto de acesso**: `from brain.config import settings` (`brain/config.py`, pydantic-settings). Nenhum outro módulo lê variável de ambiente, YAML ou `.env` diretamente ([ADR-003](../decisions/ADR-003.md)).
 
 - **`config.yaml`** guarda preferências (modelos, limites, agendas). Copie de `config.yaml.example`.
 - **`.env`** guarda **segredos** (chaves de API, usuário e senha do banco). Nunca é versionado e fica com permissão `600`.
@@ -33,10 +33,10 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | Variável | O que é |
 |---|---|
 | `JUNIPER_DEEPINFRA_API_KEY` | Chave da DeepInfra (deepinfra.com/dash/api_keys). |
-| `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.html)). |
+| `JUNIPER_TELEGRAM_BOT_TOKEN` | Token do bot do Telegram (o `@BotFather` entrega). Só o bot usa; é um segredo, nunca vai para código, imagem, log nem PR ([Telegram](telegram.md)). |
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
-| `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.html#login)). |
-| `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.html)). |
+| `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.md#login)). |
+| `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.md)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
 | `JUNIPER_CONFIG_PATH` | Caminho do `config.yaml`. |
@@ -65,13 +65,13 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `agent.max_iterations` | `5` | Voltas máximas do loop de tools por pedido (1 a 50). |
 | `agent.language` | `pt-BR` | Idioma da interação. |
 | `agent.timezone` | `America/Sao_Paulo` | Fuso usado para "amanhã às 16h"; validado ao carregar. |
-| `agent.show_timing` | `false` | Mostra no terminal o tempo de cada etapa ([Observabilidade](observabilidade.html#tempos)). |
+| `agent.show_timing` | `false` | Mostra no terminal o tempo de cada etapa ([Observabilidade](observabilidade.md#tempos)). |
 
 ## deployment {#deployment}
 
 | Opção | Padrão | O que faz |
 |---|---|---|
-| `deployment.mode` | `local` | `local` (o cérebro roda dentro do CLI) ou `server` (cérebro remoto; [Servidor WebSocket](servidor.html)). |
+| `deployment.mode` | `local` | `local` (o cérebro roda dentro do CLI) ou `server` (cérebro remoto; [Servidor WebSocket](servidor.md)). |
 | `deployment.server.host` | `127.0.0.1` | Onde o servidor escuta. |
 | `deployment.server.port` | `8765` | Porta. |
 | `deployment.auth.token_file` | `~/.juniper/token` | Arquivo do token estático dos clientes. |
@@ -80,15 +80,15 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 
 | Opção | Padrão | O que faz |
 |---|---|---|
-| `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.html#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
+| `trace.enabled` | `false` | Liga o diário das mensagens (`message.log`): cada interação contada em texto corrido, camada por camada ([Observabilidade](observabilidade.md#message-log)). Guarda o texto das conversas, por isso vem desligado. No `config.yaml` pessoal, liga o CLI e o contêiner de desenvolvimento juntos. |
 | `trace.file` | `logs/message.log` | Onde escrever o diário. |
-| `dashboard.enabled` | `true` | Sobe o dashboard web junto do servidor (`juniper serve`). Somente leitura ([Dashboard](dashboard.html)). |
+| `dashboard.enabled` | `true` | Sobe o dashboard web junto do servidor (`juniper serve`). Somente leitura ([Dashboard](dashboard.md)). |
 | `dashboard.host` | vazio | Endereço do dashboard; vazio usa o mesmo do servidor (`deployment.server.host`). |
 | `dashboard.port` | `8766` | Porta do dashboard. Em produção, publicada só no endereço da rede privada. |
 | `dashboard.transcripts` | `true` | Mostra as conversas (com segredos mascarados) no dashboard. |
 | `dashboard.session_hours` | `12` | Quanto tempo vale o login antes de pedir o token de novo. |
 | `dashboard.allowed_hosts` | vazio | Nomes de host aceitos além de IPs, `localhost` e `*.ts.net` (defesa contra DNS rebinding). |
-| `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](adr-017.html)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
+| `memory.v2.enabled` | `false` | Liga a **Memória V2** ([ADR-017](../decisions/ADR-017.md)): crenças, sentimentos, interesses e personalidade viva. Exige `memory.session.store: mongo`; com arquivos, ligar é recusado com uma mensagem clara. Desligada, nada muda em relação à memória de longo prazo. |
 | `memory.v2.max_tokens` | `600` | Teto (estimado) do bloco da V2 no prompt da conversa. |
 | `memory.v2.night.at` | `"03:00"` | Hora diária (HH:MM, fuso do agente) do algoritmo de sonho, o "inconsciente". |
 | `memory.v2.night.max_tokens` | `300000` | Orçamento de tokens de LLM por sonho; estourou, o resto fica para o sonho seguinte. |
@@ -119,7 +119,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.live_max_per_hour` | `12` | Reações por hora, para ninguém programar as emoções dela com spam. 0 desliga. |
 | `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
-| `memory.v2.refine.enabled` | `true` | Liga o refinamento: o sonho transforma memórias brutas em lembranças (contexto, sentimento, como ela era, ligações, relevância). A bruta fica como `superseded` (ADR-018). |
+| `memory.v2.refine.enabled` | `true` | Liga o refinamento: o sonho transforma memórias brutas em lembranças (contexto, sentimento, como ela era, ligações, relevância). A bruta fica como `superseded` ([ADR-018](../decisions/ADR-018.md)). |
 | `memory.v2.refine.max_per_night` | `20` | Quantas memórias brutas o sonho refina por noite, das mais recentes para as mais antigas. 0 desliga. |
 | `memory.v2.refine.context_turns` | `2` | Quantos turnos de cada lado do turno de origem entram como contexto da lembrança. |
 | `memory.v2.refine.neighbors` | `3` | Quantas memórias vizinhas são oferecidas ao modelo como possíveis ligações. 0 não oferece nenhuma. |
@@ -132,14 +132,14 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
 | `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
-| `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.html#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |
+| `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.md#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |
 | `logging.wire_max_chars` | `20000` | Maior corpo gravado por requisição ou resposta; o resto é cortado, com a contagem do que sobrou. |
 | `logging.retention_days` | `3` | Quantos dias anteriores a hoje os logs ficam no disco. Os de dias anteriores a hoje são compactados (`.gz`); os mais velhos que isto são apagados. |
 | `logging.rotate_at` | `"00:10"` | Hora diária (HH:MM, no fuso do agente) em que o servidor compacta e apaga os logs antigos. |
 
 ## telegram {#telegram-config}
 
-O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token fica em `JUNIPER_TELEGRAM_BOT_TOKEN`, não aqui.
+O bot do Telegram ([Telegram](telegram.md), [ADR-016](../decisions/ADR-016.md)). O token fica em `JUNIPER_TELEGRAM_BOT_TOKEN`, não aqui.
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -154,11 +154,11 @@ O bot do Telegram ([Telegram](telegram.html), [ADR-016](adr-016.html)). O token 
 | `tools.security.shell_allowlist` | `git, ls, cat, grep, rg, fd, jq, find, wc, head, tail` | Binários que a futura `run_shell` aceita. |
 | `tools.security.shell_require_confirmation` | `true` | Exige confirmação para a `run_shell`. |
 | `tools.security.confirmation_timeout` | `60` | Segundos que o modo de confirmação por callback espera (1 a 600). |
-| `tools.open_url.trusted_domains` | `music.youtube.com` | Domínios (e subdomínios) cujos links a `open_url` abre **sem perguntar**. Não afrouxa a política de URL; entradas que não são um domínio (com `/`, `:`, `@` ou um IP) falham ao carregar a configuração. Veja [Executor](executor.html#confianca). |
+| `tools.open_url.trusted_domains` | `music.youtube.com` | Domínios (e subdomínios) cujos links a `open_url` abre **sem perguntar**. Não afrouxa a política de URL; entradas que não são um domínio (com `/`, `:`, `@` ou um IP) falham ao carregar a configuração. Veja [Executor](executor.md#confianca). |
 
 ## music {#music}
 
-A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
+A música pela YouTube Data API ([Música](musica.md)). Desligada por padrão.
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -171,7 +171,7 @@ A música pela YouTube Data API ([Música](musica.html)). Desligada por padrão.
 
 ## voice {#voice}
 
-A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.html)). **Desligada por padrão**: nada muda para quem não usa.
+A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.md)). **Desligada por padrão**: nada muda para quem não usa.
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -201,7 +201,7 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.html)). **Desligada 
 
 ## google {#google}
 
-Veja a página [Agenda Google](google-calendar.html).
+Veja a página [Agenda Google](google-calendar.md).
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -215,7 +215,7 @@ Veja a página [Agenda Google](google-calendar.html).
 
 ## memory {#memory}
 
-Veja [Memória](memoria.html).
+Veja [Memória](memoria.md).
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -250,7 +250,7 @@ Veja [Memória](memoria.html).
 
 ## metadocs {#metadocs}
 
-A Juniper consultando a própria documentação ([Metadocumentação](metadocs.html), [ADR-025](adr-025.html)). A busca é local (BM25), sem LLM e sem rede, e só lê `docs/pages` e `docs/decisions`.
+A Juniper consultando a própria documentação ([Metadocumentação](metadocs.md), [ADR-025](../decisions/ADR-025.md)). A busca é local (BM25), sem LLM e sem rede, e só lê `docs/pages` e `docs/decisions`.
 
 | Opção | Padrão | O que faz |
 |---|---|---|
@@ -264,3 +264,16 @@ A Juniper consultando a própria documentação ([Metadocumentação](metadocs.h
 1. Crie ou altere o submodelo pydantic em `brain/config.py`.
 2. Atualize o `config.yaml.example`.
 3. Adicione o teste em `tests/test_config.py` e a opção nesta página (um teste confere que toda opção das settings aparece aqui).
+
+## Para saber mais {#para-saber-mais}
+
+- [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
+- [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
+- [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
+- [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
+- [Metadocumentação](metadocs.md) (Documentação Técnica): Como a Juniper responde sobre a própria arquitetura: detector de perguntas por palavras-chave, busca BM25 local na documentação, contexto automático e a tool docs_search.
+- [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
+- [Agenda Google](google-calendar.md) (Documentação Técnica): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
+- [Deploy do cérebro numa VPS](deploy-vps.md) (Produção): Tutorial completo para levar o cérebro a uma VPS de qualquer provedor: acesso e SSH, sistema, Docker, rede privada, firewall, segredos, subida, verificação e varredura de portas.
+- [Integrações Google Cloud e Groq](integracoes-producao.md) (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.

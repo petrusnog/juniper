@@ -8,7 +8,7 @@ status: pronta
 tags: metadocumentação metadocs documentação autoconhecimento docs_search bm25 busca local palavras-chave detector stemming sinônimos contexto segredos adr-025
 ---
 
-> **Nota:** esta página detalha o [ADR-025](adr-025.html). Código em `brain/metadocs/` e `brain/tools/docs.py`.
+> **Nota:** esta página detalha o [ADR-025](../decisions/ADR-025.md). Código em `brain/metadocs/` e `brain/tools/docs.py`.
 
 ## Visão geral {#visao-geral}
 
@@ -84,7 +84,7 @@ Não há prompt [y/N]. Quando uma tool pede aprovação, a Juniper pergunta em p
 
 ## Configuração {#configuracao}
 
-`metadocs.enabled`, `metadocs.auto_context`, `metadocs.top_k` e `metadocs.max_chars` ([Configuração](configuracao.html#metadocs)). Em contêiner, a imagem de produção copia `docs/pages` e `docs/decisions`; no ambiente de desenvolvimento a pasta `docs/` é montada, então uma página editada já vale na próxima pergunta.
+`metadocs.enabled`, `metadocs.auto_context`, `metadocs.top_k` e `metadocs.max_chars` ([Configuração](configuracao.md#metadocs)). Em contêiner, a imagem de produção copia `docs/pages` e `docs/decisions`; no ambiente de desenvolvimento a pasta `docs/` é montada, então uma página editada já vale na próxima pergunta.
 
 ## Limites {#limites}
 
@@ -97,3 +97,11 @@ Não há prompt [y/N]. Quando uma tool pede aprovação, a Juniper pergunta em p
 ```bash
 pytest tests/test_metadocs.py -v
 ```
+
+## Para saber mais {#para-saber-mais}
+
+- [Como contribuir](contribuindo.md) (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.
+- [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.

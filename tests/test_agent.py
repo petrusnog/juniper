@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from brain.core.agent import LIMIT_MESSAGE, Agent
+from brain.core.agent import EMPTY_REPLY_MESSAGE, LIMIT_MESSAGE, Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session
 from brain.llm.base import LLMProvider
@@ -135,10 +135,9 @@ async def test_direct_answer_streams_tokens() -> None:
     tokens: list[str] = []
     out = await agent.run("oi", on_token=tokens.append)
     assert out == "Oi, tudo bem?"
-    assert (
-        "".join(tokens) == "Oi, tudo bem?"
-    )  # a space may travel with the next chunk (core/style.py)
-    assert tokens[0].startswith("Oi,") and len(tokens) == 2
+    # The start of an answer is held back to look for leaked planning (core/leak.py), so a short
+    # answer may arrive in one piece.
+    assert "".join(tokens) == "Oi, tudo bem?"
     first = provider.seen[0]
     assert first[0] == Message("system", "persona")
     assert first[1].role == "user" and first[1].content and first[1].content.endswith("] oi")
@@ -152,7 +151,32 @@ async def test_async_token_callback() -> None:
         tokens.append(t)
 
     await agent.run("oi", on_token=on_token)
-    assert tokens == ["a", "b"]
+    assert "".join(tokens) == "ab"
+
+
+async def test_long_answer_still_streams() -> None:
+    sentence = "Isso é uma frase comum de conversa. "
+    agent, _, _ = make_agent([say(*[sentence] * 12)])
+    tokens: list[str] = []
+    await agent.run("oi", on_token=tokens.append)
+    assert "".join(tokens).strip() == (sentence * 12).strip()
+    assert len(tokens) > 1  # not everything waited for the end
+
+
+async def test_leaked_markup_never_reaches_the_user_or_the_history() -> None:
+    agent, _, _ = make_agent([say("</｜DSML｜tool_calls>"), say("Pronto, Petrus.")])
+    tokens: list[str] = []
+    out = await agent.run("oi", on_token=tokens.append)
+    assert out == "Pronto, Petrus."  # the cut reply was empty: one retry
+    assert "DSML" not in "".join(tokens)
+    assert all("DSML" not in (m.content or "") for m in agent.session.history)
+
+
+async def test_two_empty_replies_become_a_sentence_never_a_null() -> None:
+    agent, _, _ = make_agent([say(""), say("")])
+    out = await agent.run("oi")
+    assert out == EMPTY_REPLY_MESSAGE
+    assert agent.session.history[-1].content == EMPTY_REPLY_MESSAGE
 
 
 async def test_single_tool_call() -> None:

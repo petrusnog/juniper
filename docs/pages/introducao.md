@@ -20,14 +20,14 @@ Três ideias guiam o projeto:
 
 | Área | O que ela faz | Saiba mais |
 |---|---|---|
-| Conversa | Responde em português, com personalidade própria, em texto (com a resposta chegando aos poucos) ou por voz. | [Como funciona](produto.html) |
-| Agenda | Lê, marca, altera e desmarca compromissos no Google Calendar, checando conflitos antes de perguntar. | [Integrações](produto-integracoes.html#agenda) |
-| Música | Procura e toca músicas no YouTube Music do celular, cria playlists e anota o seu gosto musical. | [Integrações](produto-integracoes.html#musica) |
-| Git | Busca commits e faz o deploy de uma feature (cherry-pick em `develop` e `stage`) no repositório local. | [Integrações](produto-integracoes.html#git) |
-| Memória | Lembra da conversa atual, de fatos duráveis sobre você e do seu perfil; opcionalmente forma opiniões, sentimentos, interesses e uma personalidade que evolui. | [Memória](produto-memoria.html), [Personalidade](produto-personalidade.html) |
-| Canais | Terminal (`juniper`), bot do Telegram, app Android com chat de texto e de voz, e um painel web somente leitura. | [Onde conversar](produto-canais.html) |
-| Autoconhecimento | Responde sobre a própria arquitetura e funcionamento consultando esta documentação, com uma busca local que não gasta tokens à toa. | [Como funciona](produto.html#autoconhecimento) |
-| Resiliência | Usa vários provedores de modelo de linguagem: se um falhar, o próximo assume sem interromper a conversa. | [Modelos de linguagem](produto-llm.html) |
+| Conversa | Responde em português, com personalidade própria, em texto (com a resposta chegando aos poucos) ou por voz. | [Como funciona](produto.md) |
+| Agenda | Lê, marca, altera e desmarca compromissos no Google Calendar, checando conflitos antes de perguntar. | [Integrações](produto-integracoes.md#agenda) |
+| Música | Procura e toca músicas no YouTube Music do celular, cria playlists e anota o seu gosto musical. | [Integrações](produto-integracoes.md#musica) |
+| Git | Busca commits e faz o deploy de uma feature (cherry-pick em `develop` e `stage`) no repositório local. | [Integrações](produto-integracoes.md#git) |
+| Memória | Lembra da conversa atual, de fatos duráveis sobre você e do seu perfil; opcionalmente forma opiniões, sentimentos, interesses e uma personalidade que evolui. | [Memória](produto-memoria.md), [Personalidade](produto-personalidade.md) |
+| Canais | Terminal (`juniper`), bot do Telegram, app Android com chat de texto e de voz, e um painel web somente leitura. | [Onde conversar](produto-canais.md) |
+| Autoconhecimento | Responde sobre a própria arquitetura e funcionamento consultando esta documentação, com uma busca local que não gasta tokens à toa. | [Como funciona](produto.md#autoconhecimento) |
+| Resiliência | Usa vários provedores de modelo de linguagem: se um falhar, o próximo assume sem interromper a conversa. | [Modelos de linguagem](produto-llm.md) |
 
 ## Como ela é construída, em um minuto {#construcao}
 
@@ -37,7 +37,7 @@ Três ideias guiam o projeto:
 - Os **clientes** falam com o cérebro por um protocolo único e versionado. O app Android é escrito em React Native.
 - Em **produção**, o cérebro roda em contêineres Docker numa VPS, sem nenhuma porta aberta para a internet: os clientes chegam por uma rede privada.
 
-O desenho completo está em [Arquitetura](architecture.html) e cada escolha tem o seu registro nas [Decisões (ADRs)](adr.html).
+O desenho completo está em [Arquitetura](architecture.md) e cada escolha tem o seu registro nas [Decisões (ADRs)](adr.html).
 
 ## Próximos passos {#proximos-passos}
 
@@ -45,11 +45,20 @@ Escolha a trilha que combina com o seu objetivo:
 
 | Se você quer... | Siga a trilha | Comece por |
 |---|---|---|
-| Entender o produto, sem precisar ler código | **Produto** | [Como a Juniper funciona](produto.html) |
-| Desenvolver features e contribuir | **Ambiente Local** | [Como contribuir](contribuindo.html) e [Primeiros passos](primeiros-passos.html) |
-| Entender como cada componente funciona por dentro | **Documentação Técnica** | [Visão geral da arquitetura](architecture.html) |
-| Consultar contratos, opções e o porquê das decisões | **Referência** | [API WebSocket](protocolo.html), [Configuração](configuracao.html), [ADRs](adr.html) |
-| Implantar a Juniper no seu próprio servidor | **Produção** | [Visão geral da produção](producao.html) |
-| Escrever um cliente ou integrar outro sistema ao cérebro | **Produção** e **Referência** | [Integrar com o cérebro](integrar-cliente.html) |
+| Entender o produto, sem precisar ler código | **Produto** | [Como a Juniper funciona](produto.md) |
+| Desenvolver features e contribuir | **Ambiente Local** | [Como contribuir](contribuindo.md) e [Primeiros passos](primeiros-passos.md) |
+| Entender como cada componente funciona por dentro | **Documentação Técnica** | [Visão geral da arquitetura](architecture.md) |
+| Consultar contratos, opções e o porquê das decisões | **Referência** | [API WebSocket](protocolo.md), [Configuração](configuracao.md), [ADRs](adr.html) |
+| Implantar a Juniper no seu próprio servidor | **Produção** | [Visão geral da produção](producao.md) |
+| Escrever um cliente ou integrar outro sistema ao cérebro | **Produção** e **Referência** | [Integrar com o cérebro](integrar-cliente.md) |
 
 > **Nota:** a Juniper é um sistema de **um único usuário**: um cérebro serve a uma pessoa, em vários dispositivos. Não há contas nem separação de dados entre pessoas diferentes.
+
+## Para saber mais {#para-saber-mais}
+
+- [Como contribuir](contribuindo.md) (Ambiente Local): O fluxo de trabalho (issue, branch, PR), as regras de arquitetura, os testes exigidos, as convenções de código e como manter a documentação em dia.
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Como a Juniper funciona](produto.md) (Produto): A Juniper explicada sem código: o cérebro e os corpos, o caminho de uma mensagem e o que acontece quando ela precisa agir.
+- [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
+- [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
+- [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.

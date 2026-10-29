@@ -10,12 +10,12 @@ tags: memória hipocampo rag sessão longo prazo mongodb embeddings perfil aceit
 
 ## Visão geral {#visao-geral}
 
-A Juniper lembra em duas camadas ([ADR-011](adr-011.html)):
+A Juniper lembra em duas camadas ([ADR-011](../decisions/ADR-011.md)):
 
 | Camada | O que guarda | Onde | Página |
 |---|---|---|---|
-| **Memória de sessão** (curto prazo) | A conversa atual, dentro de um orçamento de tokens; pode ser retomada com `--resume`. | Arquivos JSON ou MongoDB | [Memória de sessão](memoria-sessao.html) |
-| **Memória de longo prazo** | Fatos duráveis sobre você (preferências, projetos, fatos) e o seu **perfil** (quem você é), achados por significado. | MongoDB (`memories` e `profile`) | [Memória de longo prazo](memoria-longo-prazo.html) |
+| **Memória de sessão** (curto prazo) | A conversa atual, dentro de um orçamento de tokens; pode ser retomada com `--resume`. | Arquivos JSON ou MongoDB | [Memória de sessão](memoria-sessao.md) |
+| **Memória de longo prazo** | Fatos duráveis sobre você (preferências, projetos, fatos) e o seu **perfil** (quem você é), achados por significado. | MongoDB (`memories` e `profile`) | [Memória de longo prazo](memoria-longo-prazo.md) |
 
 O objetivo: a Juniper lembra que você prefere ZSH, que odeia tabulação com espaço e que o projeto X usa Laravel 11, **entre sessões**, e deixa de ser estranha.
 
@@ -30,11 +30,11 @@ sua mensagem ──► recuperação ──► o prompt ganha <perfil> e <memori
                  VectorStore  ◄──── grava / atualiza / substitui ◄──── LLM de extração + filtro de segredos
 ```
 
-1. **A cada mensagem**, o [perfil](memoria-longo-prazo.html#perfil) entra sempre; as memórias mais parecidas com o assunto entram dentro de um orçamento de tokens ([recuperação](memoria-longo-prazo.html#recuperacao)).
-2. **Depois de cada resposta**, um trabalhador em segundo plano ([extração](memoria-longo-prazo.html#extracao)) separa o que vale lembrar, sem duplicar e sem segredos.
-3. **Você controla**: `juniper memory list|search|forget|export|profile` ([CLI](cli.html#memory)) e as tools `remember`, `recall`, `forget` ([tools de memória](memoria-longo-prazo.html#tools-de-memoria)).
+1. **A cada mensagem**, o [perfil](memoria-longo-prazo.md#perfil) entra sempre; as memórias mais parecidas com o assunto entram dentro de um orçamento de tokens ([recuperação](memoria-longo-prazo.md#recuperacao)).
+2. **Depois de cada resposta**, um trabalhador em segundo plano ([extração](memoria-longo-prazo.md#extracao)) separa o que vale lembrar, sem duplicar e sem segredos.
+3. **Você controla**: `juniper memory list|search|forget|export|profile` ([CLI](cli.md#memory)) e as tools `remember`, `recall`, `forget` ([tools de memória](memoria-longo-prazo.md#tools-de-memoria)).
 
-Princípios do [ADR-011](adr-011.html): **memória nunca é editada, só substituída** (a antiga fica `superseded`, para auditoria); **segredos nunca são gravados**; um registro ruim não esconde os bons; uma falha de memória **nunca derruba o chat**.
+Princípios do [ADR-011](../decisions/ADR-011.md): **memória nunca é editada, só substituída** (a antiga fica `superseded`, para auditoria); **segredos nunca são gravados**; um registro ruim não esconde os bons; uma falha de memória **nunca derruba o chat**.
 
 ## Ligar a memória {#ligar}
 
@@ -44,7 +44,7 @@ A memória de sessão funciona com arquivos, sem instalar nada. A de longo prazo
 juniper install --memory=mongo     # confere o Docker, sobe o banco, cria usuário e senha e liga o store
 ```
 
-Detalhes (e como fazer à mão) em [Memória de sessão](memoria-sessao.html#mongodb). Para desligar a de longo prazo sem desligar o banco: `memory.extraction.enabled: false`.
+Detalhes (e como fazer à mão) em [Memória de sessão](memoria-sessao.md#mongodb). Para desligar a de longo prazo sem desligar o banco: `memory.extraction.enabled: false`.
 
 ## Validar na sua máquina {#validar}
 
@@ -115,4 +115,15 @@ Há também um teste com o modelo real de embeddings que imprime as notas das pe
 
 ## Além dos fatos {#futuro}
 
-A [Memória V2](memoria-v2.html) ([ADR-017](adr-017.html)), opcional, constrói sobre esta base opiniões, sentimentos, interesses, uma personalidade viva e o refinamento das memórias em lembranças ([ADR-018](adr-018.html)).
+A [Memória V2](memoria-v2.md) ([ADR-017](../decisions/ADR-017.md)), opcional, constrói sobre esta base opiniões, sentimentos, interesses, uma personalidade viva e o refinamento das memórias em lembranças ([ADR-018](../decisions/ADR-018.md)).
+
+## Para saber mais {#para-saber-mais}
+
+- [Memória](produto-memoria.md) (Produto): Como a Juniper lembra: a conversa atual, os fatos duráveis sobre você, o seu perfil, a busca por significado e como ver e apagar tudo.
+- [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
+- [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
+- [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
+- [Memória de sessão](memoria-sessao.md) (Documentação Técnica): A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).
+- [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
+- [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
+- [Backup da memória](backup.md) (Produção): Como a memória da Juniper (o banco MongoDB) é copiada, criptografada e versionada num repositório privado do GitHub, e como restaurar.

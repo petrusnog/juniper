@@ -10,9 +10,9 @@ tags: calendar agenda google evento compromisso conta de serviço conflito list_
 
 ## Visão geral {#visao-geral}
 
-A primeira tool real da Juniper: ler, marcar, alterar e desmarcar os seus compromissos no Google Calendar, inclusive na sua agenda principal. Código em `brain/tools/google_calendar.py`. Decisões de fundo nos ADR-008 (conta de serviço, agenda "Juniper", relógio) e ADR-010 (gerenciamento completo) em [Decisões](adr.html).
+A primeira tool real da Juniper: ler, marcar, alterar e desmarcar os seus compromissos no Google Calendar, inclusive na sua agenda principal. Código em `brain/tools/google_calendar.py`. Decisões de fundo nos [ADR-008](../decisions/ADR-008.md) (conta de serviço, agenda "Juniper", relógio) e [ADR-010](../decisions/ADR-010.md) (gerenciamento completo) em [Decisões](adr.html).
 
-A Juniper fala com o Google por uma **conta de serviço**: sem tela de consentimento, sem token que expira, sem navegador. O acesso é dado **compartilhando as agendas** com o e-mail da conta. Para criar a conta e a chave, veja [Instalação](install.html#gcp).
+A Juniper fala com o Google por uma **conta de serviço**: sem tela de consentimento, sem token que expira, sem navegador. O acesso é dado **compartilhando as agendas** com o e-mail da conta. Para criar a conta e a chave, veja [Instalação](install.md#gcp).
 
 ## As quatro tools {#tools}
 
@@ -47,14 +47,14 @@ A Juniper fala com o Google por uma **conta de serviço**: sem tela de consentim
 2. O `precheck` valida a entrada e procura conflitos **antes** de te perguntar qualquer coisa.
 3. Em conflito, o evento **não é criado**: o erro traz nome, horário e, se for apagável, o id. O LLM pergunta pelo nome do compromisso.
 4. Se você concordar, `delete_event` e depois `create_event`.
-5. Sem conflito, a Juniper pergunta "Posso marcar «Dentista», segunda 16h–17h?" e só cria depois do seu "sim" ([confirmação na conversa](agente.html#confirmacao)).
+5. Sem conflito, a Juniper pergunta "Posso marcar «Dentista», segunda 16h–17h?" e só cria depois do seu "sim" ([confirmação na conversa](agente.md#confirmacao)).
 
 Se o conflito estiver na agenda principal e ela só puder ler, a Juniper apenas informa; a decisão é sua. O `run` checa de novo antes de gravar.
 
 ## Como a hora é interpretada {#hora}
 
 - A tool recebe datas em ISO 8601 (`2026-10-12T16:00`). Sem fuso, vale o fuso configurado (`agent.timezone`); com fuso, é convertido.
-- O LLM sabe a data de hoje porque o agente injeta o [relógio](agente.html#clock) em cada pergunta.
+- O LLM sabe a data de hoje porque o agente injeta o [relógio](agente.md#clock) em cada pergunta.
 - Horário no passado é recusado e a mensagem diz que horas são "agora".
 - Sem duração, o evento dura `google.default_duration_minutes` (60).
 - Eventos de **dia inteiro** não bloqueiam um horário (feriados e aniversários não impedem marcar um dentista); eventos **colados** (um termina às 16h, o outro começa às 16h) não são conflito.
@@ -101,3 +101,10 @@ pytest tests/test_google_calendar.py -v
 ```
 
 Os testes usam um cliente falso e relógio fixo: listar, criar, conflitos (apagável e não apagável), datas inválidas e passadas, apagar, mapeamento de erros HTTP e a garantia de que a chave não vaza.
+
+## Para saber mais {#para-saber-mais}
+
+- [Integrações](produto-integracoes.md) (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.
+- [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
+- [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Integrações Google Cloud e Groq](integracoes-producao.md) (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.

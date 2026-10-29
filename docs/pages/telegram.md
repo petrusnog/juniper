@@ -8,11 +8,11 @@ status: pronta
 tags: telegram bot botfather cliente celular token allowed_user_ids lista permissão privacidade long polling python-telegram-bot mensagens chat id
 ---
 
-> **Nota:** esta página detalha o [ADR-016](adr-016.html). Código: `brain/clients/telegram.py`, comando `juniper telegram`.
+> **Nota:** esta página detalha o [ADR-016](../decisions/ADR-016.md). Código: `brain/clients/telegram.py`, comando `juniper telegram`.
 
 ## Visão geral {#visao-geral}
 
-O bot do Telegram é um **cliente** da Juniper, como o [CLI](cli.html): leva o que você escreve ao cérebro pelo [protocolo](protocolo.html) e mostra a resposta. Ele **não** é um executor: não age no seu celular. As tools (como o Google Calendar) rodam no cérebro e valem para qualquer cliente.
+O bot do Telegram é um **cliente** da Juniper, como o [CLI](cli.md): leva o que você escreve ao cérebro pelo [protocolo](protocolo.md) e mostra a resposta. Ele **não** é um executor: não age no seu celular. As tools (como o Google Calendar) rodam no cérebro e valem para qualquer cliente.
 
 ```text
 Seu celular ─► Telegram (nuvem) ◄── long polling ── Bot ──ws://brain:8765──► Cérebro ─► Google Calendar
@@ -42,8 +42,8 @@ O ID é um **número** (não o *username*). Não use bots de terceiros para desc
 
 ### Rodar {#rodar}
 
-- **Na sua máquina**, ligado ao cérebro de desenvolvimento: [Primeiros passos](primeiros-passos.html#telegram).
-- **No servidor**, como serviço opcional do compose de produção: [Clientes em produção](clientes-producao.html#telegram). Nesse modo o contêiner do bot não publica porta, não recebe o `.env` (não tem a senha do MongoDB nem as chaves de LLM) e só lê o token dos clientes.
+- **Na sua máquina**, ligado ao cérebro de desenvolvimento: [Primeiros passos](primeiros-passos.md#telegram).
+- **No servidor**, como serviço opcional do compose de produção: [Clientes em produção](clientes-producao.md#telegram). Nesse modo o contêiner do bot não publica porta, não recebe o `.env` (não tem a senha do MongoDB nem as chaves de LLM) e só lê o token dos clientes.
 
 O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém está autorizado.
 
@@ -81,7 +81,7 @@ Detalhes do apagar: só vale para mensagens com menos de 48 h (por isso o prazo 
 
 ## Uma conversa, várias janelas {#janelas}
 
-No servidor, uma conversa fica ligada a **uma conexão por vez** ([Protocolo](protocolo.html#sessoes)). Se você abrir o terminal com `juniper --resume` (ou o desktop) enquanto conversa pelo Telegram, a janela nova **assume** a conversa. O bot percebe: se estava no meio de uma resposta, avisa que "outra janela assumiu" e o resto aparece lá; na mensagem seguinte abre uma **conversa nova**, sem roubar a conversa de volta.
+No servidor, uma conversa fica ligada a **uma conexão por vez** ([Protocolo](protocolo.md#sessoes)). Se você abrir o terminal com `juniper --resume` (ou o desktop) enquanto conversa pelo Telegram, a janela nova **assume** a conversa. O bot percebe: se estava no meio de uma resposta, avisa que "outra janela assumiu" e o resto aparece lá; na mensagem seguinte abre uma **conversa nova**, sem roubar a conversa de volta.
 
 Com **mais de um ID** na lista, todos compartilham a conversa mais recente e leem o histórico uns dos outros (o servidor é de um usuário só). O comando avisa em voz alta. Use um único ID.
 
@@ -97,8 +97,16 @@ Com **mais de um ID** na lista, todos compartilham a conversa mais recente e lee
 
 ## Eventos {#eventos}
 
-Categoria `telegram` no [eventlog](observabilidade.html): `start`, `stop`, `message_in` (ID, tamanho), `unauthorized` (ID), `turn` (duração, `finish`), `ignored`, `error` (só o tipo).
+Categoria `telegram` no [eventlog](observabilidade.md): `start`, `stop`, `message_in` (ID, tamanho), `unauthorized` (ID), `turn` (duração, `finish`), `ignored`, `error` (só o tipo).
 
 ## Saúde {#saude}
 
 O bot escreve um sinal de vida a cada 15 s (`/tmp/telegram-health`). `juniper telegram --health` sai com 0 se o sinal é recente, e é o que o *healthcheck* do contêiner usa.
+
+## Para saber mais {#para-saber-mais}
+
+- [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
+- [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
+- [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
+- [Voz por áudio](voz-audio.md) (Documentação Técnica): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.
+- [Clientes em produção](clientes-producao.md) (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android (gerar, instalar e configurar o APK) e o dashboard.
