@@ -44,9 +44,10 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Atualização do app | O cérebro serve o APK (`/app/update`, `/app/update/apk`, Bearer); o workflow «Mobile release» compila e publica; o app confere o SHA-256 e entrega ao Android. **Proposto; Kotlin e workflow nunca executados** | branch `feature/app-update` | 026 (proposto) | [App mobile](pages/mobile.md#atualizacao), [Clientes em produção](pages/clientes-producao.md#app-atualizar) |
 | Auditoria de vazamentos | Detector amplo em modo sombra sobre o texto bruto e o entregue do LLM; registros no MongoDB (`leak_audit`, TTL 30 dias); `juniper vazamentos`; turno com vazamento de alta precisão fica fora da memória e do sonho; `/vazou` e «isso vazou» (voz) gravam um relato com as últimas 10 interações (`leak_reports`) | #239 (T-165), #244 (T-167) | — | [Auditoria de vazamentos](pages/vazamentos.md) |
 | Usuários e credenciais | Usuário (`owner`/`tester`) e credencial `client_id`+`client_secret` por dispositivo, com o segredo visto uma vez e só o hash (HMAC com *pepper*) no MongoDB; espelho do dono para o banco fora do ar; `juniper users/login/logout`; página Usuários no dashboard (primeira escrita, com CSRF e confirmação); login do WebSocket, do dashboard, do Telegram (`/login`) e do app; revogação derruba a conexão. **Sem isolamento por usuário ainda** | branch `claude/blissful-knuth-xxtci9` | 027 | [Usuários e credenciais](pages/usuarios.md) |
+| Dashboard V2 | Ocorrências de qualquer tipo (coleção `issues`, estado, gravidade, notas) e a tool `report_issue` (WRITE com confirmação); ações do dono na memória (esquecer, peso, personalidade, sentimentos); tarefas em segundo plano (sonho e reindexação, uma por vez); leituras de logs, custos e saúde | branch `claude/dashboard-v2-features` | 028 | [Ocorrências e ações](pages/ocorrencias.md), [Dashboard](pages/dashboard.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
-**Tools registradas (18):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação).
+**Tools registradas (19):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências).
 
 **Não implementado (decidido ou planejado, sem código):**
 
@@ -126,7 +127,7 @@ juniper/
 │   ├── voice/      tts · stt · vad · budget · services       (ADR-023)
 │   ├── music/      youtube · oauth · quota · taste           (ADR-024)
 │   ├── auth/       credentials · service · store · limiter   (ADR-027)
-│   ├── dashboard/  api · routes · server · admin · static/   (ADR-020, ADR-027)
+│   ├── dashboard/  api · routes · server · admin · actions · jobs · ops · static/   (ADR-020, 027, 028)
 │   └── metadocs/   index · detect · context                   (ADR-025)
 ├── mobile/         app React Native (Android); update/ = auto-atualização (ADR-026)
 ├── .github/workflows/   tests · docker · docs · deploy · mobile · mobile-release (ADR-026)
@@ -203,6 +204,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [025](decisions/ADR-025.md) | Metadocumentação: busca estatística local e contexto automático. |
 | [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
 | [027](decisions/ADR-027.md) | Usuários e credenciais `client_id`/`client_secret` (segredo visto uma vez, só o hash no MongoDB, espelho do dono em arquivo); vale para todos os clientes, menos SSH. |
+| [028](decisions/ADR-028.md) | Ações do dono no dashboard (ocorrências, memória, tarefas) com as defesas do ADR-027; leituras de logs, custos e saúde. |
 
 ---
 
@@ -222,7 +224,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 |---|---|
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
-| Ações do dashboard na memória, sonho e reindex; ocorrências genéricas e a tool `report_issue`; logs, custos e saúde no dashboard | Planejados (Dashboard V2), ainda sem ADR de escrita nem código. |
+| `study add` no dashboard | Fora: o texto de estudo não cabe na *query* dos `POST` (o servidor HTTP do dashboard não lê corpo). Continua na CLI. |
 | Tools de sistema e web (`run_shell`, `open_app`, `web_fetch`, `web_search`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |

@@ -27,6 +27,7 @@ juniper tools                 # as tools do servidor
 juniper voice status          # a voz: credenciais e gasto do mês
 juniper music status          # a música: chave, cota e login
 juniper users list            # usuários e credenciais (ADR-027)</code></pre>
+<p>O sonho (<code>memory dream</code>) e a reindexação (<code>memory reindex</code>) também rodam pelo <a href="ocorrencias.html#tarefas">dashboard</a>, sem entrar na VPS.</p>
 <p>Sem terminal interativo (um script, o cron, o CI), use <code>exec -T</code>. Comandos que mexem no ambiente de um computador (<code>install</code>, <code>docs</code>, <code>deploy</code> do git) não fazem sentido no contêiner. O uso do dia a dia é pelos clientes (<a href="clientes-producao.html">Clientes em produção</a>).</p>
 <h2 id="saude">Saúde e logs</h2>
 <pre><code class="lang-bash">docker compose -f docker-compose.prod.yml ps                 # brain e mongo &quot;healthy&quot;

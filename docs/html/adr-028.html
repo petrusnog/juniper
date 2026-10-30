@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>ADR-028 — Ações no dashboard: ocorrências, memória e tarefas — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-028 — Ações no dashboard: ocorrências, memória e tarefas">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-028.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-028</div>
+<h1>ADR-028 — Ações no dashboard: ocorrências, memória e tarefas</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag g">aceito</span> (planejado com o dono em 2026-10-30; implementado na branch <code>claude/dashboard-v2-features</code>)</dd><dt>Data</dt><dd>2026-10-30</dd><dt>Autor</dt><dd>Equipe Juniper</dd><dt>Contexto do Sprint</dt><dd>Dashboard V2</dd><dt>Relaciona-se com</dt><dd><a href="adr-010.html">ADR-010</a> (confirmação), <a href="adr-017.html">ADR-017</a> (Memória V2), <a href="adr-020.html">ADR-020</a> (dashboard), <a href="adr-021.html">ADR-021</a> (MFA), <a href="adr-027.html">ADR-027</a> (usuários e credenciais)</dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>O dashboard nasceu somente leitura (ADR-020). O ADR-027 abriu uma exceção para usuários e credenciais, com as defesas de escrita (dono, CSRF, <code>Origin</code>, confirmação). O dono quer deixar de entrar na VPS para: registrar e acompanhar ocorrências de qualquer tipo de bug, mexer na memória (esquecer, pesos, personalidade) e disparar o sonho e a reindexação. Hoje cada uma dessas ações é um comando de terminal.</p>
+<h2 id="decisao">Decisão</h2>
+<ol><li><strong>As ações usam a mesma camada que a CLI.</strong> O dashboard chama os mesmos serviços do cérebro (<code>BeliefBook.forget</code>, <code>ConcernBook.set_weight</code>, <code>PersonaBook.revert</code>, <code>run_night</code>, <code>reindex_*</code>…). Nenhuma regra é reescrita no navegador, e o navegador nunca fala com o MongoDB (regra 2).</li><li><strong>As defesas do ADR-027 valem para toda escrita:</strong> só <code>POST</code>, só o dono, cookie de sessão com <code>X-CSRF-Token</code>, <code>Origin</code> igual ao <code>Host</code>, parâmetros na <em>query</em> (o servidor HTTP do dashboard não lê corpo) e auditoria (<code>dashboard</code>/<code>admin</code> com <code>op</code>, <code>actor</code>, <code>target</code>, nunca texto de memória nem segredo).</li><li><strong>Duas classes de ação.</strong> <em>Reversíveis ou de registro</em> (criar ocorrência, mudar o estado dela, mudar o peso de uma preocupação, reverter a personalidade, que cria uma versão nova) não pedem confirmação. <em>Destrutivas</em> (esquecer um fato, apagar crença, sentimento, interesse ou nota, apagar ocorrência) exigem <code>confirm=&lt;id&gt;</code>, conferido no servidor, como a desativação de usuário.</li><li><strong>Ocorrências de qualquer tipo.</strong> Uma coleção <code>issues</code> (tipo, título, descrição, severidade, estado, origem, conversa, <code>owner_id</code>, histórico) passa a ser a terceira origem da lista de ocorrências, ao lado dos relatos <code>/vazou</code> e da auditoria de vazamentos, que ficam como estão. Todas aparecem na mesma tela e na mesma planilha.</li><li><strong>Tool <code>report_issue</code>.</strong> A Juniper registra uma ocorrência por fala natural («isso é um bug», «anota que ela errou X»). É tier <strong>WRITE</strong> com confirmação na conversa (<a href="adr-010.html">ADR-010</a>); o texto vem do que a pessoa disse, a conversa e o usuário são anexados pelo sistema, e a tool <strong>nunca</strong> muda o estado de uma ocorrência já existente nem a apaga (isso é do dono, no dashboard).</li><li><strong>Tarefas longas com trava.</strong> Sonho e reindexação rodam em segundo plano, uma de cada vez (uma segunda tentativa recebe <code>409</code>), com estado consultável (<code>GET /api/jobs</code>). O resultado (texto do relatório ou o erro tipado) fica nas últimas 10 execuções, em memória; reiniciar o servidor esquece o histórico, não o efeito. O sonho já grava o próprio registro (<code>/api/dreams</code>).</li><li><strong>Fora do dashboard, por decisão do dono:</strong> deploy, reinício e backup da VPS (exigiriam acesso ao Docker). <strong>Também fora por limite técnico:</strong> <code>study add</code> (o texto de estudo não cabe na <em>query</em>); continua na CLI.</li><li><strong>Leituras novas, sem escrita:</strong> <code>GET /api/logs</code> (o log técnico filtrado, com segredos mascarados), <code>GET /api/costs</code> (voz contra a trava, cota da música, tokens do sonho) e <code>GET /api/health</code> (saúde, versão, tools, camadas ligadas).</li><li><strong>Sem isolamento por usuário</strong> (<a href="adr-027.html">ADR-027</a>, item 9): as ações são do dono, e o <code>owner_id</code> de cada ocorrência registra quem a criou.</li></ol>
+<h2 id="consequencias">Consequências</h2>
+<ul><li>Uma superfície de escrita maior, mas sob uma única porta de entrada com as mesmas defesas. Mitigação: dono, CSRF, <code>Origin</code>, confirmação no servidor e auditoria.</li><li>A tool <code>report_issue</code> é a primeira que escreve no MongoDB uma coleção além da memória; falha do banco vira resultado tipado, não exceção.</li><li>Sem o MFA (ADR-021), uma sessão de dashboard roubada pode apagar memória. O MFA continua sendo o próximo passo de segurança, e as ações destrutivas já exigem a confirmação por id.</li></ul>
+<h2 id="alternativas-descartadas">Alternativas descartadas</h2>
+<ol><li><strong>Corpo JSON nos <code>POST</code>:</strong> exigiria trocar o servidor HTTP do dashboard; a <em>query</em> basta para tudo, menos <code>study add</code>.</li><li><strong>Fila de tarefas persistente (Mongo):</strong> peso demais para duas tarefas manuais; o sonho já tem o próprio registro.</li><li><strong>A tool poder fechar ocorrências:</strong> daria ao modelo poder de apagar o próprio histórico de erros.</li><li><strong>Substituir a auditoria de vazamentos pelas ocorrências genéricas:</strong> o detector tem retenção e semântica próprias (TTL de 30 dias).</li></ol>
+<h2 id="referencias">Referências</h2>
+<ul><li>ADR-010 — Confirmação na conversa</li><li>ADR-017 — Memória V2</li><li>ADR-020 — Dashboard</li><li>ADR-027 — Usuários e credenciais</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

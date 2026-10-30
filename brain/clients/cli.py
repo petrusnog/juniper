@@ -629,35 +629,57 @@ def serve() -> None:
     async def run() -> None:
         async with open_chat_handler() as handler:
             dashboard = None
+            jobs = None
             if cfg.enabled:
                 try:
+                    from brain.dashboard.actions import Actions
+                    from brain.dashboard.jobs import JobRunner, default_runners
                     from brain.dashboard.routes import build_api
                     from brain.dashboard.server import DashboardServer
 
+                    sources = handler.sources
+
+                    def dream_busy(name: str) -> str | None:
+                        """The nightly pass may be running: never start a second dream on top."""
+                        if (
+                            name == "dream"
+                            and sources.data is not None
+                            and sources.data.runs.list({"status": "running"})
+                        ):
+                            return "O sonho já está rodando (talvez a passada da noite)."
+                        return None
+
+                    jobs = JobRunner(default_runners(), busy=dream_busy)
+                    sources.jobs = jobs
                     dashboard = DashboardServer(
                         dash_host,
                         cfg.port,
                         token,
                         build_api(handler.sources),
                         auth=auth,
+                        actions=Actions(sources, jobs),
                         session_hours=cfg.session_hours,
                         allowed_hosts=cfg.allowed_hosts,
                     )
                 except Exception as exc:  # noqa: BLE001  (the dashboard never stops the server)
                     voice.say(console, f"O dashboard não subiu: {exc}", "yellow")
             updates = AppUpdates(settings.app_update.dir)
-            await run_server(
-                BrainServer(
-                    host,
-                    port,
-                    token,
-                    handler,
-                    health=handler.health,
-                    app_updates=updates,
-                    auth=auth,
-                ),
-                dashboard,
-            )
+            try:
+                await run_server(
+                    BrainServer(
+                        host,
+                        port,
+                        token,
+                        handler,
+                        health=handler.health,
+                        app_updates=updates,
+                        auth=auth,
+                    ),
+                    dashboard,
+                )
+            finally:
+                if jobs is not None:  # a running dream is cut, not left behind the server
+                    await jobs.shutdown()
 
     legacy = (
         " Token estático ainda vale (deployment.auth.legacy_token)."
@@ -877,30 +899,18 @@ def memory_reindex(
     ] = False,
 ) -> None:
     """Refaz os vetores das memórias que não foram gerados pelo modelo de embeddings atual."""
-    from brain.memory.embeddings import open_embedding_provider
-    from brain.memory.mongo import MongoConnection
-    from brain.memory.reindex import MEMORIES_COLLECTION, reindex_memories
+    from brain.memory.reindex import reindex_all
 
-    connection = MongoConnection()
     try:
-        connection.check()
-        provider = open_embedding_provider()
-        voice.say(console, f"Reindexando com {provider.model_id} (o 1º uso baixa o modelo)...")
-        with connection.guard():
-            result = reindex_memories(
-                connection.collection(MEMORIES_COLLECTION), provider, force=force
-            )
-        v2_result = None
-        if settings.memory.v2.enabled:  # the V2 layers carry embeddings too (ADR-017)
-            from brain.memory.reindex import reindex_v2
-            from brain.memory.v2.store import MongoDocStore
-
-            v2_result = reindex_v2(MongoDocStore(connection), provider, force=force)
+        result, v2_result = reindex_all(
+            force=force,
+            announce=lambda model: voice.say(
+                console, f"Reindexando com {model} (o 1º uso baixa o modelo)..."
+            ),
+        )
     except MemoryUnavailableError as exc:
         voice.say(console, str(exc), "red")
         raise typer.Exit(1) from None
-    finally:
-        connection.close()
     voice.say(
         console,
         f"Pronto: {result.reindexed} memória(s) reindexada(s), {result.skipped} já estavam "
