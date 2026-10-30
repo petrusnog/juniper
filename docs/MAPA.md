@@ -110,3 +110,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-024](decisions/ADR-024.md): Música (YouTube Data API, playlists e gosto musical) (Proposto) · `executor`, `integracoes-producao`, `musica`, `produto-integracoes`
 - [ADR-025](decisions/ADR-025.md): Metadocumentação: a Juniper responde sobre si mesma (Proposto) · `architecture`, `configuracao`, `metadocs`, `produto`
 - [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`
+- [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Proposto) · `login`

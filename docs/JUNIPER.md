@@ -199,6 +199,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [024](decisions/ADR-024.md) | Música: YouTube Data API, playlists e gosto musical. |
 | [025](decisions/ADR-025.md) | Metadocumentação: busca estatística local e contexto automático. |
 | [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
+| [027](decisions/ADR-027.md) | Usuários e credenciais `client_id`/`client_secret` (segredo visto uma vez, só o hash no MongoDB, espelho do dono em arquivo); vale para todos os clientes, menos SSH (proposto). |
 
 ---
 

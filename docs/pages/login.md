@@ -29,6 +29,10 @@ Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só e
 | Dashboard | Token **e** código; o cookie leva o token de sessão. |
 | Voz | Herda a conexão; a voz nunca é fator ([Voz por áudio](voz-audio.md)). |
 
+## Usuários e credenciais {#usuarios}
+
+O [ADR-027](../decisions/ADR-027.md) (proposto) acrescenta o usuário (`owner` ou `tester`) e troca o token estático por uma credencial `client_id` + `client_secret` por dispositivo. O segredo aparece **uma vez**, no cadastro pela CLI ou pelo dashboard; no MongoDB fica só o hash irreversível (HMAC-SHA256 com um *pepper* guardado em arquivo). Perdeu o segredo? Rotaciona. Vale para todos os clientes, menos o acesso à VPS. Ainda é desenho, e o multiusuário com isolamento de dados fica para outra épica.
+
 ## Regras que não mudam {#regras}
 
 O MFA **não substitui a confirmação** ([Agente](agente.md#confirmacao)). Falha de login é resultado tipado e nunca derruba o servidor. Códigos e tokens de sessão são mascarados no log, com auditoria sem segredos.
