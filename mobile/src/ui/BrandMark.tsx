@@ -10,7 +10,7 @@ import { Text } from '../theme/Text';
 import { spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
 
-// The logo (a transparent PNG made from branding/juniper-neon.jpg).
+// The logo (a transparent PNG made from branding/juniper-neon.png).
 const logo = require('../../branding/logo.png');
 
 /** How long the cursor stays on, and then off (a terminal cursor: no fading). */
