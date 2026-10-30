@@ -1,4 +1,5 @@
 import { api } from "/assets/api.js";
+import { dangerAction } from "/assets/actions.js";
 import { lineChart } from "/assets/charts.js";
 import { badge, bar, card, clear, empty, h, signedBar, when } from "/assets/ui.js";
 
@@ -101,6 +102,7 @@ export async function render(rest = []) {
     h("h1", { text: "Afetos" }),
     card("Humor", chartBox),
     card("Sentimentos", filters, list, pager),
+    card("Ações", dangerAction("Apagar todos os sentimentos", "sentimentos", "/memory/affects/clear", () => { window.dispatchEvent(new HashChangeEvent("hashchange")); })),
     panel,
   );
   return root;

@@ -3,12 +3,12 @@ title: Dashboard
 group: Documentação Técnica
 section: Clientes
 order: 27
-description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha), pesquisa e a gestão de usuários, servido pelo próprio cérebro; só a gestão de usuários escreve.
+description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências (com exportação em planilha), pesquisa, logs, saúde e custos, tarefas e a gestão de usuários, servido pelo próprio cérebro; só o dono escreve, com confirmação.
 status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
 
-> **Nota:** esta página detalha o [ADR-020](../decisions/ADR-020.md). O dashboard é **somente leitura**, com uma exceção: a gestão de usuários e credenciais ([ADR-027](../decisions/ADR-027.md)). Código: `brain/dashboard/`.
+> **Nota:** esta página detalha o [ADR-020](../decisions/ADR-020.md). O dashboard é **de leitura**; as exceções são as ações do dono: usuários e credenciais ([ADR-027](../decisions/ADR-027.md)) e ocorrências, memória e tarefas ([ADR-028](../decisions/ADR-028.md)). Código: `brain/dashboard/`.
 
 ## Visão geral {#visao-geral}
 
@@ -18,7 +18,7 @@ Um painel web para ver a memória da Juniper sem o terminal. Roda dentro do serv
 http://<endereço-do-servidor-na-rede-privada>:8766/
 ```
 
-O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Nada neste painel escreve no banco, exceto a página **Usuários** ([Usuários e credenciais](usuarios.md#dashboard)); só `GET` responde nas demais rotas (um teste confere).
+O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Só o **dono** escreve, por `POST` com token anti-CSRF e confirmação ([Usuários e credenciais](usuarios.md#dashboard), [Ocorrências e ações](ocorrencias.md)); as demais rotas só respondem `GET` (um teste confere).
 
 ## Login e defesas {#login}
 
@@ -51,11 +51,16 @@ O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobi
 | **Estudos** | Os temas, com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |
 | **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
 | **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
-| **Ocorrências** | Os vazamentos na fala: os que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou (com o texto bruto do modelo e o entregue). A lista filtra por origem; o detalhe mostra a sessão, o canal, a nota ou as regras e as mensagens em balões, e cada tela tem o botão **Baixar planilha (.xlsx)**. Precisa do MongoDB: sem ele a tela explica. |
+| **Ocorrências** | Qualquer bug ou comportamento errado que você **registrou** (aqui ou por fala, com a tool `report_issue`), os vazamentos que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou. A lista filtra por origem; o detalhe mostra a sessão, o canal e as mensagens ou o histórico, e cada tela tem o botão **Baixar planilha (.xlsx)**. Nos registros o dono muda o estado e a gravidade, anota e apaga ([Ocorrências e ações](ocorrencias.md)). Precisa do MongoDB: sem ele a tela explica. |
+| **Tarefas** | Só o dono. Roda o sonho (com ensaio) e a reindexação em segundo plano, uma por vez, com o resultado das últimas execuções. |
+| **Logs** | O log técnico (o de `juniper logs`): hoje, 3 ou 7 dias, só erros, por texto ou por evento, com segredos mascarados. |
+| **Saúde e custos** | Estado do servidor, camadas ligadas, tools, voz contra o limite do mês, cota diária da música, tokens do sonho e trocas de provedor (failover). |
 | **Usuários** | Só o dono. Usuários e credenciais (dispositivo, criação, último uso), cadastro, nova credencial, rotação, revogação e desativação. O `client_secret` aparece uma vez, num aviso que some ao fechar. Detalhes em [Usuários e credenciais](usuarios.md#dashboard). |
 | **Pesquisa** | Uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado; o que casa por palavras vem antes. Sem o modelo de embeddings, cai para palavras e avisa. |
 
 Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a página correspondente explica.
+
+Nas páginas de memória o dono também tem as **ações** (esquecer, peso de preocupação, voltar a personalidade, apagar sentimentos), descritas em [Ocorrências e ações](ocorrencias.md#memoria).
 
 ## Exportar ocorrências em planilha {#exportar kind=função file=brain/dashboard/occurrences.py}
 
@@ -92,11 +97,12 @@ As chaves `dashboard.*` estão em [Configuração](configuracao.md#trace). Para 
 ## Testes {#testes}
 
 ```bash
-pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py tests/test_dashboard_occurrences.py tests/test_dashboard_xlsx.py -v
+pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_dashboard_frontend.py tests/test_acceptance_dashboard.py tests/test_dashboard_occurrences.py tests/test_dashboard_xlsx.py tests/test_dashboard_users.py tests/test_issues.py tests/test_dashboard_memory_actions.py tests/test_dashboard_jobs.py tests/test_dashboard_ops.py -v
 ```
 
 ## Para saber mais {#para-saber-mais}
 
+- [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
 - [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.

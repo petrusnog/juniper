@@ -92,6 +92,7 @@ pytest tests/test_auth_service.py tests/test_users_cli.py tests/test_server_cred
 
 ## Para saber mais {#para-saber-mais}
 
+- [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, servido pelo próprio cérebro.
 - [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API do dashboard, com autenticação, paginação, filtros e códigos de resposta.

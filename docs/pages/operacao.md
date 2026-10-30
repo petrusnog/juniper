@@ -26,6 +26,8 @@ juniper music status          # a música: chave, cota e login
 juniper users list            # usuários e credenciais (ADR-027)
 ```
 
+O sonho (`memory dream`) e a reindexação (`memory reindex`) também rodam pelo [dashboard](ocorrencias.md#tarefas), sem entrar na VPS.
+
 Sem terminal interativo (um script, o cron, o CI), use `exec -T`. Comandos que mexem no ambiente de um computador (`install`, `docs`, `deploy` do git) não fazem sentido no contêiner. O uso do dia a dia é pelos clientes ([Clientes em produção](clientes-producao.md)).
 
 ## Saúde e logs {#saude}

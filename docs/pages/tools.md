@@ -149,6 +149,7 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
 | `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
+| `report_issue` | WRITE (confirma) | CLOUD | Registra uma ocorrência (bug, comportamento errado, ideia) a partir da fala; só cria. | [Ocorrências](ocorrencias.md#tool) |
 | `docs_search` | READ | CLOUD | Busca na própria documentação, por palavras-chave, para responder sobre si mesma. | [Metadocumentação](metadocs.md#docs-search) |
 
 Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` e `web_search` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.md) está ligada.
@@ -171,6 +172,7 @@ Cobrem: classe não instanciável, `to_schema()` igual ao formato do ADR-002 (e 
 
 ## Para saber mais {#para-saber-mais}
 
+- [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Ferramentas e permissões](produto-ferramentas.md) (Produto): Como a Juniper age no mundo real por meio de ferramentas, os quatro níveis de risco e como a permissão é dada na própria conversa.
 - [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
 - [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.

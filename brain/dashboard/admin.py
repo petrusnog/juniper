@@ -27,6 +27,8 @@ def _one(query: Query, name: str, default: str = "") -> str:
 
 
 class AdminApi:
+    serves_get = True
+
     def __init__(self, auth: AuthService) -> None:
         self._auth = auth
 

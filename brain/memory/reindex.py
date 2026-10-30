@@ -16,7 +16,13 @@ from typing import Any
 from brain.memory.embeddings import EmbeddingProvider
 from brain.memory.vector import MEMORIES_COLLECTION
 
-__all__ = ["MEMORIES_COLLECTION", "ReindexResult", "reindex_memories", "reindex_v2"]
+__all__ = [
+    "MEMORIES_COLLECTION",
+    "ReindexResult",
+    "reindex_all",
+    "reindex_memories",
+    "reindex_v2",
+]
 
 
 @dataclass(frozen=True)
@@ -104,3 +110,36 @@ def reindex_v2(
             if progress is not None:
                 progress(reindexed, len(todo))
     return ReindexResult(total=total, reindexed=reindexed, skipped=total - reindexed)
+
+
+def reindex_all(
+    force: bool = False, announce: Callable[[str], None] | None = None
+) -> tuple[ReindexResult, ReindexResult | None]:
+    """Re-embed the long-term memories and, when the V2 is on, its beliefs and interests.
+
+    The one routine behind ``juniper memory reindex`` and the dashboard's task. Blocking (the first
+    use downloads the model): run it in a thread. Raises ``MemoryUnavailableError`` when the
+    database is out. ``announce`` gets the model id once it is known.
+    """
+    from brain.config import settings
+    from brain.memory.embeddings import open_embedding_provider
+    from brain.memory.mongo import MongoConnection
+
+    connection = MongoConnection()
+    try:
+        connection.check()
+        provider = open_embedding_provider()
+        if announce is not None:
+            announce(provider.model_id)
+        with connection.guard():
+            result = reindex_memories(
+                connection.collection(MEMORIES_COLLECTION), provider, force=force
+            )
+        v2_result = None
+        if settings.memory.v2.enabled:  # the V2 layers carry embeddings too (ADR-017)
+            from brain.memory.v2.store import MongoDocStore
+
+            v2_result = reindex_v2(MongoDocStore(connection), provider, force=force)
+    finally:
+        connection.close()
+    return result, v2_result

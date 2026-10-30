@@ -96,6 +96,8 @@ Diferente dos registros automáticos, o relato **não expira**: foi você quem e
 
 Os relatos aparecem na tela **Ocorrências** do [dashboard](dashboard.md#paginas), junto com as detecções automáticas, e saem em planilha ([Exportar ocorrências](dashboard.md#exportar)).
 
+> Para registrar **qualquer outro** bug ou comportamento errado (não só vazamento), veja [Ocorrências e ações do dashboard](ocorrencias.md): a tool `report_issue` e a origem *Registradas* na mesma tela.
+
 ## Consultar {#consultar}
 
 O comando lê o MongoDB do processo onde roda. Na VPS, use o atalho do contêiner ([Operação](operacao.md#atalho)).
@@ -130,6 +132,7 @@ Cobrem os vazamentos reais (`</parameter>`, `]` seguido de "Mensagem de sistema�
 
 ## Para saber mais {#para-saber-mais}
 
+- [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
 - [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
