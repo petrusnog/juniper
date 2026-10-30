@@ -3,12 +3,12 @@ title: Dashboard
 group: Documentação Técnica
 section: Clientes
 order: 27
-description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha) e pesquisa, somente leitura, servido pelo próprio cérebro.
+description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha), pesquisa e a gestão de usuários, servido pelo próprio cérebro; só a gestão de usuários escreve.
 status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
 
-> **Nota:** esta página detalha o [ADR-020](../decisions/ADR-020.md). O dashboard é **somente leitura**. Código: `brain/dashboard/`.
+> **Nota:** esta página detalha o [ADR-020](../decisions/ADR-020.md). O dashboard é **somente leitura**, com uma exceção: a gestão de usuários e credenciais ([ADR-027](../decisions/ADR-027.md)). Código: `brain/dashboard/`.
 
 ## Visão geral {#visao-geral}
 
@@ -18,11 +18,11 @@ Um painel web para ver a memória da Juniper sem o terminal. Roda dentro do serv
 http://<endereço-do-servidor-na-rede-privada>:8766/
 ```
 
-O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Nada neste painel escreve no banco (um teste confere).
+O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Nada neste painel escreve no banco, exceto a página **Usuários** ([Usuários e credenciais](usuarios.md#dashboard)); só `GET` responde nas demais rotas (um teste confere).
 
 ## Login e defesas {#login}
 
-- **Login:** a tela pede o token dos clientes (o mesmo do CLI e do app). O token **nunca vai na URL**: vai no cabeçalho `Authorization` de `GET /api/login`, e o servidor devolve um cookie `HttpOnly`, `SameSite=Strict`, que vale `dashboard.session_hours` (12 horas). Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo.
+- **Login:** a tela pede o **client_id** e o **client_secret** do usuário ([Usuários e credenciais](usuarios.md)). Eles **nunca vão na URL**: vão no cabeçalho `Authorization` de `GET /api/login`, e o servidor devolve um cookie `HttpOnly`, `SameSite=Strict`, que vale `dashboard.session_hours` (12 horas) e é ligado àquela credencial: rotacioná-la ou revogá-la derruba a sessão. Cinco tentativas erradas em cinco minutos bloqueiam aquele cliente por um tempo. Enquanto `deployment.auth.legacy_token` for `true`, o token estático ainda entra (deixe o *client_id* em branco).
 - **Host:** o cabeçalho `Host` precisa ser um IP, `localhost`, um nome `*.ts.net` ou um host de `dashboard.allowed_hosts` (defesa contra *DNS rebinding*); outro nome recebe 421.
 - **Navegador:** CSP restritiva (nada inline nem externo), sem CORS, só `GET`. Tudo que vem do servidor entra na tela com `textContent`, nunca como HTML (um teste proíbe `innerHTML` e afins).
 - **Saída:** tudo passa por um único ponto que **mascara segredos e remove vetores**.
@@ -52,6 +52,7 @@ O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobi
 | **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
 | **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
 | **Ocorrências** | Os vazamentos na fala: os que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou (com o texto bruto do modelo e o entregue). A lista filtra por origem; o detalhe mostra a sessão, o canal, a nota ou as regras e as mensagens em balões, e cada tela tem o botão **Baixar planilha (.xlsx)**. Precisa do MongoDB: sem ele a tela explica. |
+| **Usuários** | Só o dono. Usuários e credenciais (dispositivo, criação, último uso), cadastro, nova credencial, rotação, revogação e desativação. O `client_secret` aparece uma vez, num aviso que some ao fechar. Detalhes em [Usuários e credenciais](usuarios.md#dashboard). |
 | **Pesquisa** | Uma caixa só sobre memórias, crenças, temas, notas, sentimentos e conversas, por palavras e por significado; o que casa por palavras vem antes. Sem o modelo de embeddings, cai para palavras e avisa. |
 
 Uma camada desligada (por exemplo, a Memória V2) responde 503 com o motivo, e a página correspondente explica.
@@ -98,6 +99,7 @@ pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_das
 
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Memória V2](memoria-v2.md) (Documentação Técnica): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.

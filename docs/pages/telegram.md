@@ -45,6 +45,8 @@ O ID é um **número** (não o *username*). Não use bots de terceiros para desc
 - **Na sua máquina**, ligado ao cérebro de desenvolvimento: [Primeiros passos](primeiros-passos.md#telegram).
 - **No servidor**, como serviço opcional do compose de produção: [Clientes em produção](clientes-producao.md#telegram). Nesse modo o contêiner do bot não publica porta, não recebe o `.env` (não tem a senha do MongoDB nem as chaves de LLM) e só lê o token dos clientes.
 
+Com `telegram.require_login: true`, o bot só conversa depois de `/login <client_id> <client_secret>` (a mensagem é apagada na hora; a sessão vale 12 h de inatividade; `/sair` encerra): veja [Usuários e credenciais](usuarios.md#entrada). A lista de IDs continua valendo antes disso.
+
 O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém está autorizado.
 
 ## Quem o bot atende {#autorizacao}

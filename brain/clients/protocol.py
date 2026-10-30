@@ -195,12 +195,21 @@ class WelcomeSession(_Message):
     turns: int
 
 
+class WelcomeUser(_Message):
+    """Quem o servidor reconheceu pela credencial (ADR-027). Só informação, para mostrar na tela."""
+
+    id: str
+    name: str
+    role: str
+
+
 class Welcome(_Message):
     type: Literal["welcome"] = "welcome"
     protocol_version: int
     server_version: str
     heartbeat_seconds: int
     session: WelcomeSession
+    user: WelcomeUser | None = None
 
 
 class Ping(_Message):

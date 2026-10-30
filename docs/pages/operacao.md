@@ -23,6 +23,7 @@ juniper memory list           # a memória do servidor
 juniper tools                 # as tools do servidor
 juniper voice status          # a voz: credenciais e gasto do mês
 juniper music status          # a música: chave, cota e login
+juniper users list            # usuários e credenciais (ADR-027)
 ```
 
 Sem terminal interativo (um script, o cron, o CI), use `exec -T`. Comandos que mexem no ambiente de um computador (`install`, `docs`, `deploy` do git) não fazem sentido no contêiner. O uso do dia a dia é pelos clientes ([Clientes em produção](clientes-producao.md)).
@@ -78,7 +79,8 @@ Mudou só o `.env`, o `config.yaml` ou `certs/`? Basta `docker compose -f docker
 
 | Segredo | Como trocar |
 |---|---|
-| Token dos clientes | Apague `/home/juniper/.juniper/state/token` no contêiner e reinicie o `brain`; atualize todos os clientes ([Clientes em produção](clientes-producao.md)). |
+| Credencial de um cliente | `juniper users credentials rotate <client_id>` (segredo novo, o antigo morre na hora) ou `revoke` ([Usuários e credenciais](usuarios.md)). |
+| Token estático (modo antigo) | Apague `/home/juniper/.juniper/state/token` no contêiner e reinicie o `brain`; atualize todos os clientes ([Clientes em produção](clientes-producao.md)). |
 | Chaves de LLM, YouTube, Groq | Gere a nova no painel do provedor, troque no `.env`, `up -d` e revogue a antiga. |
 | Contas de serviço do Google | Crie uma chave nova na conta, substitua o JSON em `certs/`, `up -d` e exclua a antiga no Google Cloud. |
 | Senha do MongoDB | O MongoDB só lê a senha ao criar o volume. Faça backup, restaure num volume novo com a senha nova (ou altere o usuário pelo `mongosh` e depois o `.env`). |

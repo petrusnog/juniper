@@ -34,6 +34,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from brain import __version__
+from brain.auth import AuthService, Principal
 from brain.clients import protocol as p
 from brain.clients.app_update import AppUpdates
 from brain.config import settings
@@ -116,6 +117,8 @@ class Connection:
         self.client_version = hello.client.version
         self.last_seen = time.monotonic()
         self.session_id: str | None = None
+        # Quem se autenticou (ADR-027); `None` quando o servidor roda sem o serviço de identidade.
+        self.principal: Principal | None = getattr(websocket, "juniper_principal", None)
         self.state: Any = None  # do handler
         self._tasks: set[asyncio.Task[None]] = set()
         # message.log: o cliente pediu os passos do servidor e o servidor permite
@@ -255,6 +258,7 @@ class BrainServer:
         *,
         health: HealthFn | None = None,
         app_updates: AppUpdates | None = None,
+        auth: AuthService | None = None,
         open_timeout_seconds: float = OPEN_TIMEOUT_SECONDS,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
         idle_timeout_seconds: float = IDLE_TIMEOUT_SECONDS,
@@ -263,6 +267,7 @@ class BrainServer:
         self.host = host
         self.port = port
         self._token = token
+        self._auth = auth
         self._handler: ConnectionHandler = handler or BaseHandler()
         self._health = health or _default_health
         self._app_updates = app_updates
@@ -313,7 +318,15 @@ class BrainServer:
         if path not in (WS_PATH, UPDATE_PATH, UPDATE_APK_PATH):
             return connection.respond(HTTPStatus.NOT_FOUND, "Not found\n")
         given = _bearer(request.headers)
-        if given is None or not hmac.compare_digest(given.encode(), self._token.encode()):
+        if self._auth is not None:
+            result = self._auth.authenticate(given, _peer(connection))
+            if result.principal is None:
+                event_log.log(
+                    "connection", action="rejected", reason=f"unauthorized:{result.reason}"
+                )
+                return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+            connection.juniper_principal = result.principal  # type: ignore[attr-defined]
+        elif given is None or not hmac.compare_digest(given.encode(), self._token.encode()):
             event_log.log("connection", action="rejected", reason="unauthorized")
             return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
         if path == UPDATE_PATH:
@@ -407,6 +420,7 @@ class BrainServer:
                 server_version=__version__,
                 heartbeat_seconds=max(1, round(self._heartbeat)),
                 session=session,
+                user=p.WelcomeUser(**conn.principal.public()) if conn.principal else None,
             )
         )
         event_log.log(
@@ -416,6 +430,7 @@ class BrainServer:
             kind=conn.kind,
             device_id=conn.device_id,
             session_id=conn.session_id,
+            user_id=conn.principal.user_id if conn.principal else None,
         )
         return conn
 
@@ -456,8 +471,21 @@ class BrainServer:
                 event_log.log("connection", action="timeout", connection=conn.id)
                 await conn.close(p.CLOSE_HEARTBEAT_TIMEOUT, "sem sinal de vida")
                 return
+            if not await self._still_valid(conn):
+                return
             if not await conn.send(p.Ping()):
                 return
+
+    async def _still_valid(self, conn: Connection) -> bool:
+        """Derruba a conexão cuja credencial foi revogada ou cujo usuário foi desativado."""
+        if self._auth is None or conn.principal is None:
+            return True
+        principal = await asyncio.to_thread(self._auth.principal_for, conn.principal.client_id)
+        if principal is not None:
+            return True
+        event_log.log("auth", action="session_ended", client_id=conn.principal.client_id)
+        await conn.close(p.CLOSE_UNAUTHORIZED, "credencial revogada")
+        return False
 
     async def _release(self, conn: Connection) -> None:
         if self._by_device.get(conn.device_id) is conn:
@@ -468,6 +496,11 @@ class BrainServer:
         except Exception as exc:
             event_log.log("error", where="handler.close", type=type(exc).__name__)
         event_log.log("connection", action="close", connection=conn.id)
+
+
+def _peer(connection: ServerConnection) -> str:
+    address = connection.remote_address
+    return str(address[0]) if isinstance(address, tuple) and address else "?"
 
 
 def _id_of(frame: str | bytes) -> str | None:

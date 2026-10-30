@@ -7,19 +7,33 @@ status: guia
 tags: produção clientes token cli remoto terminal telegram bot botfather compose profile app android apk instalar keystore dashboard navegador rede privada
 ---
 
-Todo cliente precisa de duas coisas: **alcançar o servidor pela rede privada** e o **token dos clientes**. O token nasce no primeiro boot do cérebro; para lê-lo, na VPS:
+Todo cliente precisa de duas coisas: **alcançar o servidor pela rede privada** e uma **credencial** (`client_id` + `client_secret`, [Usuários e credenciais](usuarios.md)). Cadastre o dono uma vez, na VPS, e guarde o segredo (ele aparece só agora):
+
+```bash
+cd ~/juniper && docker compose -f docker-compose.prod.yml exec brain python -m brain users add Petrus --role owner
+```
+
+Para outro aparelho: `... python -m brain users credentials add Petrus --label celular`. Perdeu um segredo? `... users credentials rotate <client_id>`.
+
+**Modo antigo (token estático).** Enquanto `deployment.auth.legacy_token` for `true` (o padrão), o token que nasce no primeiro boot ainda vale. Para lê-lo, na VPS:
 
 ```bash
 cd ~/juniper && docker compose -f docker-compose.prod.yml exec -T brain cat /home/juniper/.juniper/state/token
 ```
 
-Trate-o como uma senha. Se ele vazar, apague o arquivo (`docker compose -f docker-compose.prod.yml exec brain rm /home/juniper/.juniper/state/token`) e reinicie o cérebro: um token novo é gerado e todos os clientes precisam dele.
+Trate-o como uma senha. Depois de migrar todos os clientes, desligue-o com `deployment.auth.legacy_token: false`. Se ele vazar, apague o arquivo (`docker compose -f docker-compose.prod.yml exec brain rm /home/juniper/.juniper/state/token`) e reinicie o cérebro: um token novo é gerado e todos os clientes precisam dele.
 
 Cada dispositivo (computador, celular, navegador) precisa estar na rede privada: no Tailscale, instale o app e entre na mesma conta (com a etiqueta `tag:juniper-client`, se a política exigir; veja o [passo 5.2](deploy-vps.md#rede)).
 
 ## Terminal {#cli}
 
 No seu computador, com a Juniper instalada ([Instalação sem Docker](install.md) ou `pip install -e .` num clone):
+
+```bash
+juniper login            # pede o client_id e o client_secret e guarda em ~/.juniper/credential (modo 600)
+```
+
+No modo antigo, em vez de `juniper login`:
 
 ```bash
 mkdir -p ~/.juniper && umask 077
@@ -88,15 +102,15 @@ Opções (`telegram.rate_limit_per_minute`, `telegram.delete_after_hours`) em [C
 4. **Ligue a VPN no celular** e abra o app. Na configuração, informe:
    - **Endereço:** o nome ou o IP do servidor na rede privada, sem `http://` e sem porta;
    - **Porta:** `8765`;
-   - **Token:** o token dos clientes.
+   - **Client ID** e **Client secret:** a credencial cadastrada para o aparelho (deixe o *Client ID* vazio para usar o token antigo no campo do segredo).
 
-   O token fica no Android Keystore. A linha do topo deve mostrar **Conectada**.
+   A credencial fica no Android Keystore. A linha do topo deve mostrar **Conectada**.
 5. **Permissões:** microfone e notificações (na primeira conversa por voz) e, para a música abrir com o app em segundo plano, **«Exibir sobre outros apps»** (a aba Voz mostra um botão «Permitir agora»).
 6. **Teste** pelo [roteiro de aceite](mobile.md#aceite): texto, «toca Oceano do Djavan» (exige a [música](integracoes-producao.md#musica) ligada e o YouTube Music instalado), voz (exige a [voz](integracoes-producao.md#voz) ligada).
 
 | Sintoma | Causa e solução |
 |---|---|
-| «o servidor recusou o token» | Token errado ou trocado: copie de novo. |
+| «o servidor recusou o token» | Credencial errada, rotacionada ou revogada (ou usuário desativado): confira o client_id e o client_secret, ou gere outro com `users credentials rotate`. |
 | «sem conexão» | VPN desligada no celular, endereço errado ou a política da VPN não inclui o aparelho. |
 | Música: «o dispositivo não está conectado» | O app não está aberto e conectado (ele é o executor que abre a música). |
 | A música só abre com o app na frente | Falta «Exibir sobre outros apps». |
@@ -144,12 +158,13 @@ O primeiro build do CI ainda não foi executado: pode precisar de ajustes (licen
 
 1. Libere a porta **8766** na política da VPN para os seus dispositivos (a política do [passo 5.2](deploy-vps.md#rede) já inclui).
 2. No navegador de um dispositivo na rede privada: `http://<endereço-do-servidor>:8766/`.
-3. Entre com o token dos clientes. O login vale 12 horas (`dashboard.session_hours`) e o token nunca vai na URL.
+3. Entre com o `client_id` e o `client_secret`. O login vale 12 horas (`dashboard.session_hours`) e a credencial nunca vai na URL. A página **Usuários** cadastra e revoga ([Usuários e credenciais](usuarios.md#dashboard)).
 
 Para HTTPS (por exemplo, para "instalar" o painel no celular), ponha na frente um proxy que termine TLS dentro da rede privada (no Tailscale, `tailscale serve --bg http://<IP-PRIVADO>:8766`) e inclua o nome usado em `dashboard.allowed_hosts` se ele não for `*.ts.net`. Detalhes e problemas: [Dashboard](dashboard.md#acesso).
 
 ## Para saber mais {#para-saber-mais}
 
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
 - [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.

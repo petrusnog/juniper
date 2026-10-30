@@ -203,7 +203,7 @@ def test_wrong_token_is_reported_without_retrying_forever(
     with serve(tmp_path, FakeProvider([])) as live:
         monkeypatch.setattr(settings.deployment.server, "port", live.port)
         result = jun("oi")
-    assert result.exit_code == 1 and "recusou o token" in result.output
+    assert result.exit_code == 1 and "recusou a credencial" in result.output
 
 
 # --- queda no meio do turno ---------------------------------------------------------------

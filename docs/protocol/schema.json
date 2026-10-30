@@ -1727,6 +1727,17 @@
           "default": "welcome",
           "title": "Type",
           "type": "string"
+        },
+        "user": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WelcomeUser"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1759,6 +1770,30 @@
         "turns"
       ],
       "title": "WelcomeSession",
+      "type": "object"
+    },
+    "WelcomeUser": {
+      "description": "Quem o servidor reconheceu pela credencial (ADR-027). Só informação, para mostrar na tela.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role"
+      ],
+      "title": "WelcomeUser",
       "type": "object"
     }
   },

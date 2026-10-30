@@ -12,6 +12,15 @@ import type { UpdateController } from '../update/UpdateController';
 import { BrandMark } from './BrandMark';
 import { UpdateSettings } from './UpdateViews';
 
+/** `jc_id.jsk_secret` back into its two parts; anything else is an old static token. */
+function splitCredential(value: string): { clientId: string; secret: string } {
+  const dot = value.indexOf('.');
+  if (value.startsWith('jc_') && dot > 0) {
+    return { clientId: value.slice(0, dot), secret: value.slice(dot + 1) };
+  }
+  return { clientId: '', secret: value };
+}
+
 interface Props {
   initial?: Credentials | null;
   onSave: (credentials: Credentials) => void;
@@ -20,12 +29,18 @@ interface Props {
   updater?: UpdateController | null;
 }
 
-/** First run: the server address (Tailscale) and the token, pasted by hand (ADR-022, section 3). */
+/**
+ * First run: the server address (Tailscale) and the credential, typed by hand (ADR-022, section 3):
+ * the `client_id` and the `client_secret` the owner got when registering (ADR-027). Leaving the
+ * client id empty keeps the old way: the secret field then holds the server's static token.
+ */
 export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
   const theme = useTheme();
   const [host, setHost] = useState(initial?.host ?? '');
   const [port, setPort] = useState(String(initial?.port ?? 8765));
-  const [token, setToken] = useState(initial?.token ?? '');
+  const stored = splitCredential(initial?.token ?? '');
+  const [clientId, setClientId] = useState(stored.clientId);
+  const [token, setToken] = useState(stored.secret);
   const [name, setName] = useState(initial?.deviceName ?? 'Celular');
   const [error, setError] = useState<string | null>(null);
 
@@ -36,13 +51,14 @@ export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
       return setError(problem);
     }
     if (token.trim().length < 8) {
-      return setError('Cole o token completo do servidor.');
+      return setError('Cole o client_secret (ou o token) completo do servidor.');
     }
     setError(null);
+    const id = clientId.trim();
     onSave({
       host: host.trim(),
       port: portNumber,
-      token: token.trim(),
+      token: id ? `${id}.${token.trim()}` : token.trim(),
       deviceId: initial?.deviceId ?? newDeviceId(),
       deviceName: name.trim() || 'Celular',
       shortcutNotification: initial?.shortcutNotification,
@@ -71,7 +87,7 @@ export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
       </Text>
       <Text style={[styles.help, { color: theme.muted }]}>
         Use o endereço do servidor dentro do Tailscale (com o app do Tailscale
-        ligado) e o token dos clientes.
+        ligado) e o client_id e o client_secret que o dono cadastrou para você.
       </Text>
       <Text style={[styles.label, { color: theme.ink }]}>Endereço</Text>
       <TextInput
@@ -92,7 +108,20 @@ export function SetupScreen({ initial, onSave, onCancel, updater }: Props) {
         onChangeText={setPort}
         keyboardType="number-pad"
       />
-      <Text style={[styles.label, { color: theme.ink }]}>Token</Text>
+      <Text style={[styles.label, { color: theme.ink }]}>Client ID</Text>
+      <TextInput
+        testID="client-id"
+        style={input}
+        value={clientId}
+        onChangeText={setClientId}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="jc_..."
+        placeholderTextColor={theme.muted}
+      />
+      <Text style={[styles.label, { color: theme.ink }]}>
+        Client secret (ou token)
+      </Text>
       <TextInput
         testID="token"
         style={input}

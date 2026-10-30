@@ -5,9 +5,12 @@ const error = document.getElementById("error");
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   error.hidden = true;
-  const token = document.getElementById("token").value.trim();
+  const clientId = document.getElementById("client-id").value.trim();
+  const secret = document.getElementById("client-secret").value.trim();
+  // The credential travels in a header, never in the URL (ADR-027).
+  const bearer = secret ? `${clientId}.${secret}` : clientId;
   try {
-    const response = await fetch("/api/login", { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch("/api/login", { headers: { Authorization: `Bearer ${bearer}` } });
     if (response.ok) {
       window.location.href = "/";
       return;

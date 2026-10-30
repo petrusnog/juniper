@@ -79,7 +79,7 @@ async def test_health_and_the_login_page_are_open(server: DashboardServer) -> No
     assert status == 200 and b'"dashboard"' in body
     status, headers, page = await get(server, "/login")
     assert status == 200 and headers["content-type"].startswith("text/html")
-    assert b"Token" in page
+    assert b"Client secret" in page
 
 
 async def test_everything_else_needs_a_login(server: DashboardServer) -> None:

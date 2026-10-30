@@ -137,9 +137,22 @@ class ServerSettings(BaseModel):
 
 
 class AuthSettings(BaseModel):
-    """Configuração de autenticação (Sprint 2+)."""
+    """Configuração de autenticação (Sprint 2+; usuários e credenciais, ADR-027)."""
 
     token_file: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "token")
+    # No cliente: a credencial `client_id.client_secret` salva por `juniper login` (modo 600).
+    # Sem ela, vale o `token_file` (token estático, ADR-007).
+    credential_file: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "credential")
+    # Chave do hash dos segredos: fica fora do banco (ADR-027 §4).
+    pepper_file: Path = Field(default_factory=lambda: Path.home() / ".juniper" / "auth" / "pepper")
+    # Espelho do dono, para ele entrar com o MongoDB fora (ADR-027 §5).
+    owner_mirror_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "auth" / "owner.json"
+    )
+    # Enquanto true, o token estático do ADR-007 segue valendo como o do dono (ADR-027 §7).
+    legacy_token: bool = True
+    # Cadastrar usuários `tester` (eles ainda veem o mesmo cérebro: ADR-027 §9).
+    allow_testers: bool = False
 
 
 class DashboardSettings(BaseModel):
@@ -775,6 +788,9 @@ class TelegramSettings(BaseModel):
     # Apagar a mensagem do usuário e a resposta do bot depois de N horas. 0 = não apaga. O
     # Telegram só deixa o bot apagar mensagens com menos de 48 h, por isso o máximo é 48.
     delete_after_hours: float = Field(default=0.0, ge=0.0, le=48.0)
+    # Exigir `/login <client_id> <client_secret>` antes de conversar (ADR-027 §6). Desligado, o
+    # bot usa a credencial do arquivo, como antes; a lista de IDs vale nos dois casos.
+    require_login: bool = False
 
 
 class MetadocsSettings(BaseModel):
