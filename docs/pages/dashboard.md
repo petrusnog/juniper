@@ -40,6 +40,7 @@ O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobi
 - **Fonte:** monoespaçada do sistema (`ui-monospace`, Cascadia, JetBrains Mono, Menlo, Consolas…), sem baixar nada. Cantos retos, brilho verde no foco, `>` antes dos títulos e do item ativo do menu, `$` nas falas do usuário e um cursor que pisca ao lado do nome.
 - **Logo:** na tela de login, grande, com **JUNIPER** em caixa alta embaixo; no dashboard, **sempre visível** na barra superior (fixa, em qualquer tela e ao rolar), com o nome **Juniper** ao lado direito. Clicar nela volta à visão geral. A imagem (`assets/logo.png`, com fundo transparente) vem de `mobile/branding/juniper-neon.jpg` e é servida pelo próprio dashboard, como o ícone da aba (`favicon.png`): a política de segurança só aceita imagens do próprio endereço.
 - **A marca animada:** é o par «logo + **Juniper** à direita + cursor `_` piscando», o mesmo nas três interfaces: na barra do dashboard, no menu lateral e na página inicial do livro de bolso, e no topo do app. No login, o cursor pisca ao lado de **JUNIPER**.
+- **Ícones do menu:** cada página tem um ícone de traço ao lado do título (`assets/icons.js`), desenhado pelo DOM e na cor do texto, então acompanha o item ativo e o foco. Uma página nova do menu precisa de um ícone com o mesmo `id` (um teste confere).
 - **Movimento:** o cursor piscando respeita `prefers-reduced-motion` (parado, quando o sistema pede menos movimento).
 
 | Página | O que mostra |

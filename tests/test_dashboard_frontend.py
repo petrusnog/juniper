@@ -24,6 +24,19 @@ def pages_registry() -> list[tuple[str, str]]:
     return [(page_id, module) for page_id, module in found]
 
 
+def test_every_menu_page_has_an_icon_and_no_icon_is_orphaned() -> None:
+    icons = re.findall(r"^  (\w+): \[", (ASSETS / "icons.js").read_text(), re.MULTILINE)
+    page_ids = [page_id for page_id, _ in pages_registry()]
+    assert sorted(icons) == sorted(page_ids)
+
+
+def test_the_menu_icons_are_drawn_with_the_dom_and_follow_the_text_color() -> None:
+    assert "createElementNS" in (ASSETS / "icons.js").read_text()
+    css = (ASSETS / "app.css").read_text()
+    assert ".nav-icon" in css and "stroke: currentColor" in css
+    assert "icon(page.id)" in (ASSETS / "app.js").read_text()
+
+
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
     ids = [p[0] for p in pages]

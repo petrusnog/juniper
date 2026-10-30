@@ -88,6 +88,11 @@ body.app { padding: var(--bar) 0 72px; }
   flex: 0 0 auto; padding: 10px 14px; border-radius: var(--radius); color: var(--muted); text-decoration: none;
   white-space: nowrap; min-height: 44px; display: inline-flex; align-items: center; border: 1px solid transparent;
 }
+.nav a { gap: 10px; }
+.nav-icon {
+  width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 .nav a:hover { color: var(--fg); }
 .nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-color: var(--line); }
 .nav a.active::before { content: "> "; white-space: pre; }
