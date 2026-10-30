@@ -7,7 +7,7 @@ tags: início documentação home
 ---
 
 ```html-raw
-<div class="hero"><img class="logo" src="assets/logo.png" alt="Logo da Juniper: contorno em verde neon de uma mulher de óculos, com rabo de cavalo e um ramo de zimbro" width="84" height="84"><h1 class="brand-name">Juniper</h1></div>
+<div class="hero"><img class="logo" src="assets/logo.png" alt="Logo da Juniper: silhueta em pixel art verde neon de uma mulher de óculos, de cabelo comprido, com um ramo de zimbro" width="84" height="84"><h1 class="brand-name">Juniper</h1></div>
 ```
 
 A Juniper é uma agente autônoma pessoal: você conversa em linguagem natural (pelo terminal, pelo Telegram, por um app Android ou por voz) e ela decide quais ferramentas usar para resolver o pedido, como a agenda do Google, a música do YouTube, comandos git e a própria memória. Este livro reúne tudo o que é preciso para entender, desenvolver, integrar e implantar a Juniper.
