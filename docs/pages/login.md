@@ -18,7 +18,7 @@ Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só e
 
 - **Serviço único** `brain/auth/`: decide quem está autenticado; o cliente só leva a credencial; o LLM nunca vê segredos.
 - **TOTP** (app autenticador), tolerância de ±1 passo, **código usado não vale de novo**.
-- **O token estático** passa a significar "este dispositivo é meu"; com o MFA ligado ele sozinho não basta.
+- **A credencial** (`client_id` + `client_secret`, [Usuários e credenciais](usuarios.md); antes, o token estático) significa "este dispositivo é meu"; com o MFA ligado ela sozinha não basta.
 - **Sessão** com prazo, ligada ao dispositivo e ao canal, **revogável**, guardada só como hash em arquivos sob `~/.juniper/auth/` (sem depender do MongoDB).
 - **Recuperação:** 10 códigos de uso único e, em emergência, `juniper auth reset` por SSH na VPS. Não existe "esqueci o código" remoto.
 
@@ -28,6 +28,10 @@ Hoje o WebSocket e o dashboard confiam em um token estático, e o Telegram só e
 | Telegram | `/login <código>` (a mensagem é apagada), sessão por usuário e chat, expira por inatividade. A lista de IDs vira filtro prévio. |
 | Dashboard | Token **e** código; o cookie leva o token de sessão. |
 | Voz | Herda a conexão; a voz nunca é fator ([Voz por áudio](voz-audio.md)). |
+
+## Usuários e credenciais {#usuarios}
+
+O [ADR-027](../decisions/ADR-027.md) **está implementado** e é a base deste desenho: o usuário (`owner` ou `tester`) e uma credencial `client_id` + `client_secret` por dispositivo, com o segredo visto uma vez e só o hash no MongoDB. Tudo está em [Usuários e credenciais](usuarios.md). O MFA continua proposto e ficará **por cima** da credencial: ela diz «este dispositivo é desta pessoa», e o código TOTP, «e é ela agora».
 
 ## Regras que não mudam {#regras}
 
@@ -39,6 +43,7 @@ O MFA **não substitui a confirmação** ([Agente](agente.md#confirmacao)). Falh
 
 ## Para saber mais {#para-saber-mais}
 
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Privacidade e segurança](produto-privacidade.md) (Produto): Para onde vão os seus dados, o que fica só no seu servidor, como a Juniper se protege e o que você controla.
 - [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.

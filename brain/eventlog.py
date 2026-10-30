@@ -47,6 +47,7 @@ _SECRET_KEY = re.compile(
 )
 _SECRET_VALUE = re.compile(
     r"(gsk_[A-Za-z0-9]{10,}"  # Groq keys
+    r"|jsk_[A-Za-z0-9_-]{10,}"  # Juniper client_secret (ADR-027)
     r"|Bearer\s+[A-Za-z0-9._~+/=-]{8,}"
     r"|ya29\.[\w.-]{10,}"  # Google OAuth access token
     r"|AIza[\w-]{20,}"  # Google API key

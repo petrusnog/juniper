@@ -75,6 +75,11 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `deployment.server.host` | `127.0.0.1` | Onde o servidor escuta. |
 | `deployment.server.port` | `8765` | Porta. |
 | `deployment.auth.token_file` | `~/.juniper/token` | Arquivo do token estático dos clientes. |
+| `deployment.auth.legacy_token` | `true` | Enquanto `true`, o token estático ainda vale como o do dono ([Usuários](usuarios.md#migracao)). Desligue depois de migrar os clientes. |
+| `deployment.auth.allow_testers` | `false` | Permite cadastrar usuários `tester`. Eles enxergam o mesmo cérebro (sem isolamento por usuário ainda). |
+| `deployment.auth.pepper_file` | `~/.juniper/auth/pepper` | A chave do hash dos `client_secret`, fora do banco (modo 600). Em produção fica no volume de estado: perdê-la invalida todos os segredos. |
+| `deployment.auth.owner_mirror_file` | `~/.juniper/auth/owner.json` | Espelho do dono, para ele entrar com o MongoDB fora ([Usuários](usuarios.md#fallback)). |
+| `deployment.auth.credential_file` | `~/.juniper/credential` | No cliente: a credencial `client_id.client_secret` guardada por `juniper login`; sem ela vale o `token_file`. |
 
 ## trace {#trace}
 
@@ -146,6 +151,7 @@ O bot do Telegram ([Telegram](telegram.md), [ADR-016](../decisions/ADR-016.md)).
 | `telegram.rate_limit_per_minute` | `20` | Mensagens por minuto por usuário (de 1 a 600). Acima disso o bot avisa **uma vez** por janela e **não chama o cérebro**: um erro de loop não vira conta de LLM. |
 | `telegram.delete_after_hours` | `0` | Apagar a mensagem do usuário e a resposta do bot depois de N horas (de 0 a 48). `0` desliga. O Telegram só deixa o bot apagar mensagens com menos de 48 h, então o prazo efetivo é limitado a 47,5 h. O agendamento fica em memória: se o bot reiniciar, o que estava marcado **não** é apagado. |
 | `telegram.allowed_user_ids` | `[]` | IDs **numéricos** do Telegram de quem pode falar com o bot. **Lista vazia = ninguém** (nunca "todos"). Pelo ambiente: `JUNIPER_TELEGRAM__ALLOWED_USER_IDS=[123456789]`. |
+| `telegram.require_login` | `false` | Exige `/login <client_id> <client_secret>` antes de conversar; a mensagem é apagada e a sessão expira após 12 h de inatividade ([Usuários](usuarios.md#entrada)). |
 
 ## leak_audit {#leak-audit-config}
 

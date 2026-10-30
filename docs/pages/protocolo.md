@@ -14,13 +14,13 @@ tags: api websocket protocolo mensagens hello welcome chat.send chat.token chat.
 | Item | Valor |
 |---|---|
 | Endereço | `ws://<host>:<porta>/v1/ws` (porta padrão 8765). Sem TLS: use dentro de uma rede privada cifrada ([ADR-013](../decisions/ADR-013.md)). |
-| Autenticação | Cabeçalho `Authorization: Bearer <token>` no *handshake* HTTP. Sem ele, ou com token errado: HTTP 401 antes do upgrade. |
+| Autenticação | Cabeçalho `Authorization: Bearer <client_id>.<client_secret>` no *handshake* HTTP ([Usuários e credenciais](usuarios.md)); enquanto `deployment.auth.legacy_token` for `true`, o token estático também vale. Sem ele, ou com credencial errada: HTTP 401 antes do upgrade. |
 | Quadros | Texto, JSON UTF-8, **uma mensagem por quadro**. Quadros binários são recusados. |
 | Tamanho | Até 1 MiB por mensagem; até 32.000 caracteres em `chat.send.text`. |
 | Versão | `protocol_version: 1`. Mudanças compatíveis (mensagens, campos ou códigos novos) não mudam a versão. |
 | Saúde | `GET /health` na mesma porta, sem autenticação ([API HTTP](api-http.md#health)). |
 
-O token é gerado pelo servidor no primeiro boot e fica no arquivo `deployment.auth.token_file` ([Servidor WebSocket](servidor.md#iniciar)).
+O `client_id` e o `client_secret` saem do cadastro de usuários ([Usuários e credenciais](usuarios.md)); o token estático, quando ainda vale, é gerado no primeiro boot e fica em `deployment.auth.token_file` ([Servidor WebSocket](servidor.md#iniciar)). O `welcome` traz `user` (`id`, `name`, `role`) com quem o servidor reconheceu; é só informação e não muda a versão do protocolo.
 
 ## Envelope {#envelope}
 
@@ -219,7 +219,7 @@ Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.
 | `1011` | Erro interno na conexão. | Reconecta com recuo. |
 | `1012` | Servidor **reiniciando** (deploy). | Reconecta quase na hora. |
 | `4400` | Protocolo violado. | Corrige o cliente. |
-| `4401` | Não autorizado. | Para e pede um token novo. |
+| `4401` | Não autorizado: credencial recusada, ou revogada (ou usuário desativado) com a conexão aberta. | Para e pede a credencial de novo. |
 | `4408` | Sem sinal de vida. | Reconecta. |
 | `4409` | Substituída por outra conexão com o mesmo `device_id`. | Para. |
 | `4426` | Versão incompatível. | Para e pede atualização. |

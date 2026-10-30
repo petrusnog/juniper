@@ -9,4 +9,5 @@ export const pages = [
   { id: "ocorrencias", title: "Ocorrências", module: "/assets/pages/occurrences.js" },
   { id: "pesquisa", title: "Pesquisa", module: "/assets/pages/search.js" },
   { id: "afetos", title: "Afetos", module: "/assets/pages/affects.js" },
+  { id: "usuarios", title: "Usuários", module: "/assets/pages/users.js" },
 ];

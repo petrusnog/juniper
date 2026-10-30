@@ -96,16 +96,24 @@ def plaintext_warning() -> str | None:
     )
 
 
-def read_token() -> str:
-    path = settings.deployment.auth.token_file.expanduser()
+def _read_secret_file(path: Path) -> str:
     try:
-        token = path.read_text(encoding="utf-8").strip()
+        return path.expanduser().read_text(encoding="utf-8").strip()
     except OSError:
-        token = ""
+        return ""
+
+
+def read_token() -> str:
+    """O que vai depois de `Bearer`: a credencial de `juniper login` ou, sem ela, o token antigo."""
+    auth = settings.deployment.auth
+    credential = _read_secret_file(auth.credential_file)
+    if credential:
+        return credential
+    token = _read_secret_file(auth.token_file)
     if not token:
         raise FatalConnectionError(
-            f"Não achei o token do servidor em {path}. Copie o token que o servidor criou "
-            "(deployment.auth.token_file) para esse arquivo."
+            "Não achei a credencial. Rode `juniper login` (client_id e client_secret do "
+            f"servidor) ou, no modo antigo, copie o token do servidor para {auth.token_file}."
         )
     return token
 

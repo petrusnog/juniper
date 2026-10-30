@@ -220,7 +220,8 @@ class RemoteClient:
         except InvalidStatus as exc:
             if exc.response.status_code in (401, 403):
                 raise FatalConnectionError(
-                    "O servidor recusou o token. Confira deployment.auth.token_file."
+                    "O servidor recusou a credencial. Rode `juniper login` de novo "
+                    "(ou confira o token antigo)."
                 ) from exc
             raise
         self._ws = ws
@@ -247,7 +248,7 @@ class RemoteClient:
             raise FatalConnectionError(
                 "Versão do protocolo incompatível com o servidor."
                 if code == p.CLOSE_UNSUPPORTED_VERSION
-                else "O servidor recusou o token."
+                else "O servidor recusou a credencial."
             )
         return code
 

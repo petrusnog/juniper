@@ -2,7 +2,9 @@
 
 It reuses ``websockets`` (already a dependency of the brain) as an HTTP server: every request is
 answered in ``process_request``, so a WebSocket handler is never reached. It is read-only, so only
-``GET`` is answered (anything else is a 405) and the login sends the token in a header.
+``GET`` is answered (anything else is a 405), except the user-management routes of
+``admin.py`` (ADR-027), which take ``POST`` from a logged-in owner with an anti-CSRF token.
+The login sends the credential (``client_id.client_secret``) in a header.
 
 Every response carries security headers; everything but ``/health``, ``/login``, the static
 assets and the login call needs the session cookie (or the token as a bearer header); the ``Host``
@@ -12,6 +14,7 @@ logged and swallowed: it never reaches the chat server.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hmac
 import ipaddress
@@ -26,8 +29,11 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
+from brain.auth import AuthService, Principal
+from brain.dashboard.admin import AdminApi
 from brain.dashboard.api import Api, default_api
-from brain.dashboard.auth import COOKIE_NAME, LoginLimiter, SessionSigner, read_cookie
+from brain.dashboard.auth import COOKIE_NAME, SessionSigner, read_cookie
+from brain.dashboard.serialize import sanitize
 from brain.eventlog import event_log
 
 logger = logging.getLogger(__name__)
@@ -84,16 +90,18 @@ class DashboardServer:
         token: str,
         api: Api | None = None,
         *,
+        auth: AuthService | None = None,
         session_hours: int = 12,
         allowed_hosts: list[str] | None = None,
         static_dir: Path = STATIC_DIR,
     ) -> None:
         self.host = host
         self.port = port
-        self._token = token
         self.api = api or default_api()
-        self._signer = SessionSigner(token, session_hours)
-        self._limiter = LoginLimiter()
+        # Sem o serviço de identidade, vale só o token estático (ADR-007), como antes do ADR-027.
+        self._auth = auth or AuthService.legacy_only(token)
+        self._admin = AdminApi(self._auth)
+        self._signer = SessionSigner(self._auth.pepper, session_hours)
         self._allowed = list(allowed_hosts or [])
         self._static = static_dir.resolve()
         self._server: Server | None = None
@@ -147,7 +155,8 @@ class DashboardServer:
     async def _route(self, connection: ServerConnection, request: Request) -> Response:
         parts = urlsplit(request.path)
         path = parts.path
-        if request.method != "GET":
+        writable = request.method == "POST" and self._admin.handles(path)
+        if request.method != "GET" and not writable:
             response = self._text(HTTPStatus.METHOD_NOT_ALLOWED, "Somente GET\n")
             response.headers["Allow"] = "GET"
             return response
@@ -156,19 +165,25 @@ class DashboardServer:
         if path == "/health":
             return self._json(200, {"ok": True, "service": "dashboard"})
         if path == "/api/login":
-            return self._login(connection, request)
+            return await self._login(connection, request)
         if path == "/api/logout":
             return self._json(200, {"ok": True}, extra=[("Set-Cookie", self._cookie("", 0))])
         if path == "/login":
             return self._file("login.html")
         if path.startswith("/assets/"):
             return self._file(path.lstrip("/"))
-        if not self._authorized(request):
+        who = await self._authorized(connection, request)
+        if who is None:
             if path.startswith("/api/"):
                 return self._json(401, {"error": "faça login"})
             return self._redirect("/login")
+        query = parse_qs(parts.query)
+        if path == "/api/me":
+            return self._me(request, who)
+        if self._admin.handles(path):
+            return await self._administer(request, path, query, who)
         if path.startswith("/api/"):
-            api_path, query = path.removeprefix("/api"), parse_qs(parts.query)
+            api_path = path.removeprefix("/api")
             if self.api.is_file(api_path):
                 return await self._download(api_path, query)
             status, body = await self.api.handle(api_path, query)
@@ -179,32 +194,70 @@ class DashboardServer:
 
     # --- login --------------------------------------------------------------------------------
 
-    def _authorized(self, request: Request) -> bool:
-        if self._signer.valid(read_cookie(request.headers.get("Cookie"))):
-            return True
-        return self._bearer_ok(request)
+    async def _authorized(self, connection: ServerConnection, request: Request) -> Principal | None:
+        """Who is on the other end: the cookie's session, or a credential in the bearer header."""
+        cookie = read_cookie(request.headers.get("Cookie"))
+        session = self._signer.parse(cookie)
+        if session is not None:
+            who = await asyncio.to_thread(self._auth.principal_for, session.client_id)
+            if who is not None and who.fingerprint == session.fingerprint:
+                return who
+            return None
+        bearer = _bearer_value(request)
+        if bearer is None:
+            return None
+        result = await asyncio.to_thread(self._auth.authenticate, bearer, _client(connection))
+        return result.principal
 
-    def _bearer_ok(self, request: Request) -> bool:
-        value = request.headers.get("Authorization") or ""
-        scheme, _, given = value.partition(" ")
-        return scheme.lower() == "bearer" and hmac.compare_digest(
-            given.strip().encode(), self._token.encode()
+    async def _login(self, connection: ServerConnection, request: Request) -> Response:
+        result = await asyncio.to_thread(
+            self._auth.authenticate, _bearer_value(request), _client(connection)
         )
-
-    def _login(self, connection: ServerConnection, request: Request) -> Response:
-        client = _client(connection)
-        if self._limiter.blocked(client):
+        if result.reason == "locked":
             event_log.log("dashboard", action="login_blocked")
             return self._json(429, {"error": "muitas tentativas; espere alguns minutos"})
-        if not self._bearer_ok(request):
-            self._limiter.failed(client)
+        if result.principal is None:
             event_log.log("dashboard", action="login_failed")
-            return self._json(401, {"error": "token incorreto"})
-        self._limiter.succeeded(client)
-        event_log.log("dashboard", action="login")
+            return self._json(401, {"error": "credenciais incorretas"})
+        who = result.principal
+        event_log.log("dashboard", action="login", user_id=who.user_id)
         secure = request.headers.get("X-Forwarded-Proto") == "https"
-        cookie = self._cookie(self._signer.issue(), self._signer.max_age, secure)
-        return self._json(200, {"ok": True}, extra=[("Set-Cookie", cookie)])
+        value = self._signer.issue(who.client_id, who.fingerprint)
+        cookie = self._cookie(value, self._signer.max_age, secure)
+        return self._json(200, {"ok": True, "user": who.public()}, extra=[("Set-Cookie", cookie)])
+
+    def _me(self, request: Request, who: Principal) -> Response:
+        cookie = read_cookie(request.headers.get("Cookie"))
+        csrf = self._signer.csrf(cookie) if cookie else None
+        # The anti-CSRF token skips the mask: it is a long hex run, which the filter would erase.
+        body = {**sanitize({"user": who.public(), "device": who.label}), "csrf": csrf}
+        return self._json(200, body)
+
+    async def _administer(
+        self, request: Request, path: str, query: dict[str, list[str]], who: Principal
+    ) -> Response:
+        if request.method == "POST":
+            refusal = self._write_refused(request)
+            if refusal is not None:
+                return refusal
+        status, body, reveal = await self._admin.handle(request.method, path, query, who)
+        safe = sanitize(body)
+        if reveal:  # the one-time client_secret skips the mask that would erase it
+            safe = {**safe, **reveal}
+        return self._json(status, safe)
+
+    def _write_refused(self, request: Request) -> Response | None:
+        """CSRF: a session cookie, its anti-CSRF header, and an Origin (if sent) that is ours."""
+        cookie = read_cookie(request.headers.get("Cookie"))
+        given = request.headers.get("X-CSRF-Token") or ""
+        if not cookie or not hmac.compare_digest(
+            given.encode(), self._signer.csrf(cookie).encode()
+        ):
+            return self._json(403, {"error": "token anti-CSRF ausente ou inválido"})
+        origin = request.headers.get("Origin")
+        if origin and urlsplit(origin).netloc != (request.headers.get("Host") or ""):
+            return self._json(403, {"error": "origem não aceita"})
+        return None
 
     @staticmethod
     def _cookie(value: str, max_age: int, secure: bool = False) -> str:
@@ -261,6 +314,12 @@ class DashboardServer:
         for key, value in SECURITY_HEADERS:
             response.headers[key] = value
         return response
+
+
+def _bearer_value(request: Request) -> str | None:
+    value = request.headers.get("Authorization") or ""
+    scheme, _, given = value.partition(" ")
+    return given.strip() or None if scheme.lower() == "bearer" else None
 
 
 def _client(connection: ServerConnection) -> str:

@@ -43,6 +43,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Metadocumentação | A Juniper responde sobre si mesma por busca BM25 local na documentação (`docs_search`) | PR #229 | 025 | [Metadocumentação](pages/metadocs.md) |
 | Atualização do app | O cérebro serve o APK (`/app/update`, `/app/update/apk`, Bearer); o workflow «Mobile release» compila e publica; o app confere o SHA-256 e entrega ao Android. **Proposto; Kotlin e workflow nunca executados** | branch `feature/app-update` | 026 (proposto) | [App mobile](pages/mobile.md#atualizacao), [Clientes em produção](pages/clientes-producao.md#app-atualizar) |
 | Auditoria de vazamentos | Detector amplo em modo sombra sobre o texto bruto e o entregue do LLM; registros no MongoDB (`leak_audit`, TTL 30 dias); `juniper vazamentos`; turno com vazamento de alta precisão fica fora da memória e do sonho; `/vazou` e «isso vazou» (voz) gravam um relato com as últimas 10 interações (`leak_reports`) | #239 (T-165), #244 (T-167) | — | [Auditoria de vazamentos](pages/vazamentos.md) |
+| Usuários e credenciais | Usuário (`owner`/`tester`) e credencial `client_id`+`client_secret` por dispositivo, com o segredo visto uma vez e só o hash (HMAC com *pepper*) no MongoDB; espelho do dono para o banco fora do ar; `juniper users/login/logout`; página Usuários no dashboard (primeira escrita, com CSRF e confirmação); login do WebSocket, do dashboard, do Telegram (`/login`) e do app; revogação derruba a conexão. **Sem isolamento por usuário ainda** | branch `claude/blissful-knuth-xxtci9` | 027 | [Usuários e credenciais](pages/usuarios.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
 **Tools registradas (18):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação).
@@ -51,7 +52,8 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 
 | Item | Situação |
 |---|---|
-| Login global com MFA (épica #177) | Só o desenho, no [ADR-021](decisions/ADR-021.md) e em [Login com MFA](pages/login.md). Não há `brain/auth/` nem TOTP: hoje o WebSocket e o dashboard usam token estático, e o Telegram, lista de IDs. **A issue #177 não está resolvida** (diferente das demais). |
+| Login global com MFA (épica #177) | Só o desenho, no [ADR-021](decisions/ADR-021.md) e em [Login com MFA](pages/login.md). `brain/auth/` existe (usuários e credenciais, ADR-027), mas **não há TOTP**, sessões de MFA nem `auth.login` no protocolo. **A issue #177 não está resolvida** (diferente das demais). |
+| Isolamento de dados por usuário | Registros novos devem levar `owner_id`, mas nenhuma leitura filtra por usuário: um `tester` vê o mesmo cérebro do dono (memória, conversas, agenda, música). Por isso `deployment.auth.allow_testers` vem `false`. Precisa de ADR próprio. |
 | `run_shell`, `open_app`, `web_fetch`, `web_search` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,web,shell}.py` são stubs de 4 linhas. |
 | Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
 | Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
@@ -123,7 +125,8 @@ juniper/
 │   ├── clients/    cli · server · chat · protocol · remote · telegram · executors · voice_session · app_update (ADR-026) · *_cli
 │   ├── voice/      tts · stt · vad · budget · services       (ADR-023)
 │   ├── music/      youtube · oauth · quota · taste           (ADR-024)
-│   ├── dashboard/  api · routes · server · static/           (ADR-020)
+│   ├── auth/       credentials · service · store · limiter   (ADR-027)
+│   ├── dashboard/  api · routes · server · admin · static/   (ADR-020, ADR-027)
 │   └── metadocs/   index · detect · context                   (ADR-025)
 ├── mobile/         app React Native (Android); update/ = auto-atualização (ADR-026)
 ├── .github/workflows/   tests · docker · docs · deploy · mobile · mobile-release (ADR-026)
@@ -192,13 +195,14 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [017](decisions/ADR-017.md) | Memória V2: crenças, sentimentos, interesses, personalidade viva e o "sonho". |
 | [018](decisions/ADR-018.md) | Memória refinada: fato e lembrança. |
 | [019](decisions/ADR-019.md) | Conhecimento próprio: estudo progressivo e notas. |
-| [020](decisions/ADR-020.md) | Dashboard web somente leitura na rede privada. |
+| [020](decisions/ADR-020.md) | Dashboard web somente leitura na rede privada (a exceção, usuários e credenciais, é do ADR-027). |
 | [021](decisions/ADR-021.md) | Login global com MFA (TOTP) — **desenho, ainda não implementado**. |
 | [022](decisions/ADR-022.md) | App mobile em React Native (Android); substitui o desktop. |
 | [023](decisions/ADR-023.md) | Voz: Chirp 3 HD, STT, trava de orçamento e áudio no protocolo. |
 | [024](decisions/ADR-024.md) | Música: YouTube Data API, playlists e gosto musical. |
 | [025](decisions/ADR-025.md) | Metadocumentação: busca estatística local e contexto automático. |
 | [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
+| [027](decisions/ADR-027.md) | Usuários e credenciais `client_id`/`client_secret` (segredo visto uma vez, só o hash no MongoDB, espelho do dono em arquivo); vale para todos os clientes, menos SSH. |
 
 ---
 
@@ -216,7 +220,9 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 
 | Foco | Situação |
 |---|---|
-| Login com MFA (épica #177, ADR-021) | Desenhado; falta implementar `brain/auth/`, o `auth.login` no protocolo, `/login` no Telegram e o código no dashboard. Nada liga o MFA por padrão. |
+| Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
+| Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
+| Ações do dashboard na memória, sonho e reindex; ocorrências genéricas e a tool `report_issue`; logs, custos e saúde no dashboard | Planejados (Dashboard V2), ainda sem ADR de escrita nem código. |
 | Tools de sistema e web (`run_shell`, `open_app`, `web_fetch`, `web_search`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |

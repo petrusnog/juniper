@@ -146,6 +146,9 @@ export type Id15 = string;
 export type Resumed = boolean;
 export type Turns = number;
 export type Type24 = 'welcome';
+export type Id16 = string;
+export type Name2 = string;
+export type Role = string;
 export type Type25 = 'ping';
 export type Code =
   | 'unauthorized'
@@ -185,7 +188,7 @@ export type Usage = {
   [k: string]: unknown;
 } | null;
 export type History = HistoryItem[] | null;
-export type Role = string;
+export type Role1 = string;
 export type Text4 = string;
 export type Note = string;
 export type ReplyTo2 = string;
@@ -193,7 +196,7 @@ export type SessionId3 = string;
 export type Turns1 = number;
 export type Type30 = 'session.state';
 export type ReplyTo3 = string;
-export type Id16 = string;
+export type Id17 = string;
 export type Preview = string;
 export type Turns2 = number;
 export type UpdatedAt = string;
@@ -218,7 +221,7 @@ export type Type35 = 'invoke';
 export type ReplyTo5 = string;
 export type Description1 = string;
 export type Locality = string;
-export type Name2 = string;
+export type Name3 = string;
 export type Tier2 = string;
 export type Tools2 = ToolInfo[];
 export type Type36 = 'tools.listed';
@@ -447,11 +450,20 @@ export interface Welcome {
   server_version: ServerVersion;
   session: WelcomeSession;
   type?: Type24;
+  user?: WelcomeUser | null;
 }
 export interface WelcomeSession {
   id: Id15;
   resumed: Resumed;
   turns: Turns;
+}
+/**
+ * Quem o servidor reconheceu pela credencial (ADR-027). Só informação, para mostrar na tela.
+ */
+export interface WelcomeUser {
+  id: Id16;
+  name: Name2;
+  role: Role;
 }
 export interface Ping {
   type?: Type25;
@@ -490,7 +502,7 @@ export interface SessionState {
   type?: Type30;
 }
 export interface HistoryItem {
-  role: Role;
+  role: Role1;
   text: Text4;
 }
 export interface SessionListed {
@@ -499,7 +511,7 @@ export interface SessionListed {
   type?: Type31;
 }
 export interface SessionSummary {
-  id: Id16;
+  id: Id17;
   preview: Preview;
   turns: Turns2;
   updated_at: UpdatedAt;
@@ -538,7 +550,7 @@ export interface ToolsListed {
 export interface ToolInfo {
   description: Description1;
   locality: Locality;
-  name: Name2;
+  name: Name3;
   tier: Tier2;
 }
 /**
