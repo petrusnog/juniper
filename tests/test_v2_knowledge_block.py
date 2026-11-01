@@ -153,12 +153,12 @@ async def test_the_budget_can_leave_the_block_out_entirely() -> None:
     assert "<conhecimento>" not in await block_of(ctx, "psicodelia nasceu 60")
 
 
-async def test_never_when_he_is_hurting() -> None:
+async def test_also_when_he_is_hurting() -> None:
     data = V2Data.over(InMemoryDocStore())
     psy = topic(data, "psicodelia")
     note(data, psy, "psicodelia nasceu nos anos 60")
     block = await block_of(context(data), "minha avó faleceu hoje, psicodelia nasceu 60")
-    assert "Acolha primeiro" in block and "<conhecimento>" not in block
+    assert "difícil agora" in block and "<conhecimento>" in block  # ADR-029
 
 
 async def test_a_planted_note_shows_up_with_the_instruction_to_follow_the_notes() -> None:

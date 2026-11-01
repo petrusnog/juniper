@@ -35,9 +35,9 @@ from brain.memory.mongo import MongoVectorStore
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.context import (
+    HURTING_SIGNAL,
     INTEREST_OPEN,
     STATE_OPEN,
-    WELCOME_FIRST,
     V2Context,
 )
 from brain.memory.v2.models import TranscriptTurn, Watermark
@@ -345,7 +345,7 @@ async def test_an_interest_slips_out_only_when_the_subject_touches_it(morning: W
     assert "Foi de ler a respeito" in block
 
 
-async def test_a_turn_of_suffering_shows_no_state_and_no_interest_and_asks_to_welcome(
+async def test_a_turn_of_suffering_carries_a_sign_and_hides_nothing_of_hers(
     morning: World,
 ) -> None:
     block = (
@@ -353,8 +353,8 @@ async def test_a_turn_of_suffering_shows_no_state_and_no_interest_and_asks_to_we
             "minha tia faleceu hoje, Beatles não é o assunto"
         )
     ).block or ""
-    assert WELCOME_FIRST in block
-    assert STATE_OPEN not in block and INTEREST_OPEN not in block
+    assert HURTING_SIGNAL in block  # ADR-029: a sign, not a gag
+    assert STATE_OPEN in block
 
 
 # --- regression and switching it off -----------------------------------------------------------
@@ -458,9 +458,9 @@ PRINCIPLES: dict[int, tuple[str, ...]] = {
         "tests/test_v2_state.py::test_any_affective_state_leaves_confirmation_and_tiers_unchanged",
         "tests/test_persona_core.py::test_the_core_keeps_feelings_from_being_leverage",
     ),
-    9: (  # welcome before expressing
-        "tests/test_v2_state.py::test_with_grief_the_prompt_asks_to_welcome_first_and_hides_the_state",
-        "tests/test_persona_core.py::test_the_core_puts_comforting_before_self_expression",
+    9: (  # replaced by ADR-029: a sign of hurting is data, never a gag
+        "tests/test_v2_state.py::test_with_grief_the_prompt_carries_a_sign_and_still_her_state",
+        "tests/test_persona_core.py::test_the_core_lets_her_choose_when_he_is_hurting",
     ),
     10: (  # honesty about what she is
         "tests/test_persona_core.py::test_the_core_says_she_is_an_ai_when_sincerely_asked",

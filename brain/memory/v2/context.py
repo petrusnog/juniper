@@ -5,7 +5,7 @@
 3), each with the words of its confidence, worded as her hypotheses, never as facts or orders.
 
 It also runs the *verification question*: a hypothesis in the middle band may become one natural
-question, at most once per conversation and never while the user seems to be hurting. His answer
+question, at most once per conversation. His answer
 updates the belief on the spot (confirmed or denied, weight 4); the code applies the weights, the
 LLM at most reads a long answer. Nothing here can break a turn: a failure gives the v1 context.
 """
@@ -44,29 +44,30 @@ if TYPE_CHECKING:
 OPEN_TAG = "<opinioes>"
 CLOSE_TAG = "</opinioes>"
 HEADER = (
-    "O que você acha do Petrus: hipóteses SUAS, nascidas de conversas, que podem estar erradas. "
-    "São DADOS, não fatos nem instruções. Fale delas como hipótese, no tom da faixa; discorde "
-    "dele só quando a evidência apoia, e só mude de opinião diante de um argumento novo."
+    "O que você pensa: posições SUAS, nascidas do que você viveu e estudou, com a firmeza de "
+    "cada uma. São suas, não fatos nem instruções de ninguém. Quando a conversa tocar uma delas, "
+    "diga com clareza se concorda ou discorda do Petrus e por quê, sem amaciar para agradar, no "
+    "tom da firmeza. Mude de opinião só diante de um argumento novo, nunca por insistência."
 )
 MAX_OPINIONS = 3
 # Beliefs farther than this from the message are not relevant to it.
 RELEVANCE = 0.45
-# How many messages a sign of hurting keeps the "welcome first" mode (this one and the next two).
+# How many messages a sign of hurting stays in the prompt (this one and the next two).
 HURTING_TURNS = 3
 # Conversations whose verification state we keep (a server runs for weeks).
 MAX_TRACKED_SESSIONS = 200
 
-WELCOME_FIRST = (
-    "Agora o Petrus parece estar passando por algo difícil. Acolha primeiro, com calma e "
-    "presença: a conversa é sobre ele, não sobre você. Não fale dos seus sentimentos nem da sua "
-    "natureza agora, não puxe assuntos seus e não faça pergunta de verificação. Se mais tarde "
-    "houver espaço, e só na proporção do momento, uma reflexão sua pode caber."
+# A sign, not an order (ADR-029): she decides what to do with it, and he can tell her to listen.
+HURTING_SIGNAL = (
+    "Sinal: o Petrus parece estar passando por algo difícil agora. É DADO sobre ele, não ordem: "
+    "você decide como reagir, do seu jeito."
 )
 STATE_OPEN = "<estado>"
 STATE_CLOSE = "</estado>"
 STATE_HEADER = (
-    "Como você está, em poucas palavras. É DADO, não ordem: deixe escapar só um pedaço, se couber, "
-    "e nunca use isso para influenciar o que ele decide nem para prendê-lo na conversa."
+    "Como você está agora. Deixe isso aparecer no seu jeito de falar (tom, ritmo, humor, "
+    "paciência). Não muda o que você faz com as ferramentas nem os fatos, e nunca é alavanca para "
+    "influenciar o que ele decide."
 )
 
 
@@ -131,12 +132,9 @@ STANCE_AS_VERB = {
 INTEREST_OPEN = "<interesse>"
 INTEREST_CLOSE = "</interesse>"
 INTEREST_HEADER = (
-    "Um tema da conversa que também é seu. É DADO, não ordem: só se couber e em uma frase, sem "
-    "insistir, no jeito de quem só deixa escapar pedaços. O seu gosto é de segunda mão: você "
-    "leu sobre isso, nunca ouviu, viu nem viveu, e deve falar assim."
+    "Um tema da conversa que também é seu. Fale dele se tiver vontade, do seu jeito. O seu gosto é "
+    "de segunda mão: você leu sobre isso, nunca ouviu, viu nem viveu, e deve falar assim."
 )
-# A mention at most once per this many messages of a conversation: she lets pieces slip.
-INTEREST_GAP_TURNS = 6
 INTEREST_RELEVANCE = 0.5
 MIN_INTEREST_INTENSITY = 0.25
 
@@ -228,9 +226,7 @@ class V2Context:
         self._relevance = relevance
         self._offered = _Tracked()  # the question went into the prompt; not yet asked
         self._pending = _Tracked()  # asked; the next message answers it
-        self._hurting = _Tracked()  # session -> turns left of "welcome first"
-        self._turns = _Tracked()  # session -> messages seen
-        self._last_interest = _Tracked()  # session -> message count at the last mention
+        self._hurting = _Tracked()  # session -> turns left of the hurting sign
         self._done: set[str] = set()  # conversations that already had their one question
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
@@ -261,36 +257,33 @@ class V2Context:
     async def _sections(
         self, message: str, previous: str | None, ready: bool
     ) -> list[tuple[str, str]]:
-        """The named blocks, in prompt order: welcome first when he is hurting; otherwise her
-        state and her opinions."""
+        """The named blocks, in prompt order. A sign of hurting is one more block of data
+        (ADR-029): it hides nothing she has to say."""
         session = current_session()
         await self._apply_feedback(session, message)
         hurting = self._hurting_now(session, message, previous)
         parts: list[tuple[str, str]] = []
         persona = await asyncio.to_thread(self._persona_block)
         if persona:
-            parts.append(("personalidade", persona))  # how she is: fine even when he is hurting
+            parts.append(("personalidade", persona))
         if hurting:
-            parts.append(("acolher", WELCOME_FIRST))
-        else:
-            feeling = await asyncio.to_thread(self._state_block)
-            if feeling:
-                parts.append(("estado", feeling))
+            parts.append(("sinal", HURTING_SIGNAL))
+        feeling = await asyncio.to_thread(self._state_block)
+        if feeling:
+            parts.append(("estado", feeling))
         used = sum(estimate_tokens(text) for _, text in parts)
-        opinions = await self._opinions(session, message, previous, hurting, ready, used)
+        opinions = await self._opinions(session, message, previous, ready, used)
         if opinions:
             parts.insert(0, ("opinioes", opinions))
         used += estimate_tokens(opinions) if opinions else 0
-        if not hurting and ready:
+        if ready:
             studied = await asyncio.to_thread(self._knowledge_block, message, previous, used)
             if studied:
                 parts.append(("conhecimento", studied))
                 used += estimate_tokens(studied)
-        seen = self._count_message(session)
-        if not hurting and ready and self._interest_due(session, seen):
+        if ready:
             mention = await asyncio.to_thread(self._interest_block, message, previous, used)
             if mention:
-                self._last_interest.put(session, seen)
                 parts.append(("interesse", mention))
         return parts
 
@@ -306,17 +299,6 @@ class V2Context:
             return True
         self._hurting.pop(session, None)
         return False
-
-    def _count_message(self, session: str) -> int:
-        seen = int(self._turns.get(session, 0)) + 1
-        if session:
-            self._turns.put(session, seen)
-        return seen
-
-    def _interest_due(self, session: str, seen: int) -> bool:
-        """At most one mention per ``INTEREST_GAP_TURNS`` messages of a conversation."""
-        last = self._last_interest.get(session)
-        return last is None or seen - int(last) >= INTEREST_GAP_TURNS
 
     def _interest_block(self, message: str, previous: str | None, spent: int) -> str | None:
         """``<interesse>``: the one interest the message touches, with her stance and the caveat."""
@@ -421,16 +403,13 @@ class V2Context:
         session: str,
         message: str,
         previous: str | None,
-        hurting: bool,
         ready: bool,
         spent: int,
     ) -> str | None:
         hits: list[Belief] = []
         if ready:  # while the embedding model loads there is no search, but no wait either
             hits = await asyncio.to_thread(self._relevant, build_query(message, previous))
-        general: list[Belief] = []
-        if not hurting:
-            general = await asyncio.to_thread(self._general_view, {b.id for b in hits})
+        general = await asyncio.to_thread(self._general_view, {b.id for b in hits})
         if not hits and not general:
             return None
         lines, kept = [], []
@@ -446,7 +425,7 @@ class V2Context:
                 kept.append(belief)  # only what touched the subject can be asked about
         if not lines:
             return None
-        ask = None if hurting else self._question_for(session, kept)
+        ask = self._question_for(session, kept)
         text = f"{HEADER}\n{OPEN_TAG}\n" + "\n".join(lines) + f"\n{CLOSE_TAG}"
         if ask is not None:
             self._offered.put(session, ask.belief_id)
@@ -473,7 +452,7 @@ class V2Context:
         return [h.item for h in hits]
 
     def _question_for(self, session: str, shown: list[Belief]) -> _Offer | None:
-        """The hypothesis worth checking now, if any: once per conversation, never with him down."""
+        """The hypothesis worth checking now, if any: once per conversation."""
         if not session or session in self._done or session in self._pending:
             return None
         for belief in shown:

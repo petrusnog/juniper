@@ -24,7 +24,6 @@ from brain.memory.mongo import MongoVectorStore
 from brain.memory.v2.attention import MAX_TOPICS, AttentionSource, attention_topics
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.context import (
-    INTEREST_GAP_TURNS,
     INTEREST_OPEN,
     V2Context,
 )
@@ -320,7 +319,7 @@ async def test_the_interest_arrives_with_her_stance_the_reason_and_the_reading_c
     block = (await v2(data).context_for(TOPIC_MESSAGE)).block or ""
     assert "Você gosta de a banda inglesa Beatles rock clássico" in block
     assert "li que a harmonia é rica" in block and "Foi de ler a respeito" in block
-    assert "nunca ouviu, viu nem viveu" in block and "DADO, não ordem" in block
+    assert "nunca ouviu, viu nem viveu" in block and "se tiver vontade" in block
 
     data2 = V2Data.over(InMemoryDocStore())
     interest(data2, "a banda inglesa Beatles rock clássico", 0.8, "dislike")
@@ -337,25 +336,24 @@ async def test_at_most_one_interest_per_answer() -> None:
     assert block.count(INTEREST_OPEN) == 1 and block.count("Você gosta de") == 1
 
 
-async def test_the_mention_is_dosed_over_the_conversation() -> None:
+async def test_the_mention_is_not_dosed_she_decides_whether_to_talk_about_it() -> None:
     data = V2Data.over(InMemoryDocStore())
     interest(data, "a banda inglesa Beatles rock clássico", 0.8)
     context = v2(data)
     mentions = []
-    for _ in range(INTEREST_GAP_TURNS + 2):
+    for _ in range(4):
         block = (await context.context_for(TOPIC_MESSAGE)).block or ""
         mentions.append(INTEREST_OPEN in block)
-    assert mentions[0] and not any(mentions[1:INTEREST_GAP_TURNS])
-    assert mentions[INTEREST_GAP_TURNS]  # it can slip out again after the gap
+    assert all(mentions)  # ADR-029: no gag between mentions
 
 
-async def test_never_in_the_turn_of_suffering() -> None:
+async def test_also_in_the_turn_of_suffering() -> None:
     data = V2Data.over(InMemoryDocStore())
     interest(data, "a banda inglesa Beatles rock clássico", 0.8)
     block = (
         await v2(data).context_for(f"minha avó faleceu e eu só queria ouvir {TOPIC_MESSAGE}")
     ).block or ""
-    assert INTEREST_OPEN not in block and "Acolha primeiro" in block
+    assert INTEREST_OPEN in block and "difícil agora" in block
 
 
 async def test_an_undecided_or_faded_interest_is_not_mentioned() -> None:

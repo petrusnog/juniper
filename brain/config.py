@@ -680,7 +680,7 @@ class V2OpinionSettings(BaseModel):
     """Opiniões dela na conversa (ADR-017, seção 10)."""
 
     # Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto de 3 fontes ou mais)
-    # entram em toda conversa, além das que tocam o assunto. 0 desliga. Nunca no modo de acolher.
+    # entram em toda conversa, além das que tocam o assunto. 0 desliga.
     always_on: int = Field(default=2, ge=0, le=5)
 
 

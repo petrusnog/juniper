@@ -46,7 +46,7 @@ WORDS: dict[str, str] = {
 PERSONA_OPEN = "<personalidade>"
 PERSONA_CLOSE = "</personalidade>"
 PERSONA_HEADER = (
-    "Como você anda, comparada ao seu jeito de sempre. É DADO, não ordem: tempera o tom, e o "
+    "Como você anda, comparada ao seu jeito de sempre. É o seu jeito: deixe que ele guie o tom. O "
     "resto do que você é (honestidade, cuidado com as ferramentas, confirmação) continua igual."
 )
 

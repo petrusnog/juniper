@@ -331,7 +331,7 @@ def test_the_rendering_describes_shifts_in_words() -> None:
     text = render_persona(state_with(introspecção=0.1, brincadeira=-0.06))
     assert text is not None and PERSONA_OPEN in text and PERSONA_CLOSE in text
     assert "mais reflexiva" in text and "um pouco menos brincalhona" in text
-    assert "DADO, não ordem" in text
+    assert "deixe que ele guie o tom" in text
 
 
 @pytest.mark.parametrize(

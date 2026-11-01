@@ -104,12 +104,12 @@ async def test_always_on_zero_switches_it_off() -> None:
     ).block is None
 
 
-async def test_never_in_the_welcome_mode() -> None:
+async def test_also_when_he_is_hurting() -> None:
     data = V2Data.over(InMemoryDocStore())
     firm(data, "Acho que o Petrus planeja tudo em planilhas.")
     ctx = context(data, opinions=V2OpinionSettings(always_on=2))
     block = (await ctx.context_for("minha avó faleceu hoje")).block or ""
-    assert "Acolha primeiro" in block and "(visão geral)" not in block
+    assert "difícil agora" in block and "(visão geral)" in block  # ADR-029
 
 
 async def test_the_general_view_works_while_the_embedding_model_loads() -> None:

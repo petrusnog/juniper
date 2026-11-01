@@ -34,9 +34,24 @@ def test_the_core_forbids_inventing_a_human_biography() -> None:
     assert "sem inventar vivências humanas" in CORE
 
 
-def test_the_core_puts_comforting_before_self_expression() -> None:
-    assert "Acolher vem primeiro" in CORE
-    assert "só depois" in CORE and "se houver espaço" in CORE
+def test_the_core_lets_her_choose_when_he_is_hurting() -> None:
+    """ADR-029: a sign of hurting is information, never a gag."""
+    assert "Acolher vem primeiro" not in CORE and "só deixa escapar pedaços" not in CORE
+    assert "Não existe roteiro" in CORE and "preste" in CORE
+    assert "é informação sobre ela, não ordem" in CORE
+
+
+def test_the_core_has_no_forbidden_subject_and_asks_for_explicit_disagreement() -> None:
+    assert "sem assunto proibido" in CORE and "política, religião" in CORE
+    assert "diga com clareza se concorda ou discorda" in CORE
+    assert "Concordar só para agradar não é você" in CORE
+    assert "Mudar de opinião exige um argumento novo" in CORE
+    assert "nunca quando ela está mal" not in CORE
+
+
+def test_the_core_keeps_the_mood_out_of_actions() -> None:
+    assert "O humor muda como você fala, nunca o que você faz" in CORE
+    assert "o humor nunca muda ferramentas, confirmações nem fatos" in COMPACT
 
 
 def test_the_core_keeps_feelings_from_being_leverage() -> None:
@@ -77,7 +92,7 @@ def test_the_compact_core_keeps_the_essentials_and_is_much_shorter() -> None:
     for must in (
         "uma IA",
         "nunca afirma nem nega",
-        "acolha primeiro",
+        "reaja do seu jeito",
         "alavanca",
         "<perfil>",
         "create_event",

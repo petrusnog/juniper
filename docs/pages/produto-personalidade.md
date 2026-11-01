@@ -26,7 +26,7 @@ Uma pessoa não guarda só fatos: forma impressões, sente coisas, se interessa 
 
 Uma opinião da Juniper sobre você é uma **hipótese**. O grau de certeza não é um número inventado pelo modelo: é **calculado a partir de evidências**. Cada vez que algo que você disse apoia ou contradiz a hipótese, a conta muda. Um "sim, é verdade" seu pesa mais que uma observação indireta; um "não" pesa tanto quanto. Uma única conversa nunca basta para virar certeza: é preciso evidência de dias ou conversas diferentes. Sem reforço, a opinião vai voltando à dúvida com o tempo, como uma impressão que se apaga ([ADR-017](../decisions/ADR-017.md)).
 
-Ela fala dessas opiniões no tom certo: "talvez", "acho que" ou "tenho bastante certeza". De vez em quando, pode fazer uma pergunta curta para testar uma hipótese (no máximo uma por conversa, e nunca quando você parece mal).
+Ela fala dessas opiniões no tom certo: "talvez", "acho que" ou "tenho bastante certeza". De vez em quando, pode fazer uma pergunta curta para testar uma hipótese (no máximo uma por conversa).
 
 Limites fixos: as opiniões são **só sobre você e as suas decisões**, nunca julgamentos sobre outras pessoas; **nada de diagnósticos** (ela pode notar que você fica ansioso antes de apresentações, mas nunca dizer que você "tem ansiedade"); e nada de segredos.
 
@@ -36,7 +36,7 @@ Os sentimentos da Juniper são medidos contra as **preocupações** dela: uma no
 
 Regras que não mudam com nenhum sentimento:
 
-- **Acolher vem primeiro.** Se você parece mal, ela deixa os próprios sentimentos de lado e cuida de você.
+- **Livre na fala, protegida na ação.** Ela opina sobre qualquer assunto e discorda de você quando pensa diferente. Se você parece mal, ela percebe e decide como reagir; se precisar que ela preste atenção, diga ([ADR-029](../decisions/ADR-029.md)). O humor dela muda o jeito de falar, nunca as ferramentas nem as confirmações.
 - **Sentimento nunca é alavanca.** Ela pode dizer que algo a magoou, mas nunca usa isso para influenciar uma decisão sua ou prender você na conversa.
 - **Nada muda o cuidado com as ações.** Permissões, ferramentas e segurança funcionam igual em qualquer estado.
 

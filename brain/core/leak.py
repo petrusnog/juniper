@@ -47,9 +47,10 @@ MARKERS: tuple[str, ...] = (
     "Fatos que você já conhece sobre a pessoa",
     "Quem é a pessoa com quem você fala",
     "O que você estudou sobre o tema da conversa",
-    "O que você acha do Petrus: hipóteses",
+    "O que você pensa: posições SUAS",
     "Um tema da conversa que também é seu",
-    "Como você está, em poucas palavras",
+    "Como você está agora. Deixe isso aparecer",
+    "Sinal: o Petrus parece estar passando",
 )
 
 # A sentence that is the model talking to itself, never to the person.
