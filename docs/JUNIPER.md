@@ -55,7 +55,8 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 |---|---|
 | Login global com MFA (épica #177) | Só o desenho, no [ADR-021](decisions/ADR-021.md) e em [Login com MFA](pages/login.md). `brain/auth/` existe (usuários e credenciais, ADR-027), mas **não há TOTP**, sessões de MFA nem `auth.login` no protocolo. **A issue #177 não está resolvida** (diferente das demais). |
 | Isolamento de dados por usuário | Registros novos devem levar `owner_id`, mas nenhuma leitura filtra por usuário: um `tester` vê o mesmo cérebro do dono (memória, conversas, agenda, música). Por isso `deployment.auth.allow_testers` vem `false`. Precisa de ADR próprio. |
-| `run_shell`, `open_app`, `web_fetch`, `web_search` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,web,shell}.py` são stubs de 4 linhas. |
+| `run_shell`, `open_app` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,shell}.py` são stubs de 4 linhas. |
+| Memória V3 (ADR-029, 030, 031) | **Proposta, sem código.** Livre arbítrio na fala, humor PAD e bloco de voz, Big Five, crenças sobre si e o mundo, sonho V2, conhecimento só da memória com a web ensinando; inclui `web_search`, `web_fetch` (hoje *stubs* em `brain/tools/web.py`) e `learn_topic`. |
 | Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
 | Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
 | Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
@@ -205,6 +206,9 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
 | [027](decisions/ADR-027.md) | Usuários e credenciais `client_id`/`client_secret` (segredo visto uma vez, só o hash no MongoDB, espelho do dono em arquivo); vale para todos os clientes, menos SSH. |
 | [028](decisions/ADR-028.md) | Ações do dono no dashboard (ocorrências, memória, tarefas) com as defesas do ADR-027; leituras de logs, custos e saúde. |
+| [029](decisions/ADR-029.md) | Livre arbítrio: expressão livre (opina sobre tudo, discorda, fala de si), ação protegida (tiers e confirmação intocados) (proposto). |
+| [030](decisions/ADR-030.md) | Memória V3: emoção PAD, humor ALMA, Big Five em 10 aspectos + ironia, traço como média dos estados, bloco de voz, crenças sobre si e o mundo, sonho V2 (proposto). |
+| [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (proposto). |
 
 ---
 
@@ -225,7 +229,8 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
 | `study add` no dashboard | Fora: o texto de estudo não cabe na *query* dos `POST` (o servidor HTTP do dashboard não lê corpo). Continua na CLI. |
-| Tools de sistema e web (`run_shell`, `open_app`, `web_fetch`, `web_search`) | Política pronta (ADR-006); implementação pendente. |
+| Memória V3 (ADR-029, ADR-030, ADR-031) | ADRs propostos; implementação em fases depois da aprovação (as tools de web entram aqui). |
+| Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
 | Calibração da Memória V2 | Os valores numéricos seguem **[a calibrar]** com uso real (ADR-017). |

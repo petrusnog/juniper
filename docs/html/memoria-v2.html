@@ -17,6 +17,7 @@
 <h1>Memória V2 <span class="tag g">pronta</span></h1>
 <p class="lead">A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em camadas, com o algoritmo de sonho.</p>
 <div class="callout info"><p><strong>Nota:</strong> esta página acompanha a <a href="adr-017.html">ADR-017</a>, que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem <strong>desligada</strong> (<code>memory.v2.enabled: false</code>); desligada, nada muda em relação à <a href="memoria-longo-prazo.html">memória de longo prazo</a>: o prompt, a extração e os comandos são os de antes.</p></div>
+<blockquote><p><strong>Próxima versão:</strong> a Memória V3 está proposta no <a href="adr-029.html">ADR-029</a> (livre arbítrio na fala), no <a href="adr-030.html">ADR-030</a> (humor PAD, Big Five, crenças sobre si e o mundo, sonho V2) e no <a href="adr-031.html">ADR-031</a> (conhecimento só da memória, com a web ensinando). Esta página descreve a V2, que é o que roda hoje.</p></blockquote>
 <h2 id="visao-geral">Visão geral</h2>
 <p>A memória v1 guarda <strong>fatos</strong>. A V2 acrescenta camadas em que cada uma é uma <strong>leitura da anterior</strong>, e a personalidade deixa de ser um texto fixo.</p>
 <pre><code class="lang-text">0. NÚCLEO (fixo)   regras de tools, confirmação, segurança, formato, honestidade

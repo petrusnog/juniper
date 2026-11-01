@@ -114,3 +114,6 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`
 - [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Aceito) · `api-http`, `dashboard`, `login`, `usuarios`
 - [ADR-028](decisions/ADR-028.md): Ações no dashboard: ocorrências, memória e tarefas (Aceito) · `api-http`, `dashboard`, `ocorrencias`
+- [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Proposto) · `memoria-v2`
+- [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Proposto) · `memoria-v2`
+- [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Proposto) · `memoria-v2`
