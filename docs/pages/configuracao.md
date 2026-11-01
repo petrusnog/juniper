@@ -37,6 +37,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
 | `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.md#login)). |
 | `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.md)). |
+| `JUNIPER_TAVILY_API_KEY` | Chave do Tavily (busca na web, plano gratuito; app.tavily.com). Sem ela, a busca usa o SearXNG e o DuckDuckGo. Segredo: nunca em código, imagem, log nem PR ([ADR-031](../decisions/ADR-031.md)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
 | `JUNIPER_CONFIG_PATH` | Caminho do `config.yaml`. |
@@ -282,6 +283,18 @@ De onde o cérebro serve o APK do app Android ([API HTTP](api-http.md#app-update
 | Opção | Padrão | O que faz |
 |---|---|---|
 | `app_update.dir` | `~/.juniper/app` | Pasta com `app-release.apk` e `latest.json`, escritos por `scripts/publish_app.sh`. Vazia ou ausente: `GET /app/update` responde `{"available": false}`. Em produção é `/home/juniper/.juniper/app`, montada somente leitura do diretório do host definido por `JUNIPER_APP_DIR` (padrão `./app-release`, [Visão geral da produção](producao.md#dados)). |
+
+## web {#web-config}
+
+A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fala, a web ensina. A consulta que sai da VPS vai com os segredos mascarados e no máximo 300 caracteres.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `web.enabled` | `true` | Liga as tools de web (`web_search`). Desligado, elas não aparecem para o modelo. |
+| `web.search.providers` | Tavily (900 por mês), SearXNG, DuckDuckGo | Os provedores, **na ordem do failover**. Cada item tem `name` (`tavily`, `searxng` ou `duckduckgo`), `enabled`, `monthly_limit` (buscas por mês UTC; 0 = sem limite) e, só o SearXNG, `url` (sem URL ele é pulado). O Tavily também é pulado sem `JUNIPER_TAVILY_API_KEY`. |
+| `web.search.max_results` | `5` | Teto de resultados por busca (1 a 10). |
+| `web.search.timeout_seconds` | `10` | Tempo máximo de cada provedor antes de passar ao próximo. |
+| `web.search.quota_file` | `~/.juniper/web/quota.json` | O contador mensal de buscas por provedor (modo 600). Arquivo corrompido ou ausente começa o mês do zero. |
 
 ## Como adicionar uma opção {#adicionar}
 

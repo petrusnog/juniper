@@ -325,6 +325,52 @@ class OpenUrlSettings(BaseModel):
         return domains
 
 
+WEB_SEARCH_PROVIDERS = ("tavily", "searxng", "duckduckgo")
+
+
+class WebSearchProviderSettings(BaseModel):
+    """Um provedor de busca na web, na ordem do failover (ADR-031)."""
+
+    name: str = Field(pattern=r"^(tavily|searxng|duckduckgo)$")
+    enabled: bool = True
+    # Buscas por mês (UTC) que o cérebro aceita gastar neste provedor. 0 = sem limite.
+    monthly_limit: int = Field(default=0, ge=0, le=1_000_000)
+    # Só o SearXNG: a URL do serviço (ex.: http://searxng:8080). Sem URL, ele é pulado.
+    url: str | None = None
+
+
+def _default_search_providers() -> list[WebSearchProviderSettings]:
+    return [
+        # O plano gratuito do Tavily dá 1000 créditos por mês (não conferido); fica uma margem.
+        WebSearchProviderSettings(name="tavily", monthly_limit=900),
+        WebSearchProviderSettings(name="searxng"),
+        WebSearchProviderSettings(name="duckduckgo"),
+    ]
+
+
+class WebSearchSettings(BaseModel):
+    """Busca na web com failover (ADR-031)."""
+
+    providers: list[WebSearchProviderSettings] = Field(default_factory=_default_search_providers)
+    max_results: int = Field(default=5, ge=1, le=10)
+    timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    quota_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "web" / "quota.json"
+    )
+
+    @field_validator("quota_file")
+    @classmethod
+    def _expand_quota(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
+class WebSettings(BaseModel):
+    """Web: a memória fala, a web ensina (ADR-031)."""
+
+    enabled: bool = True
+    search: WebSearchSettings = Field(default_factory=WebSearchSettings)
+
+
 class ToolsSettings(BaseModel):
     """Configuração agregada das tools."""
 
@@ -879,11 +925,13 @@ class Settings(BaseSettings):
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     app_update: AppUpdateSettings = Field(default_factory=AppUpdateSettings)
     metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)
+    web: WebSettings = Field(default_factory=WebSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
     youtube_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_YOUTUBE_API_KEY")
+    tavily_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_TAVILY_API_KEY")
     youtube_client_id: str | None = Field(default=None, alias="JUNIPER_YOUTUBE_CLIENT_ID")
     youtube_client_secret: SecretStr | None = Field(
         default=None, alias="JUNIPER_YOUTUBE_CLIENT_SECRET"

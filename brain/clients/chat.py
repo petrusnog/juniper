@@ -919,6 +919,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.tools import issues as issue_tools
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
+    from brain.tools import web as web_tools
     from brain.tools.registry import registry
     from brain.voice.services import open_voice_services
 
@@ -989,6 +990,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         memory_tools.bind(None)
         issue_tools.bind(None)
         await music_tools.close()
+        await web_tools.close()
         if voice_services is not None:
             await voice_services.aclose()
         if memory is not None:
