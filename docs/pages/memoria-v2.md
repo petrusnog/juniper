@@ -10,6 +10,8 @@ tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento me
 
 > **Nota:** esta página acompanha a [ADR-017](../decisions/ADR-017.md), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.md): o prompt, a extração e os comandos são os de antes.
 
+> **Próxima versão:** a Memória V3 está proposta no [ADR-029](../decisions/ADR-029.md) (livre arbítrio na fala), no [ADR-030](../decisions/ADR-030.md) (humor PAD, Big Five, crenças sobre si e o mundo, sonho V2) e no [ADR-031](../decisions/ADR-031.md) (conhecimento só da memória, com a web ensinando). Esta página descreve a V2, que é o que roda hoje.
+
 ## Visão geral {#visao-geral}
 
 A memória v1 guarda **fatos**. A V2 acrescenta camadas em que cada uma é uma **leitura da anterior**, e a personalidade deixa de ser um texto fixo.
