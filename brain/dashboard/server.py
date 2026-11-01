@@ -30,6 +30,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
 from brain.auth import AuthService, Principal
+from brain.dashboard.actions import Actions
 from brain.dashboard.admin import AdminApi
 from brain.dashboard.api import Api, default_api
 from brain.dashboard.auth import COOKIE_NAME, SessionSigner, read_cookie
@@ -91,6 +92,7 @@ class DashboardServer:
         api: Api | None = None,
         *,
         auth: AuthService | None = None,
+        actions: Actions | None = None,
         session_hours: int = 12,
         allowed_hosts: list[str] | None = None,
         static_dir: Path = STATIC_DIR,
@@ -101,6 +103,7 @@ class DashboardServer:
         # Sem o serviço de identidade, vale só o token estático (ADR-007), como antes do ADR-027.
         self._auth = auth or AuthService.legacy_only(token)
         self._admin = AdminApi(self._auth)
+        self._actions = actions
         self._signer = SessionSigner(self._auth.pepper, session_hours)
         self._allowed = list(allowed_hosts or [])
         self._static = static_dir.resolve()
@@ -155,7 +158,7 @@ class DashboardServer:
     async def _route(self, connection: ServerConnection, request: Request) -> Response:
         parts = urlsplit(request.path)
         path = parts.path
-        writable = request.method == "POST" and self._admin.handles(path)
+        writable = request.method == "POST" and self._writer(path) is not None
         if request.method != "GET" and not writable:
             response = self._text(HTTPStatus.METHOD_NOT_ALLOWED, "Somente GET\n")
             response.headers["Allow"] = "GET"
@@ -180,8 +183,9 @@ class DashboardServer:
         query = parse_qs(parts.query)
         if path == "/api/me":
             return self._me(request, who)
-        if self._admin.handles(path):
-            return await self._administer(request, path, query, who)
+        writer = self._writer(path)
+        if writer is not None and (request.method == "POST" or writer.serves_get):
+            return await self._administer(writer, request, path, query, who)
         if path.startswith("/api/"):
             api_path = path.removeprefix("/api")
             if self.api.is_file(api_path):
@@ -233,14 +237,27 @@ class DashboardServer:
         body = {**sanitize({"user": who.public(), "device": who.label}), "csrf": csrf}
         return self._json(200, body)
 
+    def _writer(self, path: str) -> Any | None:
+        """The module that answers writes (and its own reads) at ``path``, or ``None``."""
+        if self._admin.handles(path):
+            return self._admin
+        if self._actions is not None and self._actions.handles(path):
+            return self._actions
+        return None
+
     async def _administer(
-        self, request: Request, path: str, query: dict[str, list[str]], who: Principal
+        self,
+        writer: Any,
+        request: Request,
+        path: str,
+        query: dict[str, list[str]],
+        who: Principal,
     ) -> Response:
         if request.method == "POST":
             refusal = self._write_refused(request)
             if refusal is not None:
                 return refusal
-        status, body, reveal = await self._admin.handle(request.method, path, query, who)
+        status, body, reveal = await writer.handle(request.method, path, query, who)
         safe = sanitize(body)
         if reveal:  # the one-time client_secret skips the mask that would erase it
             safe = {**safe, **reveal}

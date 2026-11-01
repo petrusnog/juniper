@@ -1,4 +1,5 @@
 import { api } from "/assets/api.js";
+import { dangerAction } from "/assets/actions.js";
 import { badge, bar, card, clear, empty, h, when } from "/assets/ui.js";
 
 const UNCERTAINTY = {
@@ -70,6 +71,7 @@ async function topic(id) {
       h("p", {}, badge(`passo ${t.level}`), " ", badge(t.stance_words, t.stance === "dislike" ? "warn" : ""), h("span", { class: "muted small", text: `  intensidade ${t.intensity.toFixed(2)} · estudado pela última vez ${t.last_studied_at ? when(t.last_studied_at) : "nunca"} · ${t.exposures} contato(s)` })),
       t.reasons.length ? h("p", {}, h("span", { class: "label", text: "Por quê: " }), t.reasons.join("; ")) : null,
     ),
+    card("Ações", dangerAction("Esquecer este tema", t.id, `/memory/interests/${t.id}/forget`, () => { window.location.hash = "#/estudos"; })),
     card("Notas por passo", stepsChart(t.steps)),
     questions.length ? card("Perguntas em aberto para o próximo passo", h("ul", { class: "plain notes" }, ...questions.map((q) => noteItem(q, false)))) : null,
     card(`Notas (${claims.length})`, search, filters, list),

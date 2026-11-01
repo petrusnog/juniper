@@ -89,6 +89,34 @@ As **únicas** rotas que escrevem ([ADR-027](../decisions/ADR-027.md)). Só o do
 
 Erros: 400 (`{"error": ...}` com o motivo ou o texto a confirmar), 403 (não é o dono, ou CSRF/origem inválidos).
 
+### Ações do dono {#acoes}
+
+Também só `POST` do dono, com as mesmas defesas ([ADR-028](../decisions/ADR-028.md)). Ações destrutivas pedem `confirm=` igual ao id (ou à palavra indicada), conferido no servidor. Detalhes em [Ocorrências e ações](ocorrencias.md).
+
+| Rota | Parâmetros | O que faz |
+|---|---|---|
+| `POST /api/issues` | `title`, `description`, `type`, `severity` | Registra uma ocorrência. |
+| `POST /api/issues/<id>/state` · `severity` | `value` | Muda o estado (`aberta`, `investigando`, `resolvida`, `descartada`) ou a gravidade. |
+| `POST /api/issues/<id>/note` | `text` | Anota no histórico. |
+| `POST /api/issues/<id>/delete` | `confirm` = o id | Apaga. |
+| `POST /api/memory/facts/<id>/forget` | `confirm` = o id | Esquece a memória e as versões antigas que ela substituiu. |
+| `POST /api/memory/beliefs/<id>/forget` · `interests/<id>/forget` · `notes/<id>/forget` | `confirm` = o id | Apaga a crença, o interesse ou a nota. |
+| `POST /api/memory/affects/clear` | `confirm=sentimentos` | Apaga todos os sentimentos. |
+| `POST /api/memory/concerns/<id>/weight` | `value` (0 a 1), `reason` | Muda o peso (fica no histórico). |
+| `POST /api/memory/persona/revert` | `to` (versão, opcional) | Volta à versão anterior como uma versão nova. |
+| `POST /api/jobs/dream` · `reindex` | `dry=1` (sonho), `force=1` (reindexação) | Inicia a tarefa em segundo plano; `409` se outra estiver rodando. |
+
+Leituras novas, sem escrita:
+
+| Rota | Parâmetros | O que entrega |
+|---|---|---|
+| `GET /api/logs` | `days` (1 a 7), `errors=1`, `event` (lista), `session`, `q`, `limit` (até 500) | O log técnico, do mais novo ao mais antigo, com nível e resumo de uma linha. |
+| `GET /api/costs` | — | Voz (uso e limite do mês), música (cota do dia), tokens do sonho e trocas de provedor. |
+| `GET /api/health` | — | Estado do servidor, versão, tempo no ar, camadas ligadas, acesso e tools. |
+| `GET /api/jobs` | — | A tarefa em curso e as últimas 10 execuções. |
+
+Em `GET /api/occurrences`, `kind=registro` lista os registros (com `state` e `type` como filtros).
+
 ### Convenções {#convencoes}
 
 - Respostas em JSON UTF-8, `Cache-Control: no-store`.
@@ -127,6 +155,7 @@ As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `note
 
 ## Para saber mais {#para-saber-mais}
 
+- [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.

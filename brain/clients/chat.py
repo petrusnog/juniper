@@ -21,6 +21,7 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from brain.auth.context import current_client, current_user
 from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
@@ -261,6 +262,9 @@ class ChatHandler:
         )
 
     async def handle(self, conn: Connection, message: p.ClientMessage) -> None:
+        # Who is speaking, for the tasks this message spawns (a tool stamps its records with it).
+        current_user.set(conn.principal.user_id if conn.principal else None)
+        current_client.set(conn.kind)
         if isinstance(message, p.ChatSend):
             await self._chat_send(conn, message)
         elif isinstance(message, p.ChatCancel):
@@ -906,11 +910,13 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     )
     from brain.memory.stores import (
         close_session_store,
+        open_issue_store,
         open_leak_audit,
         open_leak_reports,
         open_session_store,
     )
     from brain.memory.v2 import open_v2_runtime
+    from brain.tools import issues as issue_tools
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
     from brain.tools.registry import registry
@@ -939,6 +945,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         raise
     assert router is not None and memory_llm is not None
     memory_tools.bind(memory)
+    issue_store = open_issue_store(store)
+    issue_tools.bind(issue_store)
     # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
     v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
     voice_services = open_voice_services() if settings.voice.enabled else None
@@ -962,6 +970,9 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     handler.sources = Sources(
         reports=handler._reports,
         audit=handler._audit,
+        issues=issue_store,
+        health=handler.health,
+        log_dir=event_log.directory,
         memory=commands or memory,
         data=v2.data if v2 else None,
         transcripts=settings.dashboard.transcripts,
@@ -976,6 +987,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         if v2 is not None:
             v2.close()
         memory_tools.bind(None)
+        issue_tools.bind(None)
         await music_tools.close()
         if voice_services is not None:
             await voice_services.aclose()

@@ -1,4 +1,5 @@
 import { api } from "/assets/api.js";
+import { dangerAction } from "/assets/actions.js";
 import { badge, bar, card, clear, empty, h, when } from "/assets/ui.js";
 
 const PAGE = 20;
@@ -55,6 +56,8 @@ async function detail(id) {
         )
       : null,
     linked.length ? card("Ligações", h("ul", { class: "plain" }, ...linked)) : null,
+    card("Ações", h("p", { class: "muted small", text: "Esquecer apaga esta memória para sempre, junto com as versões antigas que ela substituiu." }),
+      dangerAction("Esquecer esta memória", m.id, `/memory/facts/${m.id}/forget`, () => { window.location.hash = "#/memorias"; })),
   );
 }
 
