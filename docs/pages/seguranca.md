@@ -50,7 +50,7 @@ Texto que veio de fora (páginas da web, títulos de eventos criados por terceir
 | Log estruturado | Tudo passa por `redact()`: campos `api_key`, `token`, `secret`, `password`, `authorization`, `private_key` viram `***`, assim como padrões de chave (`gsk_…`, `Bearer …`, blocos de chave privada) e as chaves configuradas. |
 | Memória de longo prazo | O filtro de segredos (`secretfilter.py`) mascara a conversa antes de mandá-la ao LLM de extração e recusa candidatas que pareçam segredo. É uma heurística, não uma garantia. |
 | Chave da conta de serviço do Google | `~/.juniper/certs/gcp-key.json`: pasta `700`, arquivo `600`, `certs/` no `.gitignore`. |
-| Token dos clientes remotos | Gerado no primeiro boot do servidor (`600`, no volume de estado); no app Android, no Keystore; nunca em URL nem em log ([API WebSocket](protocolo.md#conexao), [App mobile](mobile.md)). |
+| Credenciais dos clientes remotos | `client_secret` visto uma vez e guardado só como hash (HMAC com um *pepper* fora do banco, [Usuários e credenciais](usuarios.md)); o token estático antigo (`600`, no volume de estado) vale enquanto `legacy_token`; no app Android, no Keystore; nunca em URL nem em log ([API WebSocket](protocolo.md#conexao), [App mobile](mobile.md)). |
 
 ## Arquivos {#arquivos}
 
@@ -70,10 +70,11 @@ Com o cérebro num servidor, as travas adicionais são ([ADR-007](../decisions/A
 
 ## Planejado: login com segundo fator {#mfa}
 
-Hoje o token e a rede privada protegem os clientes, e o Telegram usa uma lista de IDs. O [login com MFA](login.md) ([ADR-021](../decisions/ADR-021.md)) acrescentaria um segundo fator para todos os canais.
+Hoje a credencial (`client_id` + `client_secret`) e a rede privada protegem os clientes, e o Telegram usa uma lista de IDs. O [login com MFA](login.md) ([ADR-021](../decisions/ADR-021.md)) acrescentaria um segundo fator para todos os canais.
 
 ## Para saber mais {#para-saber-mais}
 
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Ferramentas e permissões](produto-ferramentas.md) (Produto): Como a Juniper age no mundo real por meio de ferramentas, os quatro níveis de risco e como a permissão é dada na própria conversa.
 - [Privacidade e segurança](produto-privacidade.md) (Produto): Para onde vão os seus dados, o que fica só no seu servidor, como a Juniper se protege e o que você controla.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.

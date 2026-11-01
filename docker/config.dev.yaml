@@ -22,6 +22,10 @@ deployment:
     port: 8765
   auth:
     token_file: /home/juniper/.juniper/state/token
+    # Usuários e credenciais (ADR-027): o pepper do hash e o espelho do dono ficam no volume de
+    # estado; perder o pepper invalidaria todos os client_secret.
+    pepper_file: /home/juniper/.juniper/state/auth/pepper
+    owner_mirror_file: /home/juniper/.juniper/state/auth/owner.json
 
 memory:
   session:

@@ -70,10 +70,10 @@ def msg(text: str | None = "oi", **kwargs: Any) -> tg.Incoming:
 
 
 def factory_for(s: Scenario) -> tg.ClientFactory:
-    def make(user_id: int) -> tg.BrainClient:
+    def make(user_id: int, bearer: str | None = None) -> tg.BrainClient:
         return RemoteClient(
             f"ws://127.0.0.1:{s.server.port}/v1/ws",
-            TOKEN,
+            bearer or TOKEN,
             device_id=f"telegram-{user_id}",
             device_name="Telegram",
             kind="telegram",
@@ -564,7 +564,11 @@ def test_command_passes_the_token_and_the_allowlist_and_never_prints_the_token(
     result = CliRunner().invoke(app, ["telegram"])
     assert result.exit_code == 0
     assert seen == [
-        ("123456:ABC-fake", [10, 20], {"rate_limit_per_minute": 7, "delete_after_hours": 12.0})
+        (
+            "123456:ABC-fake",
+            [10, 20],
+            {"rate_limit_per_minute": 7, "delete_after_hours": 12.0, "require_login": False},
+        )
     ]
     assert "ABC-fake" not in result.output and "2 usuário(s)" in result.output
 

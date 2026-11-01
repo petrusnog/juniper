@@ -605,6 +605,7 @@ def docs() -> None:
 @app.command()
 def serve() -> None:
     """Sobe o brain como servidor WebSocket para os clientes remotos (deployment.mode: server)."""
+    from brain.auth import AuthService
     from brain.clients.app_update import AppUpdates
     from brain.clients.chat import open_chat_handler
     from brain.clients.server import BrainServer, ensure_token, run_server
@@ -620,6 +621,7 @@ def serve() -> None:
     token_file = settings.deployment.auth.token_file
     token = ensure_token(token_file)
     host, port = settings.deployment.server.host, settings.deployment.server.port
+    auth = AuthService.from_settings(legacy_token=token)
 
     cfg = settings.dashboard
     dash_host = cfg.host or host
@@ -637,6 +639,7 @@ def serve() -> None:
                         cfg.port,
                         token,
                         build_api(handler.sources),
+                        auth=auth,
                         session_hours=cfg.session_hours,
                         allowed_hosts=cfg.allowed_hosts,
                     )
@@ -644,11 +647,24 @@ def serve() -> None:
                     voice.say(console, f"O dashboard não subiu: {exc}", "yellow")
             updates = AppUpdates(settings.app_update.dir)
             await run_server(
-                BrainServer(host, port, token, handler, health=handler.health, app_updates=updates),
+                BrainServer(
+                    host,
+                    port,
+                    token,
+                    handler,
+                    health=handler.health,
+                    app_updates=updates,
+                    auth=auth,
+                ),
                 dashboard,
             )
 
-    voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).")
+    legacy = (
+        " Token estático ainda vale (deployment.auth.legacy_token)."
+        if (settings.deployment.auth.legacy_token)
+        else ""
+    )
+    voice.say(console, f"Subindo em ws://{host}:{port}/v1/ws (token em {token_file}).{legacy}")
     if cfg.enabled:
         voice.say(console, f"Dashboard em http://{dash_host}:{cfg.port}/")
     try:
@@ -712,6 +728,7 @@ def _run_bot(bot: Any, token: str, allowed: list[int]) -> None:
         allowed,
         rate_limit_per_minute=settings.telegram.rate_limit_per_minute,
         delete_after_hours=settings.telegram.delete_after_hours,
+        require_login=settings.telegram.require_login,
     )
 
 
@@ -1107,6 +1124,10 @@ music_cli.install(app, console)
 from brain.clients import voice_admin_cli  # noqa: E402
 
 voice_admin_cli.install(app, console)
+
+from brain.clients import users_cli  # noqa: E402
+
+users_cli.install(app, console)
 
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",

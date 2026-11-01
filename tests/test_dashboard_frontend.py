@@ -29,7 +29,7 @@ def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     ids = [p[0] for p in pages]
     assert ids == [
         "visao", "memorias", "central", "estudos", "sonhos", "conversas", "ocorrencias",
-        "pesquisa", "afetos",
+        "pesquisa", "afetos", "usuarios",
     ]  # fmt: skip
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:

@@ -55,6 +55,8 @@ HELP_TEXT: Final = (
     "Oi! Eu sou a Juniper. Escreva o que precisa, como faria no terminal.\n\n"
     "Comandos:\n"
     "/novo: começa uma conversa nova\n"
+    "/login <client_id> <client_secret>: entra (quando o servidor pede login)\n"
+    "/sair: encerra a sessão\n"
     "/vazou [nota]: marca que uma resposta minha vazou instruções ou texto interno\n"
     "/ajuda: mostra esta mensagem\n\n"
     "Por aqui só entendo texto. Quando uma ação muda algo (como criar um evento), eu pergunto "
@@ -76,6 +78,16 @@ AUTH_FAILED: Final = (
 LOST_TEXT: Final = "A conexão com o servidor caiu no meio da resposta. Vou tentar recuperá-la."
 UNAVAILABLE_TEXT: Final = f"{UNAVAILABLE_MESSAGE} Tenta de novo daqui a pouco."
 RATE_LIMITED: Final = "Muitas mensagens em pouco tempo. Espera um minuto e tenta de novo."
+LOGIN_REQUIRED: Final = (
+    "Antes de conversar, entre com /login <client_id> <client_secret>. "
+    "Apago a sua mensagem em seguida."
+)
+LOGIN_USAGE: Final = "Use /login <client_id> <client_secret>."
+LOGIN_REFUSED: Final = "Não consegui entrar: credenciais recusadas."
+LOGIN_ENDED: Final = "Sua sessão foi encerrada. Entre de novo com /login."
+LOGGED_OUT: Final = "Sessão encerrada."
+OPEN_COMMANDS: Final = frozenset({"start", "ajuda", "help", "login"})
+LOGIN_IDLE_HOURS: Final = 12.0
 TOO_LONG: Final = "Essa mensagem é grande demais. Manda em partes menores?"
 
 
@@ -121,7 +133,9 @@ class BrainClient(Protocol):
     async def close(self) -> None: ...
 
 
-ClientFactory = Callable[[int], BrainClient]
+# `(user_id)` ou `(user_id, bearer)`: o `bearer` (client_id.client_secret) só vem com o login por
+# Telegram (ADR-027).
+ClientFactory = Callable[..., BrainClient]
 
 
 def _friendly(message: str) -> str:
@@ -183,6 +197,9 @@ class _User:
     client: BrainClient | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     known_turns: int = 0
+    # Só em memória (nunca em disco ou log): a credencial do login por Telegram (ADR-027 §6).
+    bearer: str | None = None
+    last_active: float = 0.0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -200,9 +217,13 @@ class TelegramBridge:
         typing_interval: float = TYPING_INTERVAL_SECONDS,
         rate_limit_per_minute: int = 20,
         delete_after_hours: float = 0.0,
+        require_login: bool = False,
+        login_idle_hours: float = LOGIN_IDLE_HOURS,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
+        self._require_login = require_login
+        self._login_idle = login_idle_hours * 3600
         self._allowed = frozenset(allowed_user_ids)
         self._messenger = messenger
         self._factory = client_factory
@@ -269,6 +290,8 @@ class TelegramBridge:
                 await self._say(msg.chat_id, ONLY_TEXT)
             elif len(msg.text) > TELEGRAM_MESSAGE_LIMIT:
                 await self._say(msg.chat_id, TOO_LONG)
+            elif self._require_login and not await self._may_talk(msg.user_id, msg.text):
+                await self._say(msg.chat_id, LOGIN_REQUIRED)
             elif msg.text.startswith("/"):
                 await self._command(msg, msg.text)
             else:
@@ -318,12 +341,74 @@ class TelegramBridge:
         name = text.split()[0][1:].split("@")[0].lower()  # "/novo@MeuBot" vale como "/novo"
         if name in ("start", "ajuda", "help"):
             await self._say(msg.chat_id, HELP_TEXT)
+        elif name == "login" and self._require_login:
+            await self._login(msg, text)
+        elif name == "sair" and self._require_login:
+            await self._logout(self._user(msg.user_id))
+            await self._say(msg.chat_id, LOGGED_OUT)
         elif name == "novo":
             await self._new_conversation(msg)
         elif name == "vazou":  # the server stores the report and answers (T-167)
             await self._turn(msg, text, counts=False)
         else:
             await self._say(msg.chat_id, UNKNOWN_COMMAND)
+
+    # --- login por Telegram (ADR-027 §6) ---
+
+    async def _may_talk(self, user_id: int, text: str) -> bool:
+        """Com login exigido: só quem tem sessão viva conversa (os comandos abertos passam)."""
+        if text.startswith("/") and text.split()[0][1:].split("@")[0].lower() in OPEN_COMMANDS:
+            return True
+        user = self._users.get(user_id)
+        if user is None or user.bearer is None:
+            return False
+        if self._clock() - user.last_active > self._login_idle:  # inatividade: pede de novo
+            await self._logout(user)
+            event_log.log("telegram", action="login_expired", user_id=user_id)
+            return False
+        user.last_active = self._clock()
+        return True
+
+    def _new_client(self, user_id: int, bearer: str | None) -> BrainClient:
+        return self._factory(user_id) if bearer is None else self._factory(user_id, bearer)
+
+    async def _logout(self, user: _User) -> None:
+        client, user.client, user.bearer, user.known_turns = user.client, None, None, 0
+        if client is not None:
+            with contextlib.suppress(Exception):
+                await client.close()
+
+    async def _login(self, msg: Incoming, text: str) -> None:
+        """`/login id segredo`: apaga a mensagem na hora e confere abrindo a conexão com o servidor.
+
+        O segredo só passa por aqui e pela memória do cliente; nunca vai ao log."""
+        with contextlib.suppress(Exception):
+            await self._messenger.delete_message(msg.chat_id, msg.message_id)
+        parts = text.split()
+        if len(parts) != 3:
+            await self._say(msg.chat_id, LOGIN_USAGE)
+            return
+        user = self._user(msg.user_id)
+        if user.lock.locked():
+            await self._say(msg.chat_id, BUSY_TEXT)
+            return
+        async with user.lock:
+            await self._logout(user)
+            client = self._new_client(msg.user_id, f"{parts[1]}.{parts[2]}")
+            try:
+                welcome = await client.start(p.Resume(latest=True), CONNECT_WAIT_SECONDS)
+            except ServerUnavailableError:
+                await self._say(msg.chat_id, UNAVAILABLE_TEXT)
+                return
+            except FatalConnectionError:
+                event_log.log("telegram", action="login_refused", user_id=msg.user_id)
+                await self._say(msg.chat_id, LOGIN_REFUSED)
+                return
+            user.client, user.bearer = client, f"{parts[1]}.{parts[2]}"
+            user.known_turns, user.last_active = welcome.session.turns, self._clock()
+            event_log.log("telegram", action="login", user_id=msg.user_id)
+            who = welcome.user.name if welcome.user else ""
+            await self._say(msg.chat_id, f"Entrei{', ' + who if who else ''}. Pode falar.")
 
     async def _new_conversation(self, msg: Incoming) -> None:
         user = self._user(msg.user_id)
@@ -449,7 +534,7 @@ class TelegramBridge:
         """O cliente do usuário, conectado (retomando a conversa mais recente)."""
         if user.client is not None:
             return user.client
-        client = self._factory(msg.user_id)
+        client = self._new_client(msg.user_id, user.bearer)
         try:
             welcome = await client.start(p.Resume(latest=True), CONNECT_WAIT_SECONDS)
         except ServerUnavailableError:
@@ -457,7 +542,11 @@ class TelegramBridge:
             return None
         except FatalConnectionError:
             event_log.log("telegram", action="error", where="auth")
-            await self._say(msg.chat_id, AUTH_FAILED)
+            if self._require_login:  # credencial revogada ou usuário desativado
+                await self._logout(user)
+                await self._say(msg.chat_id, LOGIN_ENDED)
+            else:
+                await self._say(msg.chat_id, AUTH_FAILED)
             return None
         user.client = client
         user.known_turns = welcome.session.turns
@@ -583,10 +672,10 @@ def make_client_factory() -> ClientFactory:
     from brain.clients.remote import RemoteClient
     from brain.clients.remote_cli import read_token, server_url
 
-    def factory(user_id: int) -> BrainClient:
+    def factory(user_id: int, bearer: str | None = None) -> BrainClient:
         return RemoteClient(
             server_url(),
-            read_token(),
+            bearer or read_token(),
             device_id=f"telegram-{user_id}",
             device_name="Telegram",
             kind="telegram",
@@ -601,6 +690,7 @@ def run_bot(
     *,
     rate_limit_per_minute: int = 20,
     delete_after_hours: float = 0.0,
+    require_login: bool = False,
 ) -> None:
     """Sobe o bot (long polling) e só volta quando ele é parado (SIGINT/SIGTERM)."""
     from telegram import Update
@@ -617,6 +707,7 @@ def run_bot(
             factory,
             rate_limit_per_minute=rate_limit_per_minute,
             delete_after_hours=delete_after_hours,
+            require_login=require_login,
         )
         app.bot_data["bridge"] = bridge
         app.bot_data["heartbeat"] = asyncio.get_running_loop().create_task(_heartbeat())
@@ -631,6 +722,7 @@ def run_bot(
             allowed=len(allowed_user_ids),
             rate_limit=rate_limit_per_minute,
             delete_after_hours=delete_after_hours,
+            require_login=require_login,
         )
 
     async def post_shutdown(app: Application) -> None:  # type: ignore[type-arg]

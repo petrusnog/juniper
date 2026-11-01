@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Usuários e credenciais — Livro de bolso Juniper</title>
+<meta name="description" content="Como a Juniper sabe quem fala com ela: o cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash), a migração do token estático e o que ainda não existe (isolamento por usuário).">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/usuarios.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Núcleo / Usuários e credenciais</div>
+<h1>Usuários e credenciais <span class="tag g">pronta</span></h1>
+<p class="lead">Como a Juniper sabe quem fala com ela: o cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash), a migração do token estático e o que ainda não existe (isolamento por usuário).</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página detalha o <a href="adr-027.html">ADR-027</a>. Código: <code>brain/auth/</code>, <code>brain/clients/users_cli.py</code>, <code>brain/dashboard/admin.py</code>. O segundo fator (MFA) é outro assunto: <a href="login.html">Login com MFA</a>.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Cada pessoa é um <strong>usuário</strong> (<code>owner</code> ou <code>tester</code>, ativo ou desativado). Cada usuário tem uma ou mais <strong>credenciais</strong>, uma por dispositivo, e cada credencial é um par:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Parte</th><th>O que é</th></tr></thead><tbody><tr><td><code>client_id</code></td><td>Público, <code>jc_</code> e 16 caracteres. Identifica a credencial.</td></tr><tr><td><code>client_secret</code></td><td>Sorteado (256 bits), <code>jsk_</code> e o resto. Prova que quem fala é o dono da credencial.</td></tr></tbody></table></div>
+<p>Para entrar, o cliente apresenta os <strong>dois</strong>. No WebSocket e na API do dashboard o cabeçalho é <code>Authorization: Bearer &lt;client_id&gt;.&lt;client_secret&gt;</code>.</p>
+<h2 id="segredo">O segredo aparece uma vez</h2>
+<ul><li>No cadastro (CLI ou dashboard) e a cada rotação, o <code>client_secret</code> sai <strong>uma única vez</strong>, na resposta. Depois disso ele não existe em lugar nenhum, nem para o dono.</li><li>No MongoDB fica só <code>HMAC-SHA256(pepper, client_secret)</code>. O <em>pepper</em> é um arquivo do servidor (<code>deployment.auth.pepper_file</code>, modo 600), fora do banco; um vazamento só do banco não permite nem testar palpites. Em produção o arquivo fica no volume de estado, junto do token: <strong>perder o pepper invalida todos os segredos</strong>.</li><li>Um hash rápido basta porque o segredo é sorteado, não escolhido por gente.</li><li>Perdeu? <strong>Rotacione</strong>: sai um segredo novo para o mesmo <code>client_id</code>, e o antigo, as conexões e as sessões dele deixam de valer.</li></ul>
+<h2 id="cli">Cadastrar pela CLI</h2>
+<p>Roda onde o servidor está (na VPS, dentro do contêiner; veja <a href="operacao.html#atalho">Operação</a>):</p>
+<pre><code class="lang-bash">juniper users add Petrus --role owner     # o primeiro: o dono
+juniper users add Ana --role tester       # exige deployment.auth.allow_testers: true
+juniper users list
+juniper users credentials add Petrus --label tablet   # outra credencial, outro aparelho
+juniper users credentials list
+juniper users credentials rotate jc_...   # segredo novo, o antigo morre
+juniper users credentials revoke jc_...   # aparelho perdido
+juniper users disable Ana                 # e `enable`</code></pre>
+<p>No computador (ou celular) que vai <strong>falar</strong> com o servidor, <code>juniper login</code> guarda a credencial num arquivo de modo 600 (<code>deployment.auth.credential_file</code>) e <code>juniper logout</code> a apaga. Sem esse arquivo, o cliente cai para o token estático.</p>
+<h2 id="dashboard">Cadastrar pelo dashboard</h2>
+<p>A página <strong>Usuários</strong> (só para o dono) lista usuários e credenciais (com último uso), cadastra, gera outra credencial, rotaciona, revoga e desativa. É a única parte do <a href="dashboard.html">dashboard</a> que escreve, e tem defesas próprias:</p>
+<ul><li>só <code>POST</code>, só do dono, com <strong>token anti-CSRF</strong> da sessão (cabeçalho <code>X-CSRF-Token</code>) e <code>Origin</code>, quando enviado, igual ao <code>Host</code>; um Bearer sozinho, sem cookie, não escreve;</li><li><strong>desativar, rotacionar e revogar</strong> exigem digitar o nome (ou o <code>client_id</code>); o servidor confere, não só a tela;</li><li>os parâmetros vão na <em>query</em> do <code>POST</code> (o servidor HTTP do dashboard lê cabeçalhos, não corpo) e nenhum é segredo;</li><li>o <code>client_secret</code> volta uma vez na resposta e a tela o esconde ao fechar o aviso;</li><li>cada ação vai ao log (<code>dashboard</code>, <code>op</code>, <code>actor</code>, <code>target</code>), nunca com o segredo.</li></ul>
+<p>Rotas em <a href="api-http.html#usuarios">API HTTP</a>.</p>
+<h2 id="entrada">Quem pode entrar</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Como</th></tr></thead><tbody><tr><td>Servidor WebSocket (CLI remota, app)</td><td>Bearer no handshake. O <code>welcome</code> traz <code>user</code> (<code>id</code>, <code>name</code>, <code>role</code>), só para mostrar. Credencial revogada ou usuário desativado: a conexão cai em segundos (código <code>4401</code>).</td></tr><tr><td>Dashboard</td><td>A tela pede o <code>client_id</code> e o <code>client_secret</code>. O cookie (12 h) é ligado à credencial: rotacionar ou revogar derruba a sessão.</td></tr><tr><td>Telegram</td><td>A lista de IDs continua como filtro prévio. Com <code>telegram.require_login: true</code>, o bot só conversa depois de <code>/login &lt;client_id&gt; &lt;client_secret&gt;</code> (ele <strong>apaga a mensagem</strong> na hora) e a sessão vale 12 h de inatividade; <code>/sair</code> encerra. O segredo fica só na memória do bot.</td></tr><tr><td>App Android</td><td>A tela de configuração tem <em>Client ID</em> e <em>Client secret</em>. Deixar o <em>Client ID</em> vazio mantém o jeito antigo (token estático).</td></tr></tbody></table></div>
+<p>Erros de login são sempre o mesmo texto e o mesmo tempo, para não revelar se o <code>client_id</code> existe. Cinco erros em cinco minutos bloqueiam o cliente (e o <code>client_id</code>) por um tempo. Consequência conhecida: quem alcança a rede privada e sabe um <code>client_id</code> pode travar esse login por alguns minutos errando de propósito; ele não entra, mas também não deixa o dono entrar por aquele <code>client_id</code> (use outra credencial ou espere).</p>
+<h2 id="fallback">O banco fora do ar</h2>
+<p>Cada cadastro, rotação ou revogação do dono regrava um <strong>espelho</strong> (<code>deployment.auth.owner_mirror_file</code>, modo 600) com o hash das credenciais ativas dele. Se o MongoDB estiver fora, só o <strong>dono</strong> entra, por esse espelho; os demais voltam com o banco.</p>
+<h2 id="migracao">Migração</h2>
+<ol><li>O token estático (<code>deployment.auth.token_file</code>) segue valendo como o do dono enquanto <code>deployment.auth.legacy_token: true</code> (o padrão).</li><li>Cadastre o dono, guarde o <code>client_secret</code>, atualize cada cliente (<code>juniper login</code>, app, Telegram) e confira.</li><li>Ligue <code>telegram.require_login: true</code> (o bot deixa de depender do arquivo do token).</li><li>Só então <code>legacy_token: false</code> e reinicie: o token deixa de valer em todos os clientes, e o do arquivo vira lixo.</li></ol>
+<h2 id="limites">O que ainda não existe</h2>
+<ul><li><strong>Isolamento por usuário.</strong> Um <code>tester</code> enxerga o mesmo cérebro que o dono: memória, conversas, agenda, música. Por isso cadastrar <code>tester</code> fica atrás de <code>deployment.auth.allow_testers</code> (desligado) e a tela avisa. Registros novos já levam <code>owner_id</code>; falta filtrar as leituras (<a href="adr-027.html">ADR-027</a>, item 9).</li><li><strong>MFA:</strong> é o <a href="adr-021.html">ADR-021</a>, ainda não implementado; vai por cima da credencial.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_auth_service.py tests/test_users_cli.py tests/test_server_credentials.py tests/test_dashboard_users.py tests/test_telegram_login.py -v</code></pre>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="login.html">Login com MFA</a> (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.</li><li><a href="dashboard.html">Dashboard</a> (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, servido pelo próprio cérebro.</li><li><a href="api-http.html">API HTTP</a> (Referência): As rotas HTTP do cérebro: a saúde do servidor e a API do dashboard, com autenticação, paginação, filtros e códigos de resposta.</li><li><a href="servidor.html">Servidor WebSocket</a> (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões e desligamento.</li><li><a href="seguranca.html">Segurança</a> (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".</li><li><a href="clientes-producao.html">Clientes em produção</a> (Produção): Como conectar ao cérebro em produção o terminal, o bot do Telegram, o app Android e o dashboard.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

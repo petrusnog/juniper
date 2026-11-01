@@ -42,7 +42,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [App mobile](pages/mobile.md): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e…
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
-- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha) e…
+- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências de vazamento (com exportação em planilha)…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -64,6 +64,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Login com MFA](pages/login.md): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Metadocumentação](pages/metadocs.md): Como a Juniper responde sobre a própria arquitetura: detector de perguntas por palavras-chave, busca BM25 local na documentação…
 - [Auditoria de vazamentos](pages/vazamentos.md): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na…
+- [Usuários e credenciais](pages/usuarios.md): Como a Juniper sabe quem fala com ela: o cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma…
 
 ## Referência
 
@@ -104,9 +105,10 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-018](decisions/ADR-018.md): Memória refinada: fato e lembrança (Aceito) · `configuracao`, `memoria-longo-prazo`, `memoria-v2`, `memoria`, `produto-memoria`, `produto-personalidade`
 - [ADR-019](decisions/ADR-019.md): Conhecimento próprio: estudo progressivo e notas (Aceito) · `memoria-v2`, `produto-personalidade`
 - [ADR-020](decisions/ADR-020.md): Dashboard web da Juniper (somente leitura, na tailnet) (Aceito) · `dashboard`, `produto-canais`
-- [ADR-021](decisions/ADR-021.md): Login global com MFA (Proposto) · `architecture`, `login`, `produto-privacidade`, `seguranca`
+- [ADR-021](decisions/ADR-021.md): Login global com MFA (Proposto) · `architecture`, `login`, `produto-privacidade`, `seguranca`, `usuarios`
 - [ADR-022](decisions/ADR-022.md): App mobile da Juniper (React Native, Android) (Proposto) · `architecture`, `mobile`, `produto-canais`
 - [ADR-023](decisions/ADR-023.md): Voz da Juniper (Google Chirp 3 HD, STT, orçamento e áudio no protocolo) (Proposto) · `integracoes-producao`, `mobile`, `produto-canais`, `protocolo`, `voz-audio`
 - [ADR-024](decisions/ADR-024.md): Música (YouTube Data API, playlists e gosto musical) (Proposto) · `executor`, `integracoes-producao`, `musica`, `produto-integracoes`
 - [ADR-025](decisions/ADR-025.md): Metadocumentação: a Juniper responde sobre si mesma (Proposto) · `architecture`, `configuracao`, `metadocs`, `produto`
 - [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`
+- [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Aceito) · `api-http`, `dashboard`, `login`, `usuarios`

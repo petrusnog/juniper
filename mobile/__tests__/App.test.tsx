@@ -61,7 +61,7 @@ test('SetupScreen refuses a bad address and a short token, and shows why', () =>
   );
   ReactTestRenderer.act(() => find(root, 'token').props.onChangeText('curto'));
   ReactTestRenderer.act(() => find(root, 'save').props.onPress());
-  expect(textOf(root)).toContain('token completo');
+  expect(textOf(root)).toContain('completo');
   expect(onSave).not.toHaveBeenCalled();
 });
 
@@ -88,6 +88,48 @@ test('SetupScreen saves trimmed values with a device id', () => {
       deviceId: expect.stringMatching(/^mobile-/),
     }),
   );
+});
+
+test('SetupScreen joins the client id and the secret into one credential', () => {
+  const onSave = jest.fn();
+  let tree!: ReactTestRenderer.ReactTestRenderer;
+  ReactTestRenderer.act(() => {
+    tree = ReactTestRenderer.create(<SetupScreen onSave={onSave} />);
+  });
+  const root = tree.root;
+  ReactTestRenderer.act(() =>
+    find(root, 'host').props.onChangeText('100.64.0.7'),
+  );
+  ReactTestRenderer.act(() =>
+    find(root, 'client-id').props.onChangeText(' jc_abc123 '),
+  );
+  ReactTestRenderer.act(() =>
+    find(root, 'token').props.onChangeText(' jsk_segredo-bem-longo '),
+  );
+  ReactTestRenderer.act(() => find(root, 'save').props.onPress());
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({ token: 'jc_abc123.jsk_segredo-bem-longo' }),
+  );
+});
+
+test('SetupScreen splits a saved credential back into its two fields', () => {
+  let tree!: ReactTestRenderer.ReactTestRenderer;
+  ReactTestRenderer.act(() => {
+    tree = ReactTestRenderer.create(
+      <SetupScreen
+        onSave={jest.fn()}
+        initial={{
+          host: '100.64.0.7',
+          port: 8765,
+          token: 'jc_abc123.jsk_segredo-bem-longo',
+          deviceId: 'mobile-1',
+          deviceName: 'Celular',
+        }}
+      />,
+    );
+  });
+  expect(find(tree.root, 'client-id').props.value).toBe('jc_abc123');
+  expect(find(tree.root, 'token').props.value).toBe('jsk_segredo-bem-longo');
 });
 
 test('the token field hides what is typed', () => {

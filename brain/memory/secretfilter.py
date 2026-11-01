@@ -25,7 +25,7 @@ _TOKEN_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "chave de API",
         re.compile(
-            r"\b(?:gsk|ghp|gho|ghs|ghu|github_pat|glpat|xox[abprs]|hf|AIza)[_-]?[A-Za-z0-9_-]{16,}"
+            r"\b(?:gsk|jsk|ghp|gho|ghs|ghu|github_pat|glpat|xox[abprs]|hf|AIza)[_-]?[A-Za-z0-9_-]{16,}"
         ),
     ),
     ("chave da AWS", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),

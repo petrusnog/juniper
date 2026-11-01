@@ -63,15 +63,31 @@ Todas as rotas aceitam só `GET` (outro método: 405). O cabeçalho `Host` preci
 |---|---|---|
 | `GET /health` | nenhuma | `{"ok": true, "service": "dashboard"}` |
 | `GET /login` | nenhuma | A página de login. |
-| `GET /api/login` | `Authorization: Bearer <token>` | Confere o token dos clientes e devolve o cookie de sessão (`HttpOnly`, `SameSite=Strict`, `Secure` se `X-Forwarded-Proto: https`), válido por `dashboard.session_hours`. Token errado: 401; cinco erros em cinco minutos: 429. |
+| `GET /api/login` | `Authorization: Bearer <client_id>.<client_secret>` (ou o token estático, se `legacy_token`) | Confere a credencial e devolve o cookie de sessão (`HttpOnly`, `SameSite=Strict`, `Secure` se `X-Forwarded-Proto: https`), válido por `dashboard.session_hours`. Token errado: 401; cinco erros em cinco minutos: 429. |
 | `GET /api/logout` | nenhuma | Apaga o cookie. |
-| `GET /api/...` | cookie de sessão **ou** `Authorization: Bearer <token>` | As rotas de dados abaixo. Sem credencial: 401 `{"error": "faça login"}`. |
+| `GET /api/me` | cookie de sessão | Quem está logado (`user`, `device`) e o `csrf` da sessão, que as escritas devolvem no cabeçalho `X-CSRF-Token`. |
+| `GET /api/...` | cookie de sessão **ou** `Authorization: Bearer <credencial>` | As rotas de dados abaixo. Sem credencial: 401 `{"error": "faça login"}`. |
 
 Para scripts, o cabeçalho `Authorization` basta:
 
 ```bash
 curl -s -H "Authorization: Bearer $(cat .juniper-dev/state/token)" http://127.0.0.1:8766/api/overview
 ```
+
+### Usuários e credenciais {#usuarios}
+
+As **únicas** rotas que escrevem ([ADR-027](../decisions/ADR-027.md)). Só o dono; os `POST` exigem o cookie de sessão, o cabeçalho `X-CSRF-Token` (de `/api/me`) e, se houver `Origin`, que ele seja o do próprio `Host`. Os parâmetros vão na *query* (nenhum é segredo). Detalhes em [Usuários e credenciais](usuarios.md#dashboard).
+
+| Rota | Parâmetros | O que faz |
+|---|---|---|
+| `GET /api/users` | — | Usuários e credenciais (sem hash nem segredo), e se `allow_testers` está ligado. |
+| `POST /api/users` | `name`, `role` (`tester`), `label` | Cadastra e devolve o `client_secret` **uma vez**. |
+| `POST /api/users/<id>/credentials` | `label` | Outra credencial (um aparelho novo); devolve o segredo uma vez. |
+| `POST /api/users/<id>/disable` · `enable` | `confirm` = o nome (só para `disable`) | Desativa ou reativa. O dono não pode ser desativado. |
+| `POST /api/credentials/<client_id>/rotate` | `confirm` = o `client_id` | Segredo novo (devolvido uma vez); o antigo e as sessões dele morrem. |
+| `POST /api/credentials/<client_id>/revoke` | `confirm` = o `client_id` | Revoga. A última credencial do dono não pode ser revogada. |
+
+Erros: 400 (`{"error": ...}` com o motivo ou o texto a confirmar), 403 (não é o dono, ou CSRF/origem inválidos).
 
 ### Convenções {#convencoes}
 
@@ -111,6 +127,7 @@ As rotas `beliefs`, `affects`, `mood`, `persona`, `concerns`, `interests`, `note
 
 ## Para saber mais {#para-saber-mais}
 
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Login com MFA](login.md) (Documentação Técnica): O login global com segundo fator (TOTP) que vale para todo cliente da Juniper: CLI, Telegram, dashboard e app.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.

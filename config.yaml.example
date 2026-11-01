@@ -39,6 +39,11 @@ deployment:
   auth:
     # Token Bearer dos clientes; criado (modo 600) no primeiro `juniper serve`.
     token_file: ~/.juniper/token
+    # Usuários e credenciais (ADR-027), no servidor.
+    legacy_token: true        # o token acima ainda vale; desligue depois de migrar os clientes
+    allow_testers: false      # cadastrar `tester` (ele vê o mesmo cérebro; sem isolamento ainda)
+    # No cliente: a credencial salva por `juniper login`.
+    # credential_file: ~/.juniper/credential
 
 tools:
   security:

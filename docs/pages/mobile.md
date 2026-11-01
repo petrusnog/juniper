@@ -40,7 +40,7 @@ O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura en
 - Não enfileira mensagens offline: `send` devolve `false` e a tela mantém o texto.
 - Um quadro malformado ou binário é ignorado sem derrubar a conexão.
 
-**Credenciais** (`src/storage/credentials.ts`): endereço, porta, token e identificador do aparelho num único item do Keystore (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`). A tela de configuração valida o endereço (nome ou IP, sem `http://` nem porta) e esconde o token.
+**Credenciais** (`src/storage/credentials.ts`): endereço, porta, credencial e identificador do aparelho num único item do Keystore (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`). A credencial é o `client_id` e o `client_secret` ([Usuários e credenciais](usuarios.md)), guardados juntos como `client_id.client_secret` no campo `token`; com o *Client ID* vazio, vale o token estático antigo. A tela de configuração valida o endereço (nome ou IP, sem `http://` nem porta) e esconde o segredo.
 
 ## Chat de texto {#chat}
 
@@ -88,7 +88,7 @@ O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura en
 
 Os testes Jest provam a lógica (conexão, conversas, política de URL, voz com áudio falso). Áudio real, serviço em primeiro plano, autoplay e o comportamento do Android só se verificam no aparelho:
 
-1. **Conexão:** abrir o app → «Conectada». Cortar a rede → «sem conexão»; religar → volta sozinho. Token errado → «o servidor recusou o token».
+1. **Conexão:** abrir o app → «Conectada». Cortar a rede → «sem conexão»; religar → volta sozinho. Credencial errada → «o servidor recusou o token».
 2. **Texto:** mandar uma mensagem e ver a resposta chegar aos poucos; «Parar» no meio; retomar uma conversa antiga e começar uma nova; pedir algo que exige confirmação e responder «sim».
 3. **Música:** «toca Oceano do Djavan» → o YouTube Music abre e toca sozinho (ou a Juniper diz que está pronta para tocar). Pedir um endereço proibido («abre file:///etc/passwd») e ver que nada abre.
 4. **Voz:** «que horas são» com legenda; falar por cima dela (com fone); «silêncio»; apagar a tela e continuar; «tchau, Juniper», o botão da notificação e um minuto em silêncio; pedir uma playlist e responder «sim»; com e sem fone.
@@ -99,7 +99,7 @@ Os testes Jest provam a lógica (conexão, conversas, política de URL, voz com 
 
 - O cancelamento de eco depende do aparelho; **fone é recomendado** para interromper falando.
 - Com o app em segundo plano e sem «Exibir sobre outros apps», o Android pode bloquear a abertura da música.
-- O token é colado à mão (sem QR code); o [login com MFA](login.md) é uma proposta.
+- A credencial (`client_id` e `client_secret`, [Usuários e credenciais](usuarios.md)) é digitada à mão (sem QR code); o [login com MFA](login.md) é uma proposta.
 - Se o `TextToSpeech` do Android em pt-BR for ruim, o [ADR-023](../decisions/ADR-023.md) prevê trocar por um modelo local.
 
 ## Testes {#testes}

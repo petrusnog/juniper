@@ -24,7 +24,7 @@ No modo `server`, o comando `juniper serve` sobe o cérebro como um processo pr�
 
 ## Conexão {#conexao kind=classe file=brain/clients/server.py}
 
-1. **HTTP antes do upgrade.** `GET /health` responde sem autenticação. `GET /app/update` e `GET /app/update/apk` (o download do app Android, com o mesmo Bearer, [API HTTP](api-http.md#app-update)) também passam por aqui. Qualquer outro caminho que não `/v1/ws` recebe 404. Em `/v1/ws`, o cabeçalho `Authorization: Bearer <token>` é comparado em tempo constante com o token do servidor; sem ele, 401 e nada de WebSocket.
+1. **HTTP antes do upgrade.** `GET /health` responde sem autenticação. `GET /app/update` e `GET /app/update/apk` (o download do app Android, com o mesmo Bearer, [API HTTP](api-http.md#app-update)) também passam por aqui. Qualquer outro caminho que não `/v1/ws` recebe 404. Em `/v1/ws`, o cabeçalho `Authorization: Bearer <client_id>.<client_secret>` é conferido pelo serviço de identidade ([Usuários e credenciais](usuarios.md)), em tempo constante e com limite de tentativas (ou, com `legacy_token`, comparado com o token do servidor); sem ele, 401 e nada de WebSocket.
 2. **Handshake.** O cliente manda `hello` com `protocol_version` e a identificação (`client.kind`, `device_id`); o servidor responde `welcome` com a conversa aberta ou retomada. Versão incompatível fecha com `4426`; uma segunda conexão com o mesmo `device_id` substitui a primeira (`4409`).
 3. **Heartbeat.** O servidor manda `ping` a cada 30 s; 90 s sem nenhum sinal fecham a conexão (`4408`).
 4. **Mensagens.** Cada quadro é validado contra o protocolo; um quadro malformado recebe `error` com `bad_request`, sem fechar a conexão. O handler precisa **voltar logo**: trabalho longo (um turno do agente) roda numa tarefa acompanhada pela conexão, para o servidor continuar lendo `pong` e `chat.cancel`.
@@ -66,7 +66,8 @@ juniper serve        # com deployment.mode: server
 | Opção | Efeito |
 |---|---|
 | `deployment.server.host` / `port` | Onde escutar (no contêiner, `0.0.0.0:8765`; quem restringe é a publicação da porta no compose). |
-| `deployment.auth.token_file` | Onde fica o token dos clientes. Se o arquivo não existe, o servidor gera um token aleatório no primeiro boot e o grava com permissão `600`. |
+| `deployment.auth.token_file` | Onde fica o token estático dos clientes. Se o arquivo não existe, o servidor gera um token aleatório no primeiro boot e o grava com permissão `600`. Vale enquanto `deployment.auth.legacy_token` for `true`. |
+| `deployment.auth.*` (demais) | Usuários e credenciais (`client_id`/`client_secret`), o *pepper* e o espelho do dono: veja [Usuários e credenciais](usuarios.md). O servidor confere a credencial antes do upgrade e, a cada heartbeat, derruba a conexão cuja credencial foi revogada. |
 | `dashboard.*` | O painel web, na porta 8766 ([Dashboard](dashboard.md)). |
 
 A referência das opções está em [Configuração](configuracao.md#deployment).
@@ -81,6 +82,7 @@ Cobrem autenticação, handshake, heartbeat, códigos de fechamento, turnos, can
 
 ## Para saber mais {#para-saber-mais}
 
+- [Usuários e credenciais](usuarios.md) (Documentação Técnica): O cadastro de usuários pela CLI e pelo dashboard, o client_id e o client_secret (visto uma vez, guardado só como hash) e a migração do token estático.
 - [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
 - [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.

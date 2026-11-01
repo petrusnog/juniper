@@ -13,10 +13,12 @@
   <main class="card login">
     <img class="logo-big" src="/assets/logo.png" alt="Logo da Juniper" width="160" height="160">
     <h1 class="wordmark">JUNIPER</h1>
-    <p class="muted">Entre com o token do servidor.</p>
+    <p class="muted">Entre com o seu client_id e o client_secret.</p>
     <form id="form" autocomplete="off">
-      <label for="token">Token</label>
-      <input id="token" name="token" type="password" required autofocus>
+      <label for="client-id">Client ID</label>
+      <input id="client-id" name="client-id" type="text" required autofocus spellcheck="false" autocapitalize="off">
+      <label for="client-secret">Client secret</label>
+      <input id="client-secret" name="client-secret" type="password" required spellcheck="false">
       <button type="submit">Entrar</button>
       <p id="error" class="error" role="alert" hidden></p>
     </form>
