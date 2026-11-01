@@ -26,11 +26,13 @@ from brain.core.leak_report import strip_hint
 from brain.dashboard.xlsx import Cell, Sheet
 
 ID_CHARS: Final = 16
-KINDS: Final = ("relato", "automatico")
+KINDS: Final = ("relato", "automatico", "registro")
 USER: Final = "Usuário"
 HER: Final = "Juniper"
 HER_RAW: Final = "Juniper (texto bruto do modelo)"
 PREVIEW_CHARS: Final = 140
+ISSUE: Final = "Ocorrência"
+ISSUE_LOG: Final = "Histórico"
 RAW_NOTE: Final = "o modelo escreveu isto antes do guarda cortar"
 
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
@@ -93,7 +95,19 @@ def audit_messages(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def issue_messages(issue: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The description, then each note and state change of the history, in order."""
+    rows: list[dict[str, Any]] = []
+    if issue.get("description"):
+        rows.append({"author": ISSUE, "text": issue["description"], "at": issue.get("at")})
+    for entry in issue.get("history") or []:
+        rows.append({"author": ISSUE_LOG, "text": entry.get("change") or "", "at": entry.get("at")})
+    return rows
+
+
 def messages_of(kind: str, document: Mapping[str, Any]) -> list[dict[str, Any]]:
+    if kind == "registro":
+        return issue_messages(document)
     return report_messages(document) if kind == "relato" else audit_messages(document)
 
 
@@ -104,6 +118,8 @@ def item(kind: str, document: Mapping[str, Any]) -> dict[str, Any]:
     """The summary of one occurrence, for the list."""
     messages = messages_of(kind, document)
     hers = [m["text"] for m in messages if m["author"] == HER and m["text"]]
+    if kind == "registro":
+        hers = [document.get("description") or document.get("title") or ""]
     base: dict[str, Any] = {
         "id": short_id(document),
         "kind": kind,
@@ -114,6 +130,18 @@ def item(kind: str, document: Mapping[str, Any]) -> dict[str, Any]:
         "messages": len(messages),
         "preview": _preview(hers[-1] if hers else ""),
     }
+    if kind == "registro":
+        return {
+            **base,
+            "note": document.get("title") or "",
+            "title": document.get("title") or "",
+            "type": document.get("type"),
+            "severity": document.get("severity"),
+            "state": document.get("state"),
+            "origin": document.get("origin"),
+            "owner_id": document.get("owner_id"),
+            "updated_at": document.get("updated_at"),
+        }
     if kind == "relato":
         return {
             **base,
@@ -157,7 +185,7 @@ def workbook(occurrences: Sequence[tuple[str, Mapping[str, Any]]]) -> list[Sheet
     summary: list[list[Cell]] = []
     for kind, document in occurrences:
         info = item(kind, document)
-        label = "Relato (/vazou)" if kind == "relato" else "Detectado"
+        label = {"relato": "Relato (/vazou)", "registro": "Registro"}.get(kind, "Detectado")
         common: list[Cell] = [
             info["id"],
             label,
@@ -178,6 +206,9 @@ def workbook(occurrences: Sequence[tuple[str, Mapping[str, Any]]]) -> list[Sheet
                 info.get("model") or "",
                 document.get("commit") or "",
                 len(rows),
+                info.get("type") or "",
+                info.get("severity") or "",
+                info.get("state") or "",
             ]
         )
     return [
@@ -214,9 +245,12 @@ def workbook(occurrences: Sequence[tuple[str, Mapping[str, Any]]]) -> list[Sheet
                 "Modelo",
                 "Commit",
                 "Mensagens",
+                "Tipo de ocorrência",
+                "Gravidade",
+                "Estado",
             ],
             summary,
-            widths=[18, 16, 36, 12, 6, 20, 40, 34, 14, 28, 14, 11],
+            widths=[18, 16, 36, 12, 6, 20, 40, 34, 14, 28, 14, 11, 16, 11, 14],
             wrap=frozenset({6, 7}),
         ),
     ]

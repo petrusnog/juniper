@@ -1,4 +1,5 @@
 import { api } from "/assets/api.js";
+import { dangerAction, quickAction } from "/assets/actions.js";
 import { lineChart, radarChart } from "/assets/charts.js";
 import { badge, bar, card, clear, empty, h, when } from "/assets/ui.js";
 
@@ -44,8 +45,17 @@ async function showBelief(box, id) {
   clear(box).append(
     h("h3", { text: b.statement }),
     h("p", { class: "muted small", text: `${b.status} · tópico ${b.topic} · confiança ${b.confidence} · ${b.evidence_for} a favor, ${b.evidence_against} contra${b.user_confirmed ? ` · você ${b.user_confirmed}` : ""}` }),
+    dangerAction("Esquecer esta opinião", b.id, `/memory/beliefs/${b.id}/forget`, () => { window.dispatchEvent(new HashChangeEvent("hashchange")); }),
     h("ul", { class: "plain" }, ...b.evidence.map((e) => h("li", {}, badge(e.side === "for" ? "a favor" : "contra", e.side === "for" ? "" : "warn"), h("span", { text: e.kind }), h("span", { class: "muted small", text: `${when(e.at)} · conversa ${e.session_id || "—"} turno ${e.turn ?? "—"} · peso ${e.weight}` })))),
   );
+}
+
+function concernRow(c) {
+  const input = h("input", { type: "number", min: "0", max: "1", step: "0.05", value: c.weight.toFixed(2), "aria-label": `Peso de ${c.name}` });
+  return h("li", {}, h("span", { class: "kind", text: c.name }), bar(c.weight),
+    h("span", { class: "muted small", text: `${c.weight.toFixed(2)} (base ${c.baseline.toFixed(2)}) ` }), input,
+    quickAction("Salvar peso", `/memory/concerns/${c.id}/weight`, () => ({ value: input.value, reason: "ajuste pelo dashboard" }),
+      () => { window.dispatchEvent(new HashChangeEvent("hashchange")); }));
 }
 
 function simulator() {
@@ -85,11 +95,11 @@ export async function render() {
     card("Núcleo", h("p", { class: "muted small", text: "O texto fixo que vem antes de tudo (regras, honestidade, jeito de falar). O que é vivo (personalidade, humor, opiniões) vem depois, em blocos." }),
       section("Mostrar o núcleo", h("pre", { class: "block", text: core.core }))),
     card("Perfil", core.profile ? h("div", {}, h("p", { text: core.profile.text }), h("p", { class: "muted small", text: `Atualizado em ${when(core.profile.updated_at)}` })) : empty("Sem perfil guardado.")),
-    card("Personalidade viva", personality(persona)),
+    card("Personalidade viva", personality(persona), persona.state ? h("p", {}, quickAction("Voltar à versão anterior", "/memory/persona/revert", {}, () => { window.dispatchEvent(new HashChangeEvent("hashchange")); }), h("span", { class: "muted small", text: " Cria uma versão nova com o jeito da anterior; o histórico fica." })) : null),
     card("O que ela acha de você (crenças)", beliefs(belief, (id) => showBelief(detailBox, id)), detailBox),
     card("O que importa para ela",
       concerns.items.length
-        ? h("ul", { class: "plain" }, ...concerns.items.map((c) => h("li", {}, h("span", { class: "kind", text: c.name }), bar(c.weight), h("span", { class: "muted small", text: `${c.weight.toFixed(2)} (base ${c.baseline.toFixed(2)})` }))))
+        ? h("ul", { class: "plain" }, ...concerns.items.map((c) => concernRow(c)))
         : empty("Sem preocupações registradas.")),
     card("Simulador do prompt", h("p", { class: "muted small", text: "Digite uma mensagem e veja, bloco a bloco, o que a Memória V2 acrescentaria ao prompt dela. É só leitura." }), simulator()),
   );

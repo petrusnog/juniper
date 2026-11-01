@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Ocorrências e ações do dashboard — Livro de bolso Juniper</title>
+<meta name="description" content="Como registrar qualquer bug ou comportamento errado (pelo dashboard ou por fala, com a tool report_issue), como o dono acompanha cada ocorrência, e as ações de memória e as tarefas (sonho e reindexação) que o dashboard executa.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/ocorrencias.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Núcleo / Ocorrências e ações do dashboard</div>
+<h1>Ocorrências e ações do dashboard <span class="tag g">pronta</span></h1>
+<p class="lead">Como registrar qualquer bug ou comportamento errado (pelo dashboard ou por fala, com a tool report_issue), como o dono acompanha cada ocorrência, e as ações de memória e as tarefas (sonho e reindexação) que o dashboard executa.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página detalha o <a href="adr-028.html">ADR-028</a>. Código: <code>brain/memory/issues.py</code>, <code>brain/tools/issues.py</code>, <code>brain/dashboard/actions.py</code>, <code>brain/dashboard/jobs.py</code>.</p></div>
+<h2 id="ocorrencias">Ocorrências de qualquer tipo</h2>
+<p>Além dos vazamentos (<a href="vazamentos.html">Auditoria de vazamentos</a>), a Juniper guarda <strong>registros</strong>: um título, o que aconteceu, o tipo (<code>bug</code>, <code>vazamento</code>, <code>comportamento</code>, <code>ideia</code>, <code>outro</code>), a gravidade (<code>baixa</code>, <code>media</code>, <code>alta</code>) e um estado que o dono move (<code>aberta</code>, <code>investigando</code>, <code>resolvida</code>, <code>descartada</code>). Cada registro leva a origem (<code>fala</code> ou <code>dashboard</code>), a conversa, o canal, o <code>owner_id</code> de quem o criou e um histórico de mudanças e notas.</p>
+<p>Os três tipos de ocorrência aparecem juntos na página <strong>Ocorrências</strong> do <a href="dashboard.html#paginas">dashboard</a> (filtros <em>Marcadas por mim</em>, <em>Detectadas</em> e <em>Registradas</em>) e na planilha <code>.xlsx</code>, que ganhou as colunas <em>Tipo de ocorrência</em>, <em>Gravidade</em> e <em>Estado</em>. Os registros ficam na coleção <code>issues</code> do MongoDB; sem o MongoDB (<code>memory.session.store: mongo</code>), não há onde guardá-los e a tool não é oferecida.</p>
+<p>Texto livre passa pelo filtro de segredos antes de gravar: um segredo nunca é guardado.</p>
+<h2 id="tool">Registrar por fala</h2>
+<p>A tool <code>report_issue</code> (WRITE, <a href="seguranca.html#confirmacao">com confirmação na conversa</a>) vale para frases como «isso é um bug», «anota que você errou a data». A Juniper escreve o título e a descrição com as palavras da pessoa, e o sistema mostra o que vai gravar (<em>registrar a ocorrência «…» (tipo bug, gravidade alta)</em>) e espera o «sim».</p>
+<ul><li><strong>Quem e onde</strong> vêm do sistema (a conversa, o canal e o usuário da conexão), nunca dos argumentos que o modelo manda.</li><li>A tool <strong>só cria</strong>. Mudar o estado, a gravidade, anotar ou apagar é do dono, no dashboard: o modelo não limpa o próprio histórico de erros.</li><li>Para vazamento de instruções ou tags continua valendo <code>/vazou</code> ou «isso vazou».</li></ul>
+<h2 id="acompanhar">Acompanhar no dashboard</h2>
+<p>Na página Ocorrências o dono registra uma nova, e em cada registro muda o estado e a gravidade, adiciona notas e apaga (digitando o id). Rotas em <a href="api-http.html#acoes">API HTTP</a>.</p>
+<h2 id="memoria">Ações sobre a memória</h2>
+<p>As mesmas operações dos comandos <code>juniper memory …</code>, pelo navegador, só para o dono:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Onde</th><th>Ação</th><th>Confirmação</th></tr></thead><tbody><tr><td>Memórias (detalhe)</td><td>Esquecer a memória, junto com as versões antigas que ela substituiu</td><td>digitar o id</td></tr><tr><td>Memória central</td><td>Esquecer uma opinião (crença)</td><td>digitar o id</td></tr><tr><td>Memória central</td><td>Mudar o peso de uma preocupação (0 a 1, fica no histórico dela)</td><td>não pede</td></tr><tr><td>Memória central</td><td>Voltar a personalidade à versão anterior (cria uma versão nova; o histórico fica)</td><td>não pede</td></tr><tr><td>Estudos (tema)</td><td>Esquecer o tema</td><td>digitar o id</td></tr><tr><td>Afetos</td><td>Apagar todos os sentimentos</td><td>digitar <code>sentimentos</code></td></tr></tbody></table></div>
+<p>A confirmação por id é <strong>conferida no servidor</strong>, não só na tela. Cada ação vai ao log (<code>dashboard</code>, <code>op</code>, <code>actor</code>, <code>target</code>) sem nenhum texto da memória. <code>study add</code> continua só na CLI: o texto de estudo não cabe na <em>query</em> dos <code>POST</code>.</p>
+<h2 id="tarefas">Tarefas: sonho e reindexação</h2>
+<p>A página <strong>Tarefas</strong> roda, em segundo plano e uma por vez, o sonho (<code>juniper memory dream</code>, com a opção de ensaio) e a reindexação (<code>juniper memory reindex</code>, com a opção de refazer tudo). São as mesmas rotinas dos comandos. O servidor segue conversando; uma segunda tarefa recebe <code>409</code>, e o sonho também recusa começar se a passada da noite estiver rodando. As últimas 10 execuções, com o relatório ou o erro, ficam em memória (reiniciar o servidor esquece a lista, não o efeito); desligar o servidor interrompe a tarefa em curso.</p>
+<h2 id="fora">Fora do dashboard</h2>
+<p>Deploy, reinício e backup da VPS ficam de fora de propósito: o dashboard roda dentro do contêiner do cérebro e não deve controlar o próprio host.</p>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_issues.py tests/test_dashboard_memory_actions.py tests/test_dashboard_jobs.py tests/test_dashboard_ops.py -v</code></pre>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="dashboard.html">Dashboard</a> (Documentação Técnica): O painel web da Juniper, com as páginas de leitura, logs, saúde e as ações do dono.</li><li><a href="vazamentos.html">Auditoria de vazamentos</a> (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria e como marcar um vazamento na hora com /vazou.</li><li><a href="usuarios.html">Usuários e credenciais</a> (Documentação Técnica): Quem pode entrar no dashboard e executar essas ações, e como o dono é identificado.</li><li><a href="memoria-v2.html">Memória V2</a> (Documentação Técnica): As camadas que as ações de memória alteram: crenças, preocupações, personalidade e estudos.</li><li><a href="tools.html">Tools</a> (Documentação Técnica): O registro de tools, os tiers e a confirmação; <code>report_issue</code> é uma delas.</li><li><a href="api-http.html">API HTTP</a> (Referência): As rotas de leitura e de escrita do dashboard.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

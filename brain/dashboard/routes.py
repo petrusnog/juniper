@@ -13,7 +13,7 @@ from typing import Any, TypeVar
 
 from brain.config import settings
 from brain.core.persona import load_core
-from brain.dashboard import occurrences
+from brain.dashboard import occurrences, ops
 from brain.dashboard.api import Api, ApiError, Query, first
 from brain.dashboard.search import SEARCH_TYPES, run_search
 from brain.dashboard.serialize import contains, number, paged, sanitize
@@ -633,12 +633,12 @@ def build_api(sources: Sources) -> Api:
     def pick_kind(query: Query) -> str:
         kind = first(query, "kind", "todos") or "todos"
         if kind not in (*occurrences.KINDS, "todos"):
-            raise ApiError(400, "kind deve ser relato, automatico ou todos")
+            raise ApiError(400, "kind deve ser relato, automatico, registro ou todos")
         return kind
 
     def collect(query: Query, limit: int = MAX_OCCURRENCES) -> list[tuple[str, dict[str, Any]]]:
         """The occurrences of the filter, newest first: reports and audit records together."""
-        if sources.reports is None and sources.audit is None:
+        if sources.reports is None and sources.audit is None and sources.issues is None:
             raise ApiError(503, OFF_LEAKS)
         kind = pick_kind(query)
         days = number(query, "days", 30, 1, 365)
@@ -647,17 +647,26 @@ def build_api(sources: Sources) -> Api:
             pairs += [("relato", d) for d in sources.reports.recent(limit=limit)]
         if kind in ("todos", "automatico") and sources.audit is not None:
             pairs += [("automatico", d) for d in sources.audit.recent(days=days, limit=limit)]
+        if kind in ("todos", "registro") and sources.issues is not None:
+            pairs += [
+                ("registro", d)
+                for d in sources.issues.recent(
+                    limit=limit, state=first(query, "state"), type=first(query, "type")
+                )
+            ]
         pairs.sort(key=lambda pair: pair[1].get("at") or _EPOCH, reverse=True)
         return pairs
 
     def find(occurrence_id: str) -> tuple[str, dict[str, Any]]:
-        if sources.reports is None and sources.audit is None:
+        if sources.reports is None and sources.audit is None and sources.issues is None:
             raise ApiError(503, OFF_LEAKS)
         wanted = occurrence_id.strip().lower()
         if sources.reports is not None and (found := sources.reports.get(wanted)) is not None:
             return "relato", found
         if sources.audit is not None and (found := sources.audit.get(wanted)) is not None:
             return "automatico", found
+        if sources.issues is not None and (found := sources.issues.get(wanted)) is not None:
+            return "registro", found
         raise ApiError(404, "ocorrência não encontrada")
 
     async def occurrence_list(query: Query) -> Any:
@@ -688,8 +697,45 @@ def build_api(sources: Sources) -> Api:
 
     api.file_route("/occurrences/export.xlsx", occurrence_export)
 
+    # --- logs, costs and health (ADR-028) ---------------------------------------------------------
+
+    def log_dir() -> Any:
+        from pathlib import Path
+
+        from brain.eventlog import event_log
+
+        return Path(sources.log_dir) if sources.log_dir else event_log.directory
+
+    async def logs(query: Query) -> Any:
+        return await _blocking(
+            lambda: ops.log_rows(
+                log_dir(),
+                days=number(query, "days", 1, 1, 7),
+                events=ops.split(first(query, "event")),
+                errors_only=ops.flag(query, "errors"),
+                session=first(query, "session"),
+                text=first(query, "q"),
+                limit=number(query, "limit", 200, 1, ops.MAX_LOG_ROWS),
+            )
+        )
+
+    async def costs(query: Query) -> Any:
+        return await _blocking(lambda: ops.costs(sources, log_dir()))
+
+    async def jobs(query: Query) -> Any:
+        if sources.jobs is None:
+            raise ApiError(503, "as tarefas não estão disponíveis neste servidor")
+        return sources.jobs.snapshot()
+
+    async def health(query: Query) -> Any:
+        return await _blocking(lambda: ops.health(sources, sources.started, ops.tool_rows()))
+
     for path, handler in {
         "/session": session,
+        "/logs": logs,
+        "/costs": costs,
+        "/health": health,
+        "/jobs": jobs,
         "/overview": overview,
         "/memories": memories,
         "/memories/": memory_detail,

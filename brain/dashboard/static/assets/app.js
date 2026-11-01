@@ -1,4 +1,5 @@
 import { clear, h } from "/assets/ui.js";
+import { icon } from "/assets/icons.js";
 import { pages } from "/assets/pages/index.js";
 
 const nav = document.getElementById("nav");
@@ -17,8 +18,7 @@ function renderNav(active) {
         href: `#/${page.id}`,
         class: page.id === active.id ? "active" : "",
         "aria-current": page.id === active.id ? "page" : null,
-        text: page.title,
-      }),
+      }, icon(page.id), h("span", { text: page.title })),
     );
   }
 }

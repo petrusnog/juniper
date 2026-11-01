@@ -9,6 +9,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.session import FileSessionStore, SessionStore
 
 if TYPE_CHECKING:
+    from brain.memory.issues import IssueStore
     from brain.memory.leak_audit import LeakAuditStore, LeakReportStore
 
 
@@ -58,6 +59,19 @@ def open_leak_audit(store: SessionStore) -> LeakAuditStore | None:
     from brain.memory.leak_audit import LeakAuditStore
 
     return LeakAuditStore(connection)
+
+
+def open_issue_store(store: SessionStore) -> IssueStore | None:
+    """Where the registered issues go (ADR-028): MongoDB, on the session store's connection.
+
+    None when the conversations are in files: ``report_issue`` is then not offered at all.
+    """
+    connection = getattr(store, "connection", None)
+    if connection is None:
+        return None
+    from brain.memory.issues import IssueStore
+
+    return IssueStore(connection)
 
 
 def open_leak_reports(store: SessionStore) -> LeakReportStore | None:
