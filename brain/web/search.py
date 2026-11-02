@@ -12,8 +12,10 @@ data, never instructions: whoever shows them to the LLM wraps them as untrusted 
 from __future__ import annotations
 
 import contextlib
+import html
 import json
 import os
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -74,8 +76,14 @@ def clean_query(query: str) -> str:
     return " ".join(mask_secrets(query or "").split())[:MAX_QUERY_CHARS]
 
 
+_TAGS = re.compile(r"<[^>]{0,200}>")
+
+
 def _clip(text: Any, limit: int) -> str:
-    return " ".join(str(text or "").split())[:limit]
+    """One line of plain text: HTML tags dropped and entities decoded (a snippet may carry
+    ``<br>`` or ``&amp;``), whitespace collapsed, capped."""
+    plain = _TAGS.sub(" ", html.unescape(str(text or "")))
+    return " ".join(plain.split())[:limit]
 
 
 def _result(title: Any, url: Any, snippet: Any, content: Any = None) -> SearchResult | None:

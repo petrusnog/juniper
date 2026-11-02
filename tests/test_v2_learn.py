@@ -368,3 +368,55 @@ async def test_web_notes_show_where_she_read_them_and_expired_ones_do_not_count(
         await context(data, clock=lambda: NOW + timedelta(days=400)).preview("HTTP/3 usa QUIC")
     )["conhecimento"]
     assert "HTTP/3 usa QUIC." not in later and NO_NOTES in later
+
+
+# --- everything she reads on the web becomes study notes -----------------------------------------
+
+
+@pytest.fixture
+def bound(tmp_path: Path):
+    """The web tools over a real ``Learner`` (in memory), restored afterwards."""
+    from brain.tools import web
+
+    made, data, engine, llm, pages = learner(tmp_path, [hit("a.com"), hit("b.org")])
+    router = SearchRouter([(engine, 0)], MonthlyQuota(tmp_path / "q2.json"))
+    knowledge_tools.bind(made)
+    web.bind(router, pages)  # type: ignore[arg-type]
+    yield data, web
+    knowledge_tools.bind(None)
+    web.bind(None)
+
+
+async def test_web_search_files_what_it_read_under_the_topic_she_names(bound) -> None:
+    data, web = bound
+    out = await web.WebSearch().run(
+        query="notícia recente sobre o Ibovespa hoje", topic="bolsa de valores"
+    )
+    assert out.success and out.metadata["learned"] is True
+    assert [i.topic for i in data.interests.list()] == ["bolsa de valores"]
+    notes = data.notes.list({"source": "web"})
+    assert notes and all(n.url and n.domains for n in notes)
+
+
+async def test_a_topic_she_already_studies_is_fed_not_duplicated(bound) -> None:
+    data, web = bound
+    await web.WebSearch().run(query="Donald Trump", topic="Donald Trump")
+    first = len(data.notes.list({"source": "web"}))
+    await web.WebSearch().run(query="Trump discurso hoje", topic="Donald Trump")
+    assert [i.topic for i in data.interests.list()] == ["Donald Trump"]
+    assert first >= 1
+
+
+async def test_web_fetch_files_the_page_under_its_topic_too(bound) -> None:
+    data, web = bound
+    out = await web.WebFetch().run(url="https://a.com/x", topic="HTTP/3")
+    assert out.success and out.metadata["learned"] is True
+    assert [i.topic for i in data.interests.list()] == ["HTTP/3"]
+    assert data.notes.list({"source": "web"})
+
+
+async def test_without_a_topic_the_query_or_the_page_title_names_it(bound) -> None:
+    data, web = bound
+    await web.WebSearch().run(query="protocolo QUIC")
+    await web.WebFetch().run(url="https://a.com/y")
+    assert {i.topic for i in data.interests.list()} == {"protocolo QUIC", "T"}

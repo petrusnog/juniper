@@ -213,7 +213,8 @@ def test_fala_livre_acao_protegida_the_tools_keep_their_tiers() -> None:
     assert LearnTopic.tier is Tier.WRITE and LearnTopic.confirm is False
     from brain.tools.web import WebFetch, WebSearch
 
-    assert WebSearch.tier is Tier.READ and WebFetch.tier is Tier.READ
+    assert WebSearch.tier is Tier.WRITE and WebSearch.confirm is False
+    assert WebFetch.tier is Tier.READ
 
 
 async def test_the_web_only_ever_reaches_her_notes(world: Any) -> None:

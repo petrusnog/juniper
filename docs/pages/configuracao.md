@@ -303,6 +303,7 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 | `web.enabled` | `true` | Liga as tools de web (`web_search`, `web_fetch`). Desligado, elas não aparecem para o modelo. |
 | `web.search.providers` | Tavily (900 por mês), SearXNG, DuckDuckGo | Os provedores, **na ordem do failover**. Cada item tem `name` (`tavily`, `searxng` ou `duckduckgo`), `enabled`, `monthly_limit` (buscas por mês UTC; 0 = sem limite) e, só o SearXNG, `url` (sem URL ele é pulado). O Tavily também é pulado sem `JUNIPER_TAVILY_API_KEY`. |
 | `web.search.searxng_url` | vazio | O endereço do SearXNG quando o provedor não traz o seu (no compose: `http://searxng:8080`, vindo de `JUNIPER_SEARXNG_URL`). Vazio: o provedor é pulado ([Produção](producao.md#searxng)). |
+| `web.chat_search_tool` | `true` | Oferece `web_search` ao modelo na conversa. Cada busca também grava notas de estudo e registra o tópico (o que ela leu vira memória). Desligado, só o `learn_topic` fica. O sonho não depende disto. |
 | `web.search.max_results` | `5` | Teto de resultados por busca (1 a 10). |
 | `web.search.timeout_seconds` | `10` | Tempo máximo de cada provedor antes de passar ao próximo. |
 | `web.fetch.timeout_seconds` | `10` | Tempo máximo para baixar uma página (redirecionamentos inclusos). |

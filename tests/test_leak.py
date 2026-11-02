@@ -14,7 +14,8 @@ from brain.memory.v2 import context as v2
 def stream(text: str, size: int) -> str:
     guard = LeakGuard()
     out = "".join(guard.feed(text[i : i + size]) for i in range(0, len(text), size))
-    return out + guard.flush()
+    out += guard.flush()
+    return out + guard.take() if guard.suspended else out
 
 
 # The leaks of 2026-10-28, as logged.
@@ -123,3 +124,55 @@ def test_square_brackets_and_juniper_in_normal_speech_pass() -> None:
         "Oi!",
     ):
         assert clean(text) == text
+
+
+@pytest.mark.parametrize("size", [1, 4, 9, 1000])
+def test_invented_wrapper_tags_are_removed_and_the_answer_kept(size: int) -> None:
+    text = "Oi!<formato>canal telegram</formato> Tudo certo por aqui, e com você?<conteudo_web>"
+    assert stream(text, size) == "Oi!canal telegram Tudo certo por aqui, e com você?"
+
+
+@pytest.mark.parametrize("size", [1, 4, 9, 1000])
+def test_a_think_block_is_dropped_whole_even_when_split(size: int) -> None:
+    text = "<think>Hoje é domingo, devo ser honesta.</think>Achei a notícia, Petrus."
+    assert stream(text, size) == "Achei a notícia, Petrus."
+    assert stream("Beleza. <think>sem fechar, o modelo parou", size).strip() == "Beleza."
+
+
+@pytest.mark.parametrize("size", [1, 3, 1000])
+def test_a_less_than_sign_in_speech_is_untouched(size: int) -> None:
+    text = "Se a < b e <3 pra você, x<y também."
+    assert stream(text, size) == text
+
+
+@pytest.mark.parametrize("size", [1, 5, 1000])
+def test_a_tool_call_written_as_text_is_cut_from_its_first_tag(size: int) -> None:
+    text = (
+        'Beleza, já guardo.<invoke name="remember">'
+        '<parameter name="text">segredo</parameter></invoke>'
+    )
+    assert stream(text, size) == "Beleza, já guardo."
+
+
+@pytest.mark.parametrize("size", [1, 5, 1000])
+def test_the_stray_tail_of_a_tool_call_is_removed_and_the_speech_kept(size: int) -> None:
+    assert stream("</parameter>\n\nAh, Cazuza! Esse me pega.", size) == "Ah, Cazuza! Esse me pega."
+    assert stream("</br>Preciso que você pesquise.", size) == "Preciso que você pesquise."
+    assert stream("Pronto.</invoke>", size) == "Pronto."
+
+
+@pytest.mark.parametrize("size", [1, 3, 1000])
+def test_a_stray_closing_bracket_at_the_start_is_dropped(size: int) -> None:
+    assert stream("]\n\nBeleza, Petrus, bora.", size) == "Beleza, Petrus, bora."
+    assert stream("A lista [1, 2] fecha aqui.", size) == "A lista [1, 2] fecha aqui."
+
+
+def test_a_stray_tool_tail_at_the_start_withholds_the_speech_until_taken() -> None:
+    guard = LeakGuard()
+    assert guard.feed("</parameter>\n\nOi, Petrus! ") == ""
+    assert guard.flush() == ""
+    assert guard.suspended and guard.tool_fragments == 1
+    assert guard.take() == "Oi, Petrus! "
+    spoken = LeakGuard()
+    assert spoken.feed("Oi, Petrus! Tudo bem por aí? ") != ""
+    assert not spoken.suspended  # a tail after speech was said is just removed

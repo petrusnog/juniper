@@ -10,7 +10,7 @@ tags: vazamento leak leakguard auditoria leak_audit prompt eco tag conhecimento 
 
 ## Visão geral {#visao-geral}
 
-O [LeakGuard](agente.md#persona) corta da fala os vazamentos que conhece, por uma lista de marcadores. A auditoria cobre os que ele **não** conhece e serve de investigação: registra, em cada chamada ao LLM suspeita, o texto **bruto** do modelo, o texto **entregue** e o que disparou.
+O [LeakGuard](agente.md#persona) corta da fala os vazamentos que conhece, por uma lista de marcadores. Além de cortar, ele **remove** as tags que o modelo inventa como embrulho (`<formato>`, `<conteudo_web>`, `<think>`...) sem perder a resposta ao redor, e descarta inteiro um bloco `<think>...</think>`. Cobre também os restos de tool call (`</parameter>`, `</invoke>`, `</br>`) e um `]` solto no começo, que sobra quando o `[` do carimbo foi cortado. Raciocínio em prosa, sem tag nenhuma, ele só pega quando é o planejamento do começo da fala. A auditoria cobre os que ele **não** conhece e serve de investigação: registra, em cada chamada ao LLM suspeita, o texto **bruto** do modelo, o texto **entregue** e o que disparou.
 
 Ela **não muda a resposta**. O que a pessoa vê continua a ser decidido só pelo guarda; a auditoria apenas lê e registra.
 
