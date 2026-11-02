@@ -126,7 +126,8 @@ async def test_a_technical_topic_is_allowed_when_he_teaches_it() -> None:
     c = ctx(Reader(["o docker usa contêineres"]))
     report = await teach(c, "Docker usa contêineres.", "Docker")
     assert report.added == 1 and c.data.interests.list()[0].topic == "Docker"
-    # and the nightly study still skips it
+    # with the opt-in list the nightly study still skips it (the default list is empty, ADR-031)
+    c.config.interests.excluded_terms = ["docker"]
     assert InterestBook(c.data, FakeEmbedder(), c.config.interests, c.clock).due() == []
 
 

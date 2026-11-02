@@ -374,12 +374,22 @@ class WebFetchSettings(BaseModel):
     max_chars: int = Field(default=8000, ge=500, le=50_000)
 
 
+class WebDreamSettings(BaseModel):
+    """O estudo do sonho pela web (ADR-031, seção 6)."""
+
+    # Estuda pela web quando houver provedor. Desligado, o estudo volta a ser só do modelo.
+    enabled: bool = True
+    # Teto de aprendizados (buscas) por noite, para caber na cota gratuita.
+    max_searches: int = Field(default=30, ge=0, le=500)
+
+
 class WebSettings(BaseModel):
     """Web: a memória fala, a web ensina (ADR-031)."""
 
     enabled: bool = True
     search: WebSearchSettings = Field(default_factory=WebSearchSettings)
     fetch: WebFetchSettings = Field(default_factory=WebFetchSettings)
+    dream: WebDreamSettings = Field(default_factory=WebDreamSettings)
 
 
 class ToolsSettings(BaseModel):
@@ -637,40 +647,10 @@ class V2InterestSettings(BaseModel):
     max_notes_per_topic: int = Field(default=40, ge=5, le=500)
     # Perguntas em aberto que um passo deixa para o seguinte.
     max_open_questions: int = Field(default=5, ge=0, le=20)
-    # Temas técnicos (código, ferramentas, sistemas) não viram tema de estudo noturno.
-    excluded_terms: list[str] = Field(
-        default_factory=lambda: [
-            "python",
-            "java",
-            "javascript",
-            "typescript",
-            "código",
-            "codigo",
-            "programação",
-            "programacao",
-            "software",
-            "framework",
-            "biblioteca",
-            "api",
-            "docker",
-            "kubernetes",
-            "git",
-            "github",
-            "linux",
-            "terminal",
-            "servidor",
-            "banco de dados",
-            "mongodb",
-            "sql",
-            "bug",
-            "deploy",
-            "compilador",
-            "algoritmo",
-            "devops",
-            "backend",
-            "frontend",
-        ]
-    )
+    # Termos de temas que não viram tema de estudo noturno. Vazio por padrão (ADR-031): com as
+    # notas vindas de fontes da web, o tema técnico também é estudável; quem quiser a regra antiga
+    # lista os termos (ex.: python, docker).
+    excluded_terms: list[str] = Field(default_factory=list)
 
 
 class V2AffectSettings(BaseModel):

@@ -111,13 +111,13 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do usuário, honestidade, curiosidade, capricho e autonomia do usuário. É carregado no banco na primeira vez; depois quem manda é o usuário (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
 | `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O usuário não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
-| `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (lendo a web quando há provedor, [ADR-031](../decisions/ADR-031.md); senão, com o conhecimento do modelo avançado). |
 | `memory.v2.interests.max_seeds_per_night` | `5` | Temas novos que a noite pode semear a partir do que o usuário escreveu (só o tema, nunca a opinião dele). |
 | `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
 | `memory.v2.interests.study_gap_hours` | `18` | Intervalo mínimo entre dois passos do estudo do mesmo tema (um passo por tema por noite). |
 | `memory.v2.interests.max_notes_per_topic` | `40` | Notas de afirmação por tema; passando disso, saem as mais antigas e incertas. |
 | `memory.v2.interests.max_open_questions` | `5` | Perguntas em aberto que um passo deixa para o seguinte. |
-| `memory.v2.interests.excluded_terms` | lista | Palavras de temas técnicos (código, ferramentas, sistemas) que não viram tema de estudo noturno. O ensino explícito do usuário não passa por essa regra. |
+| `memory.v2.interests.excluded_terms` | vazia | Palavras de temas que não viram tema de estudo noturno (ex.: `python`, `docker`). Vazia por padrão desde o [ADR-031](../decisions/ADR-031.md): as notas vêm da web, então o tema técnico também é estudável. O ensino explícito do usuário (`study add`) nunca passa por essa regra. |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
 | `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
@@ -308,6 +308,8 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 | `web.fetch.max_bytes` | `2000000` | Tamanho máximo lido de uma página; passou disso, o resto é ignorado e o texto vem marcado como cortado. |
 | `web.fetch.max_redirects` | `3` | Redirecionamentos seguidos, cada um conferido de novo pela política. |
 | `web.fetch.max_chars` | `8000` | Teto do texto extraído que volta para o modelo. |
+| `web.dream.enabled` | `true` | O estudo do sonho lê a web quando há provedor de busca. Desligado, o estudo volta a ser só a reflexão do modelo. |
+| `web.dream.max_searches` | `30` | Teto de aprendizados (cada um é uma busca) por noite, para caber na cota gratuita. |
 | `web.search.quota_file` | `~/.juniper/web/quota.json` | O contador mensal de buscas por provedor (modo 600). Arquivo corrompido ou ausente começa o mês do zero. |
 
 ## Como adicionar uma opção {#adicionar}

@@ -259,9 +259,15 @@ async def test_the_users_opinion_never_reaches_the_study_prompt() -> None:
 
 # --- technical topics ----------------------------------------------------------------------------
 
+TECHNICAL = ["python", "código", "docker", "kubernetes", "banco de dados"]
+
+
+def test_the_default_no_longer_excludes_technical_topics() -> None:
+    assert V2InterestSettings().excluded_terms == []  # ADR-031: the web makes them studyable
+
 
 def test_technical_topics_are_recognised_by_whole_words() -> None:
-    terms = V2InterestSettings().excluded_terms
+    terms = TECHNICAL  # the default list is empty since ADR-031: the rule is opt-in
     assert is_technical("Programação em Python", terms) and is_technical("Docker", terms)
     assert is_technical("banco de dados", terms) and is_technical("CÓDIGO limpo", terms)
     assert not is_technical("jazz", terms) and not is_technical("gitano", terms)
@@ -273,12 +279,12 @@ def test_technical_topics_are_recognised_by_whole_words() -> None:
 async def test_a_technical_topic_is_not_seeded_and_an_old_one_is_not_studied() -> None:
     data, clock = V2Data.over(InMemoryDocStore()), Calendar()
     llm = Teacher(["Docker", "jazz"])
-    result = await InterestSeedPhase().run(ctx(llm, data, clock))
+    result = await InterestSeedPhase().run(ctx(llm, data, clock, excluded_terms=TECHNICAL))
     assert [i.topic for i in data.interests.list()] == ["jazz"] and "tecnico×1" in result.summary
 
     book = InterestBook(data, FakeEmbedder(), V2InterestSettings(), clock)
     book.seed("Kubernetes", ORIGIN)  # e.g. taught before the rule, or by hand
-    await StudyPhase().run(ctx(llm, data, clock))
+    await StudyPhase().run(ctx(llm, data, clock, excluded_terms=TECHNICAL))
     assert levels(data) == {"jazz": 1, "Kubernetes": 0}
 
 

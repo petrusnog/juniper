@@ -178,6 +178,8 @@ class PhaseContext:
     reflect: LLMProvider | None = None
     embedder: Any | None = None
     memory: Any | None = None  # the v1 LongTermMemory, for the observation pipeline
+    # The web for the study (ADR-031): ``(SearchRouter, Fetcher)``, or ``None`` without a provider.
+    web: Any | None = None
     dry_run: bool = False
     clock: Callable[[], datetime] = utcnow
     state: dict[str, Any] = field(default_factory=dict)  # what one phase hands the next
@@ -312,6 +314,7 @@ class NightRunner:
         reflect: LLMProvider | None = None,
         embedder: Any | None = None,
         memory: Any | None = None,
+        web: Any | None = None,
         clock: Callable[[], datetime] = utcnow,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -322,6 +325,7 @@ class NightRunner:
         self.reflect = reflect
         self.embedder = embedder
         self.memory = memory
+        self.web = web
         self.clock = clock
         self._monotonic = monotonic
 
@@ -351,6 +355,7 @@ class NightRunner:
             reflect=self.reflect,
             embedder=self.embedder,
             memory=self.memory,
+            web=self.web,
             dry_run=dry_run,
             clock=self.clock,
         )

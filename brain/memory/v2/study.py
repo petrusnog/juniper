@@ -4,8 +4,12 @@ Seeding reads only what the user wrote and keeps the *topic*, never his opinion.
 separate call that never sees his words: it gets the topic and who she is (her traits and what
 matters to her), asks the advanced model what it knows, and the model says how much someone with
 her concerns and traits would like what was read. The code turns that into evidence on the stance.
-There is no web and no tool anywhere in this module: the study is a reflection on general
-knowledge, and her taste is second-hand.
+Where the knowledge comes from (ADR-031): with a web provider the step **reads the web first**
+(``Learner``: sources of different domains, notes with URL, date and validity) and the model only
+judges the taste, the summary and the open questions, never writes notes of its own; without the
+web (off, or no provider) the study is the old reflection on what the model knows, and her taste
+is second-hand. If the web is on but fails, a strict memory skips the step instead of studying
+from the model: it is tried again tomorrow.
 """
 
 from __future__ import annotations
@@ -47,9 +51,7 @@ Responda SÓ com JSON: {{"interests": [{{"topic": "Beatles", "evidence": ["S1:t1
 """
 
 STUDY_SYSTEM = """\
-Você é a Juniper, estudando um tema por conta própria. Você NÃO tem internet nem ouve música ou
-vê imagens: seu gosto é de segunda mão, feito do que você sabe e leu. Fale sempre assim ("li
-bastante sobre", "o que sei é que"), nunca como quem ouviu, viu ou foi.
+Você é a Juniper, estudando um tema por conta própria. {reading}
 
 Quem você é (DADOS):
 <voce>{who}</voce>
@@ -89,6 +91,17 @@ FOCUS = {
     5: "conexões com outros temas e o que isso significa para o seu gosto",
 }
 FOCUS_AFTER = "aprofundar o que ficou em aberto, sem repetir o que já sabe"
+READING_MODEL = (
+    "Você NÃO tem internet nem ouve música ou vê imagens: seu gosto é de segunda mão, feito do que "
+    'você sabe e leu. Fale sempre assim ("li bastante sobre", "o que sei é que"), nunca como quem '
+    "ouviu, viu ou foi."
+)
+READING_WEB = (
+    "Você acabou de ler fontes da web sobre o tema: as notas abaixo vêm delas. Você não ouve "
+    "música nem vê imagens: seu gosto é de segunda mão, feito do que leu. Fale sempre assim "
+    '("li que", "as fontes dizem"), nunca como quem ouviu, viu ou foi. Neste passo as notas já '
+    'vieram das fontes: devolva "notes": [].'
+)
 MAX_NOTES_PER_STEP = 6
 MAX_NOTE_CHARS = 220
 
@@ -208,6 +221,54 @@ class StudyPhase:
             self.name, "done", text, changed=tally.studied, notes=tally.notes[:MAX_NOTES]
         )
 
+    @staticmethod
+    def _web_ready(ctx: PhaseContext) -> bool:
+        return ctx.web is not None and ctx.cheap is not None
+
+    async def _read_web(
+        self, ctx: PhaseContext, notebook: NoteBook, interest: Any, tally: _Tally
+    ) -> bool | None:
+        """Learn the step from the web. ``True``: it did (the notes are in the notebook);
+        ``False``: it could not and the memory is not strict (the model studies as before);
+        ``None``: it could not and the step must wait."""
+        from brain.config import settings
+        from brain.memory.v2.learn import Learner, LearnError
+        from brain.web.search import SearchError
+
+        strict = ctx.config.knowledge.strict
+        used = int(ctx.state.get("web_searches", 0))
+        if used >= settings.web.dream.max_searches:
+            tally.reject("sem_busca", "o teto de buscas da noite acabou")
+            return None if strict else False
+        router, fetcher = ctx.web
+        learner = Learner(
+            ctx.data,
+            ctx.cheap,  # type: ignore[arg-type]
+            router,
+            fetcher,
+            embedder=ctx.embedder,
+            config=ctx.config,
+            clock=ctx.clock,
+        )
+        ctx.state["web_searches"] = used + 1
+        asks = [q.text for q in notebook.questions(interest.id)]
+        try:
+            ctx.budget.check()
+            report = await learner.learn(interest.topic, asks)
+        except (SearchError, LearnError) as exc:
+            tally.reject("sem_web", getattr(exc, "message", str(exc)))
+            return None if strict else False
+        ctx.budget.charge(report.tokens)
+        if not report.sources:
+            tally.reject("sem_web", "nenhuma fonte pôde ser lida")
+            return None if strict else False
+        tally.written += report.added
+        tally.notes.append(
+            f"leria na web sobre {interest.topic}: {len(report.sources)} fonte(s), "
+            f"{report.added} nota(s)"
+        )
+        return True
+
     def _who(self, ctx: PhaseContext) -> str:
         """Her traits and concerns as text: the taste comes from who she is, not from the user."""
         concerns = ConcernBook(ctx.data, ctx.config.concerns, ctx.clock).ensure_defaults()
@@ -232,10 +293,17 @@ class StudyPhase:
     ) -> None:
         config = ctx.config.interests
         level = interest.level + 1
+        learned = False
+        if self._web_ready(ctx):
+            outcome = await self._read_web(ctx, notebook, interest, tally)
+            if outcome is None:
+                return  # strict memory and the web failed: no step tonight, tomorrow again
+            learned = outcome
         claims, asks = notebook.render(interest.id)
         raw = await ctx.ask(
             "reflect",
             STUDY_SYSTEM.format(
+                reading=READING_WEB if learned else READING_MODEL,
                 who=who,
                 topic=interest.topic,
                 level=level,
@@ -281,10 +349,14 @@ class StudyPhase:
         outcome = book.apply_study(interest, appeal, [" ".join(r.split()) for r in said])
         interest.level = level
         ctx.data.interests.update(interest.id, level=level)
-        written = sum(
-            1
-            for text, uncertainty in claims_in
-            if notebook.add_claim(interest, text, uncertainty, level) is not None
+        written = (
+            0
+            if learned
+            else sum(  # on the web the notes came from the sources
+                1
+                for text, uncertainty in claims_in
+                if notebook.add_claim(interest, text, uncertainty, level) is not None
+            )
         )
         notebook.set_questions(interest, questions_in, level)
         dropped = notebook.consolidate(interest)

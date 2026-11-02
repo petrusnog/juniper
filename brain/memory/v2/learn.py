@@ -79,6 +79,7 @@ class LearnReport:
     corroborated: int = 0  # claims she already had (from another site, they get firmer)
     contradictions: int = 0
     rejected: int = 0
+    tokens: int = 0  # what the extraction cost, for a budget that has to be charged
     notes: list[StudyNote] = field(default_factory=list)  # what she knows now, for the answer
 
     def render(self) -> str:
@@ -224,6 +225,8 @@ class Learner:
                 temperature=0.0,
                 max_tokens=900,
             )
+            usage = response.usage
+            report.tokens += usage.total_tokens if usage is not None and usage.total_tokens else 800
         except Exception as exc:  # noqa: BLE001  (one source lost; the others still teach)
             event_log.log("error", where="memory.v2.learn", type=type(exc).__name__)
             return

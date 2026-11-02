@@ -26,7 +26,14 @@ from brain.memory.v2.night import (
     default_phases,
 )
 from brain.memory.v2.store import InMemoryDocStore, V2Data
-from brain.memory.v2.study import SEED_SYSTEM, STUDY_SYSTEM, InterestSeedPhase, StudyPhase
+from brain.memory.v2.study import (
+    READING_MODEL,
+    READING_WEB,
+    SEED_SYSTEM,
+    STUDY_SYSTEM,
+    InterestSeedPhase,
+    StudyPhase,
+)
 from tests.test_extraction import FakeEmbedder
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
@@ -384,7 +391,8 @@ async def test_the_study_says_she_read_and_the_diary_never_claims_to_have_listen
     assert interest.experience == "reading" and entry.text.startswith("Li sobre Beatles")
     for text in (entry.text, *interest.reasons):
         assert not any(w in text.lower() for w in ("ouvi", "escutei", "assisti", "toquei"))
-    assert "segunda mão" in STUDY_SYSTEM and "NÃO tem internet" in STUDY_SYSTEM
+    assert "segunda mão" in READING_MODEL and "NÃO tem internet" in READING_MODEL
+    assert "segunda mão" in READING_WEB and "{reading}" in STUDY_SYSTEM
 
 
 async def test_a_study_that_claims_to_have_lived_it_is_not_kept() -> None:

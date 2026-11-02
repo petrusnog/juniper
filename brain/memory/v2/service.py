@@ -6,6 +6,8 @@ expected problem: a Memória V2 that is off or cannot run gives a report that sa
 
 from __future__ import annotations
 
+from typing import Any
+
 from brain.eventlog import event_log
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2 import require_v2
@@ -31,11 +33,18 @@ async def run_night(dry_run: bool = False, *, phases: list[Phase] | None = None)
     cheap = LLMRouter()
     reflect = build_reflection_llm()
     memory = None
+    web = open_dream_web()
     try:
         memory = open_long_term_memory(cheap)
         embedder = memory.embedder if memory is not None else open_embedding_provider()
         runner = NightRunner(
-            data, phases=phases, cheap=cheap, reflect=reflect, embedder=embedder, memory=memory
+            data,
+            phases=phases,
+            cheap=cheap,
+            reflect=reflect,
+            embedder=embedder,
+            memory=memory,
+            web=web,
         )
         return await runner.run(dry_run=dry_run)
     finally:
@@ -45,6 +54,21 @@ async def run_night(dry_run: bool = False, *, phases: list[Phase] | None = None)
         await cheap.aclose()
         if reflect is not None:
             await reflect.aclose()
+        if web is not None:
+            await web[0].aclose()
+
+
+def open_dream_web() -> tuple[Any, Any] | None:
+    """The search router and the fetcher for the dream's study, or ``None`` when the web is off
+    or no provider can search (the study then stays with the model, ADR-031)."""
+    from brain.config import settings
+    from brain.web.fetch import Fetcher
+    from brain.web.search import build_router
+
+    if not (settings.web.enabled and settings.web.dream.enabled):
+        return None
+    router = build_router()
+    return (router, Fetcher()) if router.usable() else None
 
 
 async def run_night_job() -> None:
