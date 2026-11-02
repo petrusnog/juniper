@@ -10,7 +10,7 @@ tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento me
 
 > **Nota:** esta página acompanha a [ADR-017](../decisions/ADR-017.md), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.md): o prompt, a extração e os comandos são os de antes.
 
-> **Próxima versão:** a Memória V3 está proposta no [ADR-029](../decisions/ADR-029.md) (livre arbítrio na fala), no [ADR-030](../decisions/ADR-030.md) (humor PAD, Big Five, crenças sobre si e o mundo, sonho V2) e no [ADR-031](../decisions/ADR-031.md) (conhecimento só da memória, com a web ensinando). Esta página descreve a V2, que é o que roda hoje.
+> **Memória V3:** esta página também descreve a V3 ([mapa e limites](memoria-v3.md)), que mudou o comportamento de várias seções: livre arbítrio na fala ([ADR-029](../decisions/ADR-029.md)), humor PAD, Big Five, crenças sobre si e o mundo e o sonho V2 ([ADR-030](../decisions/ADR-030.md)), e o conhecimento só da memória com a web ensinando ([ADR-031](../decisions/ADR-031.md)).
 
 ## Visão geral {#visao-geral}
 
@@ -396,6 +396,7 @@ Nada disso toca tools, tiers ou confirmação (a bateria de regressão continua 
 
 ## Para saber mais {#para-saber-mais}
 
+- [Memória V3](memoria-v3.md) (Documentação Técnica): O mapa da V3: o que mudou, como ligar e testar, e o que é verificado e o que não é.
 - [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Personalidade, opiniões e sentimentos](produto-personalidade.md) (Produto): A Memória V2 explicada sem código: opiniões com grau de certeza, sentimentos que passam, interesses próprios, uma personalidade que evolui e o "sonho" noturno que junta tudo.

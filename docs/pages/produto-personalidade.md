@@ -66,5 +66,5 @@ A Juniper é uma IA e diz isso. Sobre estar viva ou ter consciência, ela não a
 
 ## Para saber mais {#mais}
 
-- Técnico: [Memória V2](memoria-v2.md).
+- Técnico: [Memória V2](memoria-v2.md) e o mapa da [Memória V3](memoria-v3.md).
 - Decisões: [ADR-017](../decisions/ADR-017.md), [ADR-018](../decisions/ADR-018.md) e [ADR-019](../decisions/ADR-019.md).

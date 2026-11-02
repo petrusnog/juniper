@@ -2,7 +2,7 @@
 
 > **Propósito:** o estado atual do projeto, em uma página, para quem vai trabalhar nele (gente ou agente). Detalhes ficam nas notas ligadas: comece pelo [mapa da documentação](MAPA.md) e vá só ao que precisa.
 > **Idioma:** documentação em PT-BR. Código, comentários, docstrings e logs em inglês. Mensagens ao usuário final em PT-BR.
-> **Última atualização:** 2026-10-28 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
+> **Última atualização:** 2026-11-02 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
 
 ---
 
@@ -21,7 +21,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
 ---
 
-## 2. Estado Atual (2026-10-28)
+## 2. Estado Atual (2026-11-02)
 
 Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `master`, com a exceção do login com MFA (abaixo). As issues abertas no GitHub (#90 a #214) correspondem a trabalho já entregue cujo merge não as fechou; o estado verdadeiro é o desta tabela.
 
@@ -36,6 +36,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Telegram | Bot por long polling, com a mesma conversa e as mesmas tools | Sprint 3 | 016 | [Telegram](pages/telegram.md) |
 | Memória V2 | Crenças com certeza por evidência, sentimentos, interesses, personalidade viva, "sonho" noturno | #90 (T-099 a T-115) | 017 | [Memória V2](pages/memoria-v2.md) |
 | Sonho evoluído | Memória refinada (fato e lembrança), estudo progressivo, notas de conhecimento, `study add` | #132 (T-119 a T-129) | 018, 019 | [Memória V2](pages/memoria-v2.md) |
+| Memória V3 | Livre arbítrio na fala (ação protegida); humor PAD que toda mensagem empurra, bloco `<voz>` e `juniper mood set`; Big Five em 10 aspectos + ironia (traço = média dos estados, com maturação); crenças sobre o usuário, sobre si e sobre o mundo (erro de previsão, curva de confiança); conhecimento só da memória com a web ensinando (`SearchProvider` Tavily → SearXNG → DuckDuckGo, `web_search`, `web_fetch`, `learn_topic`); Sonho V2 (NREM, REM, poda, diário "Como mudei"); página Evolução do dashboard; teste de fundamento. **Verificado com modelos roteirizados; a web e o modelo reais não foram exercitados** | #258 (T-173 a T-186) | 029, 030, 031 | [Memória V3](pages/memoria-v3.md) |
 | Dashboard | Painel web somente leitura (memória, afetos, estudos, pesquisa, ocorrências de vazamento com exportação em xlsx) na rede privada, com o visual de terminal do app e a marca animada (logo, nome e cursor piscando) | #159 (T-130 a T-137), #245, #246 | 020 | [Dashboard](pages/dashboard.md) |
 | App mobile | React Native/Android: chat de texto, executor `open_url`, chat de voz contínuo, visual de terminal e a marca animada no topo | #178 (T-143 a T-147), #249 (T-171) | 022 (substitui o 015) | [App mobile](pages/mobile.md), [Ambiente mobile](pages/mobile-dev.md) |
 | Voz | TTS Google Chirp 3 HD, STT da Groq, VAD, trava de orçamento mensal, `voice.*` no protocolo; a fala do usuário fica registrada mesmo quando ele corta a resposta | #179 (T-148 a T-153), #243 (T-166) | 023 | [Voz por áudio](pages/voz-audio.md) |
@@ -56,7 +57,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Login global com MFA (épica #177) | Só o desenho, no [ADR-021](decisions/ADR-021.md) e em [Login com MFA](pages/login.md). `brain/auth/` existe (usuários e credenciais, ADR-027), mas **não há TOTP**, sessões de MFA nem `auth.login` no protocolo. **A issue #177 não está resolvida** (diferente das demais). |
 | Isolamento de dados por usuário | Registros novos devem levar `owner_id`, mas nenhuma leitura filtra por usuário: um `tester` vê o mesmo cérebro do dono (memória, conversas, agenda, música). Por isso `deployment.auth.allow_testers` vem `false`. Precisa de ADR próprio. |
 | `run_shell`, `open_app` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,shell}.py` são stubs de 4 linhas. |
-| Memória V3 (ADR-029, 030, 031) | **Proposta, sem código.** Livre arbítrio na fala, humor PAD e bloco de voz, Big Five, crenças sobre si e o mundo, sonho V2, conhecimento só da memória com a web ensinando; inclui `web_search`, `web_fetch` (hoje *stubs* em `brain/tools/web.py`) e `learn_topic`. |
+| Memória V3: o que falta verificar | A busca e a leitura de páginas **reais** (Tavily, DuckDuckGo, SearXNG), o **contêiner do SearXNG**, o plano gratuito do Tavily, o comportamento do **modelo real** diante das ordens de tom e a medição do fundamento e da bajulação contra um modelo real. Tudo foi testado com modelos e provedores roteirizados ([Memória V3](pages/memoria-v3.md#limites)). Em aberto, do ADR-029: o que fazer se ela recusar uma reversão. |
 | Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
 | Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
 | Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
@@ -206,9 +207,9 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [026](decisions/ADR-026.md) | Auto-atualização do app Android: o cérebro serve o APK, o CI publica (proposto). |
 | [027](decisions/ADR-027.md) | Usuários e credenciais `client_id`/`client_secret` (segredo visto uma vez, só o hash no MongoDB, espelho do dono em arquivo); vale para todos os clientes, menos SSH. |
 | [028](decisions/ADR-028.md) | Ações do dono no dashboard (ocorrências, memória, tarefas) com as defesas do ADR-027; leituras de logs, custos e saúde. |
-| [029](decisions/ADR-029.md) | Livre arbítrio: expressão livre (opina sobre tudo, discorda, fala de si), ação protegida (tiers e confirmação intocados) (proposto). |
-| [030](decisions/ADR-030.md) | Memória V3: emoção PAD, humor ALMA, Big Five em 10 aspectos + ironia, traço como média dos estados, bloco de voz, crenças sobre si e o mundo, sonho V2 (proposto). |
-| [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (proposto). |
+| [029](decisions/ADR-029.md) | Livre arbítrio: expressão livre (opina sobre tudo, discorda, fala de si), ação protegida (tiers e confirmação intocados) (aceito). |
+| [030](decisions/ADR-030.md) | Memória V3: emoção PAD, humor ALMA, Big Five em 10 aspectos + ironia, traço como média dos estados, bloco de voz, crenças sobre si e o mundo, sonho V2 (aceito). |
+| [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (aceito). |
 
 ---
 
@@ -229,7 +230,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
 | `study add` no dashboard | Fora: o texto de estudo não cabe na *query* dos `POST` (o servidor HTTP do dashboard não lê corpo). Continua na CLI. |
-| Memória V3 (ADR-029, ADR-030, ADR-031) | ADRs propostos; implementação em fases depois da aprovação (as tools de web entram aqui). |
+| Calibrar a Memória V3 | Os valores novos (`alpha`, `max_step`, `max_band`, `maturation`, meia-vida do humor, tetos por hora da conversa, validade das notas da web, `rem_relief`) são pontos de partida **[a calibrar]** com uso real; ligar o Tavily (chave no `.env`) e conferir o plano gratuito. |
 | Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
@@ -244,6 +245,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 3. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados por alguns ADRs).
 4. `brain/tools/{system,web,shell}.py` são stubs que coexistem com o plano de tools de sistema: implementar ou remover.
 5. `mypy brain/` acusa erros herdados de stubs de bibliotecas; o CI roda só `pytest`.
+6. **Memória V3:** a imagem do SearXNG vem em `latest` (fixar uma tag testada); `ruff` aponta dois avisos antigos (`tests/test_config.py:110` e `tests/test_remote_cli.py:225`) que não são desta épica.
 
 ---
 
