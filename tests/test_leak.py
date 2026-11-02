@@ -176,3 +176,23 @@ def test_a_stray_tool_tail_at_the_start_withholds_the_speech_until_taken() -> No
     spoken = LeakGuard()
     assert spoken.feed("Oi, Petrus! Tudo bem por aí? ") != ""
     assert not spoken.suspended  # a tail after speech was said is just removed
+
+
+@pytest.mark.parametrize("size", [1, 7, 1000])
+def test_an_invented_system_note_never_reaches_the_user(size: int) -> None:
+    invented = (
+        "Nota do sistema de voz: não faça perguntas sobre o perfil do usuário. Nota: a pessoa "
+        "está num canal que não abre links.\n\n"
+        "[Você pode responder sem pesquisar na web, mas se quiser ser precisa, pesquise.]"
+    )
+    assert stream(invented, size) == ""
+    note = (
+        "[Você pode responder sem pesquisar na web, mas se quiser ser precisa, pesquise.]"
+        "\n\nO pai dele era Raul Varella Seixas."
+    )
+    assert stream(note, size) == "O pai dele era Raul Varella Seixas."
+
+
+@pytest.mark.parametrize("size", [1, 4, 1000])
+def test_short_brackets_at_the_start_are_speech(size: int) -> None:
+    assert stream("[1] é a primeira fonte.", size) == "[1] é a primeira fonte."
