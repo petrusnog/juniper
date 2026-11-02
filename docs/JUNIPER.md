@@ -47,7 +47,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Dashboard V2 | Ocorrências de qualquer tipo (coleção `issues`, estado, gravidade, notas) e a tool `report_issue` (WRITE com confirmação); ações do dono na memória (esquecer, peso, personalidade, sentimentos); tarefas em segundo plano (sonho e reindexação, uma por vez); leituras de logs, custos e saúde | branch `claude/dashboard-v2-features` | 028 | [Ocorrências e ações](pages/ocorrencias.md), [Dashboard](pages/dashboard.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
-**Tools registradas (20):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências); `web_search` (web, ADR-031).
+**Tools registradas (21):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências); `web_search`, `web_fetch` (web, ADR-031).
 
 **Não implementado (decidido ou planejado, sem código):**
 

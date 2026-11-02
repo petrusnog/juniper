@@ -149,11 +149,12 @@ Decorator que registra a classe. Há um objeto `registry` global e o decorator a
 | `update_profile` | WRITE (sem confirmar) | CLOUD | Atualiza o perfil do usuário. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
 | `recall` | READ | CLOUD | Busca na memória por significado. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
 | `web_search` | READ | CLOUD | Procura na web com failover (Tavily → SearXNG → DuckDuckGo) e devolve até 5 resultados, envelopados como conteúdo não confiável. | [Configuração](configuracao.md#web-config) |
+| `web_fetch` | READ | CLOUD | Baixa uma página **no servidor** e devolve o texto legível, com a política contra SSRF: só http/https nas portas 80 e 443, DNS resolvido pelo cérebro e recusa de qualquer endereço não público (privado, Tailscale, metadados), conexão fixada no IP conferido, redirecionamentos conferidos de novo, limites de tempo e de tamanho, só HTML e texto. | [Segurança](seguranca.md#conteudo-externo) |
 | `forget` | DESTRUCTIVE | CLOUD | Apaga memórias. | [Memória de longo prazo](memoria-longo-prazo.md#tools-de-memoria) |
 | `report_issue` | WRITE (confirma) | CLOUD | Registra uma ocorrência (bug, comportamento errado, ideia) a partir da fala; só cria. | [Ocorrências](ocorrencias.md#tool) |
 | `docs_search` | READ | CLOUD | Busca na própria documentação, por palavras-chave, para responder sobre si mesma. | [Metadocumentação](metadocs.md#docs-search) |
 
-Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`), `web_fetch` (arquivo `web.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.md) está ligada.
+Ainda não implementadas: `run_shell` e `open_app` (arquivo `system.py`). As tools de memória só aparecem para o LLM quando a [memória de longo prazo](memoria.md) está ligada.
 
 ## Limitações conhecidas {#limitacoes}
 

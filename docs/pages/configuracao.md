@@ -290,10 +290,14 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 
 | Opção | Padrão | O que faz |
 |---|---|---|
-| `web.enabled` | `true` | Liga as tools de web (`web_search`). Desligado, elas não aparecem para o modelo. |
+| `web.enabled` | `true` | Liga as tools de web (`web_search`, `web_fetch`). Desligado, elas não aparecem para o modelo. |
 | `web.search.providers` | Tavily (900 por mês), SearXNG, DuckDuckGo | Os provedores, **na ordem do failover**. Cada item tem `name` (`tavily`, `searxng` ou `duckduckgo`), `enabled`, `monthly_limit` (buscas por mês UTC; 0 = sem limite) e, só o SearXNG, `url` (sem URL ele é pulado). O Tavily também é pulado sem `JUNIPER_TAVILY_API_KEY`. |
 | `web.search.max_results` | `5` | Teto de resultados por busca (1 a 10). |
 | `web.search.timeout_seconds` | `10` | Tempo máximo de cada provedor antes de passar ao próximo. |
+| `web.fetch.timeout_seconds` | `10` | Tempo máximo para baixar uma página (redirecionamentos inclusos). |
+| `web.fetch.max_bytes` | `2000000` | Tamanho máximo lido de uma página; passou disso, o resto é ignorado e o texto vem marcado como cortado. |
+| `web.fetch.max_redirects` | `3` | Redirecionamentos seguidos, cada um conferido de novo pela política. |
+| `web.fetch.max_chars` | `8000` | Teto do texto extraído que volta para o modelo. |
 | `web.search.quota_file` | `~/.juniper/web/quota.json` | O contador mensal de buscas por provedor (modo 600). Arquivo corrompido ou ausente começa o mês do zero. |
 
 ## Como adicionar uma opção {#adicionar}

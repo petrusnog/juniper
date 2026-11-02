@@ -364,11 +364,22 @@ class WebSearchSettings(BaseModel):
         return v.expanduser()
 
 
+class WebFetchSettings(BaseModel):
+    """Baixar uma página no servidor, com a política contra SSRF (ADR-031, seção 3)."""
+
+    timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    max_bytes: int = Field(default=2_000_000, ge=10_000, le=20_000_000)
+    max_redirects: int = Field(default=3, ge=0, le=10)
+    # Teto do texto extraído que volta para o modelo.
+    max_chars: int = Field(default=8000, ge=500, le=50_000)
+
+
 class WebSettings(BaseModel):
     """Web: a memória fala, a web ensina (ADR-031)."""
 
     enabled: bool = True
     search: WebSearchSettings = Field(default_factory=WebSearchSettings)
+    fetch: WebFetchSettings = Field(default_factory=WebFetchSettings)
 
 
 class ToolsSettings(BaseModel):
