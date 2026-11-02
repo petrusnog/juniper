@@ -225,6 +225,11 @@ class Phase(Protocol):
     async def run(self, ctx: PhaseContext) -> PhaseResult: ...
 
 
+# The phases whose notes tell how she changed (the diary "Como mudei").
+CHANGE_PHASES = ("persona", "self", "world")
+MAX_CHANGE_LINES = 12
+
+
 def default_phases() -> list[Phase]:
     """The phases of a real night, in order (each task of the V2 adds its own)."""
     from brain.memory.v2.evolve import PersonaPhase
@@ -232,16 +237,29 @@ def default_phases() -> list[Phase]:
     from brain.memory.v2.observe import ObservationPhase
     from brain.memory.v2.refine import RefinePhase
     from brain.memory.v2.reflect import BeliefReflectionPhase
+    from brain.memory.v2.sleep import (
+        EmotionRestPhase,
+        PrunePhase,
+        SelfBeliefPhase,
+        WorldBeliefPhase,
+    )
     from brain.memory.v2.study import InterestSeedPhase, StudyPhase
 
+    # NREM (consolidate): observe, reflect, feel, study, what the web taught; REM (reprocess the
+    # emotion): the states become traits, her history becomes self-knowledge, the charge of the
+    # memories cools; then the pruning (ADR-030, section 9).
     return [
         ObservationPhase(),
         BeliefReflectionPhase(),
         AffectPhase(),
         InterestSeedPhase(),
         StudyPhase(),
+        WorldBeliefPhase(),
         PersonaPhase(),
+        SelfBeliefPhase(),
         RefinePhase(),
+        EmotionRestPhase(),
+        PrunePhase(),
     ]
 
 
@@ -396,6 +414,10 @@ class NightRunner:
     def _write_journal(self, report: DreamReport) -> str:
         lines = [f"Li {report.sessions} conversa(s), {report.turns} turno(s) novo(s)."]
         lines += [f"{r.name}: {r.summary or r.status}" for r in report.results]
+        changed = [n for r in report.results if r.name in CHANGE_PHASES for n in r.notes]
+        if changed:  # "como mudei": what moved in who she is tonight
+            lines.append("Como mudei:")
+            lines += [f"  {n}" for n in changed[:MAX_CHANGE_LINES]]
         text = "\n".join(lines)
         assert report.run is not None
         self.data.journal.save(

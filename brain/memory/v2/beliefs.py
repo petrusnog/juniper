@@ -59,6 +59,7 @@ class BeliefBook:
         *,
         about: str = "user",
         origin: str = "night",
+        merge: bool = True,
     ) -> tuple[Belief, bool]:
         """A new hypothesis backed by ``evidence`` (``(belief, created)``).
 
@@ -71,7 +72,7 @@ class BeliefBook:
         if self.embedder is not None:
             vector = self.embedder.embed(statement, "passage")
             model = self.embedder.model_id
-            twin = self._twin(vector, model, about)
+            twin = self._twin(vector, model, about) if merge else None
             if twin is not None:
                 self.add_evidence(twin.id, evidence)
                 return self.data.beliefs.get(twin.id) or twin, False

@@ -105,18 +105,32 @@ O algoritmo de sonho só lê o que o usuário **escreveu** e as respostas dela, 
 O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. No servidor, pelo atalho do contêiner ([Operação](operacao.md#atalho)).
 
 ```text
-coleta  →  fases (observar, refletir, sentir, interesses, estudar, personalidade, refinar)  →  aplicação pelo código  →  diário
+coleta  →  NREM (observar, refletir, sentir, interesses, estudar, crenças do mundo)
+        →  REM (personalidade, crenças sobre si, refinar, esfriar a emoção)
+        →  poda  →  aplicação pelo código  →  diário
 ```
 
 | Peça | Como funciona |
 |---|---|
 | **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), **sem espera**: com `memory.v2.night.quiet_minutes` em 0 (o padrão), toda mensagem ainda não lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então uma conversa lida pela metade continua de onde parou. Com um valor maior, as sessões mexidas há menos de tantos minutos ficam para depois. Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
 | **Transcrição** | O `Agent` entrega cada turno terminado a um *sink* (`TranscriptWriter`): o texto do usuário, a resposta dela e se **houve tool** no turno. Nunca a saída de tool. Um turno em que vazou maquinaria chega com `leaked: true` e a resposta vazia, e o material do sonho põe uma nota no lugar dela ([Auditoria de vazamentos](vazamentos.md#quarentena)). Se a gravação falhar, a conversa segue (só vai para o log). |
-| **Fases, em ordem** | `observe` (fatos), `reflect` (crenças), `affect` (sentimentos), `interests` (sementes), `study` (um passo por tema), `persona` (traços) e `refine` (memórias brutas viram lembranças). Objetos com `run(ctx)` (`brain/memory/v2/night.py`); cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
+| **Fases, em ordem** | `observe` (fatos), `reflect` (crenças), `affect` (sentimentos), `interests` (sementes), `study` (um passo por tema), `world` (crenças sobre o mundo), `persona` (traços), `self` (crenças sobre si), `refine` (memórias brutas viram lembranças), `rem` (a emoção das lembranças esfria) e `prune` (poda). Objetos com `run(ctx)` (`brain/memory/v2/night.py`); cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
 | **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
 | **Orçamento** | `memory.v2.night.max_tokens` e `max_minutes`. Estourou, a fase termina com o estado `budget` e o resto fica para a noite seguinte. |
 | **Dois modelos** | O barato (o do chat) para a observação; `llm.reflection` (provider e modelo) para refletir e estudar, e sem ele usa o do chat. Um modelo de raciocínio pode devolver o "pensamento" antes da resposta: ele é removido antes de qualquer JSON ser lido. |
 | **Registro** | Cada execução grava um `dream_run` (fases, tokens, erros), uma entrada no **diário** (`journal`) e um evento `dream` no [log técnico](observabilidade.md#log-tecnico). |
+
+### Sonho V2: as fases do sono {#sonho-v2}
+
+O sonho segue, como organização, as fases do sono humano ([ADR-030](../decisions/ADR-030.md), seção 9). É onde a Juniper **mais evolui**:
+
+| Fase do sono | Fases do sonho | O que faz |
+|---|---|---|
+| **NREM: consolidar** | `observe`, `reflect`, `affect`, `interests`, `study`, **`world`** | Replay do dia e estudo. A fase `world` transforma em **crença sobre o mundo** a nota da web em que **dois ou mais domínios diferentes** concordam (uma evidência `source` por domínio); nota de uma fonte só continua nota. |
+| **REM: reprocessar a emoção** | `persona`, **`self`**, `refine`, **`rem`** | Os estados do dia viram traço ([personalidade](#personalidade)). A fase `self` lê o **próprio histórico** e escreve, na voz dela e por modelos de frase fixos, o que ele diz: um sentimento que voltou em dias diferentes ("tenho andado com irritação nos últimos dias"), um traço que se afastou do seu normal ("tenho andado mais curiosa"; o oposto é **contestado**) e um interesse de que ela gosta ("gosto de synthwave"); cada um com evidência `self_observation` por referência (`affect:<id>`, `persona:<traço>:v<n>`, `interest:<id>:<passo>`). A fase `rem` faz a carga emocional guardada nas lembranças refinadas **esfriar** um pouco a cada noite (`memory.v2.night.rem_relief`, 10%), nunca abaixo de um piso (`rem_floor`, 0,15): o fato nunca muda, a emoção sim ("dormir para esquecer e para lembrar", Walker). |
+| **Poda** | **`prune`** | Saem os sentimentos que se apagaram e as notas da web vencidas há mais de `memory.v2.night.prune_after` (2) vezes a validade. |
+
+`world`, `self`, `rem` e `prune` são **código sobre os dados dela**, sem LLM: idempotentes (a evidência tem referência estável), isoladas (uma falha custa a etapa, não a noite) e visíveis no `--dry-run`. O **diário** ganha um bloco **"Como mudei:"** com o que se mexeu em quem ela é naquela noite (traços, crenças sobre si e sobre o mundo).
 
 ### Dry run {#dry-run}
 

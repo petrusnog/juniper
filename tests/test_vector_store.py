@@ -79,7 +79,12 @@ class FakeCollection:
     def update_one(self, flt: dict[str, Any], update: dict[str, Any]) -> Any:
         doc = self.docs.get(flt["_id"])
         if doc is not None:
-            doc.update(update["$set"])
+            for key, value in update["$set"].items():
+                *path, last = key.split(".")  # a dotted key reaches into a sub-document
+                target = doc
+                for part in path:
+                    target = target.setdefault(part, {})
+                target[last] = value
         return SimpleNamespace(matched_count=int(doc is not None))
 
     def delete_one(self, flt: dict[str, Any]) -> Any:

@@ -320,6 +320,8 @@ class MongoVectorStore:
     def update(self, memory_id: str, **fields: Any) -> bool:
         check_update_fields(fields)
         changes = dict(fields)
+        if "sentimento" in changes:  # it lives inside the layer of remembering
+            changes["lembranca.sentimento"] = changes.pop("sentimento")
         if "embedding" in changes:
             changes["embedding"] = [float(x) for x in changes["embedding"]]
         changes["updated_at"] = datetime.now(UTC)

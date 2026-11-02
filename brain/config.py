@@ -540,6 +540,12 @@ class V2NightSettings(BaseModel):
     # lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então
     # uma conversa lida pela metade continua de onde parou.
     quiet_minutes: int = Field(default=0, ge=0, le=1440)
+    # REM (ADR-030): por noite, a carga emocional das lembranças cai esta fração, mas nunca abaixo
+    # do piso: o conteúdo fica, a emoção esfria ("dormir para esquecer e para lembrar").
+    rem_relief: float = Field(default=0.1, ge=0.0, le=0.9)
+    rem_floor: float = Field(default=0.15, ge=0.0, le=1.0)
+    # Poda: notas da web vencidas há mais de `prune_after` vezes a validade saem.
+    prune_after: float = Field(default=2.0, ge=1.0, le=20.0)
 
     @field_validator("at")
     @classmethod

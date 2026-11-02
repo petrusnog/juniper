@@ -92,7 +92,7 @@ async def test_after_a_night_every_page_has_its_data(
     beliefs = await fetch(dashboard, "/api/beliefs")
     assert beliefs["items"][0]["statement"].startswith("Acho que o Petrus se cobra demais")
     dreams = await fetch(dashboard, "/api/dreams")
-    assert [p["name"] for p in dreams["items"][0]["phases"]][-1] == "refine"
+    assert [p["name"] for p in dreams["items"][0]["phases"]][-1] == "prune"
     assert (await fetch(dashboard, "/api/journal?days=3650"))["total"] >= 1
     assert (await fetch(dashboard, "/api/persona"))["state"]["version"] == 2
     assert (await fetch(dashboard, "/api/core"))["core"].startswith("Você é a Juniper")

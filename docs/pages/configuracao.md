@@ -103,6 +103,9 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
 | `memory.v2.beliefs.max_new_per_night` | `10` | Teto de crenças novas por noite. |
+| `memory.v2.night.rem_relief` | `0.1` | REM ([ADR-030](../decisions/ADR-030.md)): por noite, a carga emocional guardada nas lembranças refinadas cai esta fração, mas nunca abaixo de `rem_floor`; o fato não muda. |
+| `memory.v2.night.rem_floor` | `0.15` | Piso da carga emocional de uma lembrança no REM. |
+| `memory.v2.night.prune_after` | `2.0` | Poda: notas da web vencidas há mais de tantas vezes a validade saem do caderno. |
 | `memory.v2.beliefs.surprise` | `1.0` | Erro de previsão ([ADR-030](../decisions/ADR-030.md)): o peso de uma evidência inferida cresce com a surpresa, `peso × (1 + surpresa × |resultado − confiança|)`. Uma contradição de uma crença firme pesa mais que a de uma crença fraca. A palavra do usuário (explícito, confirmação, negação) mantém o peso fixo. 0 desliga. |
 | `memory.v2.opinions.always_on` | `2` | Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto com 3 fontes ou mais) entram em toda conversa, como visão geral, **de cada camada** (sobre ele, sobre ela mesma e sobre o mundo), além das que tocam o assunto. 0 desliga. |
 | `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do usuário, honestidade, curiosidade, capricho e autonomia do usuário. É carregado no banco na primeira vez; depois quem manda é o usuário (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |

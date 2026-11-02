@@ -45,6 +45,7 @@ _UPDATABLE = frozenset(
         "embedding_model",
         "source",
         "status_reflexao",
+        "sentimento",  # the REM softens the charge of a refined memory (ADR-030); the fact stays
     }
 )
 
@@ -301,6 +302,11 @@ def check_update_fields(fields: Mapping[str, Any]) -> None:
         raise VectorStoreError(f"Status inválido: {fields['status']!r}.")
     if "status_reflexao" in fields and fields["status_reflexao"] not in REFLECTION_STATUSES:
         raise VectorStoreError(f"Status de reflexão inválido: {fields['status_reflexao']!r}.")
+    if "sentimento" in fields and not (
+        isinstance(fields["sentimento"], list)
+        and all(isinstance(x, dict) for x in fields["sentimento"])
+    ):
+        raise VectorStoreError("O sentimento de uma memória é uma lista de registros.")
     if "embedding" in fields:
         check_vector(fields["embedding"])
         if not fields.get("embedding_model"):
