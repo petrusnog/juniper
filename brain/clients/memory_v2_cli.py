@@ -605,7 +605,7 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
                 "pergunta" if n.kind == "pergunta" else "afirmação",
                 n.text,
                 n.uncertainty if n.kind == "afirmacao" else "-",
-                n.source,
+                f"web ({', '.join(n.domains)})" if n.domains else n.source,
                 str(n.level),
             )
         console.print(table)

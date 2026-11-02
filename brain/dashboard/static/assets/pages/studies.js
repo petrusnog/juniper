@@ -21,7 +21,9 @@ function noteItem(n, showTopic) {
     h("span", { class: "note-text", text: n.text }),
     h("span", { class: "note-meta" },
       question ? badge("pergunta em aberto", "live") : badge(label, kind),
-      badge(n.source === "documento" ? "documento" : "modelo", n.source === "documento" ? "live" : ""),
+      n.source === "web"
+        ? badge(`web: ${(n.domains || []).join(", ") || "?"}`, "live")
+        : badge(n.source === "documento" ? "documento" : "modelo", n.source === "documento" ? "live" : ""),
       h("span", { class: "muted small", text: `passo ${n.level} · ${when(n.created_at)}` }),
       showTopic && n.topic ? h("a", { class: "small", href: `#/estudos/${n.interest_id}`, text: n.topic }) : null,
     ),
@@ -55,7 +57,7 @@ async function topic(id) {
       h("div", { class: "chips", role: "group", "aria-label": "Incerteza" },
         ...[["", "Todas"], ["baixa", "Firmes"], ["média", "Incerteza média"], ["alta", "Incertas"]].map(([v, l]) => chip(l, view.uncertainty === v, pick("uncertainty", v)))),
       h("div", { class: "chips", role: "group", "aria-label": "Fonte" },
-        ...[["", "Qualquer fonte"], ["modelo", "Do modelo"], ["documento", "De documento"]].map(([v, l]) => chip(l, view.source === v, pick("source", v)))),
+        ...[["", "Qualquer fonte"], ["web", "Da web"], ["modelo", "Do modelo"], ["documento", "De documento"]].map(([v, l]) => chip(l, view.source === v, pick("source", v)))),
     );
     clear(list);
     if (!shown.length) list.append(empty(claims.length ? "Nenhuma nota com esses filtros." : "Ainda não há notas."));
@@ -92,7 +94,7 @@ async function everyNote() {
       h("div", { class: "chips", role: "group", "aria-label": "Incerteza" },
         ...[["", "Qualquer incerteza"], ["baixa", "Firmes"], ["média", "Média"], ["alta", "Incertas"]].map(([v, l]) => chip(l, all.uncertainty === v, pick("uncertainty", v)))),
       h("div", { class: "chips", role: "group", "aria-label": "Fonte" },
-        ...[["", "Qualquer fonte"], ["modelo", "Do modelo"], ["documento", "De documento"]].map(([v, l]) => chip(l, all.source === v, pick("source", v)))),
+        ...[["", "Qualquer fonte"], ["web", "Da web"], ["modelo", "Do modelo"], ["documento", "De documento"]].map(([v, l]) => chip(l, all.source === v, pick("source", v)))),
     );
     clear(list);
     if (!data.items.length) list.append(empty("Nenhuma nota com esses filtros."));

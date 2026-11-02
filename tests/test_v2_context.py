@@ -7,7 +7,12 @@ from typing import Any, ClassVar
 
 import pytest
 
-from brain.config import MemoryV2Settings, V2OpinionSettings, V2PersonaSettings
+from brain.config import (
+    MemoryV2Settings,
+    V2KnowledgeSettings,
+    V2OpinionSettings,
+    V2PersonaSettings,
+)
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session, Turn
@@ -97,6 +102,8 @@ def seeded(
 QUIET = {
     "persona": V2PersonaSettings(always_describe=False),
     "opinions": V2OpinionSettings(always_on=0),
+    # Strict knowledge (ADR-031) always brings its rule; tests of "nothing to add" turn it off.
+    "knowledge": V2KnowledgeSettings(strict=False),
 }
 
 

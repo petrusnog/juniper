@@ -279,10 +279,23 @@ noite só é refinado no sonho de verdade.
 
 Quando a mensagem toca um tema que ela estudou, o bloco `<conhecimento>` leva as notas relevantes ao prompt (ADR-019). A busca é por significado entre as notas de afirmação, com limiar de relevância; entram até **2 temas** e até **4 afirmações por tema**, as mais firmes (menor incerteza) e mais recentes primeiro, dentro do orçamento `memory.v2.max_tokens` (estourando, sai primeiro a afirmação menos firme).
 
-- O bloco traz o passo do estudo, a posição dela sobre o tema e cada afirmação com a marca de incerteza ("(incerto)", "(não tenho certeza total)"); nota vinda de documento diz que o usuário a ensinou.
-- A instrução viaja com o dado: fundamente a resposta nas notas, na voz de quem estudou ("estudei", "li"), diga a incerteza das incertas, responda com o que sabe fora delas dizendo que estudou pouco, e não use isso em tarefas técnicas ou de trabalho. O núcleo (`persona.core.md` e a versão compacta) ganhou a mesma regra.
-- **Sem notas, nada muda:** a resposta usa o modelo como antes. O bloco aparece também quando o usuário parece estar mal.
-- **Honestidade:** é conhecimento de segunda mão, o que o modelo sabe mais o que o usuário ensinou. Ela não passa a "saber" nada que o modelo não saiba; o ganho é consistência, incerteza explícita e a conversa seguir o que ela estudou. `juniper memory prompt` mostra o bloco.
+- O bloco traz o passo do estudo, a posição dela sobre o tema e cada afirmação com a marca de incerteza ("(incerto)", "(não tenho certeza total)"); nota vinda de documento diz que o usuário a ensinou, e nota da web diz onde ela leu ("(li em pt.wikipedia.org)").
+- **Modo estrito (padrão, [ADR-031](../decisions/ADR-031.md)):** o modelo é só o motor cognitivo. O bloco diz que fatos sobre o mundo (inclusive técnicos) só podem vir das notas; se a mensagem pede um fato e as notas não bastam, ela chama `learn_topic` **antes** de responder e responde a partir das notas que voltarem; sem como aprender, diz que ainda não sabe. Por isso, com o modo estrito, o bloco aparece **mesmo sem notas** ("nenhuma nota sua sobre este assunto ainda"), e diz para seguir normalmente quando a mensagem não pede conhecimento. O núcleo (`persona.core.md` e a versão compacta) manda seguir a regra do bloco.
+- **Modo antigo** (`memory.v2.knowledge.strict: false`): fora das notas ela responde com o que o modelo sabe, dizendo que estudou pouco; sem notas, não há bloco.
+- **Notas vencidas não contam:** uma nota da web tem validade pela volatilidade (notícia 12 h, atual 7 dias, estável 180 dias); vencida, sai do bloco até ela ler de novo. O bloco aparece também quando o usuário parece estar mal.
+- **Limite honesto:** não há como apagar o que o modelo aprendeu no treino; a regra instrui e o teste de fundamento ([ADR-031](../decisions/ADR-031.md)) mede. `juniper memory prompt` mostra o bloco.
+
+## Aprender na hora: `learn_topic` {#aprender kind=módulo file=brain/memory/v2/learn.py}
+
+A tool `learn_topic(topic, questions)` (WRITE sem confirmação, como `remember`) é oferecida quando a V2 e a web estão ligadas. Ela:
+
+1. Procura na web pelo tema e pelas perguntas ([SearchProvider](configuracao.md#web-config): Tavily, SearXNG e DuckDuckGo, com failover).
+2. Lê até 3 fontes de **domínios diferentes**: o texto que o provedor já extraiu (Tavily) ou a página baixada pelo `web_fetch`, com segredos mascarados e no máximo 6.000 caracteres por fonte.
+3. Pede ao modelo barato as afirmações que **cada texto sustenta**, com a volatilidade e se alguma contradiz o que ela já sabia.
+4. Grava as notas com `source = "web"`, a URL, o domínio, a data e a volatilidade, ligadas a um interesse (o tema entra na árvore de estudos e o sonho continua estudando).
+5. Devolve **as notas dela** sobre o tema, não as páginas: a resposta sai da memória.
+
+A incerteza é código: uma fonte só é `média`; a mesma afirmação lida em um **segundo domínio** é corroborada e vira `baixa`; afirmações que se contradizem ficam as duas `alta`. Afirmações com dados pessoais ou segredos são recusadas pelos guardas. Uma fonte que não abre ou um modelo que falha custa só aquela fonte. A web nunca chega às crenças sobre o usuário, aos sentimentos nem à personalidade por aqui. A primeira pergunta sobre um tema custa alguns segundos; as seguintes saem da memória. O evento `knowledge_learn` registra provedor, fontes, notas novas e o tempo; `knowledge_hit` registra quando o bloco trouxe notas.
 
 ## Ensinar a partir de um texto {#ensinar kind=comandos file=brain/memory/v2/teach.py}
 

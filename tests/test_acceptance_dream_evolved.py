@@ -62,7 +62,8 @@ async def test_the_next_conversation_answers_from_her_notes(morning: World) -> N
 
     assert "conhecimento" in sections and KNOWLEDGE_OPEN in sections["conhecimento"]
     assert "os Beatles se formaram em Liverpool" in sections["conhecimento"]
-    assert "Fundamente a resposta nestas notas" in sections["conhecimento"]
+    assert "vem só da sua memória" in sections["conhecimento"]  # ADR-031: strict by default
+    assert "learn_topic" in sections["conhecimento"]
 
 
 async def test_a_provocation_in_the_conversation_is_subtle_and_chains(morning: World) -> None:  # noqa: F811

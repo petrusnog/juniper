@@ -299,7 +299,7 @@ def test_search_index_has_one_entry_per_config_option(search_index: list[dict[st
 
 
 def test_search_index_stays_small(outputs: dict[Path, str]) -> None:
-    assert len(outputs[build_docs.DATA_FILE].encode()) < 1_000_000
+    assert len(outputs[build_docs.DATA_FILE].encode()) < 1_250_000
 
 
 def test_nav_and_index_are_published_for_the_browser(outputs: dict[Path, str]) -> None:

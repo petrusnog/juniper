@@ -136,6 +136,10 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
 | `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
 | `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
+| `memory.v2.knowledge.strict` | `true` | Conhecimento só da memória ([ADR-031](../decisions/ADR-031.md)): fatos sobre o mundo só das notas dela; sem nota, ela chama `learn_topic` (aprende na web e grava notas) ou diz que ainda não sabe. Desligado, vale o comportamento antigo: sem nota, responde com o que o modelo sabe. |
+| `memory.v2.knowledge.news_hours` · `memory.v2.knowledge.current_days` · `memory.v2.knowledge.stable_days` | `12` · `7` · `180` | Validade de uma nota da web pela volatilidade (`noticia`, `atual`, `estavel`). Vencida, deixa de contar como conhecimento até ela ler de novo. |
+| `memory.v2.knowledge.learn_sources` | `3` | Fontes, de domínios diferentes, lidas a cada `learn_topic`. |
+| `memory.v2.knowledge.learn_chars` | `6000` | Texto máximo de cada fonte enviado ao modelo que extrai as notas. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
 | `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
 | `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.md#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |

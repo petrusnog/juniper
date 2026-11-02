@@ -35,7 +35,9 @@ USER_CONFIRMATIONS = ("confirmed", "denied")
 EVIDENCE_KINDS = ("observation", "explicit", "confirmation", "denial", "contradiction")
 UNCERTAINTIES = ("baixa", "média", "alta")  # how unsure the note is (alta = least reliable)
 NOTE_KINDS = ("afirmacao", "pergunta")
-NOTE_SOURCES = ("modelo", "documento")
+NOTE_SOURCES = ("modelo", "documento", "web")
+# How fast what a web note says goes stale (ADR-031): news in hours, current facts in days.
+VOLATILITIES = ("noticia", "atual", "estavel")
 STANCES = ("undecided", "like", "dislike", "mixed")
 AFFECT_ABOUT = ("user", "self", "situation")
 AFFECT_PERSISTENCE = ("emotion", "grievance")
@@ -343,6 +345,11 @@ class StudyNote:
     embedding_model: str = ""
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
+    # Web notes (ADR-031): where it was read, every domain that says the same, when, how volatile.
+    url: str = ""
+    domains: list[str] = field(default_factory=list)
+    fetched_at: datetime | None = None
+    volatility: str = "estavel"
 
     def validate(self) -> None:
         _text(self.interest_id, "interest_id")
@@ -350,8 +357,11 @@ class StudyNote:
         _choice(self.kind, NOTE_KINDS, "kind")
         _choice(self.uncertainty, UNCERTAINTIES, "uncertainty")
         _choice(self.source, NOTE_SOURCES, "source")
+        _choice(self.volatility, VOLATILITIES, "volatility")
         if self.level < 0:
             raise V2DataError("level não pode ser negativo")
+        if self.source == "web" and self.kind == "afirmacao" and not self.url:
+            raise V2DataError("nota da web sem url")
 
     def to_doc(self) -> dict[str, Any]:
         self.validate()
@@ -367,6 +377,10 @@ class StudyNote:
             "embedding_model": self.embedding_model,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "url": self.url,
+            "domains": list(self.domains),
+            "fetched_at": self.fetched_at,
+            "volatility": self.volatility,
         }
 
     @classmethod
@@ -384,6 +398,10 @@ class StudyNote:
                 embedding_model=doc.get("embedding_model", ""),
                 created_at=as_dt(doc["created_at"]),
                 updated_at=as_dt(doc.get("updated_at", doc["created_at"])),
+                url=str(doc.get("url") or ""),
+                domains=[str(d) for d in doc.get("domains") or []],
+                fetched_at=as_dt(doc["fetched_at"]) if doc.get("fetched_at") else None,
+                volatility=doc.get("volatility", "estavel"),
             )
             note.validate()
         except (KeyError, TypeError, ValueError, AttributeError) as exc:

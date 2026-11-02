@@ -741,6 +741,22 @@ class V2OpinionSettings(BaseModel):
     always_on: int = Field(default=2, ge=0, le=5)
 
 
+class V2KnowledgeSettings(BaseModel):
+    """Conhecimento fundamentado: a memória fala, a web ensina (ADR-031)."""
+
+    # Estrito: fatos sobre o mundo só das notas dela; sem nota, ela aprende (learn_topic) ou diz
+    # que ainda não sabe. Desligado, vale o ADR-019: sem nota, responde com o que o modelo sabe.
+    strict: bool = True
+    # Validade de uma nota da web, pela volatilidade do que ela diz. Vencida, deixa de contar
+    # como conhecimento e o próximo uso a reaprende.
+    news_hours: float = Field(default=12.0, ge=1.0, le=720.0)
+    current_days: float = Field(default=7.0, ge=1.0, le=365.0)
+    stable_days: float = Field(default=180.0, ge=1.0, le=3650.0)
+    # Fontes (de domínios diferentes) lidas por aprendizado, e o texto máximo de cada uma.
+    learn_sources: int = Field(default=3, ge=1, le=6)
+    learn_chars: int = Field(default=6000, ge=500, le=20_000)
+
+
 class V2RefineSettings(BaseModel):
     """O refinamento das memórias pelo sonho (ADR-018)."""
 
@@ -764,6 +780,7 @@ class MemoryV2Settings(BaseModel):
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
     opinions: V2OpinionSettings = Field(default_factory=V2OpinionSettings)
     refine: V2RefineSettings = Field(default_factory=V2RefineSettings)
+    knowledge: V2KnowledgeSettings = Field(default_factory=V2KnowledgeSettings)
     concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)

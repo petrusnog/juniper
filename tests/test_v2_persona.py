@@ -8,7 +8,13 @@ from typing import Any, ClassVar
 
 import pytest
 
-from brain.config import DEFAULT_TRAITS, MemoryV2Settings, TraitDefault, V2PersonaSettings
+from brain.config import (
+    DEFAULT_TRAITS,
+    MemoryV2Settings,
+    TraitDefault,
+    V2KnowledgeSettings,
+    V2PersonaSettings,
+)
 from brain.llm.base import LLMProvider
 from brain.llm.types import LLMResponse, Message
 from brain.memory.v2.context import V2Context
@@ -447,7 +453,11 @@ async def test_before_the_first_dream_she_already_describes_her_starting_self_wi
 async def test_with_always_describe_off_a_default_personality_adds_no_block() -> None:
     book, data, clock = make()
     book.ensure()
-    off = MemoryV2Settings(enabled=True, persona=V2PersonaSettings(always_describe=False))
+    off = MemoryV2Settings(
+        enabled=True,
+        persona=V2PersonaSettings(always_describe=False),
+        knowledge=V2KnowledgeSettings(strict=False),
+    )
     v2 = V2Context(data, FakeEmbedder(), config=off, clock=clock)
     assert (await v2.context_for("bom dia")).block is None
 

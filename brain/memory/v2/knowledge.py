@@ -1,18 +1,23 @@
 """What she noted while studying: short claims with their uncertainty, and open questions (ADR-019).
 
-The notes are *second-hand* knowledge: what the model knows (``source="modelo"``) or what Petrus
-taught her in a document (``source="documento"``). They are auditable and deletable, they do not
-repeat, and each topic keeps a limited number of them: when it is full, the oldest and least
-reliable go first (consolidation is code, not a model's call).
+The notes are *second-hand* knowledge: what the model knows (``source="modelo"``), what Petrus
+taught her in a document (``source="documento"``) or what she read on the web (``source="web"``,
+ADR-031, with the URL, the date and how fast it goes stale). They are auditable and deletable,
+they do not repeat, and each topic keeps a limited number of them: when it is full, the oldest and
+least reliable go first (consolidation is code, not a model's call).
+
+For web notes the uncertainty is code too: one source is ``média``; the same claim read on a
+second domain is corroborated and becomes ``baixa``; claims that contradict each other are both
+``alta``. A note past its validity stops counting as knowledge until she reads it again.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from brain.config import V2InterestSettings, settings
+from brain.config import V2InterestSettings, V2KnowledgeSettings, settings
 from brain.memory.v2.models import UNCERTAINTIES, Interest, StudyNote, utcnow
 
 if TYPE_CHECKING:
@@ -56,22 +61,40 @@ class NoteBook:
     # --- writing ------------------------------------------------------------------------------
 
     def add_claim(
-        self, interest: Interest, text: str, uncertainty: str, level: int, source: str = "modelo"
+        self,
+        interest: Interest,
+        text: str,
+        uncertainty: str,
+        level: int,
+        source: str = "modelo",
+        *,
+        url: str = "",
+        domain: str = "",
+        volatility: str = "estavel",
     ) -> StudyNote | None:
-        """Keep a claim unless she already has it. Returns ``None`` for a duplicate."""
+        """Keep a claim unless she already has it. Returns ``None`` for a duplicate; a web claim
+        she already had from *another* domain corroborates the old note instead."""
         uncertainty = uncertainty if uncertainty in UNCERTAINTIES else "alta"
         clean = " ".join(text.split())
         existing = self.claims(interest.id)
-        if any(_key(n.text) == _key(clean) for n in existing):
-            return None
         vector, model = self._embed(clean)
-        if vector and any(
-            n.embedding_model == model
-            and n.embedding
-            and _cosine(n.embedding, vector) >= SAME_NOTE_SIMILARITY
-            for n in existing
-        ):
+        twin = next((n for n in existing if _key(n.text) == _key(clean)), None)
+        if twin is None and vector:
+            twin = next(
+                (
+                    n
+                    for n in existing
+                    if n.embedding_model == model
+                    and n.embedding
+                    and _cosine(n.embedding, vector) >= SAME_NOTE_SIMILARITY
+                ),
+                None,
+            )
+        if twin is not None:
+            if source == "web" and domain:
+                self._corroborate(twin, domain)
             return None
+        web = source == "web"
         note = StudyNote(
             interest_id=interest.id,
             text=clean,
@@ -83,9 +106,30 @@ class NoteBook:
             embedding_model=model,
             created_at=self.clock(),
             updated_at=self.clock(),
+            url=url if web else "",
+            domains=[domain] if web and domain else [],
+            fetched_at=self.clock() if web else None,
+            volatility=volatility if web else "estavel",
         )
         self.data.notes.save(note)
         return note
+
+    def _corroborate(self, note: StudyNote, domain: str) -> None:
+        """The same claim from another site: one more domain, firmer once two agree; and a
+        fresh reading (the validity starts again)."""
+        domains = list(dict.fromkeys([*note.domains, domain]))
+        fields: dict[str, object] = {"fetched_at": self.clock(), "updated_at": self.clock()}
+        if domains != note.domains:
+            fields["domains"] = domains
+            if len(domains) >= 2 and note.uncertainty != "alta":
+                fields["uncertainty"] = "baixa"
+        if note.source == "web":
+            self.data.notes.update(note.id, **fields)
+
+    def contradict(self, first: StudyNote, second: StudyNote) -> None:
+        """Two claims that contradict each other: both stay, both become uncertain."""
+        for note in (first, second):
+            self.data.notes.update(note.id, uncertainty="alta", updated_at=self.clock())
 
     def set_questions(self, interest: Interest, questions: list[str], level: int) -> int:
         """The open questions for the next step replace the old ones (answered or dropped)."""
@@ -144,3 +188,21 @@ def _cosine(a: list[float], b: list[float]) -> float:
     na = sum(x * x for x in a) ** 0.5
     nb = sum(y * y for y in b) ** 0.5
     return dot / (na * nb) if na and nb else 0.0
+
+
+def validity(note: StudyNote, config: V2KnowledgeSettings | None = None) -> timedelta | None:
+    """How long a web note stays valid (``None``: it never expires: not a web note)."""
+    if note.source != "web" or note.fetched_at is None:
+        return None
+    config = config or settings.memory.v2.knowledge
+    if note.volatility == "noticia":
+        return timedelta(hours=config.news_hours)
+    if note.volatility == "atual":
+        return timedelta(days=config.current_days)
+    return timedelta(days=config.stable_days)
+
+
+def expired(note: StudyNote, now: datetime, config: V2KnowledgeSettings | None = None) -> bool:
+    """Whether a web note is past its validity (it no longer counts as knowledge)."""
+    span = validity(note, config)
+    return span is not None and note.fetched_at is not None and now - note.fetched_at > span

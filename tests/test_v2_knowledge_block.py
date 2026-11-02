@@ -186,5 +186,5 @@ def test_the_core_carries_the_rule_in_both_versions() -> None:
     full = (root / "persona.core.md").read_text(encoding="utf-8")
     compact = (root / "persona.core.compact.md").read_text(encoding="utf-8")
     for text in (full, compact):
-        assert "<conhecimento>" in text and "tarefas técnicas" in text
-    assert "segunda mão" in full and "estudou pouco" in full
+        assert "<conhecimento>" in text and "tarefas técnicas" in text and "learn_topic" in text
+    assert "segunda mão" in full and "estudou pouco" not in full  # ADR-031: no model fallback

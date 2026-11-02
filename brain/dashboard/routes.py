@@ -474,6 +474,10 @@ def build_api(sources: Sources) -> Api:
             "source": n.source,
             "level": n.level,
             "created_at": n.created_at,
+            "url": n.url,
+            "domains": list(n.domains),
+            "fetched_at": n.fetched_at,
+            "volatility": n.volatility,
         }
 
     async def interests(query: Query) -> Any:
