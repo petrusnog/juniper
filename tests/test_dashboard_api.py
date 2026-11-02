@@ -568,3 +568,78 @@ async def test_search_masks_secrets_and_never_returns_vectors(world: World) -> N
     _, body = await world.get("/search", q="servidor")
     dumped = json.dumps(body, ensure_ascii=False)
     assert SECRET not in dumped and "embedding" not in dumped
+
+
+# --- evolution (ADR-030) -------------------------------------------------------------------------
+
+
+async def test_the_mood_comes_in_pad_with_the_octant_and_the_voice_preview(world: World) -> None:
+    book = AffectBook(world.data)
+    book.record("irritação", -0.8, 0.9, ["turn:s1:1"], occurred_at=NOW - timedelta(hours=1))
+    _, mood = await world.get("/mood", days=2)
+    last = mood["points"][-1]
+    assert {"mood", "p", "a", "d", "octant", "at"} <= set(last)
+    assert last["octant"] == "bem hostil" or "hostil" in (last["octant"] or "")
+    assert last["mood"] < 0 and last["a"] > 0 and len(mood["rest"]) == 3
+
+    _, voice = await world.get("/voice")
+    assert voice["active"] and "hostil" in voice["mood"] and voice["lines"]
+    assert len(voice["point"]) == 3 and voice["forced_until"] is None
+    book.force("relaxada", "forte")
+    _, forced = await world.get("/voice")
+    assert forced["forced_until"] is not None and "relaxada" in forced["mood"]
+
+
+async def test_the_persona_history_carries_baselines_and_the_events_for_why_i_changed(
+    world: World,
+) -> None:
+    from brain.memory.v2.persona import Sample
+
+    book = PersonaBook(world.data, MemoryV2Settings().persona, lambda: NOW)
+    book.ensure()
+    world.data.transcripts.save(TranscriptTurn("s1", 4, "estou mal hoje", "calma, to aqui", at=NOW))
+    book.clock = lambda: NOW + timedelta(days=1)
+    book.evolve([Sample("compaixão", 1.0, 1.0, "turn:s1:4")], ["Ele precisou de mim."])
+    _, persona = await world.get("/persona")
+    last = persona["history"][-1]
+    assert last["baselines"]["compaixão"] > 0 and last["changed_by"] == ["turn:s1:4"]
+
+    _, why = await world.get("/evolution/why", version=2)
+    assert why["recent"] == ["Ele precisou de mim."]
+    (turn,) = why["trace"]
+    assert turn["user"] == "estou mal hoje" and turn["assistant"] == "calma, to aqui"
+    status, _ = await world.get("/evolution/why", version=99)
+    assert status == 404
+
+
+async def test_why_i_changed_hides_the_lines_when_transcripts_are_off() -> None:
+    off = World(transcripts=False)
+    book = PersonaBook(off.data, MemoryV2Settings().persona, lambda: NOW)
+    book.ensure()
+    off.data.transcripts.save(TranscriptTurn("s1", 4, "segredo dele", "ok", at=NOW))
+    from brain.memory.v2.persona import Sample
+
+    book.clock = lambda: NOW + timedelta(days=1)
+    book.evolve([Sample("compaixão", 1.0, 1.0, "turn:s1:4")])
+    _, why = await off.get("/evolution/why", version=2)
+    assert why["trace"][0]["hidden"] is True and "segredo" not in json.dumps(why)
+
+
+async def test_beliefs_filter_by_layer_and_show_the_curve_and_the_sites(world: World) -> None:
+    book = BeliefBook(world.data, FakeEmbedder(), clock=lambda: NOW)
+    world_belief, _ = book.create(
+        "A psicodelia surgiu nos anos 60.", "história", Evidence("source", domain="a.org", at=NOW),
+        about="world",
+    )  # fmt: skip
+    book.add_source(world_belief.id, "b.org")
+    mine_ev = Evidence("self_observation", ref="persona:x:v2", at=NOW)
+    book.create("Tenho andado mais curiosa.", "si", mine_ev, about="self")
+    _, mine = await world.get("/beliefs", about="self")
+    assert [b["about"] for b in mine["items"]] == ["self"]
+    _, theirs = await world.get("/beliefs", about="world")
+    assert len(theirs["items"]) == 1
+
+    _, detail = await world.get(f"/beliefs/{world_belief.id}")
+    assert detail["domains"] == ["a.org", "b.org"] and detail["about"] == "world"
+    assert [p["cause"] for p in detail["history"]] == ["created", "evidence"]
+    assert all(0 <= p["confidence"] <= 1 for p in detail["history"])

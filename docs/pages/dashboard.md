@@ -3,7 +3,7 @@ title: Dashboard
 group: Documentação Técnica
 section: Clientes
 order: 27
-description: O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências (com exportação em planilha), pesquisa, logs, saúde e custos, tarefas e a gestão de usuários, servido pelo próprio cérebro; só o dono escreve, com confirmação.
+description: O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências (com exportação em planilha), pesquisa, logs, saúde e custos, tarefas e a gestão de usuários, servido pelo próprio cérebro; só o dono escreve, com confirmação.
 status: pronta
 tags: dashboard web painel memória afetos estudos notas pesquisa sonhos conversas responsivo login cookie csp adr-020
 ---
@@ -47,6 +47,7 @@ O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobi
 |---|---|
 | **Visão geral** | Como ela está agora (humor, sentimentos e ecos), a personalidade (radar de traços contra o jeito de partida), contadores de cada camada e o último sonho com as fases. |
 | **Afetos** | A série do humor (7, 14 ou 30 dias) e os sentimentos (filtro conversa ou sonho); cada sentimento rastreia a fala que o causou, a resposta dela e a preocupação atingida. |
+| **Evolução** ([ADR-030](../decisions/ADR-030.md)) | **Como ela muda.** (1) *Como estou falando agora*: o octante do humor, o ponto PAD e as ordens de tom que o bloco `<voz>` dá, com o aviso quando o humor está forçado. (2) O **humor no espaço PAD**: três curvas (prazer, ativação, dominância) em 7, 14 ou 30 dias. (3) Os **aspectos da personalidade** (Big Five em 10 aspectos mais a ironia): a linha do traço e a do *jeito de sempre* (que amadurece) ao longo das versões, e, ao escolher uma versão, **"por que mudei"**: as conversas (fala dele e resposta dela, se `dashboard.transcripts` estiver ligado) e o que a marcou. (4) As **crenças por camada** (sobre o Petrus, sobre mim, sobre o mundo): a lista por confiança e, ao escolher uma, a **curva de confiança** no tempo, com a causa de cada ponto e os sites que dizem aquilo. |
 | **Memórias** | Busca e filtros (ativas, substituídas ou todas; brutas ou refinadas; tipo). O detalhe de uma refinada mostra a lembrança (contexto, o que ela sentiu, como ela era, relevância), a linhagem bruta ↔ refinada e as ligações. |
 | **Memória central** | O núcleo da persona, o perfil, a personalidade (com a linha do tempo de cada traço), as crenças com as evidências, as preocupações e o **simulador do prompt**: escreva uma mensagem e veja o que a Memória V2 acrescentaria. |
 | **Estudos** | Os temas, com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |

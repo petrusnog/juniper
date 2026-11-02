@@ -28,8 +28,10 @@ from brain.memory.v2.context import V2Context, state_lines
 from brain.memory.v2.interests import STANCE_WORDS
 from brain.memory.v2.knowledge import NoteBook
 from brain.memory.v2.models import utcnow
+from brain.memory.v2.pad import octant_words
 from brain.memory.v2.persona import PersonaBook, drift, persona_lines
-from brain.memory.v2.trace import trace_affect
+from brain.memory.v2.tone import voice_lines
+from brain.memory.v2.trace import trace_affect, trace_refs
 from brain.memory.vector import Memory
 
 T = TypeVar("T")
@@ -283,6 +285,7 @@ def build_api(sources: Sources) -> Api:
     async def beliefs(query: Query) -> Any:
         store = need_v2()
         status, topic, text = first(query, "status"), first(query, "topic"), first(query, "q")
+        about = first(query, "about")
 
         def read() -> dict[str, Any]:
             book = BeliefBook(store, sources.embedder, settings.memory.v2.beliefs)
@@ -290,6 +293,7 @@ def build_api(sources: Sources) -> Api:
                 b
                 for b in store.beliefs.list(sort=[("updated_at", -1)])
                 if (not status or b.status == status)
+                and (not about or b.about == about)
                 and (not topic or b.topic == topic)
                 and contains(b.statement, text)
             ]
@@ -308,7 +312,20 @@ def build_api(sources: Sources) -> Api:
             if found is None:
                 raise ApiError(404, "crença não encontrada")
             book = BeliefBook(store, sources.embedder, settings.memory.v2.beliefs)
-            return _belief_row(book, found, detail=True)
+            row = _belief_row(book, found, detail=True)
+            # the curve of her confidence (ADR-030) and the sites that said it
+            row["history"] = [
+                {
+                    "at": p.at,
+                    "confidence": p.confidence,
+                    "n": p.n,
+                    "status": p.status,
+                    "cause": p.cause,
+                }
+                for p in book.history(found.id)
+            ]
+            row["domains"] = sorted({e.domain for e in found.evidence_for if e.domain})
+            return row
 
         return await _blocking(read)
 
@@ -366,11 +383,43 @@ def build_api(sources: Sources) -> Api:
         def read() -> dict[str, Any]:
             book = AffectBook(store)
             now = utcnow()
+            temper = book.temper
             points = []
             for step in range(days * 4, -1, -1):
                 moment = now - timedelta(hours=6 * step)
-                points.append({"at": moment, "mood": round(book.mood(moment), 3)})
-            return {"days": days, "points": points}
+                shift = book.shift(moment, temper)
+                point = (temper.rest + shift).clamped()
+                points.append(
+                    {
+                        "at": moment,
+                        "mood": round(shift.p, 3),  # the pleasure of the shift, as before
+                        "p": round(point.p, 3),
+                        "a": round(point.a, 3),
+                        "d": round(point.d, 3),
+                        "octant": octant_words(shift),
+                    }
+                )
+            return {"days": days, "points": points, "rest": temper.rest.rounded().as_list()}
+
+        return await _blocking(read)
+
+    async def voice(query: Query) -> Any:
+        """How she sounds now: the octant of her mood and the orders of tone (a preview of
+        ``<voz>``, ADR-030)."""
+        store = need_v2()
+
+        def read() -> dict[str, Any]:
+            book = AffectBook(store)
+            state = book.state()
+            forced = book.forced()
+            return {
+                "active": book.active,
+                "mood": octant_words(state.shift),
+                "point": state.point.rounded().as_list(),
+                "rest": book.temper.rest.rounded().as_list(),
+                "lines": voice_lines(state, store.persona.current()) if book.active else [],
+                "forced_until": forced.resolved_at if forced is not None else None,
+            }
 
         return await _blocking(read)
 
@@ -390,6 +439,8 @@ def build_api(sources: Sources) -> Api:
                     "at": v.at,
                     "reason": v.reason,
                     "traits": {n: t.value for n, t in v.state.traits.items()},
+                    "baselines": {n: t.baseline for n, t in v.state.traits.items()},
+                    "changed_by": v.state.changed_by,
                 }
                 for v in book.history()
             ]
@@ -399,6 +450,8 @@ def build_api(sources: Sources) -> Api:
                     "at": state.updated_at,
                     "reason": "versão atual",
                     "traits": {n: t.value for n, t in state.traits.items()},
+                    "baselines": {n: t.baseline for n, t in state.traits.items()},
+                    "changed_by": state.changed_by,
                 }
             )
             return {
@@ -408,6 +461,29 @@ def build_api(sources: Sources) -> Api:
                 "drift_warning": book.drift_warning(state),
                 "changed_by": state.changed_by,
                 "history": history,
+            }
+
+        return await _blocking(read)
+
+    async def why(query: Query) -> Any:
+        """ "Por que mudei": the conversations behind a personality version (ADR-030)."""
+        store = need_v2()
+        number_ = number(query, "version", 0, 0, 10**6)
+
+        def read() -> dict[str, Any]:
+            book = PersonaBook(store)
+            versions = {v.state.version: v.state for v in book.history()}
+            current = book.current()
+            if current is not None:
+                versions[current.version] = current
+            state = versions.get(number_)
+            if state is None:
+                raise ApiError(404, "versão não encontrada")
+            return {
+                "version": state.version,
+                "at": state.updated_at,
+                "recent": state.recent,
+                "trace": trace_refs(store, state.changed_by, transcripts=sources.transcripts),
             }
 
         return await _blocking(read)
@@ -751,6 +827,8 @@ def build_api(sources: Sources) -> Api:
         "/affects/": affect_detail,
         "/mood": mood,
         "/persona": persona,
+        "/voice": voice,
+        "/evolution/why": why,
         "/concerns": concerns,
         "/core": core,
         "/interests": interests,

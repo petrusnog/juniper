@@ -42,7 +42,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [App mobile](pages/mobile.md): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e…
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
-- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências (com exportação em planilha), pesquisa, logs…
+- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -115,5 +115,5 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Aceito) · `api-http`, `dashboard`, `login`, `usuarios`
 - [ADR-028](decisions/ADR-028.md): Ações no dashboard: ocorrências, memória e tarefas (Aceito) · `api-http`, `dashboard`, `ocorrencias`
 - [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Proposto) · `agente`, `memoria-v2`, `produto-personalidade`
-- [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Proposto) · `configuracao`, `memoria-v2`
+- [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Proposto) · `configuracao`, `dashboard`, `memoria-v2`
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Proposto) · `configuracao`, `memoria-v2`, `producao`, `seguranca`

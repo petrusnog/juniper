@@ -42,7 +42,7 @@ def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     ids = [p[0] for p in pages]
     assert ids == [
         "visao", "memorias", "central", "estudos", "sonhos", "conversas", "ocorrencias",
-        "pesquisa", "afetos", "tarefas", "logs", "saude", "usuarios",
+        "pesquisa", "afetos", "evolucao", "tarefas", "logs", "saude", "usuarios",
     ]  # fmt: skip
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
@@ -222,3 +222,12 @@ def test_the_cursor_blinks_in_the_top_bar_and_on_the_login_wordmark() -> None:
     assert ".brand-name::after" in css and ".wordmark::after" in css
     motion = css[css.index("@media (prefers-reduced-motion: no-preference)") :]
     assert motion.count("animation: blink") == 2  # only when the system allows motion
+
+
+def test_the_evolution_page_shows_the_voice_the_mood_the_aspects_and_the_belief_curves() -> None:
+    page = (ASSETS / "pages" / "evolution.js").read_text()
+    for must in ("/voice", "/mood", "/persona", "/evolution/why", "/beliefs", "history"):
+        assert must in page
+    assert "Sobre mim" in page and "Sobre o mundo" in page  # the three layers
+    assert "lineChart" in page and "Por que mudei" in page or "por que mudei" in page
+    assert "innerHTML" not in page
