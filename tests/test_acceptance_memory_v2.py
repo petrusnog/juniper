@@ -158,19 +158,18 @@ class Night(LLMProvider):
                 ],
                 "questions": ["como foi o fim da banda?"],
             }
-        if system.startswith("Você é a Juniper, pensando"):
+        if system.startswith("Você é a Juniper, relendo como você foi"):
+            label = label_of(user, "avó faleceu")
             return {
-                "moves": [
+                "conversas": [
                     {
-                        "trait": "introspecção",
-                        "direction": "up",
-                        "concern": "bem-estar-do-petrus",
-                        "intensity": 0.9,
-                        "novelty": 1.0,
-                        "evidence": [label_of(user, "avó faleceu")],
-                        "marked": "A perda dele me fez pensar mais devagar.",
+                        "conversa": label.split(":")[0],
+                        "estados": [
+                            {"traco": "intelecto", "valor": 0.95, "evidencia": [label], "reacao": 0}
+                        ],
                     }
-                ]
+                ],
+                "marcou": ["A perda dele me fez pensar mais devagar."],
             }
         if system.startswith("Você é a Juniper, lembrando"):
             return {"contexto": "ele contou isso de passagem.", "relevancia": 0.6}
@@ -297,8 +296,8 @@ async def test_she_has_an_interest_of_her_own_and_a_position_that_is_not_his(
 async def test_the_personality_moved_a_little_within_the_nightly_step(morning: World) -> None:
     state = morning.data.persona.current()
     assert state is not None and state.version == 2
-    shift = state.traits["introspecção"].value - state.traits["introspecção"].baseline
-    assert 0 < shift <= 0.06 + 1e-9
+    shift = state.traits["intelecto"].value - 0.6  # from the starting baseline
+    assert 0 < shift <= 0.05 + 1e-9  # one night: at most the step ceiling
     assert morning.data.persona.history.count() == 1  # the version she left is kept
     assert state.recent == ["A perda dele me fez pensar mais devagar."]
 
@@ -447,7 +446,7 @@ PRINCIPLES: dict[int, tuple[str, ...]] = {
         "tests/test_persona_regression.py::test_text_in_a_tool_output_never_reaches_the_personality",
     ),
     6: (  # slow, bounded change
-        "tests/test_v2_persona.py::test_the_nights_ceiling_holds_however_many_moves_pile_up",
+        "tests/test_v2_persona.py::test_the_step_never_passes_the_nightly_ceiling",
         "tests/test_v2_concerns.py::test_a_bigger_change_is_cut_at_the_monthly_ceiling",
     ),
     7: (  # visible, reversible, deletable

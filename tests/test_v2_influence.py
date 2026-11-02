@@ -144,7 +144,7 @@ async def test_the_general_view_respects_the_token_budget() -> None:
 def test_the_defaults_make_the_v2_speak_more() -> None:
     v2 = MemoryV2Settings()
     assert v2.opinions.always_on == 2 and v2.persona.always_describe is True
-    assert (v2.persona.max_step, v2.persona.step_factor) == (0.06, 0.1)
+    assert (v2.persona.max_step, v2.persona.alpha) == (0.05, 0.1)
     assert QUIET["opinions"].always_on == 0  # the test helper silences them on purpose
 
 

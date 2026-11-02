@@ -1,16 +1,24 @@
-"""The living personality: numeric traits that drift slowly and are rendered by a fixed template
-(ADR-017, section 8).
+"""The living personality: numeric traits that change with what she expresses (ADR-017 section 8;
+the V3 algorithm is ADR-030, section 5).
 
-A trait is a number with a baseline and a permitted range. It moves only for an event that
-matters (impact = what a concern weighs x intensity x novelty, at least ``impact_threshold``), by
-at most ``min(max_step, step_factor x impact)`` per night, and falls back to its baseline with a
-long half-life: a phase passes. Every change writes the previous version to the history, with
-the events behind it, so it can be reverted. The core never changes; this is only what comes
-after it.
+The traits are the Big Five in 10 aspects (DeYoung) plus irony. Following the Whole Trait Theory
+(a trait is the distribution of the states a person expresses) and TESSERA (repeated states in
+repeated situations consolidate into traits), every night:
+
+1. each conversation of the day gives a **state** per aspect (how enthusiastic, assertive,
+   compassionate... she was there), proposed by the model with the turns as evidence; the user's
+   reaction to that expression reinforces or weakens it; the day's mood is one more sample;
+2. each trait moves ``alpha`` of the way toward the weighted mean of its samples, at most
+   ``max_step`` a night and never more than ``max_band`` away from its baseline;
+3. the baseline itself matures toward the trait (``maturation`` a day): a long phase becomes who
+   she is. There is no return to a fixed baseline: a trait only goes back if the states do.
+
+Every change writes the previous version to the history, with the events behind it, so it can be
+reverted. The core never changes; this is only what comes after it. A personality stored with the
+V2 traits is migrated once, as a new version (the V2 stays in the history).
 
 The text that reaches the prompt comes from a fixed template over the traits and the few lines of
-"what marked me lately": deterministic, no LLM writes it, and it only describes how she is
-*relative to her usual self*, so it can never contradict the core.
+"what marked me lately": deterministic, no LLM writes it.
 """
 
 from __future__ import annotations
@@ -22,26 +30,46 @@ from typing import TYPE_CHECKING
 
 from brain.config import V2PersonaSettings, settings
 from brain.eventlog import event_log
-from brain.memory.v2.guards import STEP_EPSILON, Rejection, check_marked, check_trait_change
+from brain.memory.v2.guards import STEP_EPSILON, Rejection, check_marked
 from brain.memory.v2.models import PersonaState, PersonaVersion, Trait, utcnow
 
 if TYPE_CHECKING:
     from brain.memory.v2.store import V2Data
 
 MAX_RECENT = 3
+MIGRATION_REASON = "migração para o Big Five (ADR-030)"
 MAX_CHANGED_BY = 12
 # A shift smaller than this is not worth a word in the prompt.
 NOTICEABLE = 0.03
 RELAX_EPSILON = 1e-3
 
-# Each trait as an adjective, used with "mais" or "menos".
+# Each trait as an adjective, used with "mais" or "menos" (the V2 names stay for old versions).
 WORDS: dict[str, str] = {
+    "volatilidade": "volátil",
+    "retraimento": "retraída",
+    "compaixão": "compassiva",
+    "polidez": "polida",
+    "diligência": "diligente",
+    "ordem": "organizada",
+    "entusiasmo": "entusiasmada",
+    "assertividade": "assertiva",
+    "abertura": "aberta",
+    "intelecto": "curiosa",
+    "ironia": "irônica",
     "brincadeira": "brincalhona",
     "franqueza": "direta",
     "introspecção": "reflexiva",
     "carinho": "carinhosa",
     "proatividade": "proativa",
-    "ironia": "irônica",
+}
+# The V2 traits and the aspect each one became (ADR-030, section 4).
+V2_TO_ASPECT = {
+    "carinho": "compaixão",
+    "brincadeira": "entusiasmo",
+    "franqueza": "assertividade",
+    "proatividade": "diligência",
+    "introspecção": "intelecto",
+    "ironia": "ironia",
 }
 PERSONA_OPEN = "<personalidade>"
 PERSONA_CLOSE = "</personalidade>"
@@ -52,26 +80,19 @@ PERSONA_HEADER = (
 
 
 @dataclass
-class Move:
-    """One thing that happened and the way it pushes a trait."""
+class Sample:
+    """One state she expressed (a conversation, or the day's mood) for one trait."""
 
     trait: str
-    direction: int  # +1 or -1
-    concern_weight: float  # what the touched concern weighs (relevance)
-    intensity: float
-    novelty: float
-    event: str  # "turn:<session>:<turn>"
-    marked: str = ""  # an optional "what marked me" line
-
-    @property
-    def impact(self) -> float:
-        return self.concern_weight * self.intensity * self.novelty
+    value: float  # 0 to 1: how much of the trait she showed
+    weight: float = 1.0
+    event: str = ""  # "turn:<session>:<turn>", or "" for the mood
 
 
 @dataclass
 class EvolveReport:
     changed: dict[str, float] = field(default_factory=dict)  # trait -> net delta
-    relaxed: int = 0
+    matured: int = 0  # baselines that moved toward their trait
     marked: list[str] = field(default_factory=list)
     rejections: list[Rejection] = field(default_factory=list)
     version: int | None = None  # the version written, if any
@@ -117,13 +138,55 @@ class PersonaBook:
         return self.data.persona.current()
 
     def ensure(self) -> PersonaState:
-        """The stored personality, created from the configured traits the first time."""
+        """The stored personality, created from the configured traits the first time, and
+        migrated once when it still has traits the configuration no longer has (the V2 ones)."""
         state = self.current()
         if state is None:
             state = default_state(self.config, self.clock())
             if not self.data.persona.save(state, None, "versão inicial"):
                 state = self.current() or state  # another process wrote it first
+            return state
+        configured = {t.name for t in self.config.traits}
+        if set(state.traits) != configured:
+            migrated = self._migrated(state)
+            if self.data.persona.save(migrated, state.version, MIGRATION_REASON):
+                event_log.log("persona_migrated", version=migrated.version)
+                return migrated
+            state = self.current() or state
         return state
+
+    def _migrated(self, state: PersonaState) -> PersonaState:
+        """The configured traits, carrying over what the old ones already were: a V2 trait
+        becomes its aspect (value and baseline); a known name keeps its numbers; the rest start
+        at the configured baseline. The polite aspect mirrors what frankness had drifted."""
+        old = state.traits
+        traits: dict[str, Trait] = {}
+        for item in self.config.traits:
+            source = old.get(item.name) or next(
+                (
+                    old[v2]
+                    for v2, aspect in V2_TO_ASPECT.items()
+                    if aspect == item.name and v2 in old
+                ),
+                None,
+            )
+            if source is not None:
+                value = min(item.max, max(item.min, source.value))
+                base = min(item.max, max(item.min, source.baseline))
+                traits[item.name] = Trait(value, base, item.min, item.max)
+            else:
+                traits[item.name] = Trait(item.baseline, item.baseline, item.min, item.max)
+        frank, polite = old.get("franqueza"), traits.get("polidez")
+        if frank is not None and polite is not None and "polidez" not in old:
+            shifted = polite.baseline - (frank.value - frank.baseline)
+            polite.value = round(min(polite.max, max(polite.min, shifted)), 6)
+        return PersonaState(
+            traits=traits,
+            recent=list(state.recent),
+            version=state.version + 1,
+            changed_by=["migracao:big-five"],
+            updated_at=self.clock(),
+        )
 
     def history(self) -> list[PersonaVersion]:
         """Past versions, oldest first (the current one is in ``current``)."""
@@ -161,12 +224,15 @@ class PersonaBook:
 
     # --- the night ----------------------------------------------------------------------------
 
-    def evolve(self, moves: list[Move], reason: str = "algoritmo de sonho") -> EvolveReport:
-        """Relax toward the baseline, apply the moves that earn it, and write one new version.
-
-        Nothing is written when nothing changed. ``evolves: false`` keeps every trait at its
-        baseline (it is reset, with a version, if it had drifted).
-        """
+    def evolve(
+        self,
+        samples: list[Sample],
+        marked: list[str] | None = None,
+        reason: str = "algoritmo de sonho",
+    ) -> EvolveReport:
+        """Move every trait toward the weighted mean of its samples, mature the baselines, and
+        write one new version (nothing when nothing changed). ``evolves: false`` keeps every
+        trait at its baseline (it is reset, with a version, if it had drifted)."""
         report = EvolveReport()
         state = self.ensure()
         expected = state.version
@@ -179,62 +245,59 @@ class PersonaBook:
             self._write(state, traits, [], [], reason="evolução desligada", report=report)
             return report
 
-        report.relaxed = self._relax(traits, state.updated_at, now)
-        touched: dict[str, float] = {}
+        by_trait: dict[str, list[Sample]] = {}
         events: list[str] = []
-        marked: list[str] = []
-        for move in moves:
-            outcome = self._move(traits, touched, move)
-            if outcome is not None:
-                report.rejections.append(outcome)
+        for sample in samples:
+            if sample.trait not in traits or not 0.0 <= sample.value <= 1.0 or sample.weight <= 0:
+                report.rejections.append(
+                    Rejection("traco_desconhecido", "traço ou estado inválido")
+                )
                 continue
-            events.append(move.event)
-            if move.marked and len(marked) < MAX_RECENT:
-                problem = check_marked(move.marked)
-                if problem is not None:
-                    report.rejections.append(problem)
-                else:
-                    marked.append(" ".join(move.marked.split()))
-        report.changed = {n: round(d, 6) for n, d in touched.items() if abs(d) > STEP_EPSILON}
-        report.marked = marked
-        self._write(state, traits, events, marked, reason=reason, report=report, expected=expected)
+            by_trait.setdefault(sample.trait, []).append(sample)
+            if sample.event:
+                events.append(sample.event)
+        for name, group in by_trait.items():
+            delta = self._toward(traits[name], group)
+            if abs(delta) > STEP_EPSILON:
+                report.changed[name] = round(delta, 6)
+        report.matured = self._mature(traits, state.updated_at, now)
+        kept: list[str] = []
+        for line in marked or []:
+            problem = check_marked(line)
+            if problem is not None:
+                report.rejections.append(problem)
+            elif len(kept) < MAX_RECENT:
+                kept.append(" ".join(line.split()))
+        report.marked = kept
+        self._write(state, traits, events, kept, reason=reason, report=report, expected=expected)
         return report
 
-    def _relax(self, traits: dict[str, Trait], since: datetime, now: datetime) -> int:
-        """Pull every trait toward its baseline for the time elapsed since the last version."""
-        days = (now - since).total_seconds() / 86400
-        if days <= 0:
+    def _toward(self, trait: Trait, group: list[Sample]) -> float:
+        """Move ``trait`` toward the weighted mean of its states; returns the delta."""
+        total = sum(s.weight for s in group)
+        target = sum(s.value * s.weight for s in group) / total
+        step = self.config.alpha * (target - trait.value)
+        step = max(-self.config.max_step, min(self.config.max_step, step))
+        low = max(trait.min, trait.baseline - self.config.max_band)
+        high = min(trait.max, trait.baseline + self.config.max_band)
+        new = round(max(low, min(high, trait.value + step)), 6)
+        delta = new - trait.value
+        trait.value = new
+        return delta
+
+    def _mature(self, traits: dict[str, Trait], since: datetime, now: datetime) -> int:
+        """Each baseline walks ``maturation`` a day toward its trait (a phase becomes a self)."""
+        days = min(7.0, max(0.0, (now - since).total_seconds() / 86400))
+        if days <= 0 or self.config.maturation <= 0:
             return 0
-        keep = 0.5 ** (days / self.config.baseline_half_life_days)
+        share = 1 - (1 - self.config.maturation) ** days
         moved = 0
         for t in traits.values():
-            target = t.baseline + (t.value - t.baseline) * keep
-            if abs(target - t.value) >= RELAX_EPSILON:
-                t.value = round(target, 6)
+            target = round(t.baseline + share * (t.value - t.baseline), 6)
+            if abs(target - t.baseline) >= RELAX_EPSILON / 10:
+                t.baseline = min(t.max, max(t.min, target))
                 moved += 1
         return moved
-
-    def _move(
-        self, traits: dict[str, Trait], touched: dict[str, float], move: Move
-    ) -> Rejection | None:
-        """Apply one move to ``traits`` if it earns it; return why not otherwise."""
-        trait = traits.get(move.trait)
-        if trait is None or move.direction not in (-1, 1):
-            return Rejection("traco_desconhecido", "traço ou direção inválidos")
-        if move.impact + STEP_EPSILON < self.config.impact_threshold:
-            return Rejection("sem_impacto", "o impacto não alcança o limiar")
-        step = min(self.config.max_step, self.config.step_factor * move.impact)
-        room = self.config.max_step - abs(touched.get(move.trait, 0.0))  # the night's ceiling
-        step = min(step, max(0.0, room))
-        target = max(trait.min, min(trait.max, trait.value + move.direction * step))
-        if abs(target - trait.value) <= STEP_EPSILON:
-            return Rejection("sem_espaco", "o traço já está no limite desta noite ou da faixa")
-        problem = check_trait_change(move.trait, trait, target, self.config.max_step)
-        if problem is not None:
-            return problem
-        touched[move.trait] = touched.get(move.trait, 0.0) + (target - trait.value)
-        trait.value = round(target, 6)
-        return None
 
     def _write(
         self,
@@ -249,7 +312,11 @@ class PersonaBook:
     ) -> None:
         recent = [*marked, *state.recent][:MAX_RECENT] if marked else list(state.recent)
         unchanged = (
-            all(abs(traits[n].value - t.value) < 1e-9 for n, t in state.traits.items())
+            all(
+                abs(traits[n].value - t.value) < 1e-9
+                and abs(traits[n].baseline - t.baseline) < 1e-9
+                for n, t in state.traits.items()
+            )
             and recent == state.recent
         )
         if unchanged:

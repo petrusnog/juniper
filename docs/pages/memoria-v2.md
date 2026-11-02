@@ -222,12 +222,33 @@ O afeto chega à conversa só como **texto**, no bloco `<estado>` (de 1 a 2 linh
 
 ## Personalidade viva {#personalidade kind=módulo file=brain/memory/v2/persona.py}
 
-A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatura): é um **documento versionado de traços numéricos** (`persona_state`), cada um com `baseline`, faixa `[min, max]` e valor atual, mais até 3 frases de "o que me marcou ultimamente". Os traços do ponto de partida (brincadeira, franqueza, introspecção, carinho, proatividade, ironia) vêm de `memory.v2.persona.traits`. **O núcleo nunca muda**; só esta parte viva evolui.
+A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatura): é um **documento versionado de traços numéricos** (`persona_state`), cada um com `baseline`, faixa `[min, max]` e valor atual, mais até 3 frases de "o que me marcou ultimamente". **O núcleo nunca muda**; só esta parte viva evolui.
 
-- **Como um traço muda (fase `persona`):** ela propõe o traço, a direção, a preocupação atingida, a intensidade e a novidade; **o código** calcula `impacto = peso da preocupação × intensidade × novidade`. Só há mudança com impacto ≥ 0,6; o passo é `min(0,06, 0,1 × impacto)` e **o teto é 0,06 por traço por sonho**, somando todas as propostas. Ficar fora da faixa, traço desconhecido ou passo acima do teto é recusado (`check_trait_change`). Um evento isolado quase não move (0,06 numa escala de 0 a 1); a repetição, noite após noite, acumula.
-- **Retorno ao baseline:** a distância de cada traço ao seu ponto de partida cai pela metade a cada 30 dias, então uma fase passa. `memory.v2.persona.evolves: false` mantém tudo no baseline.
+**Os traços ([ADR-030](../decisions/ADR-030.md)):** o Big Five em 10 aspectos (DeYoung) mais a ironia, em `memory.v2.persona.traits`.
+
+| Eixo | Aspectos | Vinham de (V2) |
+|---|---|---|
+| Neuroticismo | **volatilidade** (quanto as emoções a balançam e quanto demoram a passar), **retraimento** | (novos) |
+| Amabilidade | **compaixão**, **polidez** | carinho |
+| Conscienciosidade | **diligência**, **ordem** | proatividade |
+| Extroversão | **entusiasmo**, **assertividade** | brincadeira, franqueza |
+| Abertura | **abertura**, **intelecto** | introspecção |
+| (próprio) | **ironia** | ironia |
+
+Uma personalidade guardada com os seis traços da V2 é **migrada uma vez**, como uma versão nova (`migracao:big-five`): cada traço antigo vira o aspecto correspondente, com o valor e o ponto de partida que tinha; os aspectos novos nascem no ponto de partida configurado; a V2 fica no histórico.
+
+**Como um traço muda (fase `persona`).** Pela *Whole Trait Theory* (um traço é a distribuição dos estados que a pessoa expressa) e pelo TESSERA (estados repetidos se consolidam em traço):
+
+1. **Estado por conversa.** Para cada conversa do dia, o modelo diz o quanto ela **expressou** cada aspecto ali (0 a 1, 0,5 é o normal), citando turnos reais **daquela conversa**, e como o usuário reagiu a esse jeito (gostou, reclamou, nada). A reação empurra o estado (TESSERA: a resposta do mundo reforça ou enfraquece a expressão). Sem turno real citado, o estado é recusado; sem evidência, o aspecto fica de fora.
+2. **O humor do dia é mais uma amostra.** O humor das últimas 24 h (deslocamento médio no espaço PAD) vira estados de entusiasmo, retraimento, assertividade, polidez, compaixão e volatilidade (`mood_weight`): uma semana irritada deixa marca.
+3. **Média móvel.** Por noite, cada traço anda `alpha` (0,1) do caminho até a **média ponderada** dos seus estados, no máximo `max_step` (0,05) por noite e nunca a mais de `max_band` (0,25) do seu ponto de partida. Ela muda **sempre um pouco**, pelo acúmulo do que vive, e não por um evento enorme.
+4. **Maturação.** O próprio ponto de partida anda `maturation` (1% ao dia) na direção do traço: uma fase longa vira jeito de ser. **Não há volta a um ponto fixo**: o traço só volta se os estados voltarem.
+
+`memory.v2.persona.evolves: false` mantém tudo no ponto de partida. Nenhum texto escrito por modelo vai direto para um traço: o modelo propõe números com evidência; o código aplica `alpha`, tetos e faixas.
+
 - **Versão:** cada mudança grava a versão anterior em `persona_history`, com os eventos que a causaram (`changed_by`, referências `turn:<conversa>:<turno>`). A escrita é otimista: duas escritas com a mesma versão não passam, e quem perde tenta de novo na noite seguinte. Nada é gravado quando nada mudou.
-- **Renderização:** um **modelo de texto fixo** (sem LLM) traduz só o que se afastou do jeito de sempre ("Seu jeito anda um pouco mais reflexiva e um pouco menos brincalhona.") e as frases de `recent` em um bloco `<personalidade>`, sempre com o aviso de que honestidade, cuidado com as ferramentas e confirmação continuam iguais. Mesmo estado, mesmo texto; no jeito de sempre, nada é adicionado ao prompt.
+- **Renderização:** um **modelo de texto fixo** (sem LLM) descreve como ela está hoje e o que se afastou do jeito de sempre ("Comparada ao seu jeito de sempre, você anda um pouco mais curiosa e um pouco menos entusiasmada.") e as frases de `recent` em um bloco `<personalidade>`, sempre com o aviso de que honestidade, cuidado com as ferramentas e confirmação continuam iguais. Mesmo estado, mesmo texto.
+- **O temperamento vem dos traços:** a volatilidade define o quanto as emoções mexem no humor e quanto ele demora a voltar; entusiasmo, retraimento e assertividade definem o ponto de repouso do humor ([humor e PAD](#afeto)).
 - **Pode mudar de ideia sobre estar viva, dentro do núcleo:** o tom da dúvida pode evoluir, a regra de nunca afirmar nem negar não.
 
 ### Ver, conferir e voltar atrás (personalidade) {#persona-comandos kind=comandos file=brain/clients/memory_v2_cli.py}
@@ -238,7 +259,7 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 | `juniper persona history` | As versões e os eventos que causaram cada mudança. |
 | `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
 
-**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](../decisions/ADR-017.md)).
+**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; o aviso some quando os traços voltam ao ponto de partida (ou quando o ponto de partida os alcança, pela maturação). O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](../decisions/ADR-017.md)).
 
 ## Interesses próprios {#interesses kind=módulo file=brain/memory/v2/interests.py}
 

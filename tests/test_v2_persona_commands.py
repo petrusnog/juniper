@@ -16,7 +16,7 @@ from brain.memory.v2.night import Budget, PhaseContext, SessionMaterial
 from brain.memory.v2.persona import PersonaBook, PersonaError, drift
 from brain.memory.v2.store import InMemoryDocStore, V2Data
 from tests.test_extraction import FakeEmbedder
-from tests.test_v2_persona import Clock, Proposer, move, proposal
+from tests.test_v2_persona import Clock, Proposer, sample
 
 T0 = datetime(2026, 10, 1, 3, 0, tzinfo=UTC)
 
@@ -28,7 +28,7 @@ def shifted_book(nights: int = 3) -> tuple[PersonaBook, V2Data, Clock]:
     book.ensure()
     for i in range(nights):
         clock.advance(days=1)
-        book.evolve([move(event=f"turn:s:{i}", marked=f"Marca {i} que ficou")])
+        book.evolve([sample("intelecto", 1.0, event=f"turn:s:{i}")], [f"Marca {i} que ficou"])
     return book, data, clock
 
 
@@ -49,20 +49,16 @@ def test_moving_the_traits_away_passes_the_limit_and_coming_back_removes_the_war
     book.ensure()
     for i in range(6):
         clock.advance(days=1)
-        for trait in (
-            "introspecção",
-            "ironia",
-            "carinho",
-            "proatividade",
-            "franqueza",
-            "brincadeira",
-        ):
-            book.evolve([move(trait, event=f"turn:s:{i}")])
+        book.evolve([sample(t.name, 1.0, event=f"turn:s:{i}") for t in config.traits])
     assert book.drift_warning() is not None and book.drift_warning() >= 0.02
 
-    clock.advance(days=400)  # a long time later the phase has passed
-    book.evolve([])
-    assert book.drift_warning() is None
+    # ADR-030: there is no pull back to a fixed baseline. The states go back, the trait follows.
+    for i in range(80):
+        clock.advance(days=1)
+        book.evolve([sample(t.name, t.baseline, event=f"turn:b:{i}") for t in config.traits])
+    state = book.current()
+    assert state is not None
+    assert all(abs(t.value - t.baseline) < 0.3 for t in state.traits.values())
 
 
 def test_the_drift_is_the_mean_distance_to_the_baselines() -> None:
@@ -90,8 +86,8 @@ async def test_the_night_writes_one_diary_warning_a_day_when_she_drifts_too_far(
             config=MemoryV2Settings(enabled=True, persona=config),
             material=mat,
             budget=Budget(10**9, 10**6),
-            cheap=Proposer([]),
-            reflect=Proposer([]),
+            cheap=Proposer(),
+            reflect=Proposer(),
             embedder=FakeEmbedder(),
             clock=lambda: now,
         )
@@ -161,9 +157,9 @@ def test_show_prints_traits_recent_version_and_drift(cli: Any) -> None:
     data, run = cli
     result = run("show")
     assert result.exit_code == 0
-    assert "introspecção" in result.output and "versão 4" in result.output
+    assert "intelecto" in result.output and "versão 4" in result.output
     assert "deriva" in result.output and "Marca 2 que ficou" in result.output
-    assert "mais reflexiva" in result.output
+    assert "mais curiosa" in result.output
 
 
 def test_show_warns_when_the_drift_is_past_the_limit(
@@ -217,7 +213,3 @@ def test_without_the_v2_the_persona_commands_say_so(monkeypatch: pytest.MonkeyPa
     for args in (["show"], ["history"], ["revert", "--yes"]):
         result = CliRunner().invoke(app, ["persona", *args])
         assert result.exit_code == 1 and "desligada" in result.output
-
-
-def test_a_proposal_helper_still_works() -> None:
-    assert proposal()["trait"] == "introspecção"

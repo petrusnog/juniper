@@ -130,13 +130,14 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.refine.max_per_night` | `20` | Quantas memórias brutas o sonho refina por noite, das mais recentes para as mais antigas. 0 desliga. |
 | `memory.v2.refine.context_turns` | `2` | Quantos turnos de cada lado do turno de origem entram como contexto da lembrança. |
 | `memory.v2.refine.neighbors` | `3` | Quantas memórias vizinhas são oferecidas ao modelo como possíveis ligações. 0 não oferece nenhuma. |
-| `memory.v2.persona.max_step` | `0.06` | Passo máximo de um traço por sonho. |
-| `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
-| `memory.v2.persona.step_factor` | `0.1` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.alpha` | `0.1` | Por noite, o traço anda esta fração do caminho até a média dos estados que ela expressou no dia ([ADR-030](../decisions/ADR-030.md)). |
+| `memory.v2.persona.max_step` | `0.05` | Passo máximo de um traço por sonho. |
+| `memory.v2.persona.max_band` | `0.25` | O quanto um traço pode se afastar do seu ponto de partida (que também anda). |
+| `memory.v2.persona.maturation` | `0.01` | Por dia, o ponto de partida anda esta fração do caminho até o traço: uma fase longa vira jeito de ser. |
+| `memory.v2.persona.mood_weight` | `0.5` | Peso do humor do dia como mais uma amostra de estado (0 desliga). |
 | `memory.v2.persona.always_describe` | `true` | Na conversa, o bloco `<personalidade>` sempre diz como ela está hoje (todos os traços, em palavras graduadas), além do que se afastou do jeito de sempre e do que a marcou. Desligado, só diz o desvio e o que a marcou. |
-| `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
 | `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
-| `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
+| `memory.v2.persona.traits` | onze aspectos | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): o Big Five em 10 aspectos (volatilidade, retraimento, compaixão, polidez, diligência, ordem, entusiasmo, assertividade, abertura, intelecto) mais a ironia. Uma lista nova substitui a lista toda; uma personalidade guardada com outros nomes é migrada uma vez, como uma versão nova. |
 | `memory.v2.knowledge.strict` | `true` | Conhecimento só da memória ([ADR-031](../decisions/ADR-031.md)): fatos sobre o mundo só das notas dela; sem nota, ela chama `learn_topic` (aprende na web e grava notas) ou diz que ainda não sabe. Desligado, vale o comportamento antigo: sem nota, responde com o que o modelo sabe. |
 | `memory.v2.knowledge.news_hours` · `memory.v2.knowledge.current_days` · `memory.v2.knowledge.stable_days` | `12` · `7` · `180` | Validade de uma nota da web pela volatilidade (`noticia`, `atual`, `estavel`). Vencida, deixa de contar como conhecimento até ela ler de novo. |
 | `memory.v2.knowledge.learn_sources` | `3` | Fontes, de domínios diferentes, lidas a cada `learn_topic`. |

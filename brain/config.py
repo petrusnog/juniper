@@ -706,32 +706,41 @@ class TraitDefault(BaseModel):
         return self
 
 
+# Big Five em 10 aspectos (DeYoung, Quilty e Peterson, 2007) mais a ironia (ADR-030, seção 4).
+# Pontos de partida [a calibrar]; os que vêm da V2 herdam o valor do traço antigo na migração.
 DEFAULT_TRAITS = [
-    TraitDefault(name="brincadeira", baseline=0.6, min=0.2, max=0.9),
-    TraitDefault(name="franqueza", baseline=0.7, min=0.3, max=0.95),
-    TraitDefault(name="introspecção", baseline=0.4, min=0.1, max=0.8),
-    TraitDefault(name="carinho", baseline=0.8, min=0.4, max=1.0),
-    TraitDefault(name="proatividade", baseline=0.7, min=0.3, max=0.95),
-    TraitDefault(name="ironia", baseline=0.5, min=0.1, max=0.8),
+    TraitDefault(name="volatilidade", baseline=0.4, min=0.05, max=0.95),
+    TraitDefault(name="retraimento", baseline=0.3, min=0.05, max=0.95),
+    TraitDefault(name="compaixão", baseline=0.8, min=0.05, max=0.95),
+    TraitDefault(name="polidez", baseline=0.4, min=0.05, max=0.95),
+    TraitDefault(name="diligência", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="ordem", baseline=0.5, min=0.05, max=0.95),
+    TraitDefault(name="entusiasmo", baseline=0.6, min=0.05, max=0.95),
+    TraitDefault(name="assertividade", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="abertura", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="intelecto", baseline=0.6, min=0.05, max=0.95),
+    TraitDefault(name="ironia", baseline=0.5, min=0.05, max=0.95),
 ]
 
 
 class V2PersonaSettings(BaseModel):
-    """Personalidade viva (ADR-017, seção 8)."""
+    """Personalidade viva (ADR-017, seção 8; algoritmo da V3 no ADR-030, seção 5)."""
 
     # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
     evolves: bool = True
+    # Por noite, o traço anda esta fração do caminho até a média dos estados expressos no dia.
+    alpha: float = Field(default=0.1, ge=0.0, le=1.0)
     # Passo máximo de um traço por noite.
-    max_step: float = Field(default=0.06, ge=0.0, le=0.2)
-    # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
-    impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    # O passo de um traço é min(max_step, step_factor x impacto) por noite.
-    step_factor: float = Field(default=0.1, ge=0.0, le=1.0)
+    max_step: float = Field(default=0.05, ge=0.0, le=0.2)
+    # O quanto o traço pode se afastar do ponto de partida (o ponto de partida também anda).
+    max_band: float = Field(default=0.25, ge=0.0, le=1.0)
+    # Maturação: por dia, o ponto de partida anda esta fração do caminho até o traço.
+    maturation: float = Field(default=0.01, ge=0.0, le=0.2)
+    # Peso do humor do dia como mais uma "conversa" no cálculo dos estados (0 desliga).
+    mood_weight: float = Field(default=0.5, ge=0.0, le=2.0)
     # Na conversa, o bloco <personalidade> sempre diz como ela está hoje (todos os traços, em
     # palavras). Desligado, só diz o que se afastou do jeito de sempre e o que a marcou.
     always_describe: bool = True
-    # Meia-vida do retorno ao baseline: uma fase passa.
-    baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
     # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
     drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
     # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
