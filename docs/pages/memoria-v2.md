@@ -338,6 +338,10 @@ Quando a mensagem toca um tema que ela estudou, o bloco `<conhecimento>` leva as
 - **Notas vencidas não contam:** uma nota da web tem validade pela volatilidade (notícia 12 h, atual 7 dias, estável 180 dias); vencida, sai do bloco até ela ler de novo. O bloco aparece também quando o usuário parece estar mal.
 - **Limite honesto:** não há como apagar o que o modelo aprendeu no treino; a regra instrui e o teste de fundamento ([ADR-031](../decisions/ADR-031.md)) mede. `juniper memory prompt` mostra o bloco.
 
+## Medir o fundamento {#fundamento kind=módulo file=brain/memory/v2/grounding.py}
+
+Não há como apagar o que o modelo aprendeu no treino ([ADR-019](../decisions/ADR-019.md), [ADR-031](../decisions/ADR-031.md)): o modo estrito **instrui e fundamenta**, e o teste de fundamento **mede**. Um juiz (um modelo) lê uma resposta e as notas que estavam no prompt e lista as **afirmações de fato** que a resposta faz, cada uma marcada como sustentada por alguma nota ou não. O número publicado é a razão das **sem nota de apoio** sobre todas as afirmações, em um conjunto de perguntas (`tests/fixtures/grounding_questions.json`, 20 perguntas de conhecimento), com um teto (`DEFAULT_CEILING`, 15%). Resposta que diz "ainda não sei" não faz afirmação. O juiz é um modelo, então o número é uma estimativa: serve para comparar duas versões do prompt, não como garantia. Em `brain/memory/v2/grounding.py`, `measure(perguntas, ask, juiz)` roda o conjunto; os testes cobrem a conta com um juiz determinístico, e a medição contra um modelo real é manual (precisa de chave de LLM).
+
 ## Aprender na hora: `learn_topic` {#aprender kind=módulo file=brain/memory/v2/learn.py}
 
 A tool `learn_topic(topic, questions)` (WRITE sem confirmação, como `remember`) é oferecida quando a V2 e a web estão ligadas. Ela:
