@@ -158,6 +158,18 @@ def test_build_router_follows_the_configured_order_and_leaves_out_the_disabled()
     assert build_router(config).names == ["duckduckgo", "searxng"]
 
 
+def test_searxng_takes_its_url_from_the_setting_when_the_provider_has_none() -> None:
+    config = WebSearchSettings(
+        providers=[WebSearchProviderSettings(name="searxng")], searxng_url="http://searxng:8080"
+    )
+    assert build_router(config).usable()
+    assert not build_router(
+        WebSearchSettings(providers=[WebSearchProviderSettings(name="searxng")])
+    ).usable()
+    blank = WebSearchSettings(providers=[WebSearchProviderSettings(name="searxng")], searxng_url="")
+    assert not build_router(blank).usable()  # an empty variable means "not configured"
+
+
 def test_the_default_order_is_tavily_searxng_duckduckgo() -> None:
     assert [p.name for p in WebSearchSettings().providers] == ["tavily", "searxng", "duckduckgo"]
     assert WebSearchSettings().providers[0].monthly_limit == 900

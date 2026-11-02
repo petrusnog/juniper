@@ -116,4 +116,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-028](decisions/ADR-028.md): Ações no dashboard: ocorrências, memória e tarefas (Aceito) · `api-http`, `dashboard`, `ocorrencias`
 - [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Proposto) · `agente`, `memoria-v2`, `produto-personalidade`
 - [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Proposto) · `configuracao`, `memoria-v2`
-- [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Proposto) · `configuracao`, `memoria-v2`, `seguranca`
+- [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Proposto) · `configuracao`, `memoria-v2`, `producao`, `seguranca`

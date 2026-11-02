@@ -354,6 +354,8 @@ class WebSearchSettings(BaseModel):
     providers: list[WebSearchProviderSettings] = Field(default_factory=_default_search_providers)
     max_results: int = Field(default=5, ge=1, le=10)
     timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    # A URL do SearXNG quando o provedor não traz a sua (no compose: http://searxng:8080).
+    searxng_url: str | None = None
     quota_file: Path = Field(
         default_factory=lambda: Path.home() / ".juniper" / "web" / "quota.json"
     )

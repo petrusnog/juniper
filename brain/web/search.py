@@ -343,12 +343,15 @@ class SearchRouter:
 
 
 def _build_provider(
-    item: WebSearchProviderSettings, timeout: float, tavily_key: str | None
+    item: WebSearchProviderSettings,
+    timeout: float,
+    tavily_key: str | None,
+    searxng_url: str | None = None,
 ) -> SearchProvider:
     if item.name == "tavily":
         return TavilyProvider(tavily_key, timeout=timeout)
     if item.name == "searxng":
-        return SearxngProvider(item.url, timeout=timeout)
+        return SearxngProvider(item.url or searxng_url, timeout=timeout)
     return DuckDuckGoProvider(timeout=timeout)
 
 
@@ -357,7 +360,10 @@ def build_router(config: WebSearchSettings | None = None) -> SearchRouter:
     config = config or settings.web.search
     key = settings.tavily_api_key.get_secret_value() if settings.tavily_api_key else None
     providers = [
-        (_build_provider(item, config.timeout_seconds, key), item.monthly_limit)
+        (
+            _build_provider(item, config.timeout_seconds, key, config.searxng_url or None),
+            item.monthly_limit,
+        )
         for item in config.providers
         if item.enabled
     ]
