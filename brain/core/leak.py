@@ -42,6 +42,8 @@ MARKERS: tuple[str, ...] = (
     "<conversa>",
     "<resposta>",
     "[Canal:",
+    "Nota do sistema",
+    "Nota de sistema",
     "[Pausa de",
     "[O usuário",
     # The start of each context header (brain/memory/retrieval.py, brain/memory/v2/context.py).
@@ -91,6 +93,10 @@ INTERNAL_TAGS: tuple[str, ...] = (
 TOOL_TAGS: tuple[str, ...] = ("parameter", "invoke", "tool_calls", "function_calls")
 _TAG = re.compile(r"</?(?:" + "|".join(INTERNAL_TAGS) + r")\s*/?>", re.IGNORECASE)
 _TOOL_TAG = re.compile(r"</?(?:" + "|".join(TOOL_TAGS) + r")\s*/?>", re.IGNORECASE)
+# A note in square brackets at the very start of a reply: the model imitating the system notes it
+# sees ("[Canal: ...]", "[Você pode responder sem pesquisar...]"), invented or not. She never opens
+# a reply with a long bracketed block, so it goes whole (short ones like "[1]" are speech).
+_LEADING_NOTE = re.compile(r"\A\s*\[[^\]\n]{12,700}\]\s*")
 # The "]" left when the "[" that opened a stamp or a channel note was cut.
 _STRAY_CLOSE = re.compile(r"\A\s*\]+\s*")
 _THINK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
@@ -220,9 +226,15 @@ class LeakGuard:
         if not self._in_head:
             return text
         self._head += text
+        if self._in_head and _LEADING_NOTE.match(self._head):
+            self._head = _LEADING_NOTE.sub("", self._head, count=1)
+            self.triggered = True
         if _STRAY_CLOSE.match(self._head):
             self._head = _STRAY_CLOSE.sub("", self._head, count=1)
             self.triggered = True
+        opening = self._head.lstrip()
+        if not final and opening.startswith("[") and "]" not in opening and len(opening) < 700:
+            return ""  # a bracketed note may still be arriving: hold it until it closes
         if _ADDRESSES_HERSELF.match(self._head):
             # She never opens by calling herself: this is the model writing the person's turn, and
             # the answer after it is to a message nobody sent. Nothing of it is worth keeping.
