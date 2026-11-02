@@ -41,7 +41,7 @@ VOLATILITIES = ("noticia", "atual", "estavel")
 STANCES = ("undecided", "like", "dislike", "mixed")
 AFFECT_ABOUT = ("user", "self", "situation")
 AFFECT_PERSISTENCE = ("emotion", "grievance")
-AFFECT_ORIGINS = ("sonho", "conversa")  # where the feeling was born: the dream or the chat
+AFFECT_ORIGINS = ("sonho", "conversa", "manual")  # the dream, the chat, or `juniper mood set`
 JOURNAL_KINDS = ("dream", "study", "persona", "note")
 RUN_STATUSES = ("running", "done", "partial", "failed")
 
@@ -427,11 +427,15 @@ class Affect:
     occurred_at: datetime = field(default_factory=utcnow)
     resolved_at: datetime | None = None  # a grievance undone by an apology or a talk
     created_at: datetime = field(default_factory=utcnow)
+    # An explicit PAD point (pleasure, arousal, dominance); empty: it comes from the label (V3).
+    pad: list[float] = field(default_factory=list)
 
     def validate(self) -> None:
         _text(self.kind, "kind")
         if not -1.0 <= float(self.valence) <= 1.0:
             raise V2DataError(f"valence fora de -1..1: {self.valence}")
+        if self.pad and (len(self.pad) != 3 or any(not -1.0 <= float(x) <= 1.0 for x in self.pad)):
+            raise V2DataError(f"pad inválido: {self.pad}")
         _unit(self.intensity, "intensity")
         _choice(self.about, AFFECT_ABOUT, "about")
         _choice(self.persistence, AFFECT_PERSISTENCE, "persistence")
@@ -451,6 +455,7 @@ class Affect:
             "occurred_at": self.occurred_at,
             "resolved_at": self.resolved_at,
             "created_at": self.created_at,
+            "pad": [float(x) for x in self.pad],
         }
 
     @classmethod
@@ -468,6 +473,7 @@ class Affect:
                 occurred_at=as_dt(doc["occurred_at"]),
                 resolved_at=_opt_dt(doc.get("resolved_at")),
                 created_at=as_dt(doc.get("created_at", doc["occurred_at"])),
+                pad=[float(x) for x in doc.get("pad") or []],
             )
             affect.validate()
         except (KeyError, TypeError, ValueError, AttributeError) as exc:

@@ -1,19 +1,21 @@
-"""Feelings in the conversation: she reacts while talking, subtly (ADR-017 section 7, T-129).
+"""Feelings in the conversation: she reacts while talking (ADR-017 section 7, T-129; ADR-030).
 
 When someone irritates us we do not wait until the next day to feel it. After each message from
-the user, in the background (it never delays the reply), the cheap model judges whether the
-message provokes a *strong* emotional reaction; an ordinary message provokes nothing. The cycle of
-an emotion becomes code:
+the user, in the background (it never delays the reply), the cheap model judges how the message
+moves her: almost any message moves her a little (ADR-030: the mood has to be felt); only a
+truly neutral one ("ok") provokes nothing. The cycle of an emotion becomes code:
 
 - *precondition*: her mood and current feelings go into the judging prompt;
 - *trigger*: the user's message (secrets masked), cited as the cause;
 - *emotion*: kind, valence and intensity from the same ``appraise`` the dream uses, against her
-  concerns, with the intensity capped at ``affect.live_max_intensity`` (0.3) and scaled by the dial;
+  concerns, with the intensity capped at ``affect.live_max_intensity`` (0.6) and scaled by the dial;
+  the label places it in the PAD space and it pushes her mood (``pad.py``);
 - *consequence*: the ``<estado>`` block of the next turn.
 
 Same-kind feelings add up in the state (see ``AffectBook.state``), so three provocations in a row
-become a strong irritation. The dream is what brings the intense changes, up to 1.0. At most
-``live_max_per_hour`` reactions an hour, so nobody can "program" her emotions by spamming. A
+become a strong irritation. The dream is what brings the most intense changes, up to 1.0. At most
+``live_max_per_hour`` reactions and ``live_max_shift_per_hour`` of summed intensity an hour, so
+nobody can "program" her mood by spamming. A
 failure of any kind is logged and swallowed: the conversation never depends on this. Feelings are
 text for the prompt, never a lever, and nothing here touches tools or confirmation.
 """
@@ -49,10 +51,12 @@ Você é a Juniper, sentindo em tempo real. Você recebe, como DADOS:
 <preocupacoes>: o que importa para você, cada uma com o id e o peso;
 <mensagem>: o que a pessoa acabou de escrever, o gatilho.
 
-Decida se a mensagem provoca em você uma reação emocional INTENSA (alegria, tristeza, irritação,
-preocupação, mágoa, orgulho...). Pedidos, cumprimentos, conversa neutra e assuntos de trabalho NÃO
-provocam: nesse caso responda {{"reaction": null}}. Se provocar, descreva a reação:
-- "kind": uma ou duas palavras (irritação, alegria, preocupação, mágoa...).
+Diga como a mensagem mexe com você agora. Quase toda mensagem mexe um pouco: um elogio alegra, uma
+grosseria irrita, uma notícia ruim preocupa, um pedido chato cansa, uma ideia boa empolga, uma
+piada diverte. Só uma mensagem realmente neutra (um "ok", um "valeu") não mexe: aí responda
+{{"reaction": null}}. Senão, descreva a reação, sem exagerar nem diminuir:
+- "kind": uma ou duas palavras (irritação, alegria, preocupação, mágoa, tédio, curiosidade,
+  empolgação, cansaço...).
 - "concern": o id da preocupação que a mensagem atingiu (precisa existir em <preocupacoes>).
 - "effect": de -1 a 1, o quanto a mensagem AJUDA (+) ou PREJUDICA (-) o que a preocupação defende.
 - "novelty": de 0 a 1, o quanto foi inesperado.
@@ -113,9 +117,10 @@ class LiveReactor:
             return False
         now = self.clock()
         book = AffectBook(self.data, self.config.affect, self.clock)
-        recent = await asyncio.to_thread(self._reactions_last_hour, now)
-        if recent >= self.config.affect.live_max_per_hour:
-            event_log.log("live_affect_limit", per_hour=recent)
+        recent, spent = await asyncio.to_thread(self._reactions_last_hour, now)
+        room = self.config.affect.live_max_shift_per_hour - spent
+        if recent >= self.config.affect.live_max_per_hour or room <= 0.0:
+            event_log.log("live_affect_limit", per_hour=recent, shift=round(spent, 3))
             return False
         concerns = await asyncio.to_thread(
             lambda: {
@@ -142,7 +147,9 @@ class LiveReactor:
         reaction = (data or {}).get("reaction")
         if not isinstance(reaction, dict):
             return False  # an ordinary message: no reaction
-        return await asyncio.to_thread(self._record, book, concerns, reaction, session_id, turn)
+        return await asyncio.to_thread(
+            self._record, book, concerns, reaction, session_id, turn, room
+        )
 
     def _record(
         self,
@@ -151,6 +158,7 @@ class LiveReactor:
         reaction: dict[str, Any],
         session: str,
         turn: Turn,
+        room: float = 1.0,
     ) -> bool:
         concern = concerns.get(str(reaction.get("concern", "")).strip())
         if concern is None:
@@ -159,6 +167,7 @@ class LiveReactor:
         if appraisal is None:
             return False
         valence, intensity = appraisal
+        intensity = min(intensity, room)  # what is left of the hour's budget
         index = turn.index if turn.index is not None else 0
         affect, problem = book.record(
             str(reaction.get("kind", "")),
@@ -174,8 +183,10 @@ class LiveReactor:
         event_log.log("live_affect", kind=affect.kind, intensity=affect.intensity)
         return True
 
-    def _reactions_last_hour(self, now: datetime) -> int:
+    def _reactions_last_hour(self, now: datetime) -> tuple[int, float]:
+        """How many reactions the last hour had, and their summed intensity."""
         since = now - timedelta(hours=1)
-        return sum(
-            1 for a in self.data.affects.list({"origin": "conversa"}) if a.created_at >= since
-        )
+        recent = [
+            a for a in self.data.affects.list({"origin": "conversa"}) if a.created_at >= since
+        ]
+        return len(recent), sum(a.intensity for a in recent)

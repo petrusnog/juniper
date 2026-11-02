@@ -673,15 +673,20 @@ class V2AffectSettings(BaseModel):
     # Decaimento (pontos de partida a calibrar): a emoção passa em horas, o humor (média móvel)
     # em dias e a mágoa em semanas, mas sempre passa.
     emotion_half_life_hours: float = Field(default=6.0, ge=0.1, le=720.0)
-    mood_half_life_days: float = Field(default=3.0, ge=0.1, le=365.0)
+    # O humor (ADR-030, ALMA) volta ao repouso com esta meia-vida, mais longa num temperamento
+    # volátil. Meio dia: o humor se sente no mesmo dia e passa.
+    mood_half_life_days: float = Field(default=0.5, ge=0.05, le=365.0)
     grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
     # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
     grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
-    # Reações em tempo real, durante a conversa: sutis (o sonho é que traz as intensas, até 1,0).
+    # Reações em tempo real, durante a conversa (ADR-030): toda mensagem pode mexer com ela; o
+    # sonho é que traz as mais intensas, até 1,0.
     live: bool = True
-    live_max_intensity: float = Field(default=0.3, ge=0.0, le=1.0)
-    # Teto de reações por hora, para ninguém "programar" as emoções dela com spam.
-    live_max_per_hour: int = Field(default=12, ge=0, le=200)
+    live_max_intensity: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Teto de reações por hora e de intensidade somada por hora, para ninguém "programar" o humor
+    # dela com spam.
+    live_max_per_hour: int = Field(default=60, ge=0, le=500)
+    live_max_shift_per_hour: float = Field(default=1.5, ge=0.0, le=20.0)
     # Sentimentos novos por noite.
     max_per_night: int = Field(default=10, ge=0, le=50)
 

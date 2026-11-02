@@ -1,9 +1,10 @@
-"""Feelings: appraisal, decay and mood (ADR-017, section 7).
+"""Feelings: appraisal, decay and mood (ADR-017, section 7; PAD and ALMA mood, ADR-030).
 
 An event is measured against what matters to her (the concerns) and produces an emotion with a
-valence, an intensity and a cause. The emotion fades in hours, feeds a mood that fades in days, and
-a grievance (an unkind moment from the user) fades in weeks but always fades, and is undone when he
-talks to her again or apologizes.
+valence, an intensity and a cause, placed in the PAD space (``pad.py``). The emotion fades in
+hours; the mood is where the emotions pushed her, fading back to her rest point (her temperament,
+from the personality); a grievance (an unkind moment from the user) fades in weeks but always
+fades, and is undone when he talks to her again or apologizes.
 
 The user controls it: ``memory.v2.affect.enabled`` and ``intensity``. The dial scales an emotion
 when it is *recorded*; at 0 nothing is recorded and nothing is shown, not even what was already
@@ -25,6 +26,7 @@ from brain.config import V2AffectSettings, settings
 from brain.eventlog import event_log
 from brain.memory.v2.guards import Rejection, check_affect
 from brain.memory.v2.models import Affect, Concern, utcnow
+from brain.memory.v2.pad import PAD, QUIET_SHIFT, Temperament, emotion_pad, temperament
 
 if TYPE_CHECKING:
     from brain.memory.v2.store import V2Data
@@ -36,7 +38,6 @@ ECHO_HOURS = 48  # a feeling that already faded still "echoes" in how she says s
 ECHO_MIN_INTENSITY = 0.3
 EXPRESS_TOP = 2  # how many feelings show in the state
 MOOD_FLOOR = 0.08  # below this the mood is neutral and says nothing
-MOOD_ANCHOR = 1.0  # makes a lone small feeling a small mood, not a full one
 
 _APOLOGY = re.compile(r"\b(desculp\w*|perdao|me perdoa\w*|foi mal|sinto muito)\b")
 
@@ -88,7 +89,10 @@ class AffectState:
     """What she feels right now: the strongest feelings, the mood and any open grievance."""
 
     feelings: list[Felt] = field(default_factory=list)
-    mood: float = 0.0  # -1 (low) to 1 (high), fading to 0
+    mood: float = 0.0  # -1 (low) to 1 (high), fading to 0: the pleasure of ``shift``
+    # PAD (ADR-030): how far the emotions pushed her from her rest point, and where she is now.
+    shift: PAD = field(default_factory=PAD)
+    point: PAD = field(default_factory=PAD)
     grievances: list[Felt] = field(default_factory=list)
     # what weighed most in the last 48 hours but has already faded (strength is its registered one)
     echoes: list[Felt] = field(default_factory=list)
@@ -101,6 +105,7 @@ class AffectState:
             and not self.grievances
             and not self.echoes
             and abs(self.mood) < MOOD_FLOOR
+            and self.shift.size < QUIET_SHIFT
         )
 
 
@@ -123,10 +128,20 @@ class AffectBook:
         data: V2Data,
         config: V2AffectSettings | None = None,
         clock: Callable[[], datetime] = utcnow,
+        *,
+        temper: Temperament | None = None,
     ) -> None:
         self.data = data
         self.config = config or settings.memory.v2.affect
         self.clock = clock
+        self._temper = temper
+
+    @property
+    def temper(self) -> Temperament:
+        """Her temperament (from the stored personality unless one was given)."""
+        if self._temper is not None:
+            return self._temper
+        return temperament(self.data.persona.current())
 
     @property
     def active(self) -> bool:
@@ -193,19 +208,35 @@ class AffectBook:
         age = (now or self.clock()) - affect.occurred_at
         return affect.intensity * _decay(age, self._half_life(affect))
 
-    def mood(self, now: datetime | None = None) -> float:
-        """A moving average of how she has felt lately: valence weighted by intensity, fading
-        over days, pulled toward neutral."""
+    def pad_of(self, affect: Affect) -> PAD:
+        """The PAD point of a feeling: the explicit one, or the one of its label."""
+        if affect.pad:
+            return PAD(*affect.pad)
+        return emotion_pad(affect.kind, affect.valence)
+
+    def shift(self, now: datetime | None = None, temper: Temperament | None = None) -> PAD:
+        """ALMA: how far the emotions pushed her mood from the rest point. Each one pushes with
+        ``intensity x reactivity`` toward its PAD point and fades with the mood's half-life (longer
+        for a volatile temperament); many pushes saturate softly inside -1..1."""
         now = now or self.clock()
-        half = timedelta(days=self.config.mood_half_life_days)
-        total = weight = 0.0
+        temper = temper or self.temper
+        half = timedelta(days=self.config.mood_half_life_days * temper.lingering)
+        push = PAD()
         for a in self.data.affects.list():
             if a.resolved_at is not None or a.occurred_at > now:
                 continue  # an undone grievance, or something that had not happened yet at ``now``
-            w = a.intensity * _decay(now - a.occurred_at, half)
-            total += a.valence * w
-            weight += w
-        return max(-1.0, min(1.0, total / (weight + MOOD_ANCHOR)))
+            weight = a.intensity * temper.reactivity * _decay(now - a.occurred_at, half)
+            push = push + self.pad_of(a).scaled(weight)
+        return push.soft()
+
+    def mood(self, now: datetime | None = None) -> float:
+        """How good she feels compared to her usual self: the pleasure of the shift (-1 to 1)."""
+        return self.shift(now).p
+
+    def mood_point(self, now: datetime | None = None) -> PAD:
+        """Where her mood is in the PAD space: the rest point plus the shift."""
+        temper = self.temper
+        return (temper.rest + self.shift(now, temper)).clamped()
 
     def state(self, now: datetime | None = None) -> AffectState:
         """What she feels now. Empty when feelings are off or the dial is at 0."""
@@ -229,9 +260,13 @@ class AffectBook:
             ),
             key=lambda f: -f.strength,
         )
+        temper = self.temper
+        shift = self.shift(now, temper)
         return AffectState(
             feelings=[f for f in visible if f.affect.persistence == "emotion"][:EXPRESS_TOP],
-            mood=self.mood(now),
+            mood=shift.p,
+            shift=shift,
+            point=(temper.rest + shift).clamped(),
             grievances=[f for f in visible if f.affect.persistence == "grievance"][:1],
             echoes=echoing[:1],
             now=now,

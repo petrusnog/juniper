@@ -194,7 +194,7 @@ async def test_affects_list_filter_and_trace_back_to_the_line(world: World) -> N
     _, listing = await world.get("/affects")
     assert listing["total"] == 2 and listing["now"]["active"] is True
     by_id = {a["id"]: a for a in listing["items"]}
-    assert by_id[live.id]["origin"] == "conversa" and by_id[live.id]["intensity"] == 0.3
+    assert by_id[live.id]["origin"] == "conversa" and by_id[live.id]["intensity"] == 0.6
     assert by_id[dream.id]["origin"] == "sonho" and by_id[dream.id]["intensity"] == 0.8
     assert (await world.get("/affects", origin="conversa"))[1]["total"] == 1
     assert (await world.get("/affects", kind="tristeza"))[1]["total"] == 1

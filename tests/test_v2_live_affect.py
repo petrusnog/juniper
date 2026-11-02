@@ -89,14 +89,14 @@ def say(text: str = "você é uma inútil", index: int = 3) -> Turn:
 # --- the reaction --------------------------------------------------------------------------------
 
 
-async def test_a_provocation_leaves_a_subtle_reaction_of_at_most_a_third() -> None:
+async def test_a_provocation_leaves_a_reaction_capped_at_the_live_ceiling() -> None:
     live = reactor(Judge(PROVOKE))
 
     assert await live.react(SESSION, say())
 
     (affect,) = live.data.affects.list()
     assert affect.origin == "conversa" and affect.kind == "irritação"
-    assert affect.intensity == 0.3 and affect.valence < 0  # capped; appraise alone would give 0.81
+    assert affect.intensity == 0.6 and affect.valence < 0  # capped; appraise alone would give 0.81
     assert affect.cause == [f"turn:{SESSION}:3", "concern:bem-estar-do-petrus"]
 
 
@@ -133,7 +133,7 @@ async def test_the_dial_still_scales_the_reaction() -> None:
     live = reactor(Judge(PROVOKE), intensity=0.5)
     await live.react(SESSION, say())
     (affect,) = live.data.affects.list()
-    assert affect.intensity == pytest.approx(0.15)
+    assert affect.intensity == pytest.approx(0.3)
 
 
 @pytest.mark.parametrize("off", [{"live": False}, {"enabled": False}, {"intensity": 0.0}])
@@ -184,7 +184,7 @@ async def test_three_provocations_in_a_row_add_up_to_a_strong_feeling() -> None:
     (top,) = book.state().feelings
 
     assert top.affect.kind == "irritação"
-    assert top.strength == pytest.approx(0.9) and top.strength >= 0.6  # "forte"
+    assert top.strength == pytest.approx(1.0)  # "forte": the chain saturates at 1.0
 
 
 async def test_the_chain_never_goes_over_one_and_other_kinds_stay_apart() -> None:
@@ -207,8 +207,8 @@ async def test_the_feeling_fades_like_any_other() -> None:
     book = AffectBook(live.data, live.config.affect, clock)
     clock.now += timedelta(hours=6)  # one half-life
     (felt,) = book.state().feelings
-    assert felt.strength == pytest.approx(0.15)
-    clock.now += timedelta(hours=24)
+    assert felt.strength == pytest.approx(0.3)
+    clock.now += timedelta(hours=30)
     assert book.state().feelings == []
 
 
@@ -223,7 +223,15 @@ def test_the_dream_is_not_capped_by_the_live_limit() -> None:
         "tristeza", -1.0, 1.0, ["turn:x:2", "concern:bem-estar-do-petrus"], origin="conversa"
     )
     assert dream is not None and dream.intensity == 1.0 and dream.origin == "sonho"
-    assert live is not None and live.intensity == 0.3 and live.origin == "conversa"
+    assert live is not None and live.intensity == 0.6 and live.origin == "conversa"
+
+
+async def test_the_hour_has_a_budget_of_summed_intensity() -> None:
+    live = reactor(Judge(PROVOKE), live_max_shift_per_hour=1.0)
+    for i in range(4):
+        await live.react(SESSION, say(index=i))
+    intensities = sorted(a.intensity for a in live.data.affects.list())
+    assert intensities == pytest.approx([0.4, 0.6])  # the second only got what was left
 
 
 # --- the consequence in the next turn ------------------------------------------------------------

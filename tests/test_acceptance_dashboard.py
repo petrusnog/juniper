@@ -117,7 +117,7 @@ async def test_a_live_reaction_shows_up_with_its_origin(
     await live.react("20261023-100000-cccccc", Turn("você falhou de novo", index=0))
     items = (await fetch(dashboard, "/api/affects"))["items"]
     assert {a["origin"] for a in items} == {"sonho", "conversa"}
-    assert max(a["intensity"] for a in items if a["origin"] == "conversa") <= 0.3
+    assert max(a["intensity"] for a in items if a["origin"] == "conversa") <= 0.6
 
 
 async def test_the_simulator_and_the_search_work_on_the_night_data(

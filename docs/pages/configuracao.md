@@ -117,12 +117,13 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
 | `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
-| `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
+| `memory.v2.affect.mood_half_life_days` | `0.5` | Meia-vida do humor ([ADR-030](../decisions/ADR-030.md)): quanto tempo o empurrão das emoções leva para cair à metade e ela voltar ao repouso. Num temperamento volátil dura mais (até 1,5 vez). |
 | `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o usuário voltar a conversar ou pedir desculpas. |
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
 | `memory.v2.affect.live` | `true` | Liga as reações em tempo real: depois de cada mensagem, em segundo plano, o modelo barato julga se ela provoca uma reação intensa; mensagem comum não gera nada. |
-| `memory.v2.affect.live_max_intensity` | `0.3` | Teto da intensidade de uma reação nascida na conversa (sutil). Só o sonho chega a 1,0. O dial `affect.intensity` continua escalando. |
-| `memory.v2.affect.live_max_per_hour` | `12` | Reações por hora, para ninguém programar as emoções dela com spam. 0 desliga. |
+| `memory.v2.affect.live_max_intensity` | `0.6` | Teto da intensidade de uma reação nascida na conversa. Só o sonho chega a 1,0. O dial `affect.intensity` continua escalando. |
+| `memory.v2.affect.live_max_per_hour` | `60` | Reações por hora (quase toda mensagem pode mexer com ela). 0 desliga. |
+| `memory.v2.affect.live_max_shift_per_hour` | `1.5` | Intensidade somada das reações da conversa por hora: passou disso, as mensagens seguintes não mexem até a hora virar. É o que impede alguém de programar o humor dela com spam. |
 | `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
 | `memory.v2.refine.enabled` | `true` | Liga o refinamento: o sonho transforma memórias brutas em lembranças (contexto, sentimento, como ela era, ligações, relevância). A bruta fica como `superseded` ([ADR-018](../decisions/ADR-018.md)). |

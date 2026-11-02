@@ -74,7 +74,7 @@ async def test_a_provocation_in_the_conversation_is_subtle_and_chains(morning: W
         await live.react("20261023-100000-cccccc", Turn("você falhou de novo", index=i))
 
     reactions = [a for a in morning.data.affects.list() if a.origin == "conversa"]
-    assert len(reactions) == 3 and all(a.intensity <= 0.3 for a in reactions)
+    assert len(reactions) == 3 and all(a.intensity <= 0.6 for a in reactions)
     dream = [a for a in morning.data.affects.list() if a.origin == "sonho"]
     assert dream and dream[0].intensity >= 0.6  # the intense one came from the dream
-    assert config().affect.live_max_intensity == pytest.approx(0.3)
+    assert config().affect.live_max_intensity == pytest.approx(0.6)

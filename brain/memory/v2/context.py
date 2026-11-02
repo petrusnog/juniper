@@ -32,6 +32,7 @@ from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
 from brain.memory.v2.knowledge import UNCERTAINTY_MARKS, expired
 from brain.memory.v2.models import UNCERTAINTIES, Belief, Interest, StudyNote, utcnow
+from brain.memory.v2.pad import octant_words
 from brain.memory.v2.persona import PersonaBook, default_state, render_persona
 from brain.memory.v2.semantic import semantic_search
 
@@ -101,8 +102,11 @@ def state_lines(state: AffectState) -> list[str]:
     feeling that already faded still echoes for 48 hours."""
     lines: list[str] = []
     words = mood_words(state.mood)
-    if words:
-        lines.append(f"Seu humor hoje: {words}.")
+    shade = octant_words(state.shift)  # ADR-030: the mood as an octant of the PAD space
+    if words and shade:
+        lines.append(f"Seu humor hoje: {words}, {shade}.")
+    elif words or shade:
+        lines.append(f"Seu humor hoje: {words or shade}.")
     strongest = sorted([*state.feelings, *state.grievances], key=lambda f: -f.strength)
     if strongest:
         top = strongest[0]
