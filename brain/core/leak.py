@@ -7,9 +7,11 @@ the answer. A prompt asking it not to is a request, not a guarantee. ``LeakGuard
 guarantee: it filters the answer while it streams, so the client, the saved conversation and the
 next LLM call (which would imitate its own history) never see it.
 
-Two rules, both deliberately narrow so natural speech is never touched:
+Three rules, all deliberately narrow so natural speech is never touched:
 
 * a marker (``MARKERS``) cuts the answer there: nothing from it onwards is ever emitted;
+* a tag the model invents as a wrapper (``<formato>``, ``<conteudo_web>``, ``<think>``...) is
+  removed on its own, and a ``<think>`` block is removed whole: the answer around them is kept;
 * planning sentences at the very start are dropped, but only when one of the first sentences is
   unmistakably planning (``_PLANNING``); the sentences around it that narrate the user in the third
   person (``_NARRATION``) go with it.
@@ -57,6 +59,28 @@ MARKERS: tuple[str, ...] = (
     "<voz",
     "</voz",
 )
+
+# Tags that are machinery, never speech. Removed (not cut): the answer is often right after them.
+INTERNAL_TAGS: tuple[str, ...] = (
+    "formato",
+    "conteudo_web",
+    "think",
+    "thinking",
+    "notas",
+    "falas",
+    "tracos",
+    "fonte",
+    "texto",
+    "tema",
+    "perguntas",
+    "ja_sei",
+    "contexto",
+    "instrucoes",
+)
+_TAG = re.compile(r"</?(?:" + "|".join(INTERNAL_TAGS) + r")\s*/?>", re.IGNORECASE)
+_THINK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
+_PARTIAL_TAG = re.compile(r"</?[a-z_]{0,14}$", re.IGNORECASE)
 
 # A sentence that is the model talking to itself, never to the person.
 _PLANNING = re.compile(
@@ -112,20 +136,27 @@ class LeakGuard:
         return self._start(self._scan("", final=True), final=True)
 
     def _scan(self, text: str, *, final: bool) -> str:
-        """Stage one: cut at the first marker; hold back a tail that might become one."""
+        """Stage one: cut at the first marker, drop machinery tags and ``<think>`` blocks, hold
+        back a tail that might still become one of them."""
         if self._cut:
             return ""
-        data = self._hold + text
+        data = _THINK.sub("", self._hold + text)
+        pending = ""
+        if opened := _THINK_OPEN.search(data):  # a reasoning block that has not closed yet
+            self.triggered = True
+            if not final:
+                pending = data[opened.start() :]
+            data = data[: opened.start()]
         hits = [i for m in MARKERS if (i := data.find(m)) >= 0]
         if stamp := _TURN_STAMP.search(data):
             hits.append(stamp.start())
         if hits:
             self._cut = self.triggered = True
             self._hold = ""
-            return data[: min(hits)].rstrip()
+            return self._untag(data[: min(hits)]).rstrip()
         if final:
             self._hold = ""
-            return data
+            return self._untag(data)
         keep = 0
         for size in range(min(_LONGEST_MARKER - 1, len(data)), 0, -1):
             if any(m.startswith(data[-size:]) for m in MARKERS):
@@ -134,8 +165,16 @@ class LeakGuard:
         bracket = data.rfind("[")
         if bracket >= 0 and len(data) - bracket < _STAMP_LOOKAHEAD and "]" not in data[bracket:]:
             keep = max(keep, len(data) - bracket)  # may still become a turn stamp
-        self._hold = data[len(data) - keep :] if keep else ""
-        return data[: len(data) - keep]
+        if partial := _PARTIAL_TAG.search(data):  # "<for" may still become "<formato>"
+            keep = max(keep, len(data) - partial.start())
+        self._hold = data[len(data) - keep :] + pending if keep else pending
+        return self._untag(data[: len(data) - keep])
+
+    def _untag(self, text: str) -> str:
+        cleaned = _TAG.sub("", text)
+        if cleaned != text:
+            self.triggered = True
+        return cleaned
 
     def _start(self, text: str, *, final: bool) -> str:
         """Stage two: look for planning at the start of the answer, then step aside."""

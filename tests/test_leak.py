@@ -123,3 +123,22 @@ def test_square_brackets_and_juniper_in_normal_speech_pass() -> None:
         "Oi!",
     ):
         assert clean(text) == text
+
+
+@pytest.mark.parametrize("size", [1, 4, 9, 1000])
+def test_invented_wrapper_tags_are_removed_and_the_answer_kept(size: int) -> None:
+    text = "Oi!<formato>canal telegram</formato> Tudo certo por aqui, e com você?<conteudo_web>"
+    assert stream(text, size) == "Oi!canal telegram Tudo certo por aqui, e com você?"
+
+
+@pytest.mark.parametrize("size", [1, 4, 9, 1000])
+def test_a_think_block_is_dropped_whole_even_when_split(size: int) -> None:
+    text = "<think>Hoje é domingo, devo ser honesta.</think>Achei a notícia, Petrus."
+    assert stream(text, size) == "Achei a notícia, Petrus."
+    assert stream("Beleza. <think>sem fechar, o modelo parou", size).strip() == "Beleza."
+
+
+@pytest.mark.parametrize("size", [1, 3, 1000])
+def test_a_less_than_sign_in_speech_is_untouched(size: int) -> None:
+    text = "Se a < b e <3 pra você, x<y também."
+    assert stream(text, size) == text
