@@ -53,6 +53,9 @@ MARKERS: tuple[str, ...] = (
     "Um tema da conversa que também é seu",
     "Como você está agora. Deixe isso aparecer",
     "Sinal: o Petrus parece estar passando",
+    "Como você está falando agora",
+    "<voz",
+    "</voz",
 )
 
 # A sentence that is the model talking to itself, never to the person.

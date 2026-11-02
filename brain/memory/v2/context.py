@@ -35,6 +35,7 @@ from brain.memory.v2.models import UNCERTAINTIES, Belief, Interest, StudyNote, u
 from brain.memory.v2.pad import octant_words
 from brain.memory.v2.persona import PersonaBook, default_state, render_persona
 from brain.memory.v2.semantic import semantic_search
+from brain.memory.v2.tone import render_voice
 
 if TYPE_CHECKING:
     from brain.core.agent import ContextProvider
@@ -290,9 +291,11 @@ class V2Context:
             parts.append(("personalidade", persona))
         if hurting:
             parts.append(("sinal", HURTING_SIGNAL))
-        feeling = await asyncio.to_thread(self._state_block)
+        feeling, tone = await asyncio.to_thread(self._state_and_voice)
         if feeling:
             parts.append(("estado", feeling))
+        if tone:
+            parts.append(("voz", tone))
         used = sum(estimate_tokens(text) for _, text in parts)
         opinions = await self._opinions(session, message, previous, ready, used)
         if opinions:
@@ -414,6 +417,14 @@ class V2Context:
         # before the first dream there is no stored personality: she is her starting self
         state = book.current() or default_state(self.config.persona, self._clock())
         return render_persona(state, self.config.persona.always_describe)
+
+    def _state_and_voice(self) -> tuple[str | None, str | None]:
+        """``<estado>`` (what she feels) and ``<voz>`` (how that sounds now, ADR-030)."""
+        book = AffectBook(self.data, self.config.affect, self._clock)
+        if not book.active:
+            return None, None
+        state = book.state()
+        return render_state(state), render_voice(state, self.data.persona.current())
 
     def _state_block(self) -> str | None:
         """``<estado>``: the current mood and the strongest feeling, in one or two lines."""

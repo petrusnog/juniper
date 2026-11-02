@@ -21,16 +21,19 @@ from brain.clients import voice
 from brain.config import settings
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2 import open_v2_data, require_v2
-from brain.memory.v2.affect import AffectBook
+from brain.memory.v2.affect import FORCE_DEGREES, AffectBook
 from brain.memory.v2.beliefs import HELD, BeliefBook
 from brain.memory.v2.concerns import ConcernBook, ConcernError
 from brain.memory.v2.context import state_lines
 from brain.memory.v2.interests import STANCE_WORDS, InterestBook
 from brain.memory.v2.knowledge import NoteBook
-from brain.memory.v2.models import Belief, Interest
+from brain.memory.v2.models import Belief, Interest, JournalEntry
+from brain.memory.v2.pad import OCTANTS, octant_words
 from brain.memory.v2.persona import PersonaBook, PersonaError, drift, persona_lines
 from brain.memory.v2.store import V2Data
+from brain.memory.v2.tone import voice_lines
 
+MOODS = ", ".join(OCTANTS.values())
 HYPOTHESIS_NOTE = "Lembre: são hipóteses minhas, não fatos. Posso estar errada."
 
 
@@ -378,6 +381,81 @@ def install(app: typer.Typer, memory_app: typer.Typer, console: Console) -> None
         finally:
             data.close()
         voice.say(console, f"Pronto, esqueci {removed} sentimento(s).")
+
+    mood_app = typer.Typer(
+        help="O meu humor agora (ADR-030): ver, ou forçar por um tempo para sentir a diferença.",
+        no_args_is_help=True,
+    )
+    app.add_typer(mood_app, name="mood")
+
+    @mood_app.command("show")
+    def mood_show() -> None:
+        """Mostra o humor no espaço PAD, de onde ele parte e como ele soa agora."""
+        data = _open(console)
+        try:
+            book = AffectBook(data)
+            state = book.state()
+            forced = book.forced()
+            persona = data.persona.current()
+        finally:
+            data.close()
+        point, shift, rest = state.point, state.shift, book.temper.rest
+        console.print(
+            f"Agora: prazer {point.p:+.2f} · ativação {point.a:+.2f} · dominância {point.d:+.2f}"
+        )
+        console.print(
+            f"[dim]repouso {rest.p:+.2f} {rest.a:+.2f} {rest.d:+.2f} · deslocamento "
+            f"{shift.p:+.2f} {shift.a:+.2f} {shift.d:+.2f}[/dim]"
+        )
+        if forced is not None and forced.resolved_at is not None:
+            console.print(f"[yellow]Forçado até {_local(forced.resolved_at)}.[/yellow]")
+        said = octant_words(shift) or "no meu normal"
+        voice.say(console, f"Estou {said}.")
+        for line in voice_lines(state, persona):
+            console.print(f"  - {line}", highlight=False, markup=False)
+
+    @mood_app.command("set")
+    def mood_set(
+        where: Annotated[str, typer.Argument(help="O humor: exuberante, relaxada, ansiosa...")],
+        degree: Annotated[str, typer.Option("--grau", help="leve, medio ou forte.")] = "medio",
+        hours: Annotated[
+            float, typer.Option("--por", help="Por quantas horas (até 72).", min=0.1, max=72)
+        ] = 2.0,
+    ) -> None:
+        """Força o meu humor por um tempo: um teste para você sentir como ele muda a minha fala.
+        Fica registrado como um sentimento de origem "manual" e acaba sozinho."""
+        name = where.strip().lower()
+        if name not in OCTANTS.values():
+            voice.say(console, f"Não conheço esse humor. Use um destes: {MOODS}.", "red")
+            raise typer.Exit(1)
+        if degree not in FORCE_DEGREES:
+            voice.say(console, "O grau é leve, medio ou forte.", "red")
+            raise typer.Exit(1)
+        data = _open(console)
+        try:
+            affect = AffectBook(data).force(name, degree, hours)
+            data.journal.save(
+                JournalEntry(
+                    "note",
+                    f"O Petrus forçou o meu humor: {name} ({degree}) por {hours:g} h.",
+                    data={"affect": affect.id},
+                )
+            )
+        finally:
+            data.close()
+        voice.say(console, f"Pronto: estou {name} ({degree}) pelas próximas {hours:g} h.")
+
+    @mood_app.command("clear")
+    def mood_clear() -> None:
+        """Encerra agora o humor forçado (o meu humor volta a ser o que eu sinto)."""
+        data = _open(console)
+        try:
+            ended = AffectBook(data).release()
+        finally:
+            data.close()
+        voice.say(
+            console, "Voltei ao meu humor de verdade." if ended else "Não havia humor forçado."
+        )
 
     persona_app = typer.Typer(
         help="A minha personalidade viva: ver, conferir o histórico e voltar atrás.",

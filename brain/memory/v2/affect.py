@@ -26,7 +26,7 @@ from brain.config import V2AffectSettings, settings
 from brain.eventlog import event_log
 from brain.memory.v2.guards import Rejection, check_affect
 from brain.memory.v2.models import Affect, Concern, utcnow
-from brain.memory.v2.pad import PAD, QUIET_SHIFT, Temperament, emotion_pad, temperament
+from brain.memory.v2.pad import OCTANTS, PAD, QUIET_SHIFT, Temperament, emotion_pad, temperament
 
 if TYPE_CHECKING:
     from brain.memory.v2.store import V2Data
@@ -38,6 +38,10 @@ ECHO_HOURS = 48  # a feeling that already faded still "echoes" in how she says s
 ECHO_MIN_INTENSITY = 0.3
 EXPRESS_TOP = 2  # how many feelings show in the state
 MOOD_FLOOR = 0.08  # below this the mood is neutral and says nothing
+
+# `juniper mood set` (ADR-030, section 7): the size of each axis for each degree.
+FORCE_DEGREES = {"leve": 0.18, "medio": 0.35, "forte": 0.6}
+FORCE_CAUSE = "manual:mood-set"
 
 _APOLOGY = re.compile(r"\b(desculp\w*|perdao|me perdoa\w*|foi mal|sinto muito)\b")
 
@@ -202,10 +206,14 @@ class AffectBook:
         return timedelta(hours=self.config.emotion_half_life_hours)
 
     def strength(self, affect: Affect, now: datetime | None = None) -> float:
-        """The intensity the feeling has now (an undone grievance has none)."""
-        if affect.resolved_at is not None:
+        """The intensity the feeling has now (an undone grievance or an ended forced mood has
+        none; a forced mood holds steady until it ends)."""
+        now = now or self.clock()
+        if affect.resolved_at is not None and affect.resolved_at <= now:
             return 0.0
-        age = (now or self.clock()) - affect.occurred_at
+        if affect.origin == "manual":
+            return affect.intensity if affect.occurred_at <= now else 0.0
+        age = now - affect.occurred_at
         return affect.intensity * _decay(age, self._half_life(affect))
 
     def pad_of(self, affect: Affect) -> PAD:
@@ -219,12 +227,17 @@ class AffectBook:
         ``intensity x reactivity`` toward its PAD point and fades with the mood's half-life (longer
         for a volatile temperament); many pushes saturate softly inside -1..1."""
         now = now or self.clock()
+        forced = self.forced(now)
+        if forced is not None:
+            return PAD(*forced.pad)  # `juniper mood set`: the mood is what was asked, until it ends
         temper = temper or self.temper
         half = timedelta(days=self.config.mood_half_life_days * temper.lingering)
         push = PAD()
         for a in self.data.affects.list():
-            if a.resolved_at is not None or a.occurred_at > now:
-                continue  # an undone grievance, or something that had not happened yet at ``now``
+            if a.origin == "manual" or a.occurred_at > now:
+                continue  # a forced mood, or something that had not happened yet at ``now``
+            if a.resolved_at is not None and a.resolved_at <= now:
+                continue  # an undone grievance
             weight = a.intensity * temper.reactivity * _decay(now - a.occurred_at, half)
             push = push + self.pad_of(a).scaled(weight)
         return push.soft()
@@ -243,7 +256,7 @@ class AffectBook:
         if not self.active:
             return AffectState()
         now = now or self.clock()
-        affects = self.data.affects.list()
+        affects = [a for a in self.data.affects.list() if a.origin != "manual"]
         felt = [Felt(a, self.strength(a, now)) for a in affects]
         visible = sorted(
             (f for f in felt if f.strength >= VISIBLE_BELOW), key=lambda f: -f.strength
@@ -271,6 +284,58 @@ class AffectBook:
             echoes=echoing[:1],
             now=now,
         )
+
+    # --- a forced mood (``juniper mood set``) --------------------------------------------------
+
+    def force(
+        self, where: str, degree: str = "medio", hours: float = 2.0, now: datetime | None = None
+    ) -> Affect:
+        """Hold her mood at an octant for ``hours`` (a test of how it sounds). It is recorded
+        as a feeling of origin ``manual``, ends by itself and ends any earlier forced mood."""
+        if where not in OCTANTS.values():
+            raise ValueError(f"humor desconhecido: {where}")
+        if degree not in FORCE_DEGREES or not 0 < hours <= 72:
+            raise ValueError("grau ou duração inválidos")
+        now = now or self.clock()
+        self.release(now)
+        sign = next(key for key, name in OCTANTS.items() if name == where)
+        size = FORCE_DEGREES[degree]
+        point = PAD(*(s * size for s in sign))
+        affect = Affect(
+            kind=where,
+            valence=point.p,
+            intensity=1.0,
+            cause=[FORCE_CAUSE],
+            about="self",
+            origin="manual",
+            occurred_at=now,
+            resolved_at=now + timedelta(hours=hours),
+            created_at=now,
+            pad=point.as_list(),
+        )
+        self.data.affects.save(affect)
+        event_log.log("mood_forced", mood=where, degree=degree, hours=hours)
+        return affect
+
+    def forced(self, now: datetime | None = None) -> Affect | None:
+        """The forced mood in effect at ``now``, if any."""
+        now = now or self.clock()
+        active = [
+            a
+            for a in self.data.affects.list({"origin": "manual"})
+            if a.occurred_at <= now and (a.resolved_at is None or a.resolved_at > now) and a.pad
+        ]
+        return max(active, key=lambda a: a.occurred_at, default=None)
+
+    def release(self, now: datetime | None = None) -> int:
+        """End the forced mood now. Returns how many were ended."""
+        now = now or self.clock()
+        ended = 0
+        for a in self.data.affects.list({"origin": "manual"}):
+            if a.resolved_at is None or a.resolved_at > now:
+                self.data.affects.update(a.id, resolved_at=now)
+                ended += 1
+        return ended
 
     # --- repair and upkeep --------------------------------------------------------------------
 

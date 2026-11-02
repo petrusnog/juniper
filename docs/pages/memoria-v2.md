@@ -202,6 +202,16 @@ A Camada 4 é o que a Juniper **sentiu** com o que viveu. Um momento é medido c
 - **Em cadeia:** sentimentos do mesmo tipo **se somam** no estado (limite 1,0): duas ou três provocações seguidas viram uma irritação forte. `juniper memory affect` mostra o id e a origem de cada sentimento (conversa ou sonho), e `juniper memory affect show <id>` **rastreia** um deles: a fala do usuário que o causou (e o que ela respondeu, exceto depois de tools), a preocupação atingida e a crença ligada, se houver.
 - **Sem rancor que vira dano:** sentimento negativo pode ser **dito**, mas nunca muda utilidade, lealdade, tom de acolhimento ou o cuidado com as tools. Estruturalmente: o afeto só vira texto do prompt; `affect.py` e `feel.py` não importam o `Dispatcher`, o `consent` nem as tools (um teste confere), e o `Dispatcher` não conhece o afeto. Sentimento também nunca é alavanca sobre as decisões do usuário.
 
+## A voz: o humor na fala {#voz kind=módulo file=brain/memory/v2/tone.py}
+
+O `<estado>` diz o que ela sente; o bloco **`<voz>`** ([ADR-030](../decisions/ADR-030.md)) diz **como isso soa agora**, em ordens concretas de tom montadas por código a partir do deslocamento do humor (o octante PAD), da emoção mais forte e dos traços: tamanho das frases, ritmo, pontuação, humor, calor, franqueza, iniciativa e emoji. Exemplos: **hostil** → "frases curtas e secas, sem emoji e sem brincadeira; vá direto ao ponto" (com ironia alta, "uma ironia seca pode escapar"); **exuberante** → "fala com energia, pode se alongar, usar exclamação e puxar assunto; uma brincadeira cabe"; **entediada** → "fala baixa e lenta, sem exclamação, sem puxar assunto". Um sentimento forte é dito ("você está com irritação com ele: pode dizer isso, com as suas palavras").
+
+- **É ordem de tom**, não dado opcional ([ADR-029](../decisions/ADR-029.md)), e o núcleo guarda a outra metade da regra: a escolha de ferramentas, os argumentos, as confirmações e os fatos relatados **nunca** seguem a voz.
+- O vocabulário desce até seca, curta, irritada e desdenhosa; o bloco nunca manda humilhar ou ofender.
+- No jeito de sempre (humor perto do repouso e nada forte), o bloco não aparece. Mesmo estado, mesmo texto.
+
+**Sentir a diferença: `juniper mood`.** `juniper mood set <humor> [--grau leve|medio|forte] [--por 2]` força o humor (um dos 8 octantes) por algumas horas (até 72): fica registrado como um sentimento de origem `manual`, com o ponto PAD explícito, aparece no diário e acaba sozinho; enquanto vale, o humor é exatamente o pedido e não conta como sentimento. `juniper mood clear` encerra antes; `juniper mood show` mostra o ponto PAD, o repouso, o deslocamento e as ordens de tom de agora. O teste de humor (aceite) compara as ordens de +0,6 e -0,6.
+
 ## Estado afetivo na conversa {#estado kind=módulo file=brain/memory/v2/distress.py}
 
 O afeto chega à conversa só como **texto**, no bloco `<estado>` (de 1 a 2 linhas: o humor de hoje e o que mais pesou), logo depois das opiniões. O cabeçalho pede que o estado apareça no jeito de falar (tom, ritmo, humor, paciência), sem mudar o que ela faz com as ferramentas nem os fatos, e sem virar alavanca sobre o que o usuário decide. Sem sentimentos, ou com `memory.v2.affect.enabled: false` ou `intensity: 0`, o bloco some e o prompt é idêntico ao de antes.
