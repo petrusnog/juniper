@@ -27,6 +27,11 @@ def bind(learner: Learner | None) -> None:
     _learner = learner
 
 
+def learner() -> Learner | None:
+    """The bound learner (``None`` when the web study is off)."""
+    return _learner
+
+
 @register_tool
 class LearnTopic(Tool):
     name = "learn_topic"

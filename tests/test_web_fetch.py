@@ -242,5 +242,5 @@ async def test_the_tool_wraps_the_page_as_untrusted_and_failures_are_typed() -> 
     finally:
         web_tools.bind(None)
     assert ok.success and UNTRUSTED_OPEN in (ok.output or "") and "anos 60" in (ok.output or "")
-    assert ok.metadata == {"domain": "exemplo.org", "truncated": False}
+    assert ok.metadata == {"domain": "exemplo.org", "truncated": False, "learned": False}
     assert not bad.success and bad.metadata == {"code": "private"}
