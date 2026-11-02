@@ -140,7 +140,7 @@ juniper memory dream [--dry-run]
 juniper memory prompt "<mensagem>" [--anterior "..."]   # o que a V2 acrescenta ao prompt
 ```
 
-A personalidade viva tem os seus: `juniper persona show` (traços, versão, deriva), `persona history` e `persona revert [--to N] [--yes]` (volta a uma versão anterior como uma versão nova). Os comandos `beliefs`, `concerns`, `affect`, `journal` e `dream` são da [Memória V2](memoria-v2.md): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
+A personalidade viva tem os seus: `juniper persona show` (traços, versão, deriva), `persona history` e `persona revert [--to N] [--yes]` (volta a uma versão anterior como uma versão nova). O humor também: `juniper mood show` (ponto PAD e as ordens de tom de agora), `mood set <humor> [--grau] [--por]` (força um dos 8 octantes por algumas horas, para sentir a diferença) e `mood clear` ([Memória V2](memoria-v2.md#voz)). Os comandos `beliefs`, `concerns`, `affect`, `journal` e `dream` são da [Memória V2](memoria-v2.md): leem o banco do processo onde rodam e, com a V2 desligada, dizem isso.
 
 | Comando | O que faz |
 |---|---|

@@ -325,6 +325,75 @@ class OpenUrlSettings(BaseModel):
         return domains
 
 
+WEB_SEARCH_PROVIDERS = ("tavily", "searxng", "duckduckgo")
+
+
+class WebSearchProviderSettings(BaseModel):
+    """Um provedor de busca na web, na ordem do failover (ADR-031)."""
+
+    name: str = Field(pattern=r"^(tavily|searxng|duckduckgo)$")
+    enabled: bool = True
+    # Buscas por mês (UTC) que o cérebro aceita gastar neste provedor. 0 = sem limite.
+    monthly_limit: int = Field(default=0, ge=0, le=1_000_000)
+    # Só o SearXNG: a URL do serviço (ex.: http://searxng:8080). Sem URL, ele é pulado.
+    url: str | None = None
+
+
+def _default_search_providers() -> list[WebSearchProviderSettings]:
+    return [
+        # O plano gratuito do Tavily dá 1000 créditos por mês (não conferido); fica uma margem.
+        WebSearchProviderSettings(name="tavily", monthly_limit=900),
+        WebSearchProviderSettings(name="searxng"),
+        WebSearchProviderSettings(name="duckduckgo"),
+    ]
+
+
+class WebSearchSettings(BaseModel):
+    """Busca na web com failover (ADR-031)."""
+
+    providers: list[WebSearchProviderSettings] = Field(default_factory=_default_search_providers)
+    max_results: int = Field(default=5, ge=1, le=10)
+    timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    # A URL do SearXNG quando o provedor não traz a sua (no compose: http://searxng:8080).
+    searxng_url: str | None = None
+    quota_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "web" / "quota.json"
+    )
+
+    @field_validator("quota_file")
+    @classmethod
+    def _expand_quota(cls, v: Path) -> Path:
+        return v.expanduser()
+
+
+class WebFetchSettings(BaseModel):
+    """Baixar uma página no servidor, com a política contra SSRF (ADR-031, seção 3)."""
+
+    timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    max_bytes: int = Field(default=2_000_000, ge=10_000, le=20_000_000)
+    max_redirects: int = Field(default=3, ge=0, le=10)
+    # Teto do texto extraído que volta para o modelo.
+    max_chars: int = Field(default=8000, ge=500, le=50_000)
+
+
+class WebDreamSettings(BaseModel):
+    """O estudo do sonho pela web (ADR-031, seção 6)."""
+
+    # Estuda pela web quando houver provedor. Desligado, o estudo volta a ser só do modelo.
+    enabled: bool = True
+    # Teto de aprendizados (buscas) por noite, para caber na cota gratuita.
+    max_searches: int = Field(default=30, ge=0, le=500)
+
+
+class WebSettings(BaseModel):
+    """Web: a memória fala, a web ensina (ADR-031)."""
+
+    enabled: bool = True
+    search: WebSearchSettings = Field(default_factory=WebSearchSettings)
+    fetch: WebFetchSettings = Field(default_factory=WebFetchSettings)
+    dream: WebDreamSettings = Field(default_factory=WebDreamSettings)
+
+
 class ToolsSettings(BaseModel):
     """Configuração agregada das tools."""
 
@@ -483,6 +552,12 @@ class V2NightSettings(BaseModel):
     # lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então
     # uma conversa lida pela metade continua de onde parou.
     quiet_minutes: int = Field(default=0, ge=0, le=1440)
+    # REM (ADR-030): por noite, a carga emocional das lembranças cai esta fração, mas nunca abaixo
+    # do piso: o conteúdo fica, a emoção esfria ("dormir para esquecer e para lembrar").
+    rem_relief: float = Field(default=0.1, ge=0.0, le=0.9)
+    rem_floor: float = Field(default=0.15, ge=0.0, le=1.0)
+    # Poda: notas da web vencidas há mais de `prune_after` vezes a validade saem.
+    prune_after: float = Field(default=2.0, ge=1.0, le=20.0)
 
     @field_validator("at")
     @classmethod
@@ -499,6 +574,9 @@ class V2BeliefSettings(BaseModel):
     min_evidence: int = Field(default=2, ge=1, le=20)
     # Teto de crenças novas por noite.
     max_new_per_night: int = Field(default=10, ge=0, le=50)
+    # Erro de previsão (ADR-030): o peso de uma evidência inferida cresce com a surpresa,
+    # peso x (1 + surpresa x |resultado - confiança|). 0 desliga (peso fixo, como na V2).
+    surprise: float = Field(default=1.0, ge=0.0, le=3.0)
 
 
 class ConcernDefault(BaseModel):
@@ -571,40 +649,10 @@ class V2InterestSettings(BaseModel):
     max_notes_per_topic: int = Field(default=40, ge=5, le=500)
     # Perguntas em aberto que um passo deixa para o seguinte.
     max_open_questions: int = Field(default=5, ge=0, le=20)
-    # Temas técnicos (código, ferramentas, sistemas) não viram tema de estudo noturno.
-    excluded_terms: list[str] = Field(
-        default_factory=lambda: [
-            "python",
-            "java",
-            "javascript",
-            "typescript",
-            "código",
-            "codigo",
-            "programação",
-            "programacao",
-            "software",
-            "framework",
-            "biblioteca",
-            "api",
-            "docker",
-            "kubernetes",
-            "git",
-            "github",
-            "linux",
-            "terminal",
-            "servidor",
-            "banco de dados",
-            "mongodb",
-            "sql",
-            "bug",
-            "deploy",
-            "compilador",
-            "algoritmo",
-            "devops",
-            "backend",
-            "frontend",
-        ]
-    )
+    # Termos de temas que não viram tema de estudo noturno. Vazio por padrão (ADR-031): com as
+    # notas vindas de fontes da web, o tema técnico também é estudável; quem quiser a regra antiga
+    # lista os termos (ex.: python, docker).
+    excluded_terms: list[str] = Field(default_factory=list)
 
 
 class V2AffectSettings(BaseModel):
@@ -616,15 +664,20 @@ class V2AffectSettings(BaseModel):
     # Decaimento (pontos de partida a calibrar): a emoção passa em horas, o humor (média móvel)
     # em dias e a mágoa em semanas, mas sempre passa.
     emotion_half_life_hours: float = Field(default=6.0, ge=0.1, le=720.0)
-    mood_half_life_days: float = Field(default=3.0, ge=0.1, le=365.0)
+    # O humor (ADR-030, ALMA) volta ao repouso com esta meia-vida, mais longa num temperamento
+    # volátil. Meio dia: o humor se sente no mesmo dia e passa.
+    mood_half_life_days: float = Field(default=0.5, ge=0.05, le=365.0)
     grievance_half_life_days: float = Field(default=14.0, ge=0.1, le=365.0)
     # Teto da intensidade de uma mágoa, para ela nunca virar o centro da conversa.
     grievance_cap: float = Field(default=0.6, ge=0.0, le=1.0)
-    # Reações em tempo real, durante a conversa: sutis (o sonho é que traz as intensas, até 1,0).
+    # Reações em tempo real, durante a conversa (ADR-030): toda mensagem pode mexer com ela; o
+    # sonho é que traz as mais intensas, até 1,0.
     live: bool = True
-    live_max_intensity: float = Field(default=0.3, ge=0.0, le=1.0)
-    # Teto de reações por hora, para ninguém "programar" as emoções dela com spam.
-    live_max_per_hour: int = Field(default=12, ge=0, le=200)
+    live_max_intensity: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Teto de reações por hora e de intensidade somada por hora, para ninguém "programar" o humor
+    # dela com spam.
+    live_max_per_hour: int = Field(default=60, ge=0, le=500)
+    live_max_shift_per_hour: float = Field(default=1.5, ge=0.0, le=20.0)
     # Sentimentos novos por noite.
     max_per_night: int = Field(default=10, ge=0, le=50)
 
@@ -644,32 +697,41 @@ class TraitDefault(BaseModel):
         return self
 
 
+# Big Five em 10 aspectos (DeYoung, Quilty e Peterson, 2007) mais a ironia (ADR-030, seção 4).
+# Pontos de partida [a calibrar]; os que vêm da V2 herdam o valor do traço antigo na migração.
 DEFAULT_TRAITS = [
-    TraitDefault(name="brincadeira", baseline=0.6, min=0.2, max=0.9),
-    TraitDefault(name="franqueza", baseline=0.7, min=0.3, max=0.95),
-    TraitDefault(name="introspecção", baseline=0.4, min=0.1, max=0.8),
-    TraitDefault(name="carinho", baseline=0.8, min=0.4, max=1.0),
-    TraitDefault(name="proatividade", baseline=0.7, min=0.3, max=0.95),
-    TraitDefault(name="ironia", baseline=0.5, min=0.1, max=0.8),
+    TraitDefault(name="volatilidade", baseline=0.4, min=0.05, max=0.95),
+    TraitDefault(name="retraimento", baseline=0.3, min=0.05, max=0.95),
+    TraitDefault(name="compaixão", baseline=0.8, min=0.05, max=0.95),
+    TraitDefault(name="polidez", baseline=0.4, min=0.05, max=0.95),
+    TraitDefault(name="diligência", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="ordem", baseline=0.5, min=0.05, max=0.95),
+    TraitDefault(name="entusiasmo", baseline=0.6, min=0.05, max=0.95),
+    TraitDefault(name="assertividade", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="abertura", baseline=0.7, min=0.05, max=0.95),
+    TraitDefault(name="intelecto", baseline=0.6, min=0.05, max=0.95),
+    TraitDefault(name="ironia", baseline=0.5, min=0.05, max=0.95),
 ]
 
 
 class V2PersonaSettings(BaseModel):
-    """Personalidade viva (ADR-017, seção 8)."""
+    """Personalidade viva (ADR-017, seção 8; algoritmo da V3 no ADR-030, seção 5)."""
 
     # Deixa os traços mudarem com o que ela vive. Desligado, ficam no baseline.
     evolves: bool = True
+    # Por noite, o traço anda esta fração do caminho até a média dos estados expressos no dia.
+    alpha: float = Field(default=0.1, ge=0.0, le=1.0)
     # Passo máximo de um traço por noite.
-    max_step: float = Field(default=0.06, ge=0.0, le=0.2)
-    # Só há mudança com impacto (relevância x intensidade x novidade) a partir daqui.
-    impact_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    # O passo de um traço é min(max_step, step_factor x impacto) por noite.
-    step_factor: float = Field(default=0.1, ge=0.0, le=1.0)
+    max_step: float = Field(default=0.05, ge=0.0, le=0.2)
+    # O quanto o traço pode se afastar do ponto de partida (o ponto de partida também anda).
+    max_band: float = Field(default=0.25, ge=0.0, le=1.0)
+    # Maturação: por dia, o ponto de partida anda esta fração do caminho até o traço.
+    maturation: float = Field(default=0.01, ge=0.0, le=0.2)
+    # Peso do humor do dia como mais uma "conversa" no cálculo dos estados (0 desliga).
+    mood_weight: float = Field(default=0.5, ge=0.0, le=2.0)
     # Na conversa, o bloco <personalidade> sempre diz como ela está hoje (todos os traços, em
     # palavras). Desligado, só diz o que se afastou do jeito de sempre e o que a marcou.
     always_describe: bool = True
-    # Meia-vida do retorno ao baseline: uma fase passa.
-    baseline_half_life_days: float = Field(default=30.0, ge=1.0, le=3650.0)
     # Deriva (distância média dos traços ao baseline) a partir da qual entra um aviso no diário.
     drift_warning: float = Field(default=0.1, ge=0.0, le=1.0)
     # Os traços do ponto de partida (ajustáveis pelo Petrus; uma lista nova substitui a lista toda).
@@ -680,8 +742,24 @@ class V2OpinionSettings(BaseModel):
     """Opiniões dela na conversa (ADR-017, seção 10)."""
 
     # Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto de 3 fontes ou mais)
-    # entram em toda conversa, além das que tocam o assunto. 0 desliga. Nunca no modo de acolher.
+    # entram em toda conversa, além das que tocam o assunto. 0 desliga.
     always_on: int = Field(default=2, ge=0, le=5)
+
+
+class V2KnowledgeSettings(BaseModel):
+    """Conhecimento fundamentado: a memória fala, a web ensina (ADR-031)."""
+
+    # Estrito: fatos sobre o mundo só das notas dela; sem nota, ela aprende (learn_topic) ou diz
+    # que ainda não sabe. Desligado, vale o ADR-019: sem nota, responde com o que o modelo sabe.
+    strict: bool = True
+    # Validade de uma nota da web, pela volatilidade do que ela diz. Vencida, deixa de contar
+    # como conhecimento e o próximo uso a reaprende.
+    news_hours: float = Field(default=12.0, ge=1.0, le=720.0)
+    current_days: float = Field(default=7.0, ge=1.0, le=365.0)
+    stable_days: float = Field(default=180.0, ge=1.0, le=3650.0)
+    # Fontes (de domínios diferentes) lidas por aprendizado, e o texto máximo de cada uma.
+    learn_sources: int = Field(default=3, ge=1, le=6)
+    learn_chars: int = Field(default=6000, ge=500, le=20_000)
 
 
 class V2RefineSettings(BaseModel):
@@ -707,6 +785,7 @@ class MemoryV2Settings(BaseModel):
     beliefs: V2BeliefSettings = Field(default_factory=V2BeliefSettings)
     opinions: V2OpinionSettings = Field(default_factory=V2OpinionSettings)
     refine: V2RefineSettings = Field(default_factory=V2RefineSettings)
+    knowledge: V2KnowledgeSettings = Field(default_factory=V2KnowledgeSettings)
     concerns: V2ConcernSettings = Field(default_factory=V2ConcernSettings)
     interests: V2InterestSettings = Field(default_factory=V2InterestSettings)
     affect: V2AffectSettings = Field(default_factory=V2AffectSettings)
@@ -879,11 +958,13 @@ class Settings(BaseSettings):
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     app_update: AppUpdateSettings = Field(default_factory=AppUpdateSettings)
     metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)
+    web: WebSettings = Field(default_factory=WebSettings)
 
     # Segredos (sempre via env)
     groq_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_GROQ_API_KEY")
     deepinfra_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_DEEPINFRA_API_KEY")
     youtube_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_YOUTUBE_API_KEY")
+    tavily_api_key: SecretStr | None = Field(default=None, alias="JUNIPER_TAVILY_API_KEY")
     youtube_client_id: str | None = Field(default=None, alias="JUNIPER_YOUTUBE_CLIENT_ID")
     youtube_client_secret: SecretStr | None = Field(
         default=None, alias="JUNIPER_YOUTUBE_CLIENT_SECRET"

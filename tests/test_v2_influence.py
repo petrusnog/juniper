@@ -104,12 +104,12 @@ async def test_always_on_zero_switches_it_off() -> None:
     ).block is None
 
 
-async def test_never_in_the_welcome_mode() -> None:
+async def test_also_when_he_is_hurting() -> None:
     data = V2Data.over(InMemoryDocStore())
     firm(data, "Acho que o Petrus planeja tudo em planilhas.")
     ctx = context(data, opinions=V2OpinionSettings(always_on=2))
     block = (await ctx.context_for("minha avó faleceu hoje")).block or ""
-    assert "Acolha primeiro" in block and "(visão geral)" not in block
+    assert "difícil agora" in block and "(visão geral)" in block  # ADR-029
 
 
 async def test_the_general_view_works_while_the_embedding_model_loads() -> None:
@@ -144,7 +144,7 @@ async def test_the_general_view_respects_the_token_budget() -> None:
 def test_the_defaults_make_the_v2_speak_more() -> None:
     v2 = MemoryV2Settings()
     assert v2.opinions.always_on == 2 and v2.persona.always_describe is True
-    assert (v2.persona.max_step, v2.persona.step_factor) == (0.06, 0.1)
+    assert (v2.persona.max_step, v2.persona.alpha) == (0.05, 0.1)
     assert QUIET["opinions"].always_on == 0  # the test helper silences them on purpose
 
 

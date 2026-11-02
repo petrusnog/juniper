@@ -19,6 +19,11 @@ def trace_affect(data: V2Data, affect: Affect, *, transcripts: bool = True) -> l
     return [_trace(data, ref, transcripts) for ref in affect.cause]
 
 
+def trace_refs(data: V2Data, refs: list[str], *, transcripts: bool = True) -> list[dict[str, Any]]:
+    """The same resolution for any list of references (the events behind a personality version)."""
+    return [_trace(data, ref, transcripts) for ref in refs]
+
+
 def _trace(data: V2Data, ref: str, transcripts: bool) -> dict[str, Any]:
     kind, _, rest = ref.partition(":")
     if kind == "turn":

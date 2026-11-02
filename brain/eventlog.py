@@ -91,6 +91,7 @@ def _mask_known_key(text: str) -> str:
         settings.deepinfra_api_key,
         settings.youtube_api_key,
         settings.youtube_client_secret,
+        settings.tavily_api_key,
     ):
         secret = key.get_secret_value() if key else ""
         if len(secret) >= 8:

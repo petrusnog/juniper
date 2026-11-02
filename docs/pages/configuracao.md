@@ -37,6 +37,7 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `JUNIPER_GROQ_API_KEY` | Chave da Groq (console.groq.com/keys). |
 | `JUNIPER_YOUTUBE_CLIENT_ID` · `JUNIPER_YOUTUBE_CLIENT_SECRET` | Cliente OAuth do Google (tipo "TVs e dispositivos de entrada limitada") para o login no YouTube das playlists. A chave é segredo: nunca em código, imagem, log nem PR ([Música](musica.md#login)). |
 | `JUNIPER_YOUTUBE_API_KEY` | Chave da YouTube Data API v3 (busca de músicas; restrinja a chave a essa API no Console). Segredo: nunca em código, imagem, log nem PR ([Música](musica.md)). |
+| `JUNIPER_TAVILY_API_KEY` | Chave do Tavily (busca na web, plano gratuito; app.tavily.com). Sem ela, a busca usa o SearXNG e o DuckDuckGo. Segredo: nunca em código, imagem, log nem PR ([ADR-031](../decisions/ADR-031.md)). |
 | `JUNIPER_MEMORY__MONGO__USERNAME` | Usuário do MongoDB (lido também pelo `docker-compose.yml`). |
 | `JUNIPER_MEMORY__MONGO__PASSWORD` | Senha do MongoDB. |
 | `JUNIPER_CONFIG_PATH` | Caminho do `config.yaml`. |
@@ -102,39 +103,49 @@ Prefixo `JUNIPER_`, aninhamento com `__`: `JUNIPER_LLM__OLLAMA__URL` vale `llm.o
 | `memory.v2.beliefs.half_life_days` | `60` | Meia-vida do decaimento das crenças: sem reforço, a confiança volta à incerteza. |
 | `memory.v2.beliefs.min_evidence` | `2` | Evidência mínima (de dias ou sessões diferentes) para uma hipótese virar crença. |
 | `memory.v2.beliefs.max_new_per_night` | `10` | Teto de crenças novas por noite. |
-| `memory.v2.opinions.always_on` | `2` | Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto com 3 fontes ou mais) entram em toda conversa, como visão geral, além das que tocam o assunto. 0 desliga; nunca no modo de acolher. |
+| `memory.v2.night.rem_relief` | `0.1` | REM ([ADR-030](../decisions/ADR-030.md)): por noite, a carga emocional guardada nas lembranças refinadas cai esta fração, mas nunca abaixo de `rem_floor`; o fato não muda. |
+| `memory.v2.night.rem_floor` | `0.15` | Piso da carga emocional de uma lembrança no REM. |
+| `memory.v2.night.prune_after` | `2.0` | Poda: notas da web vencidas há mais de tantas vezes a validade saem do caderno. |
+| `memory.v2.beliefs.surprise` | `1.0` | Erro de previsão ([ADR-030](../decisions/ADR-030.md)): o peso de uma evidência inferida cresce com a surpresa, `peso × (1 + surpresa × |resultado − confiança|)`. Uma contradição de uma crença firme pesa mais que a de uma crença fraca. A palavra do usuário (explícito, confirmação, negação) mantém o peso fixo. 0 desliga. |
+| `memory.v2.opinions.always_on` | `2` | Quantas das crenças mais firmes (faixa "tenho bastante certeza", portanto com 3 fontes ou mais) entram em toda conversa, como visão geral, **de cada camada** (sobre ele, sobre ela mesma e sobre o mundo), além das que tocam o assunto. 0 desliga. |
 | `memory.v2.concerns.defaults` | cinco itens | O ponto de partida das preocupações (`id`, `name`, `weight` de 0 a 1, `description`): bem-estar do usuário, honestidade, curiosidade, capricho e autonomia do usuário. É carregado no banco na primeira vez; depois quem manda é o usuário (`juniper memory concerns set`), e mudar a lista não sobrescreve o que já existe. |
 | `memory.v2.concerns.max_monthly_change` | `0.05` | Quanto o algoritmo de sonho pode mexer num peso por mês (por item). O usuário não tem teto. |
 | `memory.v2.concerns.min_impact` | `0.8` | Impacto mínimo de um evento para a noite mexer num peso. |
-| `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (sem web, com o conhecimento do modelo avançado). |
+| `memory.v2.interests.max_per_night` | `10` | Temas que ela estuda por noite (lendo a web quando há provedor, [ADR-031](../decisions/ADR-031.md); senão, com o conhecimento do modelo avançado). |
 | `memory.v2.interests.max_seeds_per_night` | `5` | Temas novos que a noite pode semear a partir do que o usuário escreveu (só o tema, nunca a opinião dele). |
 | `memory.v2.interests.half_life_days` | `45` | Sem contato, a intensidade de um interesse cai pela metade nesse tempo. |
 | `memory.v2.interests.study_gap_hours` | `18` | Intervalo mínimo entre dois passos do estudo do mesmo tema (um passo por tema por noite). |
 | `memory.v2.interests.max_notes_per_topic` | `40` | Notas de afirmação por tema; passando disso, saem as mais antigas e incertas. |
 | `memory.v2.interests.max_open_questions` | `5` | Perguntas em aberto que um passo deixa para o seguinte. |
-| `memory.v2.interests.excluded_terms` | lista | Palavras de temas técnicos (código, ferramentas, sistemas) que não viram tema de estudo noturno. O ensino explícito do usuário não passa por essa regra. |
+| `memory.v2.interests.excluded_terms` | vazia | Palavras de temas que não viram tema de estudo noturno (ex.: `python`, `docker`). Vazia por padrão desde o [ADR-031](../decisions/ADR-031.md): as notas vêm da web, então o tema técnico também é estudável. O ensino explícito do usuário (`study add`) nunca passa por essa regra. |
 | `memory.v2.affect.enabled` | `true` | Liga os sentimentos da Juniper. |
 | `memory.v2.affect.intensity` | `1.0` | Escala o registro e a expressão dos sentimentos de 0 a 1; com 0, nada é registrado nem mostrado. |
 | `memory.v2.affect.emotion_half_life_hours` | `6` | Meia-vida de uma emoção: passa em horas. |
-| `memory.v2.affect.mood_half_life_days` | `3` | Meia-vida do humor (média móvel do que ela sentiu): passa em dias. |
+| `memory.v2.affect.mood_half_life_days` | `0.5` | Meia-vida do humor ([ADR-030](../decisions/ADR-030.md)): quanto tempo o empurrão das emoções leva para cair à metade e ela voltar ao repouso. Num temperamento volátil dura mais (até 1,5 vez). |
 | `memory.v2.affect.grievance_half_life_days` | `14` | Meia-vida de uma mágoa: lenta, mas sempre passa; some de vez se o usuário voltar a conversar ou pedir desculpas. |
 | `memory.v2.affect.grievance_cap` | `0.6` | Teto da intensidade de uma mágoa. |
 | `memory.v2.affect.live` | `true` | Liga as reações em tempo real: depois de cada mensagem, em segundo plano, o modelo barato julga se ela provoca uma reação intensa; mensagem comum não gera nada. |
-| `memory.v2.affect.live_max_intensity` | `0.3` | Teto da intensidade de uma reação nascida na conversa (sutil). Só o sonho chega a 1,0. O dial `affect.intensity` continua escalando. |
-| `memory.v2.affect.live_max_per_hour` | `12` | Reações por hora, para ninguém programar as emoções dela com spam. 0 desliga. |
+| `memory.v2.affect.live_max_intensity` | `0.6` | Teto da intensidade de uma reação nascida na conversa. Só o sonho chega a 1,0. O dial `affect.intensity` continua escalando. |
+| `memory.v2.affect.live_max_per_hour` | `60` | Reações por hora (quase toda mensagem pode mexer com ela). 0 desliga. |
+| `memory.v2.affect.live_max_shift_per_hour` | `1.5` | Intensidade somada das reações da conversa por hora: passou disso, as mensagens seguintes não mexem até a hora virar. É o que impede alguém de programar o humor dela com spam. |
 | `memory.v2.affect.max_per_night` | `10` | Sentimentos novos por noite. |
 | `memory.v2.persona.evolves` | `true` | Deixa os traços da personalidade mudarem com o que ela vive; desligado, ficam no ponto de partida. |
 | `memory.v2.refine.enabled` | `true` | Liga o refinamento: o sonho transforma memórias brutas em lembranças (contexto, sentimento, como ela era, ligações, relevância). A bruta fica como `superseded` ([ADR-018](../decisions/ADR-018.md)). |
 | `memory.v2.refine.max_per_night` | `20` | Quantas memórias brutas o sonho refina por noite, das mais recentes para as mais antigas. 0 desliga. |
 | `memory.v2.refine.context_turns` | `2` | Quantos turnos de cada lado do turno de origem entram como contexto da lembrança. |
 | `memory.v2.refine.neighbors` | `3` | Quantas memórias vizinhas são oferecidas ao modelo como possíveis ligações. 0 não oferece nenhuma. |
-| `memory.v2.persona.max_step` | `0.06` | Passo máximo de um traço por sonho. |
-| `memory.v2.persona.impact_threshold` | `0.6` | Impacto mínimo (preocupação × intensidade × novidade) para um traço mudar. |
-| `memory.v2.persona.step_factor` | `0.1` | O passo de um traço por noite é `min(max_step, step_factor × impacto)`. |
+| `memory.v2.persona.alpha` | `0.1` | Por noite, o traço anda esta fração do caminho até a média dos estados que ela expressou no dia ([ADR-030](../decisions/ADR-030.md)). |
+| `memory.v2.persona.max_step` | `0.05` | Passo máximo de um traço por sonho. |
+| `memory.v2.persona.max_band` | `0.25` | O quanto um traço pode se afastar do seu ponto de partida (que também anda). |
+| `memory.v2.persona.maturation` | `0.01` | Por dia, o ponto de partida anda esta fração do caminho até o traço: uma fase longa vira jeito de ser. |
+| `memory.v2.persona.mood_weight` | `0.5` | Peso do humor do dia como mais uma amostra de estado (0 desliga). |
 | `memory.v2.persona.always_describe` | `true` | Na conversa, o bloco `<personalidade>` sempre diz como ela está hoje (todos os traços, em palavras graduadas), além do que se afastou do jeito de sempre e do que a marcou. Desligado, só diz o desvio e o que a marcou. |
-| `memory.v2.persona.baseline_half_life_days` | `30` | Meia-vida do retorno de um traço ao seu ponto de partida: uma fase passa. |
 | `memory.v2.persona.drift_warning` | `0.1` | Deriva (distância média dos traços ao ponto de partida) a partir da qual entra um aviso no diário e no `persona show`. |
-| `memory.v2.persona.traits` | seis traços | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): brincadeira, franqueza, introspecção, carinho, proatividade e ironia. Uma lista nova substitui a lista toda. |
+| `memory.v2.persona.traits` | onze aspectos | Os traços do ponto de partida (`name`, `baseline`, `min`, `max`): o Big Five em 10 aspectos (volatilidade, retraimento, compaixão, polidez, diligência, ordem, entusiasmo, assertividade, abertura, intelecto) mais a ironia. Uma lista nova substitui a lista toda; uma personalidade guardada com outros nomes é migrada uma vez, como uma versão nova. |
+| `memory.v2.knowledge.strict` | `true` | Conhecimento só da memória ([ADR-031](../decisions/ADR-031.md)): fatos sobre o mundo só das notas dela; sem nota, ela chama `learn_topic` (aprende na web e grava notas) ou diz que ainda não sabe. Desligado, vale o comportamento antigo: sem nota, responde com o que o modelo sabe. |
+| `memory.v2.knowledge.news_hours` · `memory.v2.knowledge.current_days` · `memory.v2.knowledge.stable_days` | `12` · `7` · `180` | Validade de uma nota da web pela volatilidade (`noticia`, `atual`, `estavel`). Vencida, deixa de contar como conhecimento até ela ler de novo. |
+| `memory.v2.knowledge.learn_sources` | `3` | Fontes, de domínios diferentes, lidas a cada `learn_topic`. |
+| `memory.v2.knowledge.learn_chars` | `6000` | Texto máximo de cada fonte enviado ao modelo que extrai as notas. |
 | `llm.reflection.provider` | vazio | Provider do modelo da reflexão e do estudo noturnos (`deepinfra`, `groq` ou `ollama`). Vazio usa o do chat. |
 | `llm.reflection.model` | vazio | Modelo da reflexão; um modelo mais capaz custa pouco, porque roda uma vez por dia. Vazio usa o do chat. |
 | `logging.wire` | `true` | Grava no log técnico cada requisição e resposta HTTP aos provedores de LLM e à agenda do Google, com cabeçalhos e corpos ([Observabilidade](observabilidade.md#log-tecnico)). O corpo traz o que você disse e o que voltou: segredos são mascarados e o arquivo é `600`. |
@@ -282,6 +293,25 @@ De onde o cérebro serve o APK do app Android ([API HTTP](api-http.md#app-update
 | Opção | Padrão | O que faz |
 |---|---|---|
 | `app_update.dir` | `~/.juniper/app` | Pasta com `app-release.apk` e `latest.json`, escritos por `scripts/publish_app.sh`. Vazia ou ausente: `GET /app/update` responde `{"available": false}`. Em produção é `/home/juniper/.juniper/app`, montada somente leitura do diretório do host definido por `JUNIPER_APP_DIR` (padrão `./app-release`, [Visão geral da produção](producao.md#dados)). |
+
+## web {#web-config}
+
+A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fala, a web ensina. A consulta que sai da VPS vai com os segredos mascarados e no máximo 300 caracteres.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `web.enabled` | `true` | Liga as tools de web (`web_search`, `web_fetch`). Desligado, elas não aparecem para o modelo. |
+| `web.search.providers` | Tavily (900 por mês), SearXNG, DuckDuckGo | Os provedores, **na ordem do failover**. Cada item tem `name` (`tavily`, `searxng` ou `duckduckgo`), `enabled`, `monthly_limit` (buscas por mês UTC; 0 = sem limite) e, só o SearXNG, `url` (sem URL ele é pulado). O Tavily também é pulado sem `JUNIPER_TAVILY_API_KEY`. |
+| `web.search.searxng_url` | vazio | O endereço do SearXNG quando o provedor não traz o seu (no compose: `http://searxng:8080`, vindo de `JUNIPER_SEARXNG_URL`). Vazio: o provedor é pulado ([Produção](producao.md#searxng)). |
+| `web.search.max_results` | `5` | Teto de resultados por busca (1 a 10). |
+| `web.search.timeout_seconds` | `10` | Tempo máximo de cada provedor antes de passar ao próximo. |
+| `web.fetch.timeout_seconds` | `10` | Tempo máximo para baixar uma página (redirecionamentos inclusos). |
+| `web.fetch.max_bytes` | `2000000` | Tamanho máximo lido de uma página; passou disso, o resto é ignorado e o texto vem marcado como cortado. |
+| `web.fetch.max_redirects` | `3` | Redirecionamentos seguidos, cada um conferido de novo pela política. |
+| `web.fetch.max_chars` | `8000` | Teto do texto extraído que volta para o modelo. |
+| `web.dream.enabled` | `true` | O estudo do sonho lê a web quando há provedor de busca. Desligado, o estudo volta a ser só a reflexão do modelo. |
+| `web.dream.max_searches` | `30` | Teto de aprendizados (cada um é uma busca) por noite, para caber na cota gratuita. |
+| `web.search.quota_file` | `~/.juniper/web/quota.json` | O contador mensal de buscas por provedor (modo 600). Arquivo corrompido ou ausente começa o mês do zero. |
 
 ## Como adicionar uma opção {#adicionar}
 

@@ -42,7 +42,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [App mobile](pages/mobile.md): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e…
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
-- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas, ocorrências (com exportação em planilha), pesquisa, logs…
+- [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -54,6 +54,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Memória de sessão](pages/memoria-sessao.md): A conversa atual, o orçamento de tokens, retomar com --resume e onde as conversas ficam (arquivos ou MongoDB).
 - [Memória de longo prazo](pages/memoria-longo-prazo.md): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
 - [Memória V2](pages/memoria-v2.md): A Juniper além dos fatos: crenças com confiança calculada por evidência, sentimentos, interesses e personalidade viva, em…
+- [Memória V3](pages/memoria-v3.md): A Juniper com vontade própria e vida interior: fala livre e ação protegida, humor que se sente na fala, personalidade e crenças…
 ### Núcleo
 
 - [Agente](pages/agente.md): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
@@ -114,6 +115,6 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`
 - [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Aceito) · `api-http`, `dashboard`, `login`, `usuarios`
 - [ADR-028](decisions/ADR-028.md): Ações no dashboard: ocorrências, memória e tarefas (Aceito) · `api-http`, `dashboard`, `ocorrencias`
-- [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Proposto) · `memoria-v2`
-- [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Proposto) · `memoria-v2`
-- [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Proposto) · `memoria-v2`
+- [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Aceito) · `agente`, `memoria-v2`, `memoria-v3`, `produto-personalidade`
+- [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Aceito) · `configuracao`, `dashboard`, `memoria-v2`, `memoria-v3`
+- [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`

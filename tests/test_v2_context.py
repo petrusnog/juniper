@@ -7,7 +7,12 @@ from typing import Any, ClassVar
 
 import pytest
 
-from brain.config import MemoryV2Settings, V2OpinionSettings, V2PersonaSettings
+from brain.config import (
+    MemoryV2Settings,
+    V2KnowledgeSettings,
+    V2OpinionSettings,
+    V2PersonaSettings,
+)
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
 from brain.core.session import Session, Turn
@@ -97,6 +102,8 @@ def seeded(
 QUIET = {
     "persona": V2PersonaSettings(always_describe=False),
     "opinions": V2OpinionSettings(always_on=0),
+    # Strict knowledge (ADR-031) always brings its rule; tests of "nothing to add" turn it off.
+    "knowledge": V2KnowledgeSettings(strict=False),
 }
 
 
@@ -144,7 +151,8 @@ async def test_the_block_has_at_most_three_opinions_with_their_words_and_the_hyp
     result = await context(data, relevance=0.1).context_for(BROAD)
 
     assert result.block is not None and OPEN_TAG in result.block and CLOSE_TAG in result.block
-    assert HEADER in result.block and "hipóteses" in result.block and "DADOS" in result.block
+    assert HEADER in result.block and "posições SUAS" in result.block
+    assert "se concorda ou discorda" in result.block  # ADR-029: an explicit stance
     shown = lines(result.block.split(OPEN_TAG)[1])
     assert 1 <= len(shown) <= MAX_OPINIONS == 3
     assert all(ln.startswith("- acho que:") for ln in shown)
@@ -175,7 +183,7 @@ async def test_only_held_beliefs_are_shown_never_candidates_or_retired() -> None
 async def test_the_block_respects_the_token_budget() -> None:
     data, _ = seeded(5)
     loose = (await context(data, relevance=0.1).context_for(BROAD)).block
-    tight = quiet().model_copy(update={"max_tokens": 100})
+    tight = quiet().model_copy(update={"max_tokens": 140})
     result = await context(data, config=tight, relevance=0.1).context_for(BROAD)
     assert len(lines(result.block)) < len(lines(loose))
     none = quiet().model_copy(update={"max_tokens": 5})
@@ -322,12 +330,12 @@ async def test_only_the_middle_band_is_worth_asking_about(alpha: float, beta: fl
     assert block is not None and "faça UMA pergunta" not in block
 
 
-async def test_no_question_when_the_user_seems_to_be_hurting() -> None:
+async def test_the_question_may_come_even_when_the_user_seems_to_be_hurting() -> None:
     data, _ = seeded(1)
     sad = "estou mal, chorei, o Petrus se cobra bem mais do que cobraria de outra pessoa"
     block = await ask_round(context(data), sad, "Poxa, to aqui.")
-    assert block is not None and "faça UMA pergunta" not in block
-    assert OPEN_TAG in block  # the opinions themselves still inform her
+    assert block is not None and "faça UMA pergunta" in block  # ADR-029: no gag
+    assert OPEN_TAG in block
 
 
 @pytest.mark.parametrize(

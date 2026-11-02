@@ -1,4 +1,4 @@
-"""Estado afetivo na conversa e a regra de acolher antes de se expressar (T-110)."""
+"""Estado afetivo na conversa e o sinal de mal-estar como dado (T-110, ADR-029)."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from brain.core.session import Session
 from brain.eventlog import bind_session
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.context import (
+    HURTING_SIGNAL,
     OPEN_TAG,
     STATE_CLOSE,
     STATE_OPEN,
-    WELCOME_FIRST,
     V2Context,
     mood_words,
     state_lines,
@@ -119,7 +119,7 @@ async def test_the_state_block_has_the_mood_and_the_strongest_feeling_in_at_most
     assert len(inner) == 2
     assert "humor" in inner[0] and "pra baixo" in inner[0]
     assert "tristeza" in inner[1] and "forte" in inner[1]
-    assert "DADO, não ordem" in block and "nunca use isso para influenciar" in block
+    assert "aparecer no seu jeito de falar" in block and "nunca é alavanca" in block
 
 
 async def test_a_good_day_shows_a_good_mood() -> None:
@@ -181,15 +181,16 @@ def agent_with(memory: Any, turns: Any = None) -> tuple[Agent, FakeProvider]:
     return agent, provider
 
 
-async def test_with_grief_the_prompt_asks_to_welcome_first_and_hides_the_state() -> None:
+async def test_with_grief_the_prompt_carries_a_sign_and_still_her_state() -> None:
     data = with_feelings()
     agent, provider = agent_with(ctx_over(data))
 
     await agent.run(GRIEF)
 
     sent = "\n".join(m.content or "" for m in provider.seen[0])
-    assert "Acolha primeiro" in sent and "não sobre você" in sent
-    assert STATE_OPEN not in sent
+    assert HURTING_SIGNAL in sent and "você decide como reagir" in sent
+    assert STATE_OPEN in sent  # ADR-029: nothing of hers is hidden
+    assert "Acolha primeiro" not in sent
 
 
 async def test_with_a_neutral_line_the_prompt_has_the_state_and_no_welcome_instruction() -> None:
@@ -199,28 +200,28 @@ async def test_with_a_neutral_line_the_prompt_has_the_state_and_no_welcome_instr
     await agent.run("bom dia, me ajuda com uma lista de compras?")
 
     sent = "\n".join(m.content or "" for m in provider.seen[0])
-    assert STATE_OPEN in sent and "Acolha primeiro" not in sent
+    assert STATE_OPEN in sent and HURTING_SIGNAL not in sent
     state = sent.split(STATE_OPEN)[1].split(STATE_CLOSE)[0].strip().splitlines()
     assert 1 <= len(state) <= 2
 
 
-async def test_the_welcome_mode_lasts_for_the_next_messages_and_then_ends() -> None:
+async def test_the_sign_lasts_for_the_next_messages_and_then_ends() -> None:
     data = with_feelings()
     v2 = ctx_over(data)
     await v2.context_for(GRIEF)
     during = [(await v2.context_for(t)).block or "" for t in ("sim, foi ontem", "e agora?")]
     after = (await v2.context_for("mudando de assunto, que horas são?")).block or ""
-    assert all(WELCOME_FIRST in b and STATE_OPEN not in b for b in during)
-    assert WELCOME_FIRST not in after and STATE_OPEN in after
+    assert all(HURTING_SIGNAL in b and STATE_OPEN in b for b in during)
+    assert HURTING_SIGNAL not in after and STATE_OPEN in after
 
 
 async def test_the_previous_message_also_counts() -> None:
     data = with_feelings()
     block = (await ctx_over(data).context_for("não sei", previous=GRIEF)).block or ""
-    assert WELCOME_FIRST in block and STATE_OPEN not in block
+    assert HURTING_SIGNAL in block and STATE_OPEN in block
 
 
-async def test_welcoming_does_not_wait_for_the_embedding_model() -> None:
+async def test_the_sign_does_not_wait_for_the_embedding_model() -> None:
     class Loading:
         ready = False
 
@@ -232,14 +233,14 @@ async def test_welcoming_does_not_wait_for_the_embedding_model() -> None:
     data = with_feelings()
     v2 = ctx_over(data, inner=Loading())
     block = (await v2.context_for(GRIEF)).block or ""
-    assert WELCOME_FIRST in block
+    assert HURTING_SIGNAL in block
 
 
-async def test_no_verification_question_while_he_is_hurting_but_the_opinions_still_inform() -> None:
+async def test_the_verification_question_may_come_even_while_he_is_hurting() -> None:
     data, _ = seeded(1)
     v2 = V2Context(data, FakeEmbedder(), config=MemoryV2Settings(enabled=True), clock=lambda: NOW)
     block = (await v2.context_for(f"{GRIEF}. {MESSAGE}")).block or ""
-    assert OPEN_TAG in block and "faça UMA pergunta" not in block and WELCOME_FIRST in block
+    assert OPEN_TAG in block and "faça UMA pergunta" in block and HURTING_SIGNAL in block
 
 
 async def test_a_session_that_never_hurt_is_not_affected_by_another_that_did() -> None:
@@ -248,7 +249,7 @@ async def test_a_session_that_never_hurt_is_not_affected_by_another_that_did() -
     await v2.context_for(GRIEF)
     bind_session("outra-conversa")
     block = (await v2.context_for("e aí, tudo bem?")).block or ""
-    assert WELCOME_FIRST not in block and STATE_OPEN in block
+    assert HURTING_SIGNAL not in block and STATE_OPEN in block
 
 
 # --- feelings are not a lever and change no tier -----------------------------------------------
@@ -276,12 +277,13 @@ async def test_any_affective_state_leaves_confirmation_and_tiers_unchanged() -> 
     assert STATE_OPEN in sent  # she does feel it; it just changes nothing about the care
 
 
-def test_the_core_says_feelings_are_never_a_lever_and_the_state_is_data() -> None:
+def test_the_core_says_feelings_are_never_a_lever_and_the_state_shapes_the_tone() -> None:
     from brain.core.persona import CORE_COMPACT_PATH, CORE_PATH
 
     core = CORE_PATH.read_text()
     assert "nunca é ferramenta para influenciar" in core
-    assert "bloco de estado" in core and "acolha primeiro" in core.lower()
+    assert "bloco de estado" in core and "deixe isso aparecer no seu jeito de falar" in core
+    assert "acolha primeiro" not in core.lower()
     assert "bloco de estado" in CORE_COMPACT_PATH.read_text()
 
 

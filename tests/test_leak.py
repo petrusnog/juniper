@@ -74,6 +74,7 @@ def test_every_context_header_is_a_marker() -> None:
         v2.STATE_HEADER,
         v2.INTEREST_HEADER,
         v2.KNOWLEDGE_HEADER,
+        v2.HURTING_SIGNAL,
         retrieval.HEADER,
         retrieval.PROFILE_HEADER,
     ]

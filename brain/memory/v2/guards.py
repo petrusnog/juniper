@@ -75,7 +75,7 @@ _CLINICAL = re.compile(
     r"|sociopata|burnout)\b"
 )
 
-_CAUSE_KINDS = ("fact", "belief", "concern", "interest", "turn")
+_CAUSE_KINDS = ("fact", "belief", "concern", "interest", "turn", "manual")
 _KIND_WORD = re.compile(r"^[a-zà-ÿ][a-zà-ÿ \-]*$", re.IGNORECASE)
 _POSSESSIVE = re.compile(r"\b(?:meu|minha|meus|minhas|do petrus|dele|dela)\b", re.IGNORECASE)
 _NO_WEB = re.compile(r"https?://|www\.|@\w+\.\w+", re.IGNORECASE)

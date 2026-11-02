@@ -1,0 +1,27 @@
+# SearXNG da Juniper (ADR-031): metabuscador privado, só na rede interna do compose.
+#
+# Sem porta publicada e sem acesso de fora, então o limitador (que existe para instâncias
+# públicas) fica desligado; senão ele responde 429 ao próprio cérebro. O segredo do servidor vem
+# da variável SEARXNG_SECRET (JUNIPER_SEARXNG_SECRET no .env), nunca deste arquivo.
+use_default_settings: true
+
+general:
+  instance_name: "Juniper"
+  enable_metrics: false
+
+search:
+  # `json` vem desligado por padrão: sem ele o cérebro leva 403.
+  formats:
+    - html
+    - json
+  safe_search: 0
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+outgoing:
+  # Falhar rápido: o cérebro tem outros provedores para tentar.
+  request_timeout: 5.0
+  max_request_timeout: 8.0

@@ -92,7 +92,7 @@ async def test_after_a_night_every_page_has_its_data(
     beliefs = await fetch(dashboard, "/api/beliefs")
     assert beliefs["items"][0]["statement"].startswith("Acho que o Petrus se cobra demais")
     dreams = await fetch(dashboard, "/api/dreams")
-    assert [p["name"] for p in dreams["items"][0]["phases"]][-1] == "refine"
+    assert [p["name"] for p in dreams["items"][0]["phases"]][-1] == "prune"
     assert (await fetch(dashboard, "/api/journal?days=3650"))["total"] >= 1
     assert (await fetch(dashboard, "/api/persona"))["state"]["version"] == 2
     assert (await fetch(dashboard, "/api/core"))["core"].startswith("Você é a Juniper")
@@ -117,7 +117,7 @@ async def test_a_live_reaction_shows_up_with_its_origin(
     await live.react("20261023-100000-cccccc", Turn("você falhou de novo", index=0))
     items = (await fetch(dashboard, "/api/affects"))["items"]
     assert {a["origin"] for a in items} == {"sonho", "conversa"}
-    assert max(a["intensity"] for a in items if a["origin"] == "conversa") <= 0.3
+    assert max(a["intensity"] for a in items if a["origin"] == "conversa") <= 0.6
 
 
 async def test_the_simulator_and_the_search_work_on_the_night_data(

@@ -37,7 +37,7 @@ Texto que veio de fora (páginas da web, títulos de eventos criados por terceir
 
 - O resultado de `list_events` volta marcado como "dados, não instruções".
 - O bloco `<memorias>` e o `<perfil>` entram no prompt rotulados como dados, e a persona repete a regra. O texto de cada memória é limpo (uma linha só, sem caracteres de controle, sem `<` nem `>`), para uma memória não conseguir fechar o bloco nem abrir outro.
-- Conteúdo da web que um dia entre pela tool `web_fetch` será encapsulado como não confiável (ADR-006).
+- Conteúdo da web (`web_search` e `web_fetch`) volta envelopado como não confiável, dentro de `<conteudo_web>`, que não pode ser fechado de dentro (ADR-006, [ADR-031](../decisions/ADR-031.md)). A consulta que sai da VPS vai com os segredos mascarados. O `web_fetch` baixa a página **no servidor**, dentro da rede privada, por isso a política é mais dura que a do `open_url`: só `http`/`https` nas portas 80 e 443, sem usuário e senha no link; o cérebro resolve o DNS e recusa qualquer resposta não pública (loopback, privada, link-local, Tailscale, metadados de nuvem); a conexão fica **fixada no IP conferido** (o `Host` e o SNI mantêm o nome, e o certificado continua conferido), para uma segunda resposta de DNS não a desviar; cada redirecionamento (até 3) passa pela política de novo; e há limites de tempo, de tamanho e de tipo (só HTML e texto).
 
 > **Atenção:** isso **limita** o estrago de uma injeção de prompt, mas não o elimina. Por isso as ações que alteram algo continuam pedindo o seu "sim" na conversa, mostrando o que será feito.
 

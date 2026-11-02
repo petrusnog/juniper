@@ -21,6 +21,7 @@ from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 from brain.memory.v2.models import (
     AFFECTS,
+    BELIEF_HISTORY,
     BELIEFS,
     CALIBRATION,
     CONCERNS,
@@ -35,6 +36,7 @@ from brain.memory.v2.models import (
     TRANSCRIPT_TURNS,
     Affect,
     Belief,
+    BeliefPoint,
     Calibration,
     Concern,
     DreamRun,
@@ -394,6 +396,7 @@ class V2Data:
     watermarks: Repo[Watermark]
     transcripts: Repo[TranscriptTurn]
     calibration: Repo[Calibration]
+    belief_history: Repo[BeliefPoint]
     persona: PersonaRepo
 
     @classmethod
@@ -412,6 +415,7 @@ class V2Data:
                 docs, TRANSCRIPT_TURNS, TranscriptTurn.to_doc, TranscriptTurn.from_doc
             ),
             calibration=Repo(docs, CALIBRATION, Calibration.to_doc, Calibration.from_doc),
+            belief_history=Repo(docs, BELIEF_HISTORY, BeliefPoint.to_doc, BeliefPoint.from_doc),
             persona=PersonaRepo(docs),
         )
 

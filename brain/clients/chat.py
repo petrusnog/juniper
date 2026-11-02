@@ -917,8 +917,10 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     )
     from brain.memory.v2 import open_v2_runtime
     from brain.tools import issues as issue_tools
+    from brain.tools import knowledge as knowledge_tools
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
+    from brain.tools import web as web_tools
     from brain.tools.registry import registry
     from brain.voice.services import open_voice_services
 
@@ -949,6 +951,18 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     issue_tools.bind(issue_store)
     # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
     v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
+    if v2 is not None and settings.web.enabled:
+        from brain.memory.v2.learn import Learner
+
+        knowledge_tools.bind(
+            Learner(
+                v2.data,
+                memory_llm,
+                web_tools.router(),
+                web_tools.fetcher(),
+                embedder=v2.context.embedder,
+            )
+        )
     voice_services = open_voice_services() if settings.voice.enabled else None
     leak_audit = open_leak_audit(store)
     handler = ChatHandler(
@@ -988,7 +1002,9 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
             v2.close()
         memory_tools.bind(None)
         issue_tools.bind(None)
+        knowledge_tools.bind(None)
         await music_tools.close()
+        await web_tools.close()
         if voice_services is not None:
             await voice_services.aclose()
         if memory is not None:

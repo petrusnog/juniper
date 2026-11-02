@@ -9,6 +9,7 @@ export const pages = [
   { id: "ocorrencias", title: "Ocorrências", module: "/assets/pages/occurrences.js" },
   { id: "pesquisa", title: "Pesquisa", module: "/assets/pages/search.js" },
   { id: "afetos", title: "Afetos", module: "/assets/pages/affects.js" },
+  { id: "evolucao", title: "Evolução", module: "/assets/pages/evolution.js" },
   { id: "tarefas", title: "Tarefas", module: "/assets/pages/jobs.js" },
   { id: "logs", title: "Logs", module: "/assets/pages/logs.js" },
   { id: "saude", title: "Saúde e custos", module: "/assets/pages/health.js" },

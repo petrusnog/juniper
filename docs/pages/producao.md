@@ -27,9 +27,9 @@ Esta trilha ensina a implantar o ecossistema da Juniper no **seu** servidor: o c
            CI (GitHub Actions) ── SSH pela rede privada ┘     (opcional: deploy contínuo)
 ```
 
-- O **cérebro** (`brain`) e o **MongoDB** rodam em contêineres, pelo `docker-compose.prod.yml`. O bot do **Telegram** é um terceiro contêiner, opcional.
+- O **cérebro** (`brain`) e o **MongoDB** rodam em contêineres, pelo `docker-compose.prod.yml`. O bot do **Telegram** e o **SearXNG** (o metabuscador privado da busca na web) são contêineres opcionais, por perfil.
 - Os clientes chegam ao servidor por uma **rede privada** cifrada. Para a internet, o servidor não responde em nenhuma porta da Juniper ([ADR-013](../decisions/ADR-013.md)).
-- O servidor só faz conexões **de saída**: para os provedores de LLM, para o Google, para o Telegram.
+- O servidor só faz conexões **de saída**: para os provedores de LLM, para o Google, para o Telegram e, com a busca na web ([ADR-031](../decisions/ADR-031.md)), para o Tavily e para os sites que ela lê. A consulta vai com os segredos mascarados e o `web_fetch` recusa qualquer endereço da rede interna ([Segurança](seguranca.md#conteudo-externo)).
 
 ## Requisitos {#requisitos}
 
@@ -100,6 +100,22 @@ Além dos volumes, o compose monta **somente leitura** uma pasta do host (`JUNIP
 | 6 | [Operação e manutenção](operacao.md) | O dia a dia: logs, comandos administrativos, atualização, recuperação. |
 
 Para escrever um cliente próprio ou integrar outro sistema ao cérebro, veja [Integrar com o cérebro](integrar-cliente.md).
+
+## Busca na web e o SearXNG {#searxng}
+
+A busca na web ([ADR-031](../decisions/ADR-031.md)) tenta os provedores em ordem: **Tavily** (plano gratuito, `JUNIPER_TAVILY_API_KEY` no `.env`), **SearXNG** e **DuckDuckGo**. O Tavily e o DuckDuckGo não pedem nada no compose. O SearXNG é um contêiner **opcional**, que se liga assim no `.env` do servidor:
+
+```text
+COMPOSE_PROFILES=searxng            # (some a "telegram" se também quiser o bot: telegram,searxng)
+JUNIPER_SEARXNG_URL=http://searxng:8080
+JUNIPER_SEARXNG_SECRET=<uma string aleatória longa>
+JUNIPER_SEARXNG_IMAGE=searxng/searxng:<uma tag testada>   # recomendado: fixar a versão
+```
+
+- **Sem porta publicada:** só o `brain` o alcança, pelo nome `searxng` na rede do compose. Menor privilégio (`cap_drop: ALL` com só o que o entrypoint pede, `no-new-privileges`).
+- **Configuração** em `docker/searxng/settings.yml` (somente leitura): formato `json` ligado (sem ele o cérebro leva 403) e o limitador desligado (ele existe para instâncias públicas e responderia 429 ao próprio cérebro). O segredo vem do `.env`, nunca do arquivo; sem ele o SearXNG se recusa a subir.
+- **Sem o perfil**, o endereço fica vazio e o provedor é pulado no failover, sem erro.
+- **Limite conhecido:** Google e Bing costumam bloquear endereços de datacenter; o SearXNG pode devolver poucos resultados a partir de uma VPS. O failover cobre isso, e o log mostra `web_search_failover` com o provedor que falhou. **Este serviço nunca foi executado de verdade** (o CI só valida o arquivo do compose): confira com `docker compose --profile searxng up -d searxng` e `docker compose exec brain python -c "…"` antes de depender dele, e fixe a tag da imagem.
 
 ## Riscos aceitos {#riscos}
 

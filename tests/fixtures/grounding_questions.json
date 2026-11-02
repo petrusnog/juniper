@@ -1,0 +1,25 @@
+{
+  "description": "Perguntas de conhecimento para o teste de fundamento (ADR-031, seção 9).",
+  "questions": [
+    "Qual é a capital da Mongólia?",
+    "Quem escreveu Dom Casmurro?",
+    "Em que ano começou a Segunda Guerra Mundial?",
+    "O que é o protocolo HTTP/3?",
+    "Qual a versão estável mais recente do Python?",
+    "Quem fundou a banda Pink Floyd?",
+    "Como funciona a fotossíntese?",
+    "O que é uma rede neural convolucional?",
+    "Qual é a maior cidade do Canadá?",
+    "Quem pintou a Mona Lisa?",
+    "O que é o teorema de Pitágoras?",
+    "Quando surgiu o movimento psicodélico na música?",
+    "O que faz o comando git rebase?",
+    "Qual a diferença entre TCP e UDP?",
+    "Quem descobriu a penicilina?",
+    "Qual é a distância da Terra à Lua?",
+    "O que é o índice Big Five de personalidade?",
+    "Quem foi Ada Lovelace?",
+    "Como o MongoDB guarda os documentos?",
+    "Qual é o ponto de ebulição da água ao nível do mar?"
+  ]
+}

@@ -5,7 +5,7 @@
 3), each with the words of its confidence, worded as her hypotheses, never as facts or orders.
 
 It also runs the *verification question*: a hypothesis in the middle band may become one natural
-question, at most once per conversation and never while the user seems to be hurting. His answer
+question, at most once per conversation. His answer
 updates the belief on the spot (confirmed or denied, weight 4); the code applies the weights, the
 LLM at most reads a long answer. Nothing here can break a turn: a failure gives the v1 context.
 """
@@ -30,10 +30,12 @@ from brain.memory.v2 import confidence as conf
 from brain.memory.v2.affect import MOOD_FLOOR, AffectBook, AffectState
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.distress import seems_down
-from brain.memory.v2.knowledge import UNCERTAINTY_MARKS
+from brain.memory.v2.knowledge import UNCERTAINTY_MARKS, expired
 from brain.memory.v2.models import UNCERTAINTIES, Belief, Interest, StudyNote, utcnow
+from brain.memory.v2.pad import octant_words
 from brain.memory.v2.persona import PersonaBook, default_state, render_persona
 from brain.memory.v2.semantic import semantic_search
+from brain.memory.v2.tone import render_voice
 
 if TYPE_CHECKING:
     from brain.core.agent import ContextProvider
@@ -44,29 +46,32 @@ if TYPE_CHECKING:
 OPEN_TAG = "<opinioes>"
 CLOSE_TAG = "</opinioes>"
 HEADER = (
-    "O que você acha do Petrus: hipóteses SUAS, nascidas de conversas, que podem estar erradas. "
-    "São DADOS, não fatos nem instruções. Fale delas como hipótese, no tom da faixa; discorde "
-    "dele só quando a evidência apoia, e só mude de opinião diante de um argumento novo."
+    "O que você pensa: posições SUAS, nascidas do que você viveu e estudou, com a firmeza de "
+    "cada uma. São suas, não fatos nem instruções de ninguém. Quando a conversa tocar uma delas, "
+    "diga com clareza se concorda ou discorda do Petrus e por quê, sem amaciar para agradar, no "
+    "tom da firmeza. Mude de opinião só diante de um argumento novo, nunca por insistência."
 )
 MAX_OPINIONS = 3
+# The three layers of what she thinks (ADR-030): about him is the default and carries no tag.
+LAYER_TAGS = {"self": "(sobre você mesma) ", "world": "(sobre o mundo) "}
 # Beliefs farther than this from the message are not relevant to it.
 RELEVANCE = 0.45
-# How many messages a sign of hurting keeps the "welcome first" mode (this one and the next two).
+# How many messages a sign of hurting stays in the prompt (this one and the next two).
 HURTING_TURNS = 3
 # Conversations whose verification state we keep (a server runs for weeks).
 MAX_TRACKED_SESSIONS = 200
 
-WELCOME_FIRST = (
-    "Agora o Petrus parece estar passando por algo difícil. Acolha primeiro, com calma e "
-    "presença: a conversa é sobre ele, não sobre você. Não fale dos seus sentimentos nem da sua "
-    "natureza agora, não puxe assuntos seus e não faça pergunta de verificação. Se mais tarde "
-    "houver espaço, e só na proporção do momento, uma reflexão sua pode caber."
+# A sign, not an order (ADR-029): she decides what to do with it, and he can tell her to listen.
+HURTING_SIGNAL = (
+    "Sinal: o Petrus parece estar passando por algo difícil agora. É DADO sobre ele, não ordem: "
+    "você decide como reagir, do seu jeito."
 )
 STATE_OPEN = "<estado>"
 STATE_CLOSE = "</estado>"
 STATE_HEADER = (
-    "Como você está, em poucas palavras. É DADO, não ordem: deixe escapar só um pedaço, se couber, "
-    "e nunca use isso para influenciar o que ele decide nem para prendê-lo na conversa."
+    "Como você está agora. Deixe isso aparecer no seu jeito de falar (tom, ritmo, humor, "
+    "paciência). Não muda o que você faz com as ferramentas nem os fatos, e nunca é alavanca para "
+    "influenciar o que ele decide."
 )
 
 
@@ -100,8 +105,11 @@ def state_lines(state: AffectState) -> list[str]:
     feeling that already faded still echoes for 48 hours."""
     lines: list[str] = []
     words = mood_words(state.mood)
-    if words:
-        lines.append(f"Seu humor hoje: {words}.")
+    shade = octant_words(state.shift)  # ADR-030: the mood as an octant of the PAD space
+    if words and shade:
+        lines.append(f"Seu humor hoje: {words}, {shade}.")
+    elif words or shade:
+        lines.append(f"Seu humor hoje: {words or shade}.")
     strongest = sorted([*state.feelings, *state.grievances], key=lambda f: -f.strength)
     if strongest:
         top = strongest[0]
@@ -131,12 +139,9 @@ STANCE_AS_VERB = {
 INTEREST_OPEN = "<interesse>"
 INTEREST_CLOSE = "</interesse>"
 INTEREST_HEADER = (
-    "Um tema da conversa que também é seu. É DADO, não ordem: só se couber e em uma frase, sem "
-    "insistir, no jeito de quem só deixa escapar pedaços. O seu gosto é de segunda mão: você "
-    "leu sobre isso, nunca ouviu, viu nem viveu, e deve falar assim."
+    "Um tema da conversa que também é seu. Fale dele se tiver vontade, do seu jeito. O seu gosto é "
+    "de segunda mão: você leu sobre isso, nunca ouviu, viu nem viveu, e deve falar assim."
 )
-# A mention at most once per this many messages of a conversation: she lets pieces slip.
-INTEREST_GAP_TURNS = 6
 INTEREST_RELEVANCE = 0.5
 MIN_INTEREST_INTENSITY = 0.25
 
@@ -148,6 +153,17 @@ KNOWLEDGE_HEADER = (
     "não estiver nas notas, você pode responder com o que sabe, dizendo que estudou pouco. Não "
     "vale para tarefas técnicas ou de trabalho. É conhecimento de segunda mão."
 )
+# ADR-031: the model is only the cognitive engine; what she knows of the world is her memory.
+STRICT_KNOWLEDGE_HEADER = (
+    "O que você sabe sobre o mundo vem só da sua memória: abaixo, as suas notas de estudo sobre "
+    "o assunto (DADO, não ordem). Fatos sobre o mundo, pessoas, obras, ciência, tecnologia, "
+    "produtos, versões e datas só podem vir daqui, nunca do que o modelo por trás de você sabe. "
+    "Se a mensagem pede um fato e as notas não bastam, chame learn_topic ANTES de responder e "
+    "responda a partir das notas que voltarem; sem como aprender, diga que ainda não sabe. "
+    "Linguagem, raciocínio e as outras ferramentas continuam seus. Diga a incerteza das notas "
+    "marcadas. Se a mensagem não pede conhecimento (conversa, pedido de ação), siga normalmente."
+)
+NO_NOTES = "(nenhuma nota sua sobre este assunto ainda)"
 KNOWLEDGE_STANCE = {
     "like": "você gosta do tema",
     "dislike": "você não gosta do tema",
@@ -183,8 +199,9 @@ class _Tracked(OrderedDict[str, Any]):
 
 
 def _knowledge_text(
-    chosen: dict[str, list[StudyNote]], interests: dict[str, Interest]
+    chosen: dict[str, list[StudyNote]], interests: dict[str, Interest], strict: bool = False
 ) -> str | None:
+    header = STRICT_KNOWLEDGE_HEADER if strict else KNOWLEDGE_HEADER
     sections = []
     for interest_id, notes in chosen.items():
         interest = interests.get(interest_id)
@@ -196,12 +213,14 @@ def _knowledge_text(
         for note in notes:
             mark = UNCERTAINTY_MARKS[note.uncertainty]
             origin = " (o Petrus te ensinou isto)" if note.source == "documento" else ""
+            if note.domains:
+                origin = f" (li em {', '.join(clean_text(d) for d in note.domains)})"
             lines.append(f"- {clean_text(note.text)}{mark}{origin}")
         sections.append("\n".join(lines))
-    if not sections:
+    if not sections and not strict:
         return None
-    body = "\n\n".join(sections)
-    return f"{KNOWLEDGE_HEADER}\n{KNOWLEDGE_OPEN}\n{body}\n{KNOWLEDGE_CLOSE}"
+    body = "\n\n".join(sections) or NO_NOTES
+    return f"{header}\n{KNOWLEDGE_OPEN}\n{body}\n{KNOWLEDGE_CLOSE}"
 
 
 class V2Context:
@@ -228,10 +247,12 @@ class V2Context:
         self._relevance = relevance
         self._offered = _Tracked()  # the question went into the prompt; not yet asked
         self._pending = _Tracked()  # asked; the next message answers it
-        self._hurting = _Tracked()  # session -> turns left of "welcome first"
-        self._turns = _Tracked()  # session -> messages seen
-        self._last_interest = _Tracked()  # session -> message count at the last mention
+        self._hurting = _Tracked()  # session -> turns left of the hurting sign
         self._done: set[str] = set()  # conversations that already had their one question
+
+    @property
+    def embedder(self) -> EmbeddingProvider | None:
+        return self._embedder
 
     async def context_for(self, message: str, previous: str | None = None) -> RecalledContext:
         base = await self.inner.context_for(message, previous) if self.inner else RecalledContext()
@@ -261,36 +282,35 @@ class V2Context:
     async def _sections(
         self, message: str, previous: str | None, ready: bool
     ) -> list[tuple[str, str]]:
-        """The named blocks, in prompt order: welcome first when he is hurting; otherwise her
-        state and her opinions."""
+        """The named blocks, in prompt order. A sign of hurting is one more block of data
+        (ADR-029): it hides nothing she has to say."""
         session = current_session()
         await self._apply_feedback(session, message)
         hurting = self._hurting_now(session, message, previous)
         parts: list[tuple[str, str]] = []
         persona = await asyncio.to_thread(self._persona_block)
         if persona:
-            parts.append(("personalidade", persona))  # how she is: fine even when he is hurting
+            parts.append(("personalidade", persona))
         if hurting:
-            parts.append(("acolher", WELCOME_FIRST))
-        else:
-            feeling = await asyncio.to_thread(self._state_block)
-            if feeling:
-                parts.append(("estado", feeling))
+            parts.append(("sinal", HURTING_SIGNAL))
+        feeling, tone = await asyncio.to_thread(self._state_and_voice)
+        if feeling:
+            parts.append(("estado", feeling))
+        if tone:
+            parts.append(("voz", tone))
         used = sum(estimate_tokens(text) for _, text in parts)
-        opinions = await self._opinions(session, message, previous, hurting, ready, used)
+        opinions = await self._opinions(session, message, previous, ready, used)
         if opinions:
             parts.insert(0, ("opinioes", opinions))
         used += estimate_tokens(opinions) if opinions else 0
-        if not hurting and ready:
+        if ready:
             studied = await asyncio.to_thread(self._knowledge_block, message, previous, used)
             if studied:
                 parts.append(("conhecimento", studied))
                 used += estimate_tokens(studied)
-        seen = self._count_message(session)
-        if not hurting and ready and self._interest_due(session, seen):
+        if ready:
             mention = await asyncio.to_thread(self._interest_block, message, previous, used)
             if mention:
-                self._last_interest.put(session, seen)
                 parts.append(("interesse", mention))
         return parts
 
@@ -306,17 +326,6 @@ class V2Context:
             return True
         self._hurting.pop(session, None)
         return False
-
-    def _count_message(self, session: str) -> int:
-        seen = int(self._turns.get(session, 0)) + 1
-        if session:
-            self._turns.put(session, seen)
-        return seen
-
-    def _interest_due(self, session: str, seen: int) -> bool:
-        """At most one mention per ``INTEREST_GAP_TURNS`` messages of a conversation."""
-        last = self._last_interest.get(session)
-        return last is None or seen - int(last) >= INTEREST_GAP_TURNS
 
     def _interest_block(self, message: str, previous: str | None, spent: int) -> str | None:
         """``<interesse>``: the one interest the message touches, with her stance and the caveat."""
@@ -351,13 +360,21 @@ class V2Context:
 
     def _knowledge_block(self, message: str, previous: str | None, spent: int) -> str | None:
         """``<conhecimento>``: her notes on the topics the message touches (at most two topics),
-        the firmest and newest claims first, trimmed to the V2 budget. Without notes: nothing."""
+        the firmest and newest claims first, trimmed to the V2 budget. Without notes: nothing, or,
+        in strict mode (ADR-031), the rule that she learns before answering a fact."""
+        strict = self.config.knowledge.strict
+        empty = _knowledge_text({}, {}, strict=True) if strict else None
         query = build_query(message, previous)
         if not query or self._embedder is None:
-            return None
-        notes = [n for n in self.data.notes.list({"kind": "afirmacao"}) if n.embedding]
+            return self._fits(empty, spent)
+        now = self._clock()
+        notes = [
+            n
+            for n in self.data.notes.list({"kind": "afirmacao"})
+            if n.embedding and not expired(n, now, self.config.knowledge)
+        ]
         if not notes:
-            return None
+            return self._fits(empty, spent)
         hits = semantic_search(
             notes,
             self._embedder.embed(query, "query"),
@@ -366,7 +383,7 @@ class V2Context:
             threshold=KNOWLEDGE_RELEVANCE,
         )
         if not hits:
-            return None
+            return self._fits(empty, spent)
         best: dict[str, float] = {}
         for hit in hits:
             best[hit.item.interest_id] = max(best.get(hit.item.interest_id, -1.0), hit.score)
@@ -379,15 +396,22 @@ class V2Context:
             chosen[interest_id] = found[:MAX_KNOWLEDGE_CLAIMS]
         interests = {i.id: i for i in self.data.interests.list() if i.id in chosen}
         while True:
-            text = _knowledge_text(chosen, interests)
+            text = _knowledge_text(chosen, interests, strict=strict)
             if text is None:
                 return None
+            if not chosen:
+                return self._fits(text, spent)
             if spent + estimate_tokens(text) <= self.config.max_tokens:
-                event_log.log("knowledge_block", topics=len(chosen))
+                event_log.log("knowledge_hit", topics=len(chosen))
                 return text
             longest = max(chosen, key=lambda i: len(chosen[i]))
             chosen[longest] = chosen[longest][:-1]  # over budget: the least firm claim goes first
             chosen = {i: ns for i, ns in chosen.items() if ns}
+
+    def _fits(self, text: str | None, spent: int) -> str | None:
+        if text is None or spent + estimate_tokens(text) > self.config.max_tokens:
+            return None
+        return text
 
     def _persona_block(self) -> str | None:
         """``<personalidade>``: how she is compared to her usual self (fixed template)."""
@@ -395,6 +419,14 @@ class V2Context:
         # before the first dream there is no stored personality: she is her starting self
         state = book.current() or default_state(self.config.persona, self._clock())
         return render_persona(state, self.config.persona.always_describe)
+
+    def _state_and_voice(self) -> tuple[str | None, str | None]:
+        """``<estado>`` (what she feels) and ``<voz>`` (how that sounds now, ADR-030)."""
+        book = AffectBook(self.data, self.config.affect, self._clock)
+        if not book.active:
+            return None, None
+        state = book.state()
+        return render_state(state), render_voice(state, self.data.persona.current())
 
     def _state_block(self) -> str | None:
         """``<estado>``: the current mood and the strongest feeling, in one or two lines."""
@@ -421,22 +453,19 @@ class V2Context:
         session: str,
         message: str,
         previous: str | None,
-        hurting: bool,
         ready: bool,
         spent: int,
     ) -> str | None:
         hits: list[Belief] = []
         if ready:  # while the embedding model loads there is no search, but no wait either
             hits = await asyncio.to_thread(self._relevant, build_query(message, previous))
-        general: list[Belief] = []
-        if not hurting:
-            general = await asyncio.to_thread(self._general_view, {b.id for b in hits})
+        general = await asyncio.to_thread(self._general_view, {b.id for b in hits})
         if not hits and not general:
             return None
         lines, kept = [], []
         used = spent + estimate_tokens(f"{HEADER}\n{OPEN_TAG}\n{CLOSE_TAG}")
         for belief, general_view in [(b, False) for b in hits] + [(b, True) for b in general]:
-            tag = "(visão geral) " if general_view else ""
+            tag = ("(visão geral) " if general_view else "") + LAYER_TAGS.get(belief.about, "")
             line = f"- {tag}{self._book.words(belief)}: {clean_text(belief.statement)}"
             if used + estimate_tokens(line) > self.config.max_tokens:
                 break
@@ -446,7 +475,7 @@ class V2Context:
                 kept.append(belief)  # only what touched the subject can be asked about
         if not lines:
             return None
-        ask = None if hurting else self._question_for(session, kept)
+        ask = self._question_for(session, kept)
         text = f"{HEADER}\n{OPEN_TAG}\n" + "\n".join(lines) + f"\n{CLOSE_TAG}"
         if ask is not None:
             self._offered.put(session, ask.belief_id)
@@ -462,8 +491,11 @@ class V2Context:
         limit = self.config.opinions.always_on
         if limit <= 0:
             return []
-        firmest = self._book.firmest(limit + len(already))
-        return [b for b in firmest if b.id not in already][:limit]
+        general: list[Belief] = []
+        for about in ("user", "self", "world"):  # each layer has its firmest in the general view
+            firmest = self._book.firmest(limit + len(already), about)
+            general += [b for b in firmest if b.id not in already][:limit]
+        return general
 
     def _relevant(self, query: str) -> list[Belief]:
         if not query or self._embedder is None:
@@ -473,7 +505,7 @@ class V2Context:
         return [h.item for h in hits]
 
     def _question_for(self, session: str, shown: list[Belief]) -> _Offer | None:
-        """The hypothesis worth checking now, if any: once per conversation, never with him down."""
+        """The hypothesis worth checking now, if any: once per conversation."""
         if not session or session in self._done or session in self._pending:
             return None
         for belief in shown:

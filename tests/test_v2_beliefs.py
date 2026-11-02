@@ -14,7 +14,7 @@ from brain.memory.v2.store import InMemoryDocStore, V2Data
 from tests.test_extraction import FakeEmbedder
 
 DAY0 = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
-CFG = V2BeliefSettings()  # half-life 60 days, min evidence 2
+CFG = V2BeliefSettings(surprise=0.0)  # half-life 60 days, min evidence 2, fixed weights
 
 
 def ev(kind: str, session: str = "s1", turn: int = 0, day: int = 0) -> Evidence:

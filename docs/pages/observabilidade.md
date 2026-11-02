@@ -41,6 +41,12 @@ Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma exe
 | `timing` | Fim de cada turno e de cada extração de memória | `scope`, `total_ms`, `stages_ms` |
 | `memory_recall` | Memórias injetadas no prompt | ids, tipos e notas (sem o texto) |
 | `embedding`, `embedding_model_load` | Embedding local | tempo de inferência por chamada; carga do modelo (uma vez por processo) |
+| `web_search` | Uma busca na web respondida ([ADR-031](../decisions/ADR-031.md)) | `provider`, `results`, `ms` |
+| `web_search_failover` | Um provedor de busca falhou e o próximo assumiu | `provider`, `reason` (o tipo do erro) |
+| `web_fetch` | Uma página baixada no servidor | `domain`, `bytes`, `truncated`, `ms` |
+| `knowledge_hit` | O bloco `<conhecimento>` trouxe notas dela para a conversa | `topics` |
+| `knowledge_learn` | Ela aprendeu na hora (`learn_topic` ou o estudo do sonho) | `provider`, `sources`, `added`, `corroborated`, `ms` |
+| `mood_forced` | `juniper mood set` | `mood`, `degree`, `hours` |
 
 Valores de `decision` em `tool_call`:
 

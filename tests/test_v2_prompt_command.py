@@ -9,7 +9,13 @@ import pytest
 from typer.testing import CliRunner
 
 from brain.clients.cli import app
-from brain.config import V2AffectSettings, V2OpinionSettings, V2PersonaSettings, settings
+from brain.config import (
+    V2AffectSettings,
+    V2KnowledgeSettings,
+    V2OpinionSettings,
+    V2PersonaSettings,
+    settings,
+)
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.persona import PersonaBook
@@ -27,6 +33,7 @@ def cli(monkeypatch: pytest.MonkeyPatch) -> V2Data:
     # the command reads the real settings: silence the always-on parts so only the data speaks
     monkeypatch.setattr(settings.memory.v2, "persona", V2PersonaSettings(always_describe=False))
     monkeypatch.setattr(settings.memory.v2, "opinions", V2OpinionSettings(always_on=0))
+    monkeypatch.setattr(settings.memory.v2, "knowledge", V2KnowledgeSettings(strict=False))
     from brain.clients.cli import console
 
     monkeypatch.setattr(console, "width", 300, raising=False)
@@ -68,10 +75,10 @@ def test_when_there_is_nothing_to_add_it_says_so(cli: V2Data) -> None:
     assert result.exit_code == 0 and "Nenhum bloco" in result.output
 
 
-def test_a_message_of_suffering_shows_the_welcome_block_and_no_state(cli: V2Data) -> None:
+def test_a_message_of_suffering_shows_the_sign_and_still_her_state(cli: V2Data) -> None:
     AffectBook(cli, V2AffectSettings()).record("tristeza", -0.8, 0.9, ["turn:s:1"])
     out = run("minha avó faleceu hoje").output
-    assert "── acolher (~" in out and "Acolha primeiro" in out and "── estado" not in out
+    assert "── sinal (~" in out and "não ordem" in out and "── estado" in out
 
 
 def test_running_it_changes_nothing_in_the_database(cli: V2Data) -> None:

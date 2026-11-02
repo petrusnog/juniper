@@ -62,7 +62,8 @@ async def test_the_next_conversation_answers_from_her_notes(morning: World) -> N
 
     assert "conhecimento" in sections and KNOWLEDGE_OPEN in sections["conhecimento"]
     assert "os Beatles se formaram em Liverpool" in sections["conhecimento"]
-    assert "Fundamente a resposta nestas notas" in sections["conhecimento"]
+    assert "vem só da sua memória" in sections["conhecimento"]  # ADR-031: strict by default
+    assert "learn_topic" in sections["conhecimento"]
 
 
 async def test_a_provocation_in_the_conversation_is_subtle_and_chains(morning: World) -> None:  # noqa: F811
@@ -73,7 +74,7 @@ async def test_a_provocation_in_the_conversation_is_subtle_and_chains(morning: W
         await live.react("20261023-100000-cccccc", Turn("você falhou de novo", index=i))
 
     reactions = [a for a in morning.data.affects.list() if a.origin == "conversa"]
-    assert len(reactions) == 3 and all(a.intensity <= 0.3 for a in reactions)
+    assert len(reactions) == 3 and all(a.intensity <= 0.6 for a in reactions)
     dream = [a for a in morning.data.affects.list() if a.origin == "sonho"]
     assert dream and dream[0].intensity >= 0.6  # the intense one came from the dream
-    assert config().affect.live_max_intensity == pytest.approx(0.3)
+    assert config().affect.live_max_intensity == pytest.approx(0.6)

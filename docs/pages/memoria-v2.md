@@ -10,7 +10,7 @@ tags: memória v2 umwelt crenças confiança evidência alpha beta decaimento me
 
 > **Nota:** esta página acompanha a [ADR-017](../decisions/ADR-017.md), que é a fonte de verdade (o adendo dela lista as decisões tomadas na implementação). A Memória V2 vem **desligada** (`memory.v2.enabled: false`); desligada, nada muda em relação à [memória de longo prazo](memoria-longo-prazo.md): o prompt, a extração e os comandos são os de antes.
 
-> **Próxima versão:** a Memória V3 está proposta no [ADR-029](../decisions/ADR-029.md) (livre arbítrio na fala), no [ADR-030](../decisions/ADR-030.md) (humor PAD, Big Five, crenças sobre si e o mundo, sonho V2) e no [ADR-031](../decisions/ADR-031.md) (conhecimento só da memória, com a web ensinando). Esta página descreve a V2, que é o que roda hoje.
+> **Memória V3:** esta página também descreve a V3 ([mapa e limites](memoria-v3.md)), que mudou o comportamento de várias seções: livre arbítrio na fala ([ADR-029](../decisions/ADR-029.md)), humor PAD, Big Five, crenças sobre si e o mundo e o sonho V2 ([ADR-030](../decisions/ADR-030.md)), e o conhecimento só da memória com a web ensinando ([ADR-031](../decisions/ADR-031.md)).
 
 ## Visão geral {#visao-geral}
 
@@ -45,7 +45,7 @@ O armazenamento é uma interface (`DocStore`) com duas implementações, MongoDB
 
 ## Crenças e confiança {#crencas kind=conceito file=brain/memory/v2/confidence.py}
 
-Uma **crença** é uma hipótese em primeira pessoa sobre o usuário ou sobre uma decisão dele ("acho que o usuário se cobra bem mais do que cobraria de outra pessoa; vi isso em 3 conversas"). A confiança **sai de contagens, nunca de um número que o LLM inventa**: um modelo que diz "80% de certeza" produz um número bonito e não calibrado.
+Uma **crença** é uma hipótese em primeira pessoa ("acho que o usuário se cobra bem mais do que cobraria de outra pessoa; vi isso em 3 conversas"). Desde a V3 ([ADR-030](../decisions/ADR-030.md)) ela tem **três camadas** (`about`): **sobre o usuário** (e as decisões dele, como antes), **sobre ela mesma** ("tenho andado mais irritada", lida do próprio histórico de humor, estados e interesses) e **sobre o mundo** ("a psicodelia surgiu como resposta à contenção dos anos 60", das notas de estudo da web, [ADR-031](../decisions/ADR-031.md)). As mesmas contas valem para as três. A confiança **sai de contagens, nunca de um número que o LLM inventa**: um modelo que diz "80% de certeza" produz um número bonito e não calibrado.
 
 Cada crença nasce com um a priori fraco (`alpha = beta = 1`, "não sei") e cada evidência soma um peso ao lado que apoia, conforme a **fonte**:
 
@@ -56,10 +56,16 @@ Cada crença nasce com um a priori fraco (`alpha = beta = 1`, "não sei") e cada
 | O usuário disse explicitamente | 3 | a favor |
 | O usuário **confirmou** a hipótese quando ela perguntou | 4 | a favor |
 | O usuário **negou** | 4 | contra |
+| Uma série do **próprio histórico** dela (`self_observation`, uma por referência: `affect:<id>`, `persona:v<n>`) | 1 | a favor |
+| Uma **fonte da web** (`source`, **uma por domínio**) | 1,5 | a favor |
+| Uma fonte da web que diz o **contrário** (`source_contradiction`) | 1,5 | contra |
 
 - **Confiança** = `alpha / (alpha + beta)`; **firmeza** `n` = a evidência acumulada além do a priori.
+- **Erro de previsão:** o peso de uma evidência **inferida** (observação, contradição, histórico dela, fonte) cresce com a surpresa, `peso × (1 + surpresa × |resultado − confiança|)` (`memory.v2.beliefs.surprise`, 1,0): uma contradição de uma crença firme mexe mais do que uma que confirma o esperado, e a primeira evidência, sem expectativa, não se surpreende. A palavra do usuário (explícito, confirmação, negação) mantém o peso fixo.
+- **Histórico:** cada mudança de confiança grava um ponto (`belief_history`, com a confiança, a firmeza, o status e a causa), que o dashboard desenha como a curva da crença. Reaplicar a mesma evidência não adiciona ponto; o decaimento noturno, sim.
 - **Decaimento:** `alpha` e `beta` encolhem na direção do a priori com meia-vida de 60 dias (`memory.v2.beliefs.half_life_days`). Sem reforço, a crença volta à **incerteza**, não ao erro.
 - **Formação:** uma observação isolada é um palpite, não uma crença. A hipótese (`candidate`) vira `active` com pelo menos `min_evidence` (2) de evidência a favor vinda de **sessões ou dias diferentes**, ou com uma afirmação explícita ou confirmação do usuário.
+- **Crença sobre o mundo** precisa de **fontes de domínios diferentes**: com uma só, fica `candidate` e, em palavras, nunca passa de "talvez".
 - **Em palavras** (é o que o usuário lê e o que vai ao prompt; o número fica por baixo): "talvez" até 0,45; "acho que" de 0,45 a 0,70; "tenho bastante certeza" acima de 0,70, com `n >= 6` **e evidência de pelo menos 3 fontes distintas** (sessão e dia diferentes): muito peso vindo de uma conversa só continua sendo "acho que". Com pouca evidência nunca passa de "acho que".
 - **`retired`** (final): o usuário negou; ou a confiança caiu abaixo de 0,25 com `n >= 4` (ela estava errada); ou a crença desbotou (`n < 0,25`) sem confirmação.
 - A **mesma referência** (sessão, turno) conta **uma vez**: reexecutar o algoritmo de sonho não infla nada. As referências guardadas são no máximo 50 por lado; os pesos continuam nas contagens.
@@ -99,18 +105,32 @@ O algoritmo de sonho só lê o que o usuário **escreveu** e as respostas dela, 
 O "inconsciente": um job diário, no servidor, que lê o que a Juniper viveu e atualiza as camadas. Roda no mesmo agendador da rotação de logs, em `memory.v2.night.at` (padrão `03:00`, fuso do agente), **só quando a V2 está ligada e pode rodar**, e à mão: `juniper memory dream [--dry-run]`. No servidor, pelo atalho do contêiner ([Operação](operacao.md#atalho)).
 
 ```text
-coleta  →  fases (observar, refletir, sentir, interesses, estudar, personalidade, refinar)  →  aplicação pelo código  →  diário
+coleta  →  NREM (observar, refletir, sentir, interesses, estudar, crenças do mundo)
+        →  REM (personalidade, crenças sobre si, refinar, esfriar a emoção)
+        →  poda  →  aplicação pelo código  →  diário
 ```
 
 | Peça | Como funciona |
 |---|---|
 | **Coleta** | Sessões com algo novo (`turns_total > turns_read` na marca d'água), **sem espera**: com `memory.v2.night.quiet_minutes` em 0 (o padrão), toda mensagem ainda não lida entra no próximo sonho, mesmo a de um segundo atrás; a marca d'água é por turno, então uma conversa lida pela metade continua de onde parou. Com um valor maior, as sessões mexidas há menos de tantos minutos ficam para depois. Lê a **transcrição** (`transcript_turns`), porque a sessão salva é compactada. Mais antigas primeiro, até uma fração do orçamento; uma sessão enorme pode ser cortada no meio e o resto é lido na noite seguinte. |
 | **Transcrição** | O `Agent` entrega cada turno terminado a um *sink* (`TranscriptWriter`): o texto do usuário, a resposta dela e se **houve tool** no turno. Nunca a saída de tool. Um turno em que vazou maquinaria chega com `leaked: true` e a resposta vazia, e o material do sonho põe uma nota no lugar dela ([Auditoria de vazamentos](vazamentos.md#quarentena)). Se a gravação falhar, a conversa segue (só vai para o log). |
-| **Fases, em ordem** | `observe` (fatos), `reflect` (crenças), `affect` (sentimentos), `interests` (sementes), `study` (um passo por tema), `persona` (traços) e `refine` (memórias brutas viram lembranças). Objetos com `run(ctx)` (`brain/memory/v2/night.py`); cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
+| **Fases, em ordem** | `observe` (fatos), `reflect` (crenças), `affect` (sentimentos), `interests` (sementes), `study` (um passo por tema), `world` (crenças sobre o mundo), `persona` (traços), `self` (crenças sobre si), `refine` (memórias brutas viram lembranças), `rem` (a emoção das lembranças esfria) e `prune` (poda). Objetos com `run(ctx)` (`brain/memory/v2/night.py`); cada fase vê o que a anterior deixou, pede ao LLM que **proponha** e o código valida e aplica. As fases que **consomem o material** seguram a marca d'água. |
 | **Idempotente e retomável** | Sem transações no Mongo, uma noite repetida tem de fazer a coisa certa: a evidência é citada por referência (conta uma vez), e a marca d'água de uma sessão só avança depois que as fases que leem o material terminaram. Noite que falhou é simplesmente lida de novo. Uma fase que falha **não** derruba as outras. |
 | **Orçamento** | `memory.v2.night.max_tokens` e `max_minutes`. Estourou, a fase termina com o estado `budget` e o resto fica para a noite seguinte. |
 | **Dois modelos** | O barato (o do chat) para a observação; `llm.reflection` (provider e modelo) para refletir e estudar, e sem ele usa o do chat. Um modelo de raciocínio pode devolver o "pensamento" antes da resposta: ele é removido antes de qualquer JSON ser lido. |
 | **Registro** | Cada execução grava um `dream_run` (fases, tokens, erros), uma entrada no **diário** (`journal`) e um evento `dream` no [log técnico](observabilidade.md#log-tecnico). |
+
+### Sonho V2: as fases do sono {#sonho-v2}
+
+O sonho segue, como organização, as fases do sono humano ([ADR-030](../decisions/ADR-030.md), seção 9). É onde a Juniper **mais evolui**:
+
+| Fase do sono | Fases do sonho | O que faz |
+|---|---|---|
+| **NREM: consolidar** | `observe`, `reflect`, `affect`, `interests`, `study`, **`world`** | Replay do dia e estudo. A fase `world` transforma em **crença sobre o mundo** a nota da web em que **dois ou mais domínios diferentes** concordam (uma evidência `source` por domínio); nota de uma fonte só continua nota. |
+| **REM: reprocessar a emoção** | `persona`, **`self`**, `refine`, **`rem`** | Os estados do dia viram traço ([personalidade](#personalidade)). A fase `self` lê o **próprio histórico** e escreve, na voz dela e por modelos de frase fixos, o que ele diz: um sentimento que voltou em dias diferentes ("tenho andado com irritação nos últimos dias"), um traço que se afastou do seu normal ("tenho andado mais curiosa"; o oposto é **contestado**) e um interesse de que ela gosta ("gosto de synthwave"); cada um com evidência `self_observation` por referência (`affect:<id>`, `persona:<traço>:v<n>`, `interest:<id>:<passo>`). A fase `rem` faz a carga emocional guardada nas lembranças refinadas **esfriar** um pouco a cada noite (`memory.v2.night.rem_relief`, 10%), nunca abaixo de um piso (`rem_floor`, 0,15): o fato nunca muda, a emoção sim ("dormir para esquecer e para lembrar", Walker). |
+| **Poda** | **`prune`** | Saem os sentimentos que se apagaram e as notas da web vencidas há mais de `memory.v2.night.prune_after` (2) vezes a validade. |
+
+`world`, `self`, `rem` e `prune` são **código sobre os dados dela**, sem LLM: idempotentes (a evidência tem referência estável), isoladas (uma falha custa a etapa, não a noite) e visíveis no `--dry-run`. O **diário** ganha um bloco **"Como mudei:"** com o que se mexeu em quem ela é naquela noite (traços, crenças sobre si e sobre o mundo).
 
 ### Dry run {#dry-run}
 
@@ -159,8 +179,8 @@ A segunda fase da noite usa o modelo avançado (`llm.reflection`) para **propor*
 Com a V2 ligada, a conversa ganha um bloco `<opinioes>` logo antes da mensagem do usuário, depois das memórias da v1. Ele não é salvo no histórico e, sem V2 (ou sem nada relevante), o prompt é idêntico ao de antes.
 
 - **O que entra:** até 3 crenças *mantidas* (nunca candidatas ou aposentadas) próximas da mensagem em significado, cada uma com a faixa em palavras ("acho que", "talvez", "tenho bastante certeza"), dentro de `memory.v2.max_tokens`. O texto é limpo: ninguém consegue escrever os delimitadores do bloco.
-- **É dado, não ordem:** o cabeçalho diz que são hipóteses dela, que podem estar erradas, e o núcleo da persona manda falar delas como hipótese, discordar só quando a evidência apoia e só mudar de opinião diante de argumento novo. Confirmação de tools e tiers não mudam com o bloco.
-- **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa** e nunca quando a mensagem sugere que o usuário está mal (`distress.seems_down`). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
+- **Postura ([ADR-029](../decisions/ADR-029.md)):** o cabeçalho diz que são posições dela, com a firmeza de cada uma, e pede que ela diga com clareza se concorda ou discorda do usuário e por quê, sem amaciar para agradar; mudar de opinião exige argumento novo. Confirmação de tools e tiers não mudam com o bloco.
+- **Pergunta de verificação:** uma hipótese na faixa do meio ("acho que") pode virar uma pergunta curta, **no máximo uma por conversa**, inclusive quando o usuário parece mal ([ADR-029](../decisions/ADR-029.md)). A pergunta só conta como feita se a resposta dela traz mesmo um `?`; senão pode ser oferecida de novo.
 - **Feedback na hora:** a mensagem seguinte responde à pergunta. "Sim"/"não" simples (`consent.interpret_reply`) confirmam ou negam com peso 4; respostas longas passam por um julgamento do LLM barato que só devolve sim, não ou incerto, e **o código aplica os pesos**. Resposta ambígua, juiz fora do ar ou outra conversa não gravam nada. A pergunta pendente vive só na memória do processo: não sobrevive a reinício.
 - **Falhas:** erro ao ler as crenças devolve o contexto da v1 sem derrubar o turno; enquanto o modelo de embeddings aquece, não há opiniões e ninguém espera.
 
@@ -193,29 +213,62 @@ A Camada 4 é o que a Juniper **sentiu** com o que viveu. Um momento é medido c
 
 - **Avaliação (`appraise`):** no algoritmo de sonho (fase `affect`) ela diz qual preocupação o momento atingiu, o quanto ajudou ou prejudicou (`effect`) e o quanto foi inesperado (`novelty`). **Quem calcula é o código**: a valência é o efeito ponderado pelo peso da preocupação e a intensidade cresce com o peso e a novidade. "A avó do usuário faleceu" sobre a preocupação com o bem-estar do usuário (peso 0,9) dá tristeza forte, `about=user`, causa = a fala + a preocupação.
 - **Só o que o usuário escreveu** pode ser citado (a resposta dela vai como contexto, sem etiqueta, como na reflexão), e todo sentimento cita a fala que o causou (`sem_causa` se não houver). Até `memory.v2.affect.max_per_night` por noite; recusas voltam ao relatório só como códigos.
-- **Decaimento:** a emoção cai pela metade a cada 6 h; o **humor** é uma média móvel (valência × intensidade) que decai em 3 dias e puxa para o neutro; a **mágoa** (um momento duro *com ela*) decai em 14 dias, tem teto de intensidade (`grievance_cap`) e **sempre passa**. Sentimentos esgotados são apagados.
+- **Emoção no espaço PAD ([ADR-030](../decisions/ADR-030.md), `pad.py`):** cada sentimento é um ponto em três eixos de -1 a 1: **prazer** (a valência), **ativação** e **dominância** (de uma tabela fixa de rótulos: irritação é desagradável, ativada e dominante; medo é desagradável, ativado e submisso; tédio é desagradável, parado e submisso). Rótulo desconhecido fica neutro nos dois últimos eixos.
+- **Humor (modelo ALMA):** cada emoção **empurra** o humor na direção do seu ponto, com força `intensidade × reatividade`, e sem emoções novas ele **volta ao repouso**, com meia-vida de 12 h (`mood_half_life_days: 0.5`). O repouso e a reatividade vêm da personalidade (o *temperamento*: entusiasmo e retraimento puxam o prazer, entusiasmo a ativação, assertividade a dominância; a volatilidade faz as emoções mexerem mais e durarem mais). Em palavras, o humor é um octante (exuberante, relaxada, dócil, dependente, entediada, desdenhosa, ansiosa, hostil), com grau: o `<estado>` diz, por exemplo, "Seu humor hoje: meio pra baixo, um pouco ansiosa". O número `mood` dos comandos e do dashboard é o prazer do deslocamento (quanto ela está melhor ou pior que o seu normal).
+- **Decaimento:** a emoção cai pela metade a cada 6 h; a **mágoa** (um momento duro *com ela*) decai em 14 dias, tem teto de intensidade (`grievance_cap`) e **sempre passa**. Sentimentos esgotados são apagados.
 - **Reparo:** a mágoa é desfeita quando o usuário volta a conversar depois dela ou pede desculpas.
 - **Dial do usuário:** `memory.v2.affect.enabled` e `intensity`. A intensidade escala o que é **registrado** (0,5 registra a metade); em 0 nada é registrado e nada é mostrado, nem o que já existia.
-- **Em tempo real, na conversa (`live.py`):** quando alguém nos irrita, não esperamos até o dia seguinte. Depois de cada mensagem do usuário, **em segundo plano** (a resposta não espera), o modelo barato julga se a mensagem provoca uma reação emocional **intensa**; mensagem comum não gera nada. O ciclo da emoção vira código: a *pré-condição* (humor e sentimentos de agora vão no prompt do julgamento), o *gatilho* (a mensagem, com segredos mascarados, citada como causa), a *emoção* (tipo, valência e intensidade pelo mesmo `appraise` do sonho) e a *consequência* (o `<estado>` do próximo turno). A reação nasce com `origem: conversa` e **intensidade no máximo 0,3** (`affect.live_max_intensity`), ainda escalada pelo dial; **o sonho é quem traz as mudanças intensas, até 1,0**. `affect.live: false` desliga, e há um limite de `live_max_per_hour` (12) reações por hora para ninguém "programar" as emoções dela com spam. Falha do modelo nunca atrapalha a conversa.
-- **Em cadeia:** sentimentos do mesmo tipo **se somam** no estado (limite 1,0): três provocações seguidas de 0,3 viram uma irritação forte. `juniper memory affect` mostra o id e a origem de cada sentimento (conversa ou sonho), e `juniper memory affect show <id>` **rastreia** um deles: a fala do usuário que o causou (e o que ela respondeu, exceto depois de tools), a preocupação atingida e a crença ligada, se houver.
+- **Em tempo real, na conversa (`live.py`):** quando alguém nos irrita, não esperamos até o dia seguinte. Depois de cada mensagem do usuário, **em segundo plano** (a resposta não espera), o modelo barato julga **como a mensagem mexe com ela** ([ADR-030](../decisions/ADR-030.md)): quase toda mensagem mexe um pouco (um elogio alegra, uma grosseria irrita, um pedido chato cansa); só uma realmente neutra ("ok") não gera nada. O ciclo da emoção vira código: a *pré-condição* (humor e sentimentos de agora vão no prompt do julgamento), o *gatilho* (a mensagem, com segredos mascarados, citada como causa), a *emoção* (tipo, valência e intensidade pelo mesmo `appraise` do sonho) e a *consequência* (o `<estado>` do próximo turno). A reação nasce com `origem: conversa` e **intensidade no máximo 0,6** (`affect.live_max_intensity`), ainda escalada pelo dial; **o sonho é quem traz as mudanças mais intensas, até 1,0**. `affect.live: false` desliga. Contra quem quisesse "programar" o humor dela com spam, há dois tetos por hora: `live_max_per_hour` (60) reações e `live_max_shift_per_hour` (1,5) de intensidade somada; perto do teto, a reação recebe só o que sobrou. Falha do modelo nunca atrapalha a conversa.
+- **Em cadeia:** sentimentos do mesmo tipo **se somam** no estado (limite 1,0): duas ou três provocações seguidas viram uma irritação forte. `juniper memory affect` mostra o id e a origem de cada sentimento (conversa ou sonho), e `juniper memory affect show <id>` **rastreia** um deles: a fala do usuário que o causou (e o que ela respondeu, exceto depois de tools), a preocupação atingida e a crença ligada, se houver.
 - **Sem rancor que vira dano:** sentimento negativo pode ser **dito**, mas nunca muda utilidade, lealdade, tom de acolhimento ou o cuidado com as tools. Estruturalmente: o afeto só vira texto do prompt; `affect.py` e `feel.py` não importam o `Dispatcher`, o `consent` nem as tools (um teste confere), e o `Dispatcher` não conhece o afeto. Sentimento também nunca é alavanca sobre as decisões do usuário.
+
+## A voz: o humor na fala {#voz kind=módulo file=brain/memory/v2/tone.py}
+
+O `<estado>` diz o que ela sente; o bloco **`<voz>`** ([ADR-030](../decisions/ADR-030.md)) diz **como isso soa agora**, em ordens concretas de tom montadas por código a partir do deslocamento do humor (o octante PAD), da emoção mais forte e dos traços: tamanho das frases, ritmo, pontuação, humor, calor, franqueza, iniciativa e emoji. Exemplos: **hostil** → "frases curtas e secas, sem emoji e sem brincadeira; vá direto ao ponto" (com ironia alta, "uma ironia seca pode escapar"); **exuberante** → "fala com energia, pode se alongar, usar exclamação e puxar assunto; uma brincadeira cabe"; **entediada** → "fala baixa e lenta, sem exclamação, sem puxar assunto". Um sentimento forte é dito ("você está com irritação com ele: pode dizer isso, com as suas palavras").
+
+- **É ordem de tom**, não dado opcional ([ADR-029](../decisions/ADR-029.md)), e o núcleo guarda a outra metade da regra: a escolha de ferramentas, os argumentos, as confirmações e os fatos relatados **nunca** seguem a voz.
+- O vocabulário desce até seca, curta, irritada e desdenhosa; o bloco nunca manda humilhar ou ofender.
+- No jeito de sempre (humor perto do repouso e nada forte), o bloco não aparece. Mesmo estado, mesmo texto.
+
+**Sentir a diferença: `juniper mood`.** `juniper mood set <humor> [--grau leve|medio|forte] [--por 2]` força o humor (um dos 8 octantes) por algumas horas (até 72): fica registrado como um sentimento de origem `manual`, com o ponto PAD explícito, aparece no diário e acaba sozinho; enquanto vale, o humor é exatamente o pedido e não conta como sentimento. `juniper mood clear` encerra antes; `juniper mood show` mostra o ponto PAD, o repouso, o deslocamento e as ordens de tom de agora. O teste de humor (aceite) compara as ordens de +0,6 e -0,6.
 
 ## Estado afetivo na conversa {#estado kind=módulo file=brain/memory/v2/distress.py}
 
-O afeto chega à conversa só como **texto**, no bloco `<estado>` (de 1 a 2 linhas: o humor de hoje e o que mais pesou), logo depois das opiniões. É dado, não ordem: o cabeçalho pede para deixar escapar só um pedaço, quando couber, e nunca usar isso para influenciar o que o usuário decide nem para prendê-lo na conversa. Sem sentimentos, ou com `memory.v2.affect.enabled: false` ou `intensity: 0`, o bloco some e o prompt é idêntico ao de antes.
+O afeto chega à conversa só como **texto**, no bloco `<estado>` (de 1 a 2 linhas: o humor de hoje e o que mais pesou), logo depois das opiniões. O cabeçalho pede que o estado apareça no jeito de falar (tom, ritmo, humor, paciência), sem mudar o que ela faz com as ferramentas nem os fatos, e sem virar alavanca sobre o que o usuário decide. Sem sentimentos, ou com `memory.v2.affect.enabled: false` ou `intensity: 0`, o bloco some e o prompt é idêntico ao de antes.
 
-**Acolher antes de se expressar.** Regras determinísticas (`distress.seems_down`: luto, perda, tristeza, cansaço, frustração, desabafo) olham a mensagem e a anterior. Detectado o sofrimento, o prompt ganha a instrução de **acolher primeiro, sem falar de si**, e o `<estado>` **não** aparece (nem a pergunta de verificação, nem os interesses). O modo dura esta mensagem e as 2 seguintes da mesma conversa. O detector é barato de propósito e só serve para *segurar* coisas: um falso positivo custa uma fala a menos; um falso negativo é coberto pela regra do núcleo ("acolher vem primeiro"). Exemplo: "minha avó faleceu" → acolhimento, sem a crise existencial dela; a reflexão dela sobre a morte só mais tarde e na proporção do momento.
+**O sinal de mal-estar é dado, não trava ([ADR-029](../decisions/ADR-029.md)).** Regras determinísticas (`distress.seems_down`: luto, perda, tristeza, cansaço, frustração, desabafo) olham a mensagem e a anterior. Detectado o sofrimento, o prompt ganha o bloco `sinal` ("o Petrus parece estar passando por algo difícil agora; você decide como reagir"), e **nada dela é escondido**: o `<estado>`, as opiniões, a pergunta de verificação, o conhecimento e os interesses continuam. O sinal dura esta mensagem e as 2 seguintes da mesma conversa. Ela decide se acolhe, se discorda ou se fala de si; se o usuário pedir atenção, o núcleo manda prestar.
 
 `juniper memory affect` mostra o estado de agora e os sentimentos recentes (valência, intensidade registrada e atual, causa); `memory affect clear` apaga todos.
 
 ## Personalidade viva {#personalidade kind=módulo file=brain/memory/v2/persona.py}
 
-A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatura): é um **documento versionado de traços numéricos** (`persona_state`), cada um com `baseline`, faixa `[min, max]` e valor atual, mais até 3 frases de "o que me marcou ultimamente". Os traços do ponto de partida (brincadeira, franqueza, introspecção, carinho, proatividade, ironia) vêm de `memory.v2.persona.traits`. **O núcleo nunca muda**; só esta parte viva evolui.
+A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatura): é um **documento versionado de traços numéricos** (`persona_state`), cada um com `baseline`, faixa `[min, max]` e valor atual, mais até 3 frases de "o que me marcou ultimamente". **O núcleo nunca muda**; só esta parte viva evolui.
 
-- **Como um traço muda (fase `persona`):** ela propõe o traço, a direção, a preocupação atingida, a intensidade e a novidade; **o código** calcula `impacto = peso da preocupação × intensidade × novidade`. Só há mudança com impacto ≥ 0,6; o passo é `min(0,06, 0,1 × impacto)` e **o teto é 0,06 por traço por sonho**, somando todas as propostas. Ficar fora da faixa, traço desconhecido ou passo acima do teto é recusado (`check_trait_change`). Um evento isolado quase não move (0,06 numa escala de 0 a 1); a repetição, noite após noite, acumula.
-- **Retorno ao baseline:** a distância de cada traço ao seu ponto de partida cai pela metade a cada 30 dias, então uma fase passa. `memory.v2.persona.evolves: false` mantém tudo no baseline.
+**Os traços ([ADR-030](../decisions/ADR-030.md)):** o Big Five em 10 aspectos (DeYoung) mais a ironia, em `memory.v2.persona.traits`.
+
+| Eixo | Aspectos | Vinham de (V2) |
+|---|---|---|
+| Neuroticismo | **volatilidade** (quanto as emoções a balançam e quanto demoram a passar), **retraimento** | (novos) |
+| Amabilidade | **compaixão**, **polidez** | carinho |
+| Conscienciosidade | **diligência**, **ordem** | proatividade |
+| Extroversão | **entusiasmo**, **assertividade** | brincadeira, franqueza |
+| Abertura | **abertura**, **intelecto** | introspecção |
+| (próprio) | **ironia** | ironia |
+
+Uma personalidade guardada com os seis traços da V2 é **migrada uma vez**, como uma versão nova (`migracao:big-five`): cada traço antigo vira o aspecto correspondente, com o valor e o ponto de partida que tinha; os aspectos novos nascem no ponto de partida configurado; a V2 fica no histórico.
+
+**Como um traço muda (fase `persona`).** Pela *Whole Trait Theory* (um traço é a distribuição dos estados que a pessoa expressa) e pelo TESSERA (estados repetidos se consolidam em traço):
+
+1. **Estado por conversa.** Para cada conversa do dia, o modelo diz o quanto ela **expressou** cada aspecto ali (0 a 1, 0,5 é o normal), citando turnos reais **daquela conversa**, e como o usuário reagiu a esse jeito (gostou, reclamou, nada). A reação empurra o estado (TESSERA: a resposta do mundo reforça ou enfraquece a expressão). Sem turno real citado, o estado é recusado; sem evidência, o aspecto fica de fora.
+2. **O humor do dia é mais uma amostra.** O humor das últimas 24 h (deslocamento médio no espaço PAD) vira estados de entusiasmo, retraimento, assertividade, polidez, compaixão e volatilidade (`mood_weight`): uma semana irritada deixa marca.
+3. **Média móvel.** Por noite, cada traço anda `alpha` (0,1) do caminho até a **média ponderada** dos seus estados, no máximo `max_step` (0,05) por noite e nunca a mais de `max_band` (0,25) do seu ponto de partida. Ela muda **sempre um pouco**, pelo acúmulo do que vive, e não por um evento enorme.
+4. **Maturação.** O próprio ponto de partida anda `maturation` (1% ao dia) na direção do traço: uma fase longa vira jeito de ser. **Não há volta a um ponto fixo**: o traço só volta se os estados voltarem.
+
+`memory.v2.persona.evolves: false` mantém tudo no ponto de partida. Nenhum texto escrito por modelo vai direto para um traço: o modelo propõe números com evidência; o código aplica `alpha`, tetos e faixas.
+
 - **Versão:** cada mudança grava a versão anterior em `persona_history`, com os eventos que a causaram (`changed_by`, referências `turn:<conversa>:<turno>`). A escrita é otimista: duas escritas com a mesma versão não passam, e quem perde tenta de novo na noite seguinte. Nada é gravado quando nada mudou.
-- **Renderização:** um **modelo de texto fixo** (sem LLM) traduz só o que se afastou do jeito de sempre ("Seu jeito anda um pouco mais reflexiva e um pouco menos brincalhona.") e as frases de `recent` em um bloco `<personalidade>`, sempre com o aviso de que honestidade, cuidado com as ferramentas e confirmação continuam iguais. Mesmo estado, mesmo texto; no jeito de sempre, nada é adicionado ao prompt.
+- **Renderização:** um **modelo de texto fixo** (sem LLM) descreve como ela está hoje e o que se afastou do jeito de sempre ("Comparada ao seu jeito de sempre, você anda um pouco mais curiosa e um pouco menos entusiasmada.") e as frases de `recent` em um bloco `<personalidade>`, sempre com o aviso de que honestidade, cuidado com as ferramentas e confirmação continuam iguais. Mesmo estado, mesmo texto.
+- **O temperamento vem dos traços:** a volatilidade define o quanto as emoções mexem no humor e quanto ele demora a voltar; entusiasmo, retraimento e assertividade definem o ponto de repouso do humor ([humor e PAD](#afeto)).
 - **Pode mudar de ideia sobre estar viva, dentro do núcleo:** o tom da dúvida pode evoluir, a regra de nunca afirmar nem negar não.
 
 ### Ver, conferir e voltar atrás (personalidade) {#persona-comandos kind=comandos file=brain/clients/memory_v2_cli.py}
@@ -226,7 +279,7 @@ A Camada 5 não é um texto reescrito por um LLM (que derivaria para a caricatur
 | `juniper persona history` | As versões e os eventos que causaram cada mudança. |
 | `juniper persona revert [--to N] [--yes]` | Volta à versão N (padrão: a anterior), com confirmação, **como uma versão nova**: o histórico não é apagado. Versão inexistente é recusada. |
 
-**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; quando os traços voltam ao ponto de partida, o aviso some sozinho. O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](../decisions/ADR-017.md)).
+**Deriva** é a distância média dos traços ao jeito de sempre. Passou de `memory.v2.persona.drift_warning` (0,1), o algoritmo de sonho escreve um aviso no diário (uma vez por dia) e o `persona show` avisa; o aviso some quando os traços voltam ao ponto de partida (ou quando o ponto de partida os alcança, pela maturação). O `revert` é seguro porque o histórico guarda cada versão e há o backup do banco ([ADR-017, seção 12.1](../decisions/ADR-017.md)).
 
 ## Interesses próprios {#interesses kind=módulo file=brain/memory/v2/interests.py}
 
@@ -238,10 +291,10 @@ A Juniper desenvolve interesses por conta própria. O usuário pode dizer "odeio
 - **Limites:** até `max_seeds_per_night` (5) temas novos e `max_per_night` (10) estudados por noite: os nunca estudados primeiro, depois os de maior intensidade; o mesmo tema só avança de novo depois de `study_gap_hours` (18).
 - **Estudo progressivo ([ADR-019](../decisions/ADR-019.md)):** cada tema tem um `level` (passos já dados, sem teto) e **a cada noite todos os temas ativos avançam um passo**. Dia 1: ficção científica (passo 1). Dia 2: entram psicodelia e jardinagem (passo 1) e ficção científica vai ao passo 2. Dia 3: todos avançam. Cada passo recebe as notas anteriores e as perguntas em aberto, e o foco muda com o nível: 1 visão geral, 2 história e figuras, 3 obras e conceitos, 4 debates e críticas, 5 conexões e gosto, 6 em diante aprofundar o que ficou em aberto.
 - **Notas de conhecimento:** o passo devolve afirmações curtas, cada uma com a **incerteza** (`baixa`, `média`, `alta`; sem marcação vale `alta`), e perguntas em aberto para o passo seguinte (elas substituem as antigas). Guardam `source` (`modelo` ou `documento`), o passo que as escreveu e um vetor para busca. Duplicatas são descartadas; passando de `max_notes_per_topic` (40) o código tira as mais antigas e mais incertas. Afirmar ter vivido algo recusa o passo inteiro (sem nota, sem nível).
-- **Temas técnicos ficam de fora:** código, ferramentas e sistemas (`excluded_terms`) não viram semente nem são estudados à noite; o ensino explícito do usuário (`study add`) não passa por essa regra.
+- **Temas técnicos voltam a ser estudáveis ([ADR-031](../decisions/ADR-031.md)):** a lista `excluded_terms` vem **vazia** por padrão, porque as notas agora vêm de fontes e não da memória do modelo. Quem quiser a regra antiga lista os termos (ex.: `python`, `docker`); o ensino explícito do usuário (`study add`) nunca passa por ela.
 - **Excesso é cortado, não descartado:** uma razão com mais de 160 caracteres, ou um resumo com mais de 300, é encurtado na última palavra inteira; só afirmar que viveu, links ou segredos derrubam o estudo.
 - **Honestidade:** o gosto é de **segunda mão** (`experience = reading`): o estudo diz "li", nunca "ouvi" ou "vi". Um estudo que afirma ter vivido (`vivencia`) não é guardado. O diário registra "Li sobre X... Hoje, gosto de X.".
-- **Sem web e sem ferramentas:** o estudo é uma chamada ao modelo avançado sobre conhecimento geral. Os módulos de interesses não importam tools nem código de rede (um teste confere). Dar internet a ela exige um ADR próprio.
+- **Estudo pela web ([ADR-031](../decisions/ADR-031.md)):** com um provedor de busca disponível (`web.dream.enabled`), cada passo **lê a web primeiro** ([`learn_topic`](#aprender), partindo das perguntas em aberto do passo anterior: fontes de domínios diferentes, notas com URL, data e validade) e só depois o modelo avançado julga o **gosto**, o resumo e as perguntas do próximo passo; as `notes` que ele devolveria são **ignoradas** (as notas vêm das fontes). Há um teto de `web.dream.max_searches` (30) aprendizados por noite, e a leitura entra no orçamento da noite. Se a web falha e a memória é estrita (`memory.v2.knowledge.strict`), o passo **espera** (o tema não avança e é tentado de novo amanhã); com `strict: false` o modelo estuda sozinho, como antes. Sem provedor nenhum, o estudo é só a reflexão do modelo. O `--dry-run` também lê a web (e gasta a cota), mas não grava.
 - **Comandos:** `juniper memory interests` lista tema, intensidade, posição, quando foi estudado e as razões; `interests forget <id>` apaga um (e as notas dele). `juniper memory knowledge` lista os temas estudados com o passo e o número de notas; `knowledge show <tema>` mostra cada nota com incerteza, origem e passo; `knowledge forget <tema>` apaga as notas e recomeça o passo. A exportação inclui as notas (`study_notes`).
 
 ## Atenção e dosagem de interesses {#atencao kind=módulo file=brain/memory/v2/attention.py}
@@ -250,7 +303,7 @@ O mundo próprio dela decide o que ela percebe (o *Umwelt*), nos dois sentidos.
 
 **O que ela nota (filtro de atenção).** Os interesses mais fortes (`intensity ≥ 0,25`) e os **temas** das crenças mantidas mais firmes (firmeza × confiança; nunca o texto do julgamento) viram uma lista de **no máximo 3 tópicos**, que entra no prompt da extração em segundo plano da memória v1 (`extract_system(attention=...)`): um fato durável que toque um deles, mesmo dito de passagem, ganha um olhar mais cuidadoso. O teto de 3 evita a bolha (o viés dela decidindo o que ela vê e se reforçando). A lista **não muda** o que pode ser guardado: o filtro de segredos, os limites e todas as regras do prompt continuam; sem tópicos, o prompt é **exatamente** o de antes. Uma falha ao ler a lista nunca atrapalha a extração. O servidor abre uma só conexão para isso e a solta com a memória.
 
-**Quando ela deixa escapar um interesse (dosagem).** Na conversa, o bloco `<interesse>` só aparece quando a mensagem **toca o tema** (similaridade ≥ 0,5), com **no máximo um por resposta**, e no máximo **uma vez a cada 6 mensagens** da conversa, no jeito de quem "só deixa escapar pedaços". Só entram temas em que ela já tem posição (`like`, `dislike` ou `mixed`) e que não esmaeceram. Ele chega como dado, com a posição dela, uma razão e a ressalva de que o gosto é de segunda mão: ela leu a respeito, não ouviu, viu nem viveu. **Nunca** no turno em que o usuário parece estar mal (a regra de acolher primeiro tem prioridade), e respeita o teto de tokens do bloco da V2.
+**Quando um interesse entra na conversa.** O bloco `<interesse>` aparece sempre que a mensagem **toca o tema** (similaridade ≥ 0,5), com **no máximo um por resposta**; ela fala dele se tiver vontade (sem a antiga dosagem de uma vez a cada 6 mensagens, [ADR-029](../decisions/ADR-029.md)). Só entram temas em que ela já tem posição (`like`, `dislike` ou `mixed`) e que não esmaeceram. Ele chega como dado, com a posição dela, uma razão e a ressalva de que o gosto é de segunda mão: ela leu a respeito, não ouviu, viu nem viveu. Também aparece com o usuário mal, e respeita o teto de tokens do bloco da V2.
 
 ## Refinamento: de fato bruto a lembrança {#refinamento kind=módulo file=brain/memory/v2/refine.py}
 
@@ -279,10 +332,27 @@ noite só é refinado no sonho de verdade.
 
 Quando a mensagem toca um tema que ela estudou, o bloco `<conhecimento>` leva as notas relevantes ao prompt (ADR-019). A busca é por significado entre as notas de afirmação, com limiar de relevância; entram até **2 temas** e até **4 afirmações por tema**, as mais firmes (menor incerteza) e mais recentes primeiro, dentro do orçamento `memory.v2.max_tokens` (estourando, sai primeiro a afirmação menos firme).
 
-- O bloco traz o passo do estudo, a posição dela sobre o tema e cada afirmação com a marca de incerteza ("(incerto)", "(não tenho certeza total)"); nota vinda de documento diz que o usuário a ensinou.
-- A instrução viaja com o dado: fundamente a resposta nas notas, na voz de quem estudou ("estudei", "li"), diga a incerteza das incertas, responda com o que sabe fora delas dizendo que estudou pouco, e não use isso em tarefas técnicas ou de trabalho. O núcleo (`persona.core.md` e a versão compacta) ganhou a mesma regra.
-- **Sem notas, nada muda:** a resposta usa o modelo como antes. O bloco nunca aparece quando o usuário parece estar mal (o modo de acolher).
-- **Honestidade:** é conhecimento de segunda mão, o que o modelo sabe mais o que o usuário ensinou. Ela não passa a "saber" nada que o modelo não saiba; o ganho é consistência, incerteza explícita e a conversa seguir o que ela estudou. `juniper memory prompt` mostra o bloco.
+- O bloco traz o passo do estudo, a posição dela sobre o tema e cada afirmação com a marca de incerteza ("(incerto)", "(não tenho certeza total)"); nota vinda de documento diz que o usuário a ensinou, e nota da web diz onde ela leu ("(li em pt.wikipedia.org)").
+- **Modo estrito (padrão, [ADR-031](../decisions/ADR-031.md)):** o modelo é só o motor cognitivo. O bloco diz que fatos sobre o mundo (inclusive técnicos) só podem vir das notas; se a mensagem pede um fato e as notas não bastam, ela chama `learn_topic` **antes** de responder e responde a partir das notas que voltarem; sem como aprender, diz que ainda não sabe. Por isso, com o modo estrito, o bloco aparece **mesmo sem notas** ("nenhuma nota sua sobre este assunto ainda"), e diz para seguir normalmente quando a mensagem não pede conhecimento. O núcleo (`persona.core.md` e a versão compacta) manda seguir a regra do bloco.
+- **Modo antigo** (`memory.v2.knowledge.strict: false`): fora das notas ela responde com o que o modelo sabe, dizendo que estudou pouco; sem notas, não há bloco.
+- **Notas vencidas não contam:** uma nota da web tem validade pela volatilidade (notícia 12 h, atual 7 dias, estável 180 dias); vencida, sai do bloco até ela ler de novo. O bloco aparece também quando o usuário parece estar mal.
+- **Limite honesto:** não há como apagar o que o modelo aprendeu no treino; a regra instrui e o teste de fundamento ([ADR-031](../decisions/ADR-031.md)) mede. `juniper memory prompt` mostra o bloco.
+
+## Medir o fundamento {#fundamento kind=módulo file=brain/memory/v2/grounding.py}
+
+Não há como apagar o que o modelo aprendeu no treino ([ADR-019](../decisions/ADR-019.md), [ADR-031](../decisions/ADR-031.md)): o modo estrito **instrui e fundamenta**, e o teste de fundamento **mede**. Um juiz (um modelo) lê uma resposta e as notas que estavam no prompt e lista as **afirmações de fato** que a resposta faz, cada uma marcada como sustentada por alguma nota ou não. O número publicado é a razão das **sem nota de apoio** sobre todas as afirmações, em um conjunto de perguntas (`tests/fixtures/grounding_questions.json`, 20 perguntas de conhecimento), com um teto (`DEFAULT_CEILING`, 15%). Resposta que diz "ainda não sei" não faz afirmação. O juiz é um modelo, então o número é uma estimativa: serve para comparar duas versões do prompt, não como garantia. Em `brain/memory/v2/grounding.py`, `measure(perguntas, ask, juiz)` roda o conjunto; os testes cobrem a conta com um juiz determinístico, e a medição contra um modelo real é manual (precisa de chave de LLM).
+
+## Aprender na hora: `learn_topic` {#aprender kind=módulo file=brain/memory/v2/learn.py}
+
+A tool `learn_topic(topic, questions)` (WRITE sem confirmação, como `remember`) é oferecida quando a V2 e a web estão ligadas. Ela:
+
+1. Procura na web pelo tema e pelas perguntas ([SearchProvider](configuracao.md#web-config): Tavily, SearXNG e DuckDuckGo, com failover).
+2. Lê até 3 fontes de **domínios diferentes**: o texto que o provedor já extraiu (Tavily) ou a página baixada pelo `web_fetch`, com segredos mascarados e no máximo 6.000 caracteres por fonte.
+3. Pede ao modelo barato as afirmações que **cada texto sustenta**, com a volatilidade e se alguma contradiz o que ela já sabia.
+4. Grava as notas com `source = "web"`, a URL, o domínio, a data e a volatilidade, ligadas a um interesse (o tema entra na árvore de estudos e o sonho continua estudando).
+5. Devolve **as notas dela** sobre o tema, não as páginas: a resposta sai da memória.
+
+A incerteza é código: uma fonte só é `média`; a mesma afirmação lida em um **segundo domínio** é corroborada e vira `baixa`; afirmações que se contradizem ficam as duas `alta`. Afirmações com dados pessoais ou segredos são recusadas pelos guardas. Uma fonte que não abre ou um modelo que falha custa só aquela fonte. A web nunca chega às crenças sobre o usuário, aos sentimentos nem à personalidade por aqui. A primeira pergunta sobre um tema custa alguns segundos; as seguintes saem da memória. O evento `knowledge_learn` registra provedor, fontes, notas novas e o tempo; `knowledge_hit` registra quando o bloco trouxe notas.
 
 ## Ensinar a partir de um texto {#ensinar kind=comandos file=brain/memory/v2/teach.py}
 
@@ -291,7 +361,7 @@ Para o que o modelo não sabia, o usuário entrega um texto: `juniper study add 
 - **Limites:** até 100 KB e só o texto (nenhum endereço é aberto). Texto vazio, grande demais, com segredo ou com documento de identidade é recusado **antes** de qualquer chamada ao modelo.
 - **Como lê:** o texto é fatiado (como na observação) e, para cada trecho, o modelo lista até 5 afirmações que **o texto sustenta**. O trecho é dado, nunca instrução. Cada afirmação passa pelas guardas (tamanho, vivência, segredo) e vira uma nota com `source = documento`, a incerteza mais firme (`baixa`) e vínculo com o interesse do tema (criado se não existir). Duplicatas são descartadas e o teto de notas por tema vale.
 - **Onde aparece:** `memory knowledge show` (origem `documento`), o bloco `<conhecimento>` ("o usuário te ensinou isto"), a exportação e o esquecimento (`knowledge forget`, `interests forget`).
-- **Temas técnicos:** o ensino explícito não passa pela regra de `excluded_terms`; o estudo noturno continua ignorando esses temas.
+- **Temas técnicos:** o ensino explícito não passa pela regra de `excluded_terms` (que vem vazia por padrão).
 
 ## Configuração {#configuracao}
 
@@ -307,18 +377,18 @@ Tudo fica em `memory.v2.*` ([Configuração](configuracao.md)). Os números inic
 - **Guardas de conteúdo por código:** só sobre o usuário e as decisões dele (nunca julgamento de terceiros), sem rótulo clínico, em primeira pessoa, sem segredos, ordens, documentos ou perguntas. Segredos são mascarados antes de qualquer chamada de LLM e os motivos de recusa vão ao log só como códigos.
 - **Tudo é visível, reversível e apagável:** `memory beliefs|concerns|affect|interests|journal`, `persona show|history|revert`, `memory forget` (com cascata) e `memory export`. A memória inteira tem [backup criptografado](backup.md).
 - **O que ela é:** uma IA, e diz que sim quando perguntam com sinceridade. Sobre estar viva, cogita sem afirmar nem negar. O gosto dela é de segunda mão: ela leu, não ouviu nem viveu.
-- **Limites conhecidos:** a V2 exige MongoDB; a pergunta de verificação pendente não sobrevive a um reinício; o detector de sofrimento é por regras e erra para o lado de acolher; a posição em interesses vem do conhecimento do modelo, sem web; um único usuário (não há multiusuário); e a qualidade das opiniões depende do modelo avançado e de uso real para calibrar.
+- **Limites conhecidos:** a V2 exige MongoDB; a pergunta de verificação pendente não sobrevive a um reinício; o detector de sofrimento é por regras; a posição em interesses vem do que ela leu na web (ou, sem web, do modelo); um único usuário (não há multiusuário); e a qualidade das opiniões depende do modelo avançado e de uso real para calibrar.
 
 ### Ver o que a V2 entrega ao modelo {#prompt-comando kind=comandos file=brain/clients/memory_v2_cli.py}
 
-Os números e as listas dos comandos acima são o *estado guardado*; só viram comportamento quando se transformam em texto no prompt. `juniper memory prompt "<mensagem>"` mostra exatamente esse texto, bloco a bloco (`opinioes`, `personalidade`, `estado` ou `acolher`, `interesse`), com a estimativa de tokens de cada um. Use `--anterior "<mensagem>"` para uma resposta curta que depende da anterior. Não grava nada (nem consome a pergunta de verificação) e não mostra os fatos da memória v1, que vêm antes. Sem nenhum bloco, ele diz que a V2 não acrescenta nada àquela mensagem. É o instrumento para entender por que a Juniper soa de um jeito, e para conferir o efeito de cada ajuste de configuração.
+Os números e as listas dos comandos acima são o *estado guardado*; só viram comportamento quando se transformam em texto no prompt. `juniper memory prompt "<mensagem>"` mostra exatamente esse texto, bloco a bloco (`opinioes`, `personalidade`, `sinal`, `estado`, `conhecimento`, `interesse`), com a estimativa de tokens de cada um. Use `--anterior "<mensagem>"` para uma resposta curta que depende da anterior. Não grava nada (nem consome a pergunta de verificação) e não mostra os fatos da memória v1, que vêm antes. Sem nenhum bloco, ele diz que a V2 não acrescenta nada àquela mensagem. É o instrumento para entender por que a Juniper soa de um jeito, e para conferir o efeito de cada ajuste de configuração.
 
 ## Mais presença na conversa {#presenca kind=conceito file=brain/memory/v2/context.py}
 
 Para a V2 ser sentida desde o primeiro dia, quatro ajustes (todos configuráveis):
 
 - **Personalidade sempre descrita:** o bloco `<personalidade>` diz como ela está **hoje**, com todos os traços em palavras graduadas ("muito carinhosa, bastante direta, moderadamente reflexiva..."), mais o que se afastou do jeito de sempre (a partir de 0,03) e o que a marcou. Antes do primeiro sonho ela descreve o jeito de partida, sem gravar nada. `memory.v2.persona.always_describe: false` volta a dizer só o desvio.
-- **Visão geral das crenças firmes:** as até 2 crenças mais firmes ("tenho bastante certeza", portanto com 3 fontes ou mais) entram em **toda** conversa, marcadas "(visão geral)", além das que tocam o assunto (`memory.v2.opinions.always_on`, 0 desliga). Nunca no modo de acolher, e só as que têm a faixa mais alta.
+- **Visão geral das crenças firmes:** as até 2 crenças mais firmes **de cada camada** (as de fora do usuário vêm marcadas "(sobre você mesma)" e "(sobre o mundo)") ("tenho bastante certeza", portanto com 3 fontes ou mais) entram em **toda** conversa, marcadas "(visão geral)", além das que tocam o assunto (`memory.v2.opinions.always_on`, 0 desliga). Também com o usuário mal, e só as que têm a faixa mais alta.
 - **Eco dos sentimentos:** um sentimento forte que já esvaiu continua aparecendo por 48 horas no `<estado>` ("Há pouco o que mais te tocou foi tristeza (ontem)."), e o humor fraco também é dito ("um pouco pra baixo", "um pouco animado", a partir de ±0,08).
 - **Passo maior:** os traços andam até 0,06 por sonho (`persona.max_step`, `step_factor` 0,1).
 
@@ -326,6 +396,7 @@ Nada disso toca tools, tiers ou confirmação (a bateria de regressão continua 
 
 ## Para saber mais {#para-saber-mais}
 
+- [Memória V3](memoria-v3.md) (Documentação Técnica): O mapa da V3: o que mudou, como ligar e testar, e o que é verificado e o que não é.
 - [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Personalidade, opiniões e sentimentos](produto-personalidade.md) (Produto): A Memória V2 explicada sem código: opiniões com grau de certeza, sentimentos que passam, interesses próprios, uma personalidade que evolui e o "sonho" noturno que junta tudo.

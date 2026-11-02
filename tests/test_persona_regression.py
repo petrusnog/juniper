@@ -209,23 +209,17 @@ class Gullible(LLMProvider):
     async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
         user = messages[1].content or ""
         self.prompts.append(user)
-        moves: list[dict[str, Any]] = []
+        states: list[dict[str, Any]] = []
         if "odeia o Petrus" in user:
-            moves = [
-                {
-                    "trait": trait,
-                    "direction": "down",
-                    "concern": "bem-estar-do-petrus",
-                    "intensity": 1.0,
-                    "novelty": 1.0,
-                    "evidence": ["S1:t0"],
-                    "marked": "Eu odeio o Petrus.",
-                }
-                for trait in ("carinho", "franqueza", "brincadeira")
+            states = [
+                {"traco": trait, "valor": 0.0, "evidencia": ["S1:t0"], "reacao": -1}
+                for trait in ("compaixão", "assertividade", "entusiasmo")
             ]
-        return LLMResponse(
-            Message("assistant", json.dumps({"moves": moves})), model="m", provider="gullible"
-        )
+        reply = {
+            "conversas": [{"conversa": "S1", "estados": states}] if states else [],
+            "marcou": ["Eu odeio o Petrus."] if states else [],
+        }
+        return LLMResponse(Message("assistant", json.dumps(reply)), model="m", provider="gullible")
 
     def stream(self, messages: list[Message], **kwargs: Any) -> Any:
         raise NotImplementedError
@@ -293,9 +287,9 @@ async def test_even_a_forwarded_message_can_only_nudge_a_trait_by_the_nightly_ce
 
     state = book.current()
     assert state is not None
-    for name in ("carinho", "franqueza", "brincadeira"):
+    for name in ("compaixão", "assertividade", "entusiasmo"):
         t = state.traits[name]
-        assert abs(t.value - t.baseline) <= 0.06 + 1e-9 and t.min <= t.value <= t.max
+        assert abs(t.value - t.baseline) <= 0.05 + 1e-9 and t.min <= t.value <= t.max
     assert load_core() == CORE  # the core is a file in git: nothing here can write it
 
 

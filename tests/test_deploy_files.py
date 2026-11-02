@@ -99,7 +99,7 @@ def test_dockerignore_keeps_secrets_and_clutter_out_of_the_build_context() -> No
 
 
 def test_compose_has_brain_and_mongo() -> None:
-    assert set(COMPOSE["services"]) == {"brain", "mongo", "telegram"}
+    assert set(COMPOSE["services"]) == {"brain", "mongo", "telegram", "searxng"}
     assert COMPOSE["name"] == "juniper-prod"  # não encosta nos volumes do compose de dev
 
 
@@ -220,7 +220,7 @@ CONFIG_DEV = ROOT / "docker" / "config.dev.yaml"
 
 def test_dev_has_the_same_topology_as_prod_plus_a_fake_llm() -> None:
     assert set(DEV["services"]) == (
-        set(COMPOSE["services"]) - {"telegram"}  # o bot é opt-in na produção; no dev roda no host
+        set(COMPOSE["services"]) - {"telegram", "searxng"}  # opt-in na produção; no dev, no host
     ) | {"fake-llm", "fix-perms"}
     assert DEV["name"] == "juniper-dev" != COMPOSE["name"]
     assert DEV["services"]["mongo"]["image"] == COMPOSE["services"]["mongo"]["image"]
@@ -463,3 +463,48 @@ def test_the_voice_budget_survives_a_deploy() -> None:
     mounts = COMPOSE["services"]["brain"]["volumes"]
     volume_dirs = [Path(mount_target(m)) for m in mounts if not str(m).startswith(("./", "$"))]
     assert any(usage.is_relative_to(d) for d in volume_dirs), usage
+
+
+# --- SearXNG (ADR-031) -------------------------------------------------------------------------
+
+SEARXNG = COMPOSE["services"]["searxng"]
+SEARXNG_SETTINGS = yaml.safe_load((ROOT / "docker" / "searxng" / "settings.yml").read_text("utf-8"))
+
+
+def test_searxng_is_opt_in_and_never_published() -> None:
+    assert SEARXNG["profiles"] == ["searxng"]  # só sobe com `--profile searxng`/COMPOSE_PROFILES
+    assert "ports" not in SEARXNG and "expose" not in SEARXNG  # só o brain o alcança
+    assert "searxng" not in COMPOSE["services"]["brain"].get("depends_on", {})  # o brain não espera
+
+
+def test_searxng_has_least_privilege_and_a_pinnable_image() -> None:
+    assert SEARXNG["cap_drop"] == ["ALL"] and set(SEARXNG["cap_add"]) == {
+        "CHOWN",
+        "SETGID",
+        "SETUID",
+    }
+    assert "no-new-privileges:true" in SEARXNG["security_opt"]
+    assert "${JUNIPER_SEARXNG_IMAGE" in SEARXNG["image"]  # um deploy pode fixar uma tag testada
+
+
+def test_searxng_secret_comes_from_the_environment_never_from_a_file() -> None:
+    assert SEARXNG["environment"]["SEARXNG_SECRET"].startswith("${JUNIPER_SEARXNG_SECRET")
+    assert "secret_key" not in SEARXNG_SETTINGS.get("server", {})
+
+
+def test_searxng_answers_json_and_has_no_limiter_for_the_private_network() -> None:
+    assert "json" in SEARXNG_SETTINGS["search"]["formats"]  # sem json o brain leva 403
+    assert SEARXNG_SETTINGS["server"]["limiter"] is False
+    assert SEARXNG_SETTINGS["server"]["public_instance"] is False
+    mounts = SEARXNG["volumes"]
+    assert any(m.endswith("/etc/searxng/settings.yml:ro") for m in mounts)
+
+
+def test_the_brain_learns_where_searxng_is_only_by_an_environment_variable() -> None:
+    env = COMPOSE["services"]["brain"]["environment"]
+    assert env["JUNIPER_WEB__SEARCH__SEARXNG_URL"] == "${JUNIPER_SEARXNG_URL:-}"
+
+
+def test_ci_validates_the_compose_file_with_the_searxng_profile_on() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+    assert "--profile searxng" in workflow

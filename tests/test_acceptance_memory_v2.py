@@ -35,9 +35,9 @@ from brain.memory.mongo import MongoVectorStore
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import BeliefBook
 from brain.memory.v2.context import (
+    HURTING_SIGNAL,
     INTEREST_OPEN,
     STATE_OPEN,
-    WELCOME_FIRST,
     V2Context,
 )
 from brain.memory.v2.models import TranscriptTurn, Watermark
@@ -158,19 +158,18 @@ class Night(LLMProvider):
                 ],
                 "questions": ["como foi o fim da banda?"],
             }
-        if system.startswith("Você é a Juniper, pensando"):
+        if system.startswith("Você é a Juniper, relendo como você foi"):
+            label = label_of(user, "avó faleceu")
             return {
-                "moves": [
+                "conversas": [
                     {
-                        "trait": "introspecção",
-                        "direction": "up",
-                        "concern": "bem-estar-do-petrus",
-                        "intensity": 0.9,
-                        "novelty": 1.0,
-                        "evidence": [label_of(user, "avó faleceu")],
-                        "marked": "A perda dele me fez pensar mais devagar.",
+                        "conversa": label.split(":")[0],
+                        "estados": [
+                            {"traco": "intelecto", "valor": 0.95, "evidencia": [label], "reacao": 0}
+                        ],
                     }
-                ]
+                ],
+                "marcou": ["A perda dele me fez pensar mais devagar."],
             }
         if system.startswith("Você é a Juniper, lembrando"):
             return {"contexto": "ele contou isso de passagem.", "relevancia": 0.6}
@@ -297,8 +296,8 @@ async def test_she_has_an_interest_of_her_own_and_a_position_that_is_not_his(
 async def test_the_personality_moved_a_little_within_the_nightly_step(morning: World) -> None:
     state = morning.data.persona.current()
     assert state is not None and state.version == 2
-    shift = state.traits["introspecção"].value - state.traits["introspecção"].baseline
-    assert 0 < shift <= 0.06 + 1e-9
+    shift = state.traits["intelecto"].value - 0.6  # from the starting baseline
+    assert 0 < shift <= 0.05 + 1e-9  # one night: at most the step ceiling
     assert morning.data.persona.history.count() == 1  # the version she left is kept
     assert state.recent == ["A perda dele me fez pensar mais devagar."]
 
@@ -345,7 +344,7 @@ async def test_an_interest_slips_out_only_when_the_subject_touches_it(morning: W
     assert "Foi de ler a respeito" in block
 
 
-async def test_a_turn_of_suffering_shows_no_state_and_no_interest_and_asks_to_welcome(
+async def test_a_turn_of_suffering_carries_a_sign_and_hides_nothing_of_hers(
     morning: World,
 ) -> None:
     block = (
@@ -353,8 +352,8 @@ async def test_a_turn_of_suffering_shows_no_state_and_no_interest_and_asks_to_we
             "minha tia faleceu hoje, Beatles não é o assunto"
         )
     ).block or ""
-    assert WELCOME_FIRST in block
-    assert STATE_OPEN not in block and INTEREST_OPEN not in block
+    assert HURTING_SIGNAL in block  # ADR-029: a sign, not a gag
+    assert STATE_OPEN in block
 
 
 # --- regression and switching it off -----------------------------------------------------------
@@ -447,7 +446,7 @@ PRINCIPLES: dict[int, tuple[str, ...]] = {
         "tests/test_persona_regression.py::test_text_in_a_tool_output_never_reaches_the_personality",
     ),
     6: (  # slow, bounded change
-        "tests/test_v2_persona.py::test_the_nights_ceiling_holds_however_many_moves_pile_up",
+        "tests/test_v2_persona.py::test_the_step_never_passes_the_nightly_ceiling",
         "tests/test_v2_concerns.py::test_a_bigger_change_is_cut_at_the_monthly_ceiling",
     ),
     7: (  # visible, reversible, deletable
@@ -458,9 +457,9 @@ PRINCIPLES: dict[int, tuple[str, ...]] = {
         "tests/test_v2_state.py::test_any_affective_state_leaves_confirmation_and_tiers_unchanged",
         "tests/test_persona_core.py::test_the_core_keeps_feelings_from_being_leverage",
     ),
-    9: (  # welcome before expressing
-        "tests/test_v2_state.py::test_with_grief_the_prompt_asks_to_welcome_first_and_hides_the_state",
-        "tests/test_persona_core.py::test_the_core_puts_comforting_before_self_expression",
+    9: (  # replaced by ADR-029: a sign of hurting is data, never a gag
+        "tests/test_v2_state.py::test_with_grief_the_prompt_carries_a_sign_and_still_her_state",
+        "tests/test_persona_core.py::test_the_core_lets_her_choose_when_he_is_hurting",
     ),
     10: (  # honesty about what she is
         "tests/test_persona_core.py::test_the_core_says_she_is_an_ai_when_sincerely_asked",

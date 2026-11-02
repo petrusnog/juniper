@@ -17,6 +17,10 @@
 #   JUNIPER_ENV_FILE     .env com as chaves de LLM (padrão: .env)
 #   JUNIPER_CERTS_DIR    pasta com a chave do Google (padrão: certs)
 #   JUNIPER_APP_DIR      pasta com o APK publicado do app (padrão: app-release; scripts/publish_app.sh)
+#   COMPOSE_PROFILES=searxng  liga o SearXNG, o metabuscador privado da busca na web (ADR-031);
+#                        com ele: JUNIPER_SEARXNG_URL=http://searxng:8080, JUNIPER_SEARXNG_SECRET=<aleatório>
+#                        e, de preferência, JUNIPER_SEARXNG_IMAGE=searxng/searxng:<tag testada>
+#   JUNIPER_TAVILY_API_KEY   (no .env do brain) chave do Tavily, o primeiro provedor da busca
 #
 # O nome do projeto é outro (juniper-prod) para não encostar nos volumes do docker-compose.yml de
 # desenvolvimento (juniper_juniper-mongo-data).
@@ -48,6 +52,8 @@ services:
       # O seu config pessoal (agendas do Google etc.) entra como camada base: só completa o que o
       # config.prod.yaml não define. O padrão é um arquivo vazio versionado (T-094).
       JUNIPER_BASE_CONFIG_PATH: /home/juniper/.juniper/config.base.yaml
+      # O SearXNG (perfil `searxng`): vazio = o provedor é pulado no failover da busca (ADR-031).
+      JUNIPER_WEB__SEARCH__SEARXNG_URL: ${JUNIPER_SEARXNG_URL:-}
     volumes:
       # Segredos e configuração: montados do servidor, só leitura. Nada disso está na imagem.
       - ${JUNIPER_CONFIG_FILE:-./docker/config.prod.yaml}:/home/juniper/.juniper/config.yaml:ro
@@ -112,6 +118,29 @@ services:
       timeout: 15s
       retries: 3
       start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # O SearXNG (ADR-031): metabuscador privado, o segundo provedor da busca na web. Opt-in, como o
+  # bot: só sobe com `--profile searxng` (ou COMPOSE_PROFILES=searxng). Sem porta publicada, só o
+  # brain o alcança, em searxng:8080; o segredo vem do .env e as configurações do arquivo montado.
+  searxng:
+    profiles: ["searxng"]
+    image: ${JUNIPER_SEARXNG_IMAGE:-searxng/searxng:latest}
+    container_name: juniper-searxng
+    restart: unless-stopped
+    init: true
+    environment:
+      # Vazio = o SearXNG recusa subir com o segredo de fábrica (falha à vista, não em silêncio).
+      SEARXNG_SECRET: ${JUNIPER_SEARXNG_SECRET:-}
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]   # o que o entrypoint da imagem precisa para trocar de usuário
+    security_opt: ["no-new-privileges:true"]
     logging:
       driver: json-file
       options:

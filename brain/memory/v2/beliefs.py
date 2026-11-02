@@ -1,4 +1,5 @@
-"""The book of beliefs: hypotheses about the user with confidence computed from evidence.
+"""The book of beliefs: hypotheses with confidence computed from evidence, about the user, one of
+his decisions, herself or the world (ADR-030).
 
 ``BeliefBook`` is the one place that creates, reinforces, confirms, denies, reviews and retires
 beliefs, over a ``V2Data``. The LLM may *propose* (the nightly reflection, T-105); every number
@@ -14,7 +15,7 @@ from datetime import datetime
 from brain.config import V2BeliefSettings, settings
 from brain.memory.embeddings import EmbeddingProvider
 from brain.memory.v2 import confidence as conf
-from brain.memory.v2.models import Belief, Calibration, Evidence, utcnow
+from brain.memory.v2.models import Belief, BeliefPoint, Calibration, Evidence, utcnow
 from brain.memory.v2.semantic import Hit, semantic_search
 from brain.memory.v2.store import V2Data
 
@@ -22,6 +23,8 @@ from brain.memory.v2.store import V2Data
 DUPLICATE_SIMILARITY = 0.9
 LIVE = ("candidate", "active", "revised")
 HELD = ("active", "revised")
+# A curve point is only added when the confidence moved at least this much.
+POINT_EPSILON = 1e-4
 
 
 @dataclass
@@ -56,6 +59,7 @@ class BeliefBook:
         *,
         about: str = "user",
         origin: str = "night",
+        merge: bool = True,
     ) -> tuple[Belief, bool]:
         """A new hypothesis backed by ``evidence`` (``(belief, created)``).
 
@@ -68,7 +72,7 @@ class BeliefBook:
         if self.embedder is not None:
             vector = self.embedder.embed(statement, "passage")
             model = self.embedder.model_id
-            twin = self._twin(vector, model, about)
+            twin = self._twin(vector, model, about) if merge else None
             if twin is not None:
                 self.add_evidence(twin.id, evidence)
                 return self.data.beliefs.get(twin.id) or twin, False
@@ -90,9 +94,10 @@ class BeliefBook:
             last_reviewed_at=now,
             updated_at=now,
         )
-        conf.apply_evidence(belief, evidence)
+        conf.apply_evidence(belief, evidence, self.config.surprise)
         belief.status = conf.next_status(belief, self.config)
         self.data.beliefs.save(belief)
+        self._point(belief, "created")
         return belief, True
 
     def add_evidence(self, belief_id: str, evidence: Evidence) -> Belief | None:
@@ -101,9 +106,18 @@ class BeliefBook:
         if belief is None:
             return None
         before = belief.status
-        if conf.apply_evidence(belief, evidence):
+        if conf.apply_evidence(belief, evidence, self.config.surprise):
             self._settle(belief, before)
         return belief
+
+    def add_source(self, belief_id: str, domain: str, *, supports: bool = True) -> Belief | None:
+        """A web source (one per domain) says it, or says the opposite (ADR-030, section 8)."""
+        kind = "source" if supports else "source_contradiction"
+        return self.add_evidence(belief_id, Evidence(kind, domain=domain, at=self.clock()))
+
+    def add_self_observation(self, belief_id: str, ref: str) -> Belief | None:
+        """A series of her own history (``affect:<id>``, ``persona:v<n>``...) says it."""
+        return self.add_evidence(belief_id, Evidence("self_observation", ref=ref, at=self.clock()))
 
     def confirm(
         self, belief_id: str, session_id: str | None = None, turn: int | None = None
@@ -142,6 +156,7 @@ class BeliefBook:
             if belief.status == "retired":
                 report.retired.append(belief.id)
             self._persist(belief)
+            self._point(belief, "decay")
         return report
 
     # --- reading ------------------------------------------------------------------------------
@@ -153,9 +168,14 @@ class BeliefBook:
         """The beliefs she holds (active or revised), newest first."""
         return self.data.beliefs.list({"status": {"$in": list(HELD)}}, [("created_at", -1)])
 
-    def firmest(self, limit: int) -> list[Belief]:
-        """The held beliefs she is surest about ("tenho bastante certeza"), firmest first."""
-        sure = [b for b in self.held() if self.words(b) == conf.WORD_CERTEZA]
+    def firmest(self, limit: int, about: str | None = None) -> list[Belief]:
+        """The held beliefs she is surest about ("tenho bastante certeza"), firmest first,
+        optionally of one layer (``user``, ``self``, ``world``...)."""
+        sure = [
+            b
+            for b in self.held()
+            if self.words(b) == conf.WORD_CERTEZA and (about is None or b.about == about)
+        ]
         sure.sort(key=lambda b: (-self.confidence_of(b), -b.n, b.id))
         return sure[:limit]
 
@@ -175,7 +195,13 @@ class BeliefBook:
     def words(self, belief: Belief) -> str:
         """ "talvez", "acho que" or "tenho bastante certeza" for this belief."""
         sources = conf.distinct_sources(belief.evidence_for)
-        return conf.band(conf.confidence(belief.alpha, belief.beta), belief.n, sources)
+        return conf.band(
+            conf.confidence(belief.alpha, belief.beta), belief.n, sources, belief.about
+        )
+
+    def history(self, belief_id: str) -> list[BeliefPoint]:
+        """The curve of one belief's confidence, oldest first."""
+        return self.data.belief_history.list({"belief_id": belief_id}, [("at", 1)])
 
     def confidence_of(self, belief: Belief) -> float:
         return conf.confidence(belief.alpha, belief.beta)
@@ -209,6 +235,7 @@ class BeliefBook:
     def _settle(self, belief: Belief, before: str) -> None:
         """New status after new evidence; a belief she HELD that turns out wrong is a miss."""
         belief.status = conf.next_status(belief, self.config)
+        self._point(belief, "evidence")
         if belief.status == "retired" and before in HELD:
             wrong = belief.user_confirmed == "denied" or (
                 conf.confidence(belief.alpha, belief.beta) < conf.RETIRE_BELOW
@@ -216,6 +243,20 @@ class BeliefBook:
             if wrong:
                 self._outcome(belief.topic, hit=False)
         self._persist(belief)
+
+    def _point(self, belief: Belief, cause: str) -> None:
+        """Add a point to the confidence curve when it moved (the first one always counts)."""
+        value = conf.confidence(belief.alpha, belief.beta)
+        last = self.data.belief_history.list({"belief_id": belief.id}, [("at", -1)], limit=1)
+        if (
+            last
+            and abs(last[0].confidence - value) < POINT_EPSILON
+            and last[0].status == belief.status
+        ):
+            return
+        self.data.belief_history.save(
+            BeliefPoint(belief.id, value, belief.n, belief.status, cause, at=self.clock())
+        )
 
     def _persist(self, belief: Belief) -> None:
         belief.updated_at = self.clock()
