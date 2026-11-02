@@ -28,7 +28,7 @@ STATEMENT = "Acho que o Petrus se cobra bem mais do que cobraria de outra pessoa
 
 
 def book_over(data: V2Data) -> BeliefBook:
-    return BeliefBook(data, FakeEmbedder(), V2BeliefSettings(), lambda: NOW)
+    return BeliefBook(data, FakeEmbedder(), V2BeliefSettings(surprise=0.0), lambda: NOW)
 
 
 def fact(

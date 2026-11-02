@@ -45,7 +45,7 @@ O armazenamento é uma interface (`DocStore`) com duas implementações, MongoDB
 
 ## Crenças e confiança {#crencas kind=conceito file=brain/memory/v2/confidence.py}
 
-Uma **crença** é uma hipótese em primeira pessoa sobre o usuário ou sobre uma decisão dele ("acho que o usuário se cobra bem mais do que cobraria de outra pessoa; vi isso em 3 conversas"). A confiança **sai de contagens, nunca de um número que o LLM inventa**: um modelo que diz "80% de certeza" produz um número bonito e não calibrado.
+Uma **crença** é uma hipótese em primeira pessoa ("acho que o usuário se cobra bem mais do que cobraria de outra pessoa; vi isso em 3 conversas"). Desde a V3 ([ADR-030](../decisions/ADR-030.md)) ela tem **três camadas** (`about`): **sobre o usuário** (e as decisões dele, como antes), **sobre ela mesma** ("tenho andado mais irritada", lida do próprio histórico de humor, estados e interesses) e **sobre o mundo** ("a psicodelia surgiu como resposta à contenção dos anos 60", das notas de estudo da web, [ADR-031](../decisions/ADR-031.md)). As mesmas contas valem para as três. A confiança **sai de contagens, nunca de um número que o LLM inventa**: um modelo que diz "80% de certeza" produz um número bonito e não calibrado.
 
 Cada crença nasce com um a priori fraco (`alpha = beta = 1`, "não sei") e cada evidência soma um peso ao lado que apoia, conforme a **fonte**:
 
@@ -56,10 +56,16 @@ Cada crença nasce com um a priori fraco (`alpha = beta = 1`, "não sei") e cada
 | O usuário disse explicitamente | 3 | a favor |
 | O usuário **confirmou** a hipótese quando ela perguntou | 4 | a favor |
 | O usuário **negou** | 4 | contra |
+| Uma série do **próprio histórico** dela (`self_observation`, uma por referência: `affect:<id>`, `persona:v<n>`) | 1 | a favor |
+| Uma **fonte da web** (`source`, **uma por domínio**) | 1,5 | a favor |
+| Uma fonte da web que diz o **contrário** (`source_contradiction`) | 1,5 | contra |
 
 - **Confiança** = `alpha / (alpha + beta)`; **firmeza** `n` = a evidência acumulada além do a priori.
+- **Erro de previsão:** o peso de uma evidência **inferida** (observação, contradição, histórico dela, fonte) cresce com a surpresa, `peso × (1 + surpresa × |resultado − confiança|)` (`memory.v2.beliefs.surprise`, 1,0): uma contradição de uma crença firme mexe mais do que uma que confirma o esperado, e a primeira evidência, sem expectativa, não se surpreende. A palavra do usuário (explícito, confirmação, negação) mantém o peso fixo.
+- **Histórico:** cada mudança de confiança grava um ponto (`belief_history`, com a confiança, a firmeza, o status e a causa), que o dashboard desenha como a curva da crença. Reaplicar a mesma evidência não adiciona ponto; o decaimento noturno, sim.
 - **Decaimento:** `alpha` e `beta` encolhem na direção do a priori com meia-vida de 60 dias (`memory.v2.beliefs.half_life_days`). Sem reforço, a crença volta à **incerteza**, não ao erro.
 - **Formação:** uma observação isolada é um palpite, não uma crença. A hipótese (`candidate`) vira `active` com pelo menos `min_evidence` (2) de evidência a favor vinda de **sessões ou dias diferentes**, ou com uma afirmação explícita ou confirmação do usuário.
+- **Crença sobre o mundo** precisa de **fontes de domínios diferentes**: com uma só, fica `candidate` e, em palavras, nunca passa de "talvez".
 - **Em palavras** (é o que o usuário lê e o que vai ao prompt; o número fica por baixo): "talvez" até 0,45; "acho que" de 0,45 a 0,70; "tenho bastante certeza" acima de 0,70, com `n >= 6` **e evidência de pelo menos 3 fontes distintas** (sessão e dia diferentes): muito peso vindo de uma conversa só continua sendo "acho que". Com pouca evidência nunca passa de "acho que".
 - **`retired`** (final): o usuário negou; ou a confiança caiu abaixo de 0,25 com `n >= 4` (ela estava errada); ou a crença desbotou (`n < 0,25`) sem confirmação.
 - A **mesma referência** (sessão, turno) conta **uma vez**: reexecutar o algoritmo de sonho não infla nada. As referências guardadas são no máximo 50 por lado; os pesos continuam nas contagens.
@@ -364,7 +370,7 @@ Os números e as listas dos comandos acima são o *estado guardado*; só viram c
 Para a V2 ser sentida desde o primeiro dia, quatro ajustes (todos configuráveis):
 
 - **Personalidade sempre descrita:** o bloco `<personalidade>` diz como ela está **hoje**, com todos os traços em palavras graduadas ("muito carinhosa, bastante direta, moderadamente reflexiva..."), mais o que se afastou do jeito de sempre (a partir de 0,03) e o que a marcou. Antes do primeiro sonho ela descreve o jeito de partida, sem gravar nada. `memory.v2.persona.always_describe: false` volta a dizer só o desvio.
-- **Visão geral das crenças firmes:** as até 2 crenças mais firmes ("tenho bastante certeza", portanto com 3 fontes ou mais) entram em **toda** conversa, marcadas "(visão geral)", além das que tocam o assunto (`memory.v2.opinions.always_on`, 0 desliga). Também com o usuário mal, e só as que têm a faixa mais alta.
+- **Visão geral das crenças firmes:** as até 2 crenças mais firmes **de cada camada** (as de fora do usuário vêm marcadas "(sobre você mesma)" e "(sobre o mundo)") ("tenho bastante certeza", portanto com 3 fontes ou mais) entram em **toda** conversa, marcadas "(visão geral)", além das que tocam o assunto (`memory.v2.opinions.always_on`, 0 desliga). Também com o usuário mal, e só as que têm a faixa mais alta.
 - **Eco dos sentimentos:** um sentimento forte que já esvaiu continua aparecendo por 48 horas no `<estado>` ("Há pouco o que mais te tocou foi tristeza (ontem)."), e o humor fraco também é dito ("um pouco pra baixo", "um pouco animado", a partir de ±0,08).
 - **Passo maior:** os traços andam até 0,06 por sonho (`persona.max_step`, `step_factor` 0,1).
 

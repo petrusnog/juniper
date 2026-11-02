@@ -129,7 +129,7 @@ def ctx_for(
     facts: list[Memory] | None = None,
     clock: Any = lambda: NOW,
 ) -> PhaseContext:
-    config = MemoryV2Settings(enabled=True, beliefs=beliefs or V2BeliefSettings())
+    config = MemoryV2Settings(enabled=True, beliefs=beliefs or V2BeliefSettings(surprise=0.0))
     ctx = PhaseContext(
         data=data or V2Data.over(InMemoryDocStore()),
         config=config,
@@ -490,7 +490,7 @@ async def test_running_out_of_budget_before_applying_writes_nothing() -> None:
 
 
 def held_belief(data: V2Data) -> Belief:
-    book = BeliefBook(data, FakeEmbedder(), V2BeliefSettings(), lambda: NOW)
+    book = BeliefBook(data, FakeEmbedder(), V2BeliefSettings(surprise=0.0), lambda: NOW)
     belief, _ = book.create(
         STATEMENT, "cobrança", Evidence("explicit", "old", 1, at=NOW - timedelta(days=5))
     )
@@ -620,7 +620,7 @@ async def test_without_new_material_there_is_no_llm_call_but_the_beliefs_still_d
 
 async def test_beliefs_that_faded_are_retired_by_the_nightly_review() -> None:
     data = V2Data.over(InMemoryDocStore())
-    book = BeliefBook(data, FakeEmbedder(), V2BeliefSettings(), lambda: NOW)
+    book = BeliefBook(data, FakeEmbedder(), V2BeliefSettings(surprise=0.0), lambda: NOW)
     hunch, _ = book.create(
         "Acho que o Petrus acorda tarde aos domingos.",
         "rotina",

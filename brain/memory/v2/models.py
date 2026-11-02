@@ -25,14 +25,25 @@ DREAM_RUNS = "dream_runs"
 DREAM_WATERMARKS = "dream_watermarks"
 TRANSCRIPT_TURNS = "transcript_turns"
 CALIBRATION = "calibration"
+BELIEF_HISTORY = "belief_history"
 PERSONA_ID = "current"
 
-BELIEF_ABOUT = ("user", "decision")
+# What a belief is about (ADR-030, section 8): the user, one of his decisions, herself, the world.
+BELIEF_ABOUT = ("user", "decision", "self", "world")
 # ``candidate`` is a hypothesis still short of the minimum evidence (not a belief yet).
 BELIEF_STATUSES = ("candidate", "active", "revised", "retired")
 BELIEF_ORIGINS = ("night", "conversation")
 USER_CONFIRMATIONS = ("confirmed", "denied")
-EVIDENCE_KINDS = ("observation", "explicit", "confirmation", "denial", "contradiction")
+EVIDENCE_KINDS = (
+    "observation",
+    "explicit",
+    "confirmation",
+    "denial",
+    "contradiction",
+    "self_observation",  # a series of her own history (mood, states, interests)
+    "source",  # a web source that says it (one per domain)
+    "source_contradiction",  # a web source that says the opposite
+)
 UNCERTAINTIES = ("baixa", "média", "alta")  # how unsure the note is (alta = least reliable)
 NOTE_KINDS = ("afirmacao", "pergunta")
 NOTE_SOURCES = ("modelo", "documento", "web")
@@ -119,6 +130,8 @@ class Evidence:
     fact_id: str | None = None
     weight: float = 1.0
     at: datetime = field(default_factory=utcnow)
+    domain: str | None = None  # a web source: the site that says it (one evidence per domain)
+    ref: str | None = None  # her own history: "affect:<id>", "persona:v<n>", a note id...
 
     def to_doc(self) -> dict[str, Any]:
         return {
@@ -128,6 +141,8 @@ class Evidence:
             "fact_id": self.fact_id,
             "weight": self.weight,
             "at": self.at,
+            "domain": self.domain,
+            "ref": self.ref,
         }
 
     @classmethod
@@ -141,6 +156,8 @@ class Evidence:
                 fact_id=doc.get("fact_id"),
                 weight=float(doc.get("weight", 1.0)),
                 at=as_dt(doc["at"]),
+                domain=doc.get("domain"),
+                ref=doc.get("ref"),
             )
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise V2DataError(f"evidência inválida: {exc}") from exc
@@ -151,6 +168,47 @@ def _evidence_list(raw: Any) -> list[Evidence]:
 
 
 # --- Umwelt: beliefs and interests ------------------------------------------------------------
+
+
+@dataclass
+class BeliefPoint:
+    """One point of a belief's confidence over time (ADR-030, section 8): the curve the dashboard
+    draws, with what moved it."""
+
+    belief_id: str
+    confidence: float
+    n: float
+    status: str
+    cause: str = ""  # the kind of evidence, "decay" or "created"
+    id: str = field(default_factory=lambda: new_id("bpt"))
+    at: datetime = field(default_factory=utcnow)
+
+    def to_doc(self) -> dict[str, Any]:
+        _text(self.belief_id, "belief_id")
+        return {
+            "_id": self.id,
+            "belief_id": self.belief_id,
+            "confidence": round(float(self.confidence), 6),
+            "n": round(float(self.n), 6),
+            "status": self.status,
+            "cause": self.cause,
+            "at": self.at,
+        }
+
+    @classmethod
+    def from_doc(cls, doc: Mapping[str, Any]) -> BeliefPoint:
+        try:
+            return cls(
+                belief_id=str(doc["belief_id"]),
+                confidence=float(doc["confidence"]),
+                n=float(doc.get("n", 0.0)),
+                status=str(doc.get("status", "")),
+                cause=str(doc.get("cause", "")),
+                id=str(doc["_id"]),
+                at=as_dt(doc["at"]),
+            )
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise V2DataError(f"ponto de crença corrompido: {exc}") from exc
 
 
 @dataclass

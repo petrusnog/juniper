@@ -26,9 +26,21 @@ EVIDENCE_WEIGHT: dict[str, float] = {
     "explicit": 3.0,  # the user said it
     "confirmation": 4.0,  # the user confirmed her hypothesis when asked
     "denial": 4.0,  # the user denied it
+    "self_observation": 1.0,  # a series of her own history says it (ADR-030)
+    "source": 1.5,  # a web source says it, one per domain
+    "source_contradiction": 1.5,  # a web source says the opposite
 }
-SUPPORTS = frozenset({"observation", "explicit", "confirmation"})
+SUPPORTS = frozenset({"observation", "explicit", "confirmation", "self_observation", "source"})
 EXPLICIT_KINDS = frozenset({"explicit", "confirmation"})
+# Predictive processing (ADR-030, section 8): the weight of an inferred piece of evidence grows
+# with how much it surprised her, ``weight x (1 + surprise x |outcome - confidence|)`` (the
+# ``surprise`` factor is ``memory.v2.beliefs.surprise``). What the
+# user says (explicit, confirmation, denial) keeps its fixed weight: his word is not a surprise.
+SURPRISING = frozenset(
+    {"observation", "contradiction", "self_observation", "source", "source_contradiction"}
+)
+# A belief about the world needs sources of different domains to be called more than "talvez".
+WORLD_MIN_SOURCES = 2
 
 # Words for the user and for the prompt (the number stays underneath).
 TALVEZ_BELOW = 0.45
@@ -84,7 +96,7 @@ def decay(
     )
 
 
-def band(conf: float, n: float, sources: int | None = None) -> str:
+def band(conf: float, n: float, sources: int | None = None, about: str = "user") -> str:
     """The words for this confidence. With little evidence it never goes past "acho que".
 
     "Tenho bastante certeza" also needs evidence from at least ``CERTEZA_MIN_SOURCES`` distinct
@@ -93,6 +105,8 @@ def band(conf: float, n: float, sources: int | None = None) -> str:
     """
     if conf < TALVEZ_BELOW:
         return WORD_TALVEZ
+    if about == "world" and (sources or 0) < WORLD_MIN_SOURCES:
+        return WORD_TALVEZ  # one source alone is never more than "maybe"
     if conf < CERTEZA_FROM or n < CERTEZA_MIN_N:
         return WORD_ACHO
     if sources is not None and sources < CERTEZA_MIN_SOURCES:
@@ -100,7 +114,7 @@ def band(conf: float, n: float, sources: int | None = None) -> str:
     return WORD_CERTEZA
 
 
-def apply_evidence(belief: Belief, evidence: Evidence) -> bool:
+def apply_evidence(belief: Belief, evidence: Evidence, surprise: float = 0.0) -> bool:
     """Add ``evidence`` to ``belief`` (counts, references, user confirmation). Returns False, and
     changes nothing, when the same reference was already counted (so a night can be re-run)."""
     side_for = evidence.kind in SUPPORTS
@@ -108,6 +122,10 @@ def apply_evidence(belief: Belief, evidence: Evidence) -> bool:
     if _already_counted(belief, evidence):
         return False
     evidence.weight = weight_of(evidence.kind)
+    if evidence.kind in SURPRISING and belief.n > 0:
+        outcome = 1.0 if side_for else 0.0
+        gap = abs(outcome - confidence(belief.alpha, belief.beta))
+        evidence.weight = round(evidence.weight * (1.0 + surprise * gap), 4)
     refs.append(evidence)
     del refs[:-MAX_EVIDENCE_REFS]  # the counts keep the weight; only the references are capped
     if side_for:
@@ -122,6 +140,16 @@ def apply_evidence(belief: Belief, evidence: Evidence) -> bool:
 
 
 def _already_counted(belief: Belief, evidence: Evidence) -> bool:
+    if evidence.kind in ("source", "source_contradiction") and evidence.domain:
+        return any(
+            e.kind == evidence.kind and e.domain == evidence.domain
+            for e in (*belief.evidence_for, *belief.evidence_against)
+        )  # one voice per site
+    if evidence.ref is not None:
+        return any(
+            e.kind == evidence.kind and e.ref == evidence.ref
+            for e in (*belief.evidence_for, *belief.evidence_against)
+        )
     if evidence.session_id is None or evidence.turn is None:
         return False  # no stable reference: cannot tell, so it counts
     key = (evidence.kind, evidence.session_id, evidence.turn, evidence.fact_id)
@@ -143,8 +171,7 @@ def is_formed(belief: Belief, config: V2BeliefSettings) -> bool:
     supporting = belief.alpha - belief.prior_alpha
     if supporting < config.min_evidence:
         return False
-    sources = {(e.session_id or "", e.at.date()) for e in belief.evidence_for}
-    return len(sources) >= 2
+    return distinct_sources(belief.evidence_for) >= 2
 
 
 def next_status(belief: Belief, config: V2BeliefSettings) -> str:
@@ -195,4 +222,5 @@ def prior_for(hits: float, misses: float) -> tuple[float, float]:
 
 
 def distinct_sources(evidence: Sequence[Evidence]) -> int:
-    return len({(e.session_id or "", e.at.date()) for e in evidence})
+    """Distinct voices: a conversation of a day, a web domain, or a piece of her own history."""
+    return len({(e.session_id or e.domain or e.ref or "", e.at.date()) for e in evidence})

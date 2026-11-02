@@ -52,6 +52,8 @@ HEADER = (
     "tom da firmeza. Mude de opinião só diante de um argumento novo, nunca por insistência."
 )
 MAX_OPINIONS = 3
+# The three layers of what she thinks (ADR-030): about him is the default and carries no tag.
+LAYER_TAGS = {"self": "(sobre você mesma) ", "world": "(sobre o mundo) "}
 # Beliefs farther than this from the message are not relevant to it.
 RELEVANCE = 0.45
 # How many messages a sign of hurting stays in the prompt (this one and the next two).
@@ -463,7 +465,7 @@ class V2Context:
         lines, kept = [], []
         used = spent + estimate_tokens(f"{HEADER}\n{OPEN_TAG}\n{CLOSE_TAG}")
         for belief, general_view in [(b, False) for b in hits] + [(b, True) for b in general]:
-            tag = "(visão geral) " if general_view else ""
+            tag = ("(visão geral) " if general_view else "") + LAYER_TAGS.get(belief.about, "")
             line = f"- {tag}{self._book.words(belief)}: {clean_text(belief.statement)}"
             if used + estimate_tokens(line) > self.config.max_tokens:
                 break
@@ -489,8 +491,11 @@ class V2Context:
         limit = self.config.opinions.always_on
         if limit <= 0:
             return []
-        firmest = self._book.firmest(limit + len(already))
-        return [b for b in firmest if b.id not in already][:limit]
+        general: list[Belief] = []
+        for about in ("user", "self", "world"):  # each layer has its firmest in the general view
+            firmest = self._book.firmest(limit + len(already), about)
+            general += [b for b in firmest if b.id not in already][:limit]
+        return general
 
     def _relevant(self, query: str) -> list[Belief]:
         if not query or self._embedder is None:

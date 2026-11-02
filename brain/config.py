@@ -556,6 +556,9 @@ class V2BeliefSettings(BaseModel):
     min_evidence: int = Field(default=2, ge=1, le=20)
     # Teto de crenças novas por noite.
     max_new_per_night: int = Field(default=10, ge=0, le=50)
+    # Erro de previsão (ADR-030): o peso de uma evidência inferida cresce com a surpresa,
+    # peso x (1 + surpresa x |resultado - confiança|). 0 desliga (peso fixo, como na V2).
+    surprise: float = Field(default=1.0, ge=0.0, le=3.0)
 
 
 class ConcernDefault(BaseModel):
