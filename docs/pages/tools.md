@@ -186,3 +186,7 @@ Cobrem: classe não instanciável, `to_schema()` igual ao formato do ADR-002 (e 
 - [Agenda Google](google-calendar.md) (Documentação Técnica): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
 - [Música](musica.md) (Documentação Técnica): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
 - [Comandos git](git.md) (Documentação Técnica): search e deploy no terminal e pelo agente (git_search e git_deploy).
+
+### Lembretes pessoais
+
+Com MongoDB e `reminders.enabled`, `create_reminder` e `update_reminder` guardam pedidos explícitos sem confirmação adicional; `list_reminders` lê os ids e os status; `delete_reminder` pede confirmação e preserva o evento. `create_event(reminder=true)` combina evento e lembrete na confirmação da agenda. Veja [Lembretes](lembretes.md) para os prazos, destinatários do Telegram e recibos de voz.

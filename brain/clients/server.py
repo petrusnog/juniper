@@ -538,6 +538,15 @@ async def run_server(server: BrainServer, dashboard: Any | None = None) -> None:
     cron = loop.create_task(run_daily("log_rotation", settings.logging.rotate_at, run_rotation))
     # The Memória V2 nightly pass (ADR-017), only when it is on and can run.
     night = None
+    reminder_job = None
+    if settings.reminders.enabled:
+        from brain.reminders.delivery import morning_job
+        from brain.tools import reminders
+
+        if reminders.CreateReminder.available():
+            reminder_job = loop.create_task(
+                run_daily("reminders", settings.reminders.morning_at, morning_job)
+            )
     if v2_enabled():
         night = loop.create_task(
             run_daily("v2_night", settings.memory.v2.night.at, run_night_job, catch_up=False)
@@ -545,10 +554,10 @@ async def run_server(server: BrainServer, dashboard: Any | None = None) -> None:
     try:
         code = await stop
     finally:
-        for job in (cron, night):
+        for job in (cron, night, reminder_job):
             if job is not None:
                 job.cancel()
-        for job in (cron, night):
+        for job in (cron, night, reminder_job):
             if job is not None:
                 with contextlib.suppress(asyncio.CancelledError):
                     await job

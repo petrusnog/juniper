@@ -17,7 +17,7 @@ import re
 import secrets
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -714,6 +714,14 @@ class ChatHandler:
                 p.Error.from_code("voice_unavailable", VOICE_NO_EARS_MESSAGE, message.id)
             )
             return
+        from brain.reminders.delivery import voice_briefing
+        from brain.tools import reminders
+
+        async def briefing() -> tuple[str, Callable[[bool], Awaitable[None]]]:
+            return await voice_briefing(
+                reminders.store(), conn.principal.user_id if conn.principal else "local"
+            )
+
         session = VoiceSession(
             services,
             send=conn.send,
@@ -728,6 +736,7 @@ class ChatHandler:
             local_tts=bool(message.local_tts),
             route=message.route,
             wake=bool(message.wake),
+            briefing=briefing if reminders.CreateReminder.available() else None,
             idle_timeout=services.wake_idle_timeout if message.wake else None,
         )
         self._voices[conn.id] = session
@@ -913,6 +922,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         open_issue_store,
         open_leak_audit,
         open_leak_reports,
+        open_reminder_store,
         open_session_store,
     )
     from brain.memory.v2 import open_v2_runtime
@@ -920,6 +930,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.tools import knowledge as knowledge_tools
     from brain.tools import memory as memory_tools
     from brain.tools import music as music_tools
+    from brain.tools import reminders as reminder_tools
     from brain.tools import web as web_tools
     from brain.tools.registry import registry
     from brain.voice.services import open_voice_services
@@ -949,6 +960,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     memory_tools.bind(memory)
     issue_store = open_issue_store(store)
     issue_tools.bind(issue_store)
+    reminder_store = open_reminder_store(store)
+    reminder_tools.bind(reminder_store)
     # Memória V2: the durable transcript the nightly pass reads (None when the V2 is off).
     v2 = open_v2_runtime(memory.embedder if memory is not None else None, memory_llm)
     if v2 is not None and settings.web.enabled:
@@ -985,6 +998,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         reports=handler._reports,
         audit=handler._audit,
         issues=issue_store,
+        reminders=reminder_store,
         health=handler.health,
         log_dir=event_log.directory,
         memory=commands or memory,
@@ -1002,6 +1016,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
             v2.close()
         memory_tools.bind(None)
         issue_tools.bind(None)
+        reminder_tools.bind(None)
         knowledge_tools.bind(None)
         await music_tools.close()
         await web_tools.close()

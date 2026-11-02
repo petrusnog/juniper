@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Lembretes — Livro de bolso Juniper</title>
+<meta name="description" content="Lembretes pessoais no MongoDB, envio matinal por Telegram e aviso único por voz.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/lembretes.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Integrações / Lembretes</div>
+<h1>Lembretes <span class="tag g">pronta</span></h1>
+<p class="lead">Lembretes pessoais no MongoDB, envio matinal por Telegram e aviso único por voz.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>A Juniper guarda lembretes na coleção <code>reminders</code> do MongoDB, separados da memória subjetiva. É necessário <code>memory.session.store: mongo</code> para as ferramentas, o dashboard e o job do servidor. O fuso é <code>agent.timezone</code>.</p>
+<p>Peça “me lembre de pagar a conta amanhã” ou “marque dentista amanhã às 16h e adicione um lembrete”. Para um evento novo com lembrete, <code>create_event(reminder=true)</code> usa uma única confirmação para ambos. Sem pedido de lembrete, ela oferece depois de criar o evento; aceitar chama <code>create_reminder</code> com os ids retornados, sem recriar o evento nem pedir confirmação adicional. Recusa explícita usa <code>reminder=false</code>.</p>
+<p><code>create_reminder</code>, <code>list_reminders</code>, <code>update_reminder</code> e <code>delete_reminder</code> permitem gerenciar tudo na conversa. Criar/editar um lembrete explicitamente pedido não pede confirmação adicional; excluir pede. Para editar/excluir, consulte a lista e use o id completo. Só aparecem os lembretes do usuário autenticado. O terminal local sem autenticação usa o proprietário <code>local</code>.</p>
+<p>Um prazo sem hora (<code>AAAA-MM-DD</code>) vence ao fim do dia no fuso do agente. <code>notify_on</code> permite avisar em um dia anterior; por padrão é o dia do prazo. Não há alarme no minuto exato, recorrência ou varredura periódica do Google Calendar.</p>
+<h2 id="entrega-e-status">Entrega e status</h2>
+<p>Os status são independentes e cumulativos:</p>
+<ul><li><strong>Pendente:</strong> ainda sem confirmação de entrega.</li><li><strong>Enviado pelo Telegram:</strong> o Telegram aceitou a mensagem; não comprova leitura.</li><li><strong>Relembrado no chat de voz:</strong> a fala inteira foi transmitida ao cliente sem erro; não comprova que o aparelho a reproduziu ou que a pessoa a ouviu.</li><li><strong>Vencido:</strong> o prazo passou, mesmo que tenha sido avisado antes. Vencimento é calculado na consulta; não precisa esperar o job diário. Lembretes vencidos ficam no histórico, mas não são enviados.</li></ul>
+<p>Na abertura da voz (botão ou ativação por voz), ela cumprimenta conforme o horário e avisa os lembretes disponíveis. A marcação no MongoDB evita repetir cada lembrete nas próximas sessões e aparelhos. Falha ou interrupção antes de transmitir a fala completa libera o aviso para outra tentativa. O envio Telegram não impede o aviso de voz e vice-versa.</p>
+<p>O servidor agenda o envio diariamente às 08:00, por padrão. Ao reiniciar depois desse horário, tenta recuperar os lembretes ainda válidos e não enviados; antes desse horário, aguarda. Não exige cron no contêiner. Um lembrete criado depois do job será avisado por voz na próxima abertura; pelo Telegram, somente na próxima execução (se ainda não venceu). Para antecipar esse caso ou repetir uma tentativa que falhou, rode o script manual abaixo. Falhas no Telegram não são marcadas como sucesso.</p>
+<p>As entregas usam leases atômicos por lembrete/canal para evitar dois workers enviando simultaneamente. Um processo que cai libera a lease por expiração em até dez minutos. Telegram não oferece chave de idempotência para sendMessage: uma queda depois de ele aceitar a mensagem e antes de salvar o recibo pode resultar em repetição na próxima tentativa. Não há garantia de exatamente uma entrega nessa janela.</p>
+<p>Editar título/notas preserva os recibos. Reprogramar prazo/dia de aviso reinicia os dois canais. Editar/excluir durante envio é recusado; tente novamente ao terminar. As ferramentas de edição/exclusão de eventos sincronizam os lembretes vinculados. Se o Google gravar mas o MongoDB falhar, a resposta informa o sucesso parcial; não repita a criação do evento. Alterações feitas diretamente no Google não são sincronizadas automaticamente. Editar/apagar somente o lembrete não modifica o compromisso.</p>
+<h2 id="configurar-telegram">Configurar Telegram</h2>
+<p>O bot precisa ter sido iniciado pela pessoa em uma conversa privada (<code>/start</code>). O token existente <code>JUNIPER_TELEGRAM_BOT_TOKEN</code> deve estar disponível também no processo <strong>brain</strong>, responsável pelo job; em produção ele lê o <code>.env</code> montado. Não é necessário iniciar outro consumidor de updates. Nunca distribua lembretes para toda a lista de permissão do bot.</p>
+<p>Associe explicitamente o <code>user_id</code> da Juniper ao <code>chat_id</code> privado do Telegram no config pessoal usado como camada base em produção:</p>
+<pre><code class="lang-yaml">reminders:
+  enabled: true
+  morning_at: &quot;08:00&quot;
+  telegram_chat_ids:
+    usr_exemplo: 123456789</code></pre>
+<p>Use o id real de <code>juniper users list</code>, não o nome nem o <code>client_id</code>. Sem associação o lembrete permanece disponível para voz e o log registra <code>telegram_unconfigured</code>. Chat ids privados precisam ser positivos; grupos são recusados para evitar divulgação de compromissos pessoais. A allowlist de conversa do bot é uma configuração separada. Alternativa no <code>.env</code>:</p>
+<pre><code class="lang-dotenv">JUNIPER_REMINDERS__MORNING_AT=08:00
+JUNIPER_REMINDERS__TELEGRAM_CHAT_IDS={&quot;usr_exemplo&quot;:123456789}</code></pre>
+<p>Reinicie o brain após mudar configuração. Para testar/recuperar o envio real, depois do horário configurado (este comando <strong>envia</strong> as mensagens elegíveis):</p>
+<pre><code class="lang-bash">docker compose -f docker-compose.prod.yml exec -T brain python -m brain.reminders</code></pre>
+<p>Ou, no checkout com ambiente Python ativo: <code>python -m brain.reminders</code>. O script usa a mesma lógica do job. Permita HTTPS para <code>api.telegram.org</code> no ambiente de execução.</p>
+<h2 id="dashboard-e-diagnostico">Dashboard e diagnóstico</h2>
+<p>A aba <strong>Lembretes</strong> permite criar, pesquisar, filtrar por status, editar e excluir, com recibos de cada canal e histórico dos vencidos. Usa o login do dono e a proteção anti-CSRF existente; a API obtém o proprietário da sessão, nunca de argumentos do navegador. Cada página mostra 25 itens; a consulta traz até 500 lembretes por usuário.</p>
+<pre><code class="lang-bash">docker compose -f docker-compose.prod.yml exec -T brain python -m brain logs -e reminder --json</code></pre>
+<p>Eventos <code>telegram_sent</code>, <code>telegram_failed</code> e <code>telegram_unconfigured</code> identificam o lembrete sem gravar título, texto, chat id ou token. <code>voice.reminders</code>/<code>voice.reminder_receipt</code> indicam falha de consulta/gravação por voz. Os testes usam MongoDB simulado e Telegram/voz falsos; envio real depende das credenciais e do destino configurados no deploy.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="google-calendar.html">Agenda Google</a>: compromissos vinculados.</li><li><a href="configuracao.html">Configuração</a>: opções de lembretes e Telegram.</li><li><a href="dashboard.html">Dashboard</a>: login e gestão pelo navegador.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

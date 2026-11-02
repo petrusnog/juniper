@@ -446,6 +446,10 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         printer.say(note)
     await prepare_memory(memory, printer)
     memory_tools.bind(memory)
+    from brain.memory.stores import open_reminder_store
+    from brain.tools import reminders as reminder_tools
+
+    reminder_tools.bind(open_reminder_store(store))
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()
@@ -455,6 +459,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         return code
     finally:
         memory_tools.bind(None)
+        reminder_tools.bind(None)
         if v2 is not None:
             v2.close()
         if memory is not None:

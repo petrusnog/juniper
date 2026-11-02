@@ -320,6 +320,16 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 2. Atualize o `config.yaml.example`.
 3. Adicione o teste em `tests/test_config.py` e a opção nesta página (um teste confere que toda opção das settings aparece aqui).
 
+## Lembretes pessoais {#lembretes-config}
+
+| Opção | Padrão | Significado |
+|---|---|---|
+| `reminders.enabled` | `true` | Habilita ferramentas, job e avisos de lembretes quando as sessões usam MongoDB. |
+| `reminders.morning_at` | `08:00` | Hora diária HH:MM no fuso do agente para o envio por Telegram. |
+| `reminders.telegram_chat_ids` | `{}` | Mapa user_id Juniper → chat_id privado positivo do Telegram. Sem associação não envia. |
+
+O token `JUNIPER_TELEGRAM_BOT_TOKEN` precisa estar disponível no brain. Veja [Lembretes](lembretes.md) para configuração, recibos e limites do envio.
+
 ## Para saber mais {#para-saber-mais}
 
 - [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.

@@ -46,6 +46,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
+- [Lembretes](pages/lembretes.md): Lembretes pessoais no MongoDB, envio matinal por Telegram e aviso único por voz.
 - [Música](pages/musica.md): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
 - [Comandos git](pages/git.md): search e deploy no terminal e pelo agente (git_search e git_deploy).
 ### Memória

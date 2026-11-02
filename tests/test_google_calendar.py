@@ -219,7 +219,12 @@ async def test_create_event_success_uses_defaults_and_signature(fake: FakeClient
     assert sent["start"] == at(12, 16) and sent["end"] == at(12, 17)  # default 60 min
     assert sent["description"] == "Agendado pela Juniper"
     assert sent["reminder"] == settings.google.reminder_minutes
-    assert result.metadata == {"event_id": "new1"}
+    assert result.metadata == {
+        "event_id": "new1",
+        "calendar_id": JUNIPER,
+        "start": "2026-10-12T16:00:00-03:00",
+        "title": "Dentista",
+    }
 
 
 async def test_create_event_naive_time_means_configured_timezone(fake: FakeClient) -> None:
