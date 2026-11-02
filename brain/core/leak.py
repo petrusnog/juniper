@@ -58,6 +58,11 @@ MARKERS: tuple[str, ...] = (
     "Como você está falando agora",
     "<voz",
     "</voz",
+    # A tool call the model wrote as text: nothing from its opening tag on is speech.
+    "<invoke",
+    "<parameter",
+    "<tool_calls",
+    "<function_calls",
 )
 
 # Tags that are machinery, never speech. Removed (not cut): the answer is often right after them.
@@ -76,8 +81,18 @@ INTERNAL_TAGS: tuple[str, ...] = (
     "ja_sei",
     "contexto",
     "instrucoes",
+    "br",
+    "parameter",
+    "invoke",
+    "tool_calls",
+    "function_calls",
 )
+# What is left of a tool call the provider's parser consumed: its closing tags fall into the text.
+TOOL_TAGS: tuple[str, ...] = ("parameter", "invoke", "tool_calls", "function_calls")
 _TAG = re.compile(r"</?(?:" + "|".join(INTERNAL_TAGS) + r")\s*/?>", re.IGNORECASE)
+_TOOL_TAG = re.compile(r"</?(?:" + "|".join(TOOL_TAGS) + r")\s*/?>", re.IGNORECASE)
+# The "]" left when the "[" that opened a stamp or a channel note was cut.
+_STRAY_CLOSE = re.compile(r"\A\s*\]+\s*")
 _THINK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
 _THINK_OPEN = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
 _PARTIAL_TAG = re.compile(r"</?[a-z_]{0,14}$", re.IGNORECASE)
@@ -128,12 +143,32 @@ class LeakGuard:
         self._in_head = True
         self._dropping = False  # planning found: the narration after it goes too
         self.triggered = False
+        # The text started with the tail of a tool call (a stray closing tag): the call was lost
+        # and what follows may be only half an answer. Speech is withheld until the caller decides
+        # (``take``), so a retry never doubles what the person already read.
+        self.suspended = False
+        self.tool_fragments = 0
+        self._emitted = False
+        self._withheld: list[str] = []
 
     def feed(self, text: str) -> str:
-        return self._start(self._scan(text, final=False), final=False)
+        return self._gate(self._start(self._scan(text, final=False), final=False))
 
     def flush(self) -> str:
-        return self._start(self._scan("", final=True), final=True)
+        return self._gate(self._start(self._scan("", final=True), final=True))
+
+    def take(self) -> str:
+        """The speech withheld while ``suspended`` (and clears it)."""
+        text, self._withheld = "".join(self._withheld), []
+        return text
+
+    def _gate(self, out: str) -> str:
+        if self.suspended:
+            self._withheld.append(out)
+            return ""
+        if out:
+            self._emitted = True
+        return out
 
     def _scan(self, text: str, *, final: bool) -> str:
         """Stage one: cut at the first marker, drop machinery tags and ``<think>`` blocks, hold
@@ -174,6 +209,10 @@ class LeakGuard:
         cleaned = _TAG.sub("", text)
         if cleaned != text:
             self.triggered = True
+            if found := _TOOL_TAG.findall(text):
+                self.tool_fragments += len(found)
+                if not self._emitted:
+                    self.suspended = True
         return cleaned
 
     def _start(self, text: str, *, final: bool) -> str:
@@ -181,6 +220,9 @@ class LeakGuard:
         if not self._in_head:
             return text
         self._head += text
+        if _STRAY_CLOSE.match(self._head):
+            self._head = _STRAY_CLOSE.sub("", self._head, count=1)
+            self.triggered = True
         if _ADDRESSES_HERSELF.match(self._head):
             # She never opens by calling herself: this is the model writing the person's turn, and
             # the answer after it is to a message nobody sent. Nothing of it is worth keeping.
@@ -226,4 +268,5 @@ def _suspect(text: str) -> bool:
 def clean(text: str) -> str:
     """``LeakGuard`` over a whole text at once."""
     guard = LeakGuard()
-    return guard.feed(text) + guard.flush()
+    out = guard.feed(text) + guard.flush()
+    return out + guard.take() if guard.suspended else out

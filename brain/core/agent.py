@@ -98,6 +98,7 @@ class Agent:
         self._checkpoint = 0  # where the turn in progress starts in the history (its user message)
         self._current: str | None = None  # the user message of the turn in progress
         self._leaked = False  # a reply of this turn showed machinery (T-165)
+        self._call_lost = False  # the last model reply was only the tail of a lost tool call
         # The last exchanges as the user saw them, for a leak report (T-167). Unlike the history it
         # is not compacted and keeps what a quarantined turn said; a resumed conversation starts
         # from what the saved session still has.
@@ -412,6 +413,22 @@ class Agent:
     async def _complete(
         self, schemas: list[dict[str, object]] | None, on_token: TokenCallback | None
     ) -> Message:
+        """One model call. If the reply is only the tail of a tool call that never arrived, the
+        call is made once more (nothing of the first was shown to the person)."""
+        message = await self._complete_once(schemas, on_token, last=False)
+        if self._call_lost:
+            event_log.log("tool_call_lost", provider=_served_by(self._provider)[0])
+            message = await self._complete_once(schemas, on_token, last=True)
+        return message
+
+    async def _complete_once(
+        self,
+        schemas: list[dict[str, object]] | None,
+        on_token: TokenCallback | None,
+        *,
+        last: bool,
+    ) -> Message:
+        self._call_lost = False
         text: list[str] = []
         self._streaming = text
         raw: list[str] = []  # what the model wrote, before the guard: evidence for the audit
@@ -446,7 +463,14 @@ class Agent:
             calls.extend(chunk.tool_calls)
             usage = chunk.usage or usage
             finish_reason = chunk.finish_reason or finish_reason
-        if rest := dashes.feed(guard.flush()) + dashes.flush():
+        tail = guard.flush()
+        if guard.suspended:
+            held = guard.take()
+            if calls or last:
+                tail = held  # the call came after all, or there is no second chance: say it
+            else:
+                self._call_lost = True
+        if rest := dashes.feed(tail) + dashes.flush():
             text.append(rest)
             if on_token is not None:
                 await _emit(on_token, rest)
@@ -460,6 +484,7 @@ class Agent:
             tool_calls=[c.name for c in calls],
             chars=sum(len(t) for t in text),
             leak_blocked=guard.triggered,
+            tool_fragments=guard.tool_fragments,
         )
         await self._audit(
             messages, "".join(raw), "".join(text), guard.triggered, finish_reason, calls

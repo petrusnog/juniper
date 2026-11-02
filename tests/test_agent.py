@@ -1209,3 +1209,18 @@ async def test_a_yes_after_an_interrupted_turn_does_not_inherit_the_old_question
     await agent.run("sim")
     last_user = [m for m in agent.session.history if m.role == "user"][-1]
     assert "[Sistema:" not in (last_user.content or "")  # no hint: there was no question to answer
+
+
+async def test_a_lost_tool_call_is_retried_once_and_the_first_half_never_shown() -> None:
+    agent, _, _ = make_agent([say("</parameter>\n\nAh, deixa eu ver."), say("Achei, Petrus.")])
+    tokens: list[str] = []
+    out = await agent.run("oi", on_token=tokens.append)
+    assert out == "Achei, Petrus."
+    assert "".join(tokens) == "Achei, Petrus."
+    assert all("</parameter>" not in (m.content or "") for m in agent.session.history)
+
+
+async def test_a_second_lost_call_says_what_it_has_instead_of_nothing() -> None:
+    agent, _, _ = make_agent([say("</parameter>\n\nOi!"), say("</parameter>\n\nOi de novo!")])
+    out = await agent.run("oi")
+    assert out == "Oi de novo!"
