@@ -33,7 +33,8 @@ class LearnTopic(Tool):
     description = (
         "Aprende agora sobre um tema que você ainda não estudou (ou em que falta algo): procura "
         "na web, lê as fontes, grava notas de estudo na sua memória e devolve as notas. Chame "
-        "ANTES de responder quando o bloco <conhecimento> não sustenta a resposta. Depois, "
+        "ANTES de responder quando o bloco <conhecimento> não sustenta a resposta, e sempre "
+        "que o Petrus pedir para pesquisar, ver notícia ou saber de algo atual. Depois, "
         "responda a partir das notas que voltarem."
     )
     parameters = {

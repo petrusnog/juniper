@@ -89,7 +89,7 @@ class WebSearch(Tool):
 
     @classmethod
     def available(cls) -> bool:
-        return settings.web.enabled and router().usable()
+        return settings.web.enabled and settings.web.chat_search_tool and router().usable()
 
     async def run(self, **kwargs: Any) -> ToolResult:
         try:

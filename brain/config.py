@@ -389,6 +389,9 @@ class WebSettings(BaseModel):
     """Web: a memória fala, a web ensina (ADR-031)."""
 
     enabled: bool = True
+    # Oferece `web_search` ao modelo na conversa. Desligado (padrão), ela só aprende pelo
+    # `learn_topic`, que grava notas; a busca solta não grava nada e vira improviso.
+    chat_search_tool: bool = False
     search: WebSearchSettings = Field(default_factory=WebSearchSettings)
     fetch: WebFetchSettings = Field(default_factory=WebFetchSettings)
     dream: WebDreamSettings = Field(default_factory=WebDreamSettings)
