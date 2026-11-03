@@ -441,26 +441,17 @@ def _conflict_result(
 class CreateEvent(Tool):
     name = "create_event"
     description = (
-        "Cria um EVENTO NA AGENDA do Google (compromisso com data e hora, que aparece no "
-        "calendário) e checa conflitos em todas as agendas; se houver, NÃO cria. Chame direto. "
-        "Não serve para um simples aviso: se a pessoa só quer ser lembrada, sem compromisso "
-        "na agenda, use create_reminder. Se ela pediu o evento E um aviso, informe "
-        "reminder=true (e reminder_at com a hora do aviso): uma só confirmação cobre ambos. "
-        "Se não falou de aviso, omita reminder e ofereça o lembrete depois do evento criado."
+        "Cria um EVENTO NA AGENDA (compromisso no calendário); checa conflitos e, se houver, NÃO "
+        "cria. Chame direto. Só um aviso, sem compromisso: use create_reminder. Evento + aviso: "
+        "reminder=true e reminder_at, numa só confirmação. Sem pedido de aviso, omita reminder."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "reminder": {
-                "type": "boolean",
-                "description": "Criar também um aviso (Telegram/voz) para este evento, se pedido.",
-            },
+            "reminder": {"type": "boolean", "description": "Criar também o aviso (lembrete)."},
             "reminder_at": {
                 "type": "string",
-                "description": (
-                    "Quando avisar: ISO 8601 com data e hora (ou AAAA-MM-DD = 9h), nunca "
-                    "depois do início. Omita para avisar no início. Pergunte se não disse."
-                ),
+                "description": "Quando avisar (ISO com hora; padrão: no início).",
             },
             "title": {"type": "string", "description": "Ex.: 'Dentista'."},
             "start": {"type": "string", "description": "ISO 8601 local, ex.: '2026-10-12T16:00'."},
