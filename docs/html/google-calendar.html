@@ -52,6 +52,8 @@ pytest tests/test_google_calendar.py -v</code></pre>
 <p>Os testes usam um cliente falso e relógio fixo: listar, criar, conflitos (apagável e não apagável), datas inválidas e passadas, apagar, mapeamento de erros HTTP e a garantia de que a chave não vaza.</p>
 <h2 id="para-saber-mais">Para saber mais</h2>
 <ul><li><a href="produto-integracoes.html">Integrações</a> (Produto): O que a Juniper faz com a agenda do Google, a música do YouTube e os repositórios git, e o que cada integração precisa.</li><li><a href="tools.html">Tools</a> (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li><li><a href="integracoes-producao.html">Integrações Google Cloud e Groq</a> (Produção): Como ligar no servidor a agenda do Google, a música do YouTube e a voz (Google Text-to-Speech e Groq), com as credenciais, a configuração e a verificação de cada uma.</li></ul>
+<h2 id="lembretes-pessoais">Lembretes pessoais</h2>
+<p>Além do popup nativo do Google, um evento pode ter um <a href="lembretes.html">lembrete pessoal</a> no MongoDB, com resumo matinal por Telegram e aviso único na abertura da voz. Peça os dois juntos para uma só confirmação; se pediu só o evento, ela oferece o lembrete depois. As ferramentas da agenda mantêm o lembrete vinculado ao editar/excluir o compromisso. Alterações diretamente no Google não são acompanhadas automaticamente.</p>
 </main>
 <script src="assets/docs-data.js"></script>
 <script src="assets/layout.js"></script>

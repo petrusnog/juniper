@@ -66,6 +66,7 @@ class _Speech:
     task: asyncio.Task[None] | None = None
     spoke: bool = False
     end_after: bool = False  # music started this turn: end the session when she is done
+    delivered: Callable[[bool], Awaitable[None]] | None = None
 
 
 class VoiceSession:
@@ -86,6 +87,8 @@ class VoiceSession:
         route: str | None = None,
         wake: bool = False,
         greeting: Callable[[], str] | None = None,
+        briefing: Callable[[], Awaitable[tuple[str, Callable[[bool], Awaitable[None]]]]]
+        | None = None,
         vad: Vad | None = None,
         clock: Callable[[], float] = time.monotonic,
         idle_timeout: float | None = None,
@@ -105,6 +108,7 @@ class VoiceSession:
         self._route = route
         self._wake = wake
         self._greeting = greeting or (lambda: random.choice(GREETINGS))
+        self._briefing = briefing
         self._gated = False
         self._vad = vad or Vad()
         self._clock = clock
@@ -145,7 +149,28 @@ class VoiceSession:
         )
         await self._state("listening")
         event_log.log("voice", action="start", stt=stt_cloud, tts=tts_cloud, wake=self._wake)
-        if self._wake:
+        if self._briefing is not None:
+            delivered = None
+            try:
+                text, delivered = await self._briefing()
+                if text:
+                    await self._say_standalone(text, delivered=delivered)
+                elif self._wake:
+                    await self._say_standalone(self._greeting())
+            except Exception as exc:
+                event_log.log("error", where="voice.reminders", type=type(exc).__name__)
+                if delivered is not None:
+                    try:
+                        await delivered(False)
+                    except Exception as receipt_exc:
+                        event_log.log(
+                            "error", where="voice.reminder_release", type=type(receipt_exc).__name__
+                        )
+                if self._wake:  # a tap-to-open session stays silent, as before the reminders
+                    await self._say_standalone(
+                        "Oi! Não consegui consultar seus lembretes agora. Pode falar."
+                    )
+        elif self._wake:
             await self._say_standalone(self._greeting())  # she greets; the mic stays closed
 
     async def end(self, reason: p.VoiceEndReason, *, notify: bool = True) -> None:
@@ -325,6 +350,7 @@ class VoiceSession:
     async def _speak_loop(self, speech: _Speech) -> None:
         seq = 0
         last_was_audio = True
+        delivered = False
         try:
             while True:
                 sentence = await speech.queue.get()
@@ -353,10 +379,17 @@ class VoiceSession:
                     )
                 else:
                     await self._guarded_send(p.VoiceSay(turn_id=speech.turn_id, text="", last=True))
+                delivered = not self._broken
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - a bug in speaking must not drop the connection
             event_log.log("error", where="voice.speak", type=type(exc).__name__)
+        finally:
+            if speech.delivered is not None:
+                try:
+                    await speech.delivered(delivered)
+                except Exception as exc:
+                    event_log.log("error", where="voice.reminder_receipt", type=type(exc).__name__)
         if self._speech is speech:
             if speech.end_after:
                 await self._end_after_playback()
@@ -459,10 +492,15 @@ class VoiceSession:
             answer = "Não consegui anotar o vazamento agora."
         await self._say_standalone(answer)
 
-    async def _say_standalone(self, text: str) -> None:
+    async def _say_standalone(
+        self, text: str, *, delivered: Callable[[bool], Awaitable[None]] | None = None
+    ) -> None:
         if self._speech is not None or self._turn_active():
+            if delivered is not None:
+                await delivered(False)
             return
         speech = _Speech(f"v-{secrets.token_hex(4)}", False, None)
+        speech.delivered = delivered
         self._begin(speech)
         speech.queue.put_nowait(text)
         speech.queue.put_nowait(None)

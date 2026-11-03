@@ -5,6 +5,7 @@ const NS = "http://www.w3.org/2000/svg";
 
 // Each icon is a list of shapes: [tag, attributes].
 const SHAPES = {
+  lembretes: [["path", { d: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" }]],
   visao: [["rect", { x: 3, y: 3, width: 7, height: 9 }], ["rect", { x: 14, y: 3, width: 7, height: 5 }], ["rect", { x: 14, y: 12, width: 7, height: 9 }], ["rect", { x: 3, y: 16, width: 7, height: 5 }]],
   memorias: [["ellipse", { cx: 12, cy: 5, rx: 9, ry: 3 }], ["path", { d: "M3 5v14a9 3 0 0 0 18 0V5" }], ["path", { d: "M3 12a9 3 0 0 0 18 0" }]],
   central: [["circle", { cx: 12, cy: 12, r: 10 }], ["circle", { cx: 12, cy: 12, r: 6 }], ["circle", { cx: 12, cy: 12, r: 2 }]],

@@ -446,6 +446,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         printer.say(note)
     await prepare_memory(memory, printer)
     memory_tools.bind(memory)
+    # No reminders here: the local CLI has no logged-in owner to scope them to (ADR-032).
     if message is None:
         printer.say("Oi! Pode falar, tô te ouvindo. (/sair para encerrar)")
         console.print()

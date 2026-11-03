@@ -18,7 +18,7 @@ Um painel web para ver a memória da Juniper sem o terminal. Roda dentro do serv
 http://<endereço-do-servidor-na-rede-privada>:8766/
 ```
 
-O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Só o **dono** escreve, por `POST` com token anti-CSRF e confirmação ([Usuários e credenciais](usuarios.md#dashboard), [Ocorrências e ações](ocorrencias.md)); as demais rotas só respondem `GET` (um teste confere).
+O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#dashboard) do próprio cérebro. Só o **dono** escreve, por `POST` com token anti-CSRF e confirmação ([Usuários e credenciais](usuarios.md#dashboard), [Ocorrências e ações](ocorrencias.md), [Lembretes](lembretes.md)); as demais rotas só respondem `GET` (um teste confere).
 
 ## Login e defesas {#login}
 

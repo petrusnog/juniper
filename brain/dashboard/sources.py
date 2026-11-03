@@ -25,6 +25,7 @@ class Sources:
     started: float = field(default_factory=time.monotonic)
     jobs: Any | None = None  # the background tasks (``JobRunner``), ADR-028
     issues: Any | None = None  # the general issue log (``IssueStore``), MongoDB only (ADR-028)
+    reminders: Any | None = None  # owner-scoped MongoDB reminders
 
     @property
     def embedder(self) -> Any | None:

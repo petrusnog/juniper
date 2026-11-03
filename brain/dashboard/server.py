@@ -241,6 +241,8 @@ class DashboardServer:
         """The module that answers writes (and its own reads) at ``path``, or ``None``."""
         if self._admin.handles(path):
             return self._admin
+        if self._actions is not None and self._actions.reminders.handles(path):
+            return self._actions.reminders
         if self._actions is not None and self._actions.handles(path):
             return self._actions
         return None
