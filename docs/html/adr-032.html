@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>ADR-032 — Lembretes pessoais e entrega matinal — Livro de bolso Juniper</title>
+<meta name="description" content="ADR-032 — Lembretes pessoais e entrega matinal">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/decisions/ADR-032.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / <a href="adr.html">Decisões</a> / ADR-032</div>
+<h1>ADR-032 — Lembretes pessoais e entrega matinal</h1>
+<dl class="adrmeta"><dt>Status</dt><dd><span class="tag a">proposto</span> ; implementação nesta branch, aprovação pelo merge do PR</dd><dt>Data</dt><dd>2026-11-03</dd><dt>Relaciona-se com</dt><dd><a href="adr-006.html">ADR-006</a>, <a href="adr-010.html">ADR-010</a>, <a href="adr-013.html">ADR-013</a>, <a href="adr-016.html">ADR-016</a>, <a href="adr-020.html">ADR-020</a>, <a href="adr-023.html">ADR-023</a>, <a href="adr-027.html">ADR-027</a>, <a href="adr-028.html">ADR-028</a></dd></dl>
+<h2 id="contexto">Contexto</h2>
+<p>Lembretes definidos pela pessoa ou vinculados à agenda precisam sobreviver a reinícios, ter gestão por ferramentas e dashboard e registrar independentemente o envio pelo Telegram e o aviso por voz. A memória subjetiva não é uma fila de notificações.</p>
+<h2 id="decisao">Decisão</h2>
+<p>O subsistema <code>brain/reminders/</code> usa a coleção <code>reminders</code>, com <code>owner_id</code>, prazo UTC, dia do aviso no fuso do agente, revisão otimista, reservas temporárias e recibos por canal. Criar/editar um lembrete explicitamente pedido é WRITE sem confirmação adicional; excluir é DESTRUCTIVE com confirmação. Evento e lembrete solicitados juntos compartilham a confirmação da agenda. Exclusão do evento anuncia também a remoção do lembrete vinculado. Vínculos fornecidos pelo modelo são validados na agenda antes de gravar.</p>
+<p>Sem identidade autenticada, as ferramentas recusam a operação. O CLI local sem login não cria registros sob um proprietário fictício. A voz só anuncia lembretes do principal autenticado; sem pendências preserva o comportamento do ADR-023: wake saúda, abertura pelo botão não fala. Recibos significam transmissão ao cliente, não comprovação de reprodução ou escuta.</p>
+<h3 id="entrega-telegram-e-alcance-do-segredo">Entrega Telegram e alcance do segredo</h3>
+<p>O processo brain executa o job diário e envia notificações pela API do Telegram, usando o mesmo adaptador do script <code>python -m brain.reminders</code>. Esta é uma <strong>exceção explícita ao limite de transporte do ADR-016</strong>: o bot de conversa continua cliente fino do protocolo, mas o brain ganha acesso de saída a <code>api.telegram.org</code> e ao token do bot.</p>
+<p>O <code>.env</code> já montado no brain pode conter esse token. A implantação deve conceder esse acesso deliberadamente; a lista <code>reminders.telegram_chat_ids</code> é uma autorização explícita por usuário e chat privado, nunca um broadcast da allowlist. Títulos, mensagens, chat ids e tokens não entram nos eventos de entrega. Sem mapa de destinatário, não há envio. Um token de bot dedicado a notificações pode reduzir o alcance se for desejado no deploy; não é criado automaticamente.</p>
+<p>Alternativas consideradas: fila/endpoint autenticado consumido pelo cliente Telegram ou execução do job no processo desse cliente. Ambas preservariam a separação do segredo, mas acrescentariam protocolo, ciclo de vida e autenticação de um consumidor de fila, além de tornar a entrega dependente do cliente opcional. A decisão atual mantém a persistência e a reserva no cérebro; não entrega ao cliente Telegram acesso ao MongoDB. Uma futura separação do segredo deve substituir apenas o adaptador de envio e manter os recibos e a autorização por usuário.</p>
+<p>O job tenta no horário diário e faz novas passagens após 60 e 300 segundos, além do catch-up no reinício após o horário. Recibos de sucesso evitam novos envios nas passagens seguintes. Cada tentativa usa saudação conforme a hora local. Falhas definitivas de banco/rede continuam visíveis nos logs, sem promessa de entrega.</p>
+<p>Telegram não oferece chave de idempotência de <code>sendMessage</code>. Há garantia de exclusão mútua enquanto a reserva vale, mas <strong>não exatamente uma entrega</strong>: se a mensagem for aceita e o recibo não puder ser salvo, a próxima execução após a expiração da reserva pode repetir. O canal de voz tem o mesmo limite entre transmissão e persistência. O sistema não marca sucesso em falhas conhecidas nem promete leitura da mensagem ou escuta do áudio.</p>
+<h3 id="historico-e-reprogramacao">Histórico e reprogramação</h3>
+<p>Os vencidos ficam por <code>reminders.retention_days</code> (90 por padrão); o job remove prazos anteriores à janela. A lista não corta silenciosamente em 500 registros. Reprogramar prazo, tanto pela ferramenta de lembretes como pela agenda, preserva a antecedência em dias se <code>notify_on</code> não for informado. Reprogramação reinicia os recibos. Edição de título/notas preserva recibos e pode ser feita no histórico.</p>
+<h3 id="dashboard">Dashboard</h3>
+<p>As escritas de lembretes usam JSON no corpo do POST, não textos na query string. O transporte HTTP do dashboard passa a aceitar um corpo limitado a 16 KiB, com timeout, enquadramento por um único Content-Length e recusa de Transfer-Encoding. Uma requisição por conexão, sem keep-alive. Headers e corpo não são registrados pelo transporte. As rotas existentes e suas defesas de Host, login, proprietário, CSRF e origem permanecem. O login continua enviando a credencial em cabeçalho.</p>
+<p>Esta extensão viabiliza textos longos no transporte, mas <strong>não implementa <code>study add</code></strong> nem converte as demais escritas do dashboard. A API antiga continua compatível para os campos curtos; a interface de lembretes sempre usa JSON.</p>
+<h2 id="validacao-e-limites">Validação e limites</h2>
+<p>Testes funcionais com dublês cobrem CRUD isolado, confirmações, agenda, recibos, falhas, reprogramação, histórico, retry e voz. Testes HTTP reais em loopback verificam JSON multibyte longo e defesas do transporte. Testes <code>integration</code> adicionais verificam índices parciais, upsert idempotente e concorrência contra MongoDB real, em banco temporário; ficam fora do CI padrão e são pulados quando o serviço não está disponível. API real Telegram, TTS real, Mongo real e uso no aparelho só podem ser considerados verificados após execução explícita no deploy.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="lembretes.html">Lembretes</a>: operação e configuração.</li><li><a href="google-calendar.html">Agenda Google</a>: vínculos e confirmação.</li><li><a href="dashboard.html">Dashboard</a>: acesso e proteção das escritas.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

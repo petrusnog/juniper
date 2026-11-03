@@ -863,6 +863,7 @@ class ReminderSettings(BaseModel):
 
     enabled: bool = True
     morning_at: str = "08:00"
+    retention_days: int = Field(default=90, ge=1, le=3650)
     # Juniper user_id -> private Telegram chat_id. Never broadcast to the allowlist.
     telegram_chat_ids: dict[str, int] = Field(default_factory=dict)
 

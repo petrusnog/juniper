@@ -325,6 +325,7 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 | Opção | Padrão | Significado |
 |---|---|---|
 | `reminders.enabled` | `true` | Habilita ferramentas, job e avisos de lembretes quando as sessões usam MongoDB. |
+| `reminders.retention_days` | `90` | Dias de histórico após o prazo; o job limpa vencidos anteriores à janela (1 a 3650). |
 | `reminders.morning_at` | `08:00` | Hora diária HH:MM no fuso do agente para o envio por Telegram. |
 | `reminders.telegram_chat_ids` | `{}` | Mapa user_id Juniper → chat_id privado positivo do Telegram. Sem associação não envia. |
 

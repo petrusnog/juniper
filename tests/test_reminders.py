@@ -284,17 +284,24 @@ async def test_voice_opening_reads_once_and_commits_only_after_speech(store, tmp
     from tests.test_agent import FakeProvider
     from tests.test_voice_session import Rig, start, wait_for
 
-    doc = add(store, owner="local")
-    async with Rig(tmp_path, FakeProvider([])) as rig:
+    doc = add(store, owner="owner")
+    from brain.auth import AuthService
+    from tests.test_voice_session import TOKEN
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    rig.server._auth = AuthService.legacy_only(TOKEN)
+    async with rig:
         client, _ = await rig.open()
-        await wait_for(lambda: bool(store.get("local", doc["id"])["voice_reminded_at"]))
+        await wait_for(lambda: bool(store.get("owner", doc["id"])["voice_reminded_at"]))
         assert any("Bom dia" in text and "Dentista" in text for text in rig.synth.spoken)
         await client.send(type="voice.end")
         await wait_for(lambda: not rig.handler._voices)
         before = len(rig.synth.spoken)
         await start(client)
-        await wait_for(lambda: len(rig.synth.spoken) > before)
-        assert all("Dentista" not in text for text in rig.synth.spoken[before:])
+        import asyncio
+
+        await asyncio.sleep(0.05)
+        assert len(rig.synth.spoken) == before
 
 
 async def test_voice_connection_failure_does_not_mark_as_reminded(store, tmp_path):
@@ -420,3 +427,199 @@ async def test_declining_combined_calendar_action_writes_neither(store, monkeypa
         ToolCall("1", "create_event", {"title": "Dentista", "start": DUE, "reminder": True})
     )
     assert not result.success and not client.inserted and not store.list("alice")
+
+
+@pytest.mark.parametrize("wake", [False, True])
+async def test_empty_briefing_preserves_original_voice_behavior(store, tmp_path, wake):
+    from brain.clients.voice_session import VoiceSession
+    from tests.test_agent import FakeProvider
+    from tests.test_voice_session import Rig, wait_for
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    session = VoiceSession(
+        rig.services,
+        send=AsyncMock(return_value=True),
+        submit=AsyncMock(),
+        cancel_turn=AsyncMock(),
+        turn_active=lambda: False,
+        ended=lambda: None,
+        clear_pending=lambda: None,
+        wake=wake,
+        greeting=lambda: "Saudação original.",
+        briefing=lambda: voice_briefing(store, "alice"),
+    )
+    try:
+        await session.start("empty")
+        if wake:
+            await wait_for(lambda: session._speech is None)
+            assert rig.synth.spoken == ["Saudação original."]
+        else:
+            assert not rig.synth.spoken and session._speech is None
+    finally:
+        await session.end("server")
+
+
+async def test_briefing_enqueue_failure_releases_claims(store, tmp_path, monkeypatch):
+    from brain.clients.voice_session import VoiceSession
+    from tests.test_agent import FakeProvider
+    from tests.test_voice_session import Rig
+
+    doc = add(store)
+    rig = Rig(tmp_path, FakeProvider([]))
+    session = VoiceSession(
+        rig.services,
+        send=AsyncMock(return_value=True),
+        submit=AsyncMock(),
+        cancel_turn=AsyncMock(),
+        turn_active=lambda: False,
+        ended=lambda: None,
+        clear_pending=lambda: None,
+        briefing=lambda: voice_briefing(store, "alice"),
+    )
+    original = session._say_standalone
+
+    async def fail_once(text, **kwargs):
+        if kwargs.get("delivered") is not None:
+            raise RuntimeError("cannot enqueue")
+        await original(text, **kwargs)
+
+    monkeypatch.setattr(session, "_say_standalone", fail_once)
+    try:
+        await session.start("fail")
+        # The reminder is immediately editable: no abandoned ten-minute lease.
+        assert store.update("alice", doc["id"], notes="retry")["notes"] == "retry"
+    finally:
+        await session.end("server")
+
+
+async def test_unidentified_local_tools_report_error_instead_of_creating_orphan(store):
+    token = current_user.set(None)
+    try:
+        result = await tools.CreateReminder().run(title="Conta", due_at=DUE)
+        assert not result.success and "CLI local" in result.error
+        assert not (await tools.ListReminders().run()).success
+        assert not store.list("local")
+    finally:
+        current_user.reset(token)
+
+
+async def test_calendar_link_is_validated_before_writing(store, monkeypatch):
+    from brain.tools import google_calendar as gc
+    from tests.test_google_calendar import FakeClient, ev
+
+    client = FakeClient()
+    monkeypatch.setattr(gc, "get_client", lambda: client)
+    result = await tools.CreateReminder().run(
+        title="Conta", due_at=DUE, event_id="invented", calendar_id=client.write_calendar_id
+    )
+    assert not result.success and not store.list("alice")
+    client.events.append(
+        ev(
+            "real",
+            "Conta",
+            datetime.fromisoformat(DUE),
+            datetime.fromisoformat(DUE) + timedelta(hours=1),
+        )
+    )
+    result = await tools.CreateReminder().run(
+        title="Conta", due_at=DUE, event_id="real", calendar_id=client.write_calendar_id
+    )
+    assert result.success and store.list("alice")[0]["event_id"] == "real"
+
+
+def test_rescheduling_keeps_advance_days(store):
+    doc = add(store, due_at="2030-05-15", notify_on="2030-05-13")
+    changed = store.update("alice", doc["id"], due_at="2030-05-20")
+    assert changed["notify_on"] == "2030-05-18"
+    explicit = store.update("alice", doc["id"], due_at="2030-05-22", notify_on="2030-05-21")
+    assert explicit["notify_on"] == "2030-05-21"
+
+
+async def test_delete_event_confirmation_mentions_linked_reminder(store, monkeypatch):
+    from brain.tools import google_calendar as gc
+    from tests.test_google_calendar import FakeClient, ev
+
+    event = ev(
+        "event1",
+        "Dentista",
+        datetime.fromisoformat(DUE),
+        datetime.fromisoformat(DUE) + timedelta(hours=1),
+    )
+    client = FakeClient([event])
+    monkeypatch.setattr(gc, "get_client", lambda: client)
+    add(store, event_id=event.id, calendar_id=event.calendar_id)
+    text = await gc.DeleteEvent().describe(event_id=event.id)
+    assert "excluir o lembrete vinculado" in text
+    assert "Dentista" in text
+
+
+async def test_job_retries_failed_delivery_without_repeating_success(store, monkeypatch):
+    from brain.reminders import delivery
+
+    add(store)
+    send = AsyncMock(side_effect=[OSError("offline"), None])
+    original = delivery.send_morning
+
+    async def attempt(store):
+        return await original(store, send)
+
+    sleep = AsyncMock()
+    monkeypatch.setattr(delivery, "send_morning", attempt)
+    monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
+    await delivery.morning_job()
+    assert send.await_count == 2
+    assert [call.args[0] for call in sleep.await_args_list] == [60, 300]
+    assert store.list("alice")[0]["telegram_sent_at"]
+
+
+async def test_late_catchup_uses_evening_greeting(store, monkeypatch):
+    add(store, due_at="2030-05-11", notify_on="2030-05-10")
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=14))
+    send = AsyncMock()
+    await send_morning(store, send)
+    assert send.await_args.args[1].startswith("Boa noite!")
+
+
+def test_retention_prunes_expired_history_and_list_is_not_truncated(store, monkeypatch):
+    doc = add(store)
+    # Historical imports can exceed one page; active data must not disappear behind a 500 cap.
+    raw = store.collection().find_one({"_id": doc["id"]})
+    store.collection().insert_many([{**raw, "_id": f"import-{i}"} for i in range(501)])
+    assert len(store.list("alice")) == 502
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(days=91))
+    assert store.prune() == 502
+    assert not store.list("alice")
+
+
+async def test_successful_send_with_failed_receipt_is_documented_at_least_once(store, monkeypatch):
+    doc = add(store)
+    original = store.finish
+    monkeypatch.setattr(
+        store,
+        "finish",
+        lambda *a, **k: (_ for _ in ()).throw(MemoryUnavailableError("database offline")),
+    )
+    send = AsyncMock()
+    with pytest.raises(MemoryUnavailableError):
+        await send_morning(store, send)
+    assert send.await_count == 1
+    monkeypatch.setattr(store, "finish", original)
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(minutes=11))
+    await send_morning(store, send)
+    assert send.await_count == 2
+    assert store.get("alice", doc["id"])["telegram_sent_at"]
+
+
+def test_legacy_ids_remain_editable_and_new_ids_survive_dashboard_redaction(store):
+    from brain.dashboard.serialize import sanitize
+
+    fresh = add(store)
+    assert sanitize(fresh)["id"] == fresh["id"]
+    raw = store.collection().find_one({"_id": fresh["id"]})
+    old_id = "a1" * 16
+    store.collection().insert_one({**raw, "_id": old_id})
+    exposed = store.get("alice", old_id)["id"]
+    assert exposed == "rem_" + old_id and sanitize({"id": exposed})["id"] == exposed
+    assert store.update("alice", exposed, title="Migrado")["title"] == "Migrado"
+    store.delete("alice", exposed)
+    assert store.collection().find_one({"_id": old_id}) is None

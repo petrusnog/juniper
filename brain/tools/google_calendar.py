@@ -507,6 +507,7 @@ class CreateEvent(Tool):
             client, _, title, start, _, conflicts = await self._plan(kwargs)
             if kwargs.get("reminder"):
                 reminders.store()
+                reminders.owner()
                 reminder_fields(title, start.isoformat(), kwargs.get("reminder_on"))
         except (CalendarError, ReminderError) as exc:
             return ToolResult(success=False, error=str(exc))
@@ -758,7 +759,19 @@ class DeleteEvent(Tool):
             event = await _locate(client, kwargs)
         except CalendarError:
             return None
-        return f"apagar «{event.title}», {_span(event)}, da {_where(client, event.calendar_id)}"
+        extra = ""
+        if reminders.CreateReminder.available():
+            try:
+                linked = await asyncio.to_thread(
+                    reminders.store().linked, reminders.owner(), event.calendar_id, event.id
+                )
+                if linked:
+                    extra = " e excluir o lembrete vinculado"
+            except (ReminderError, MemoryUnavailableError):
+                extra = " e, se houver, excluir o lembrete vinculado"
+        return (
+            f"apagar «{event.title}», {_span(event)}, da {_where(client, event.calendar_id)}{extra}"
+        )
 
     async def run(self, **kwargs: Any) -> ToolResult:
         try:

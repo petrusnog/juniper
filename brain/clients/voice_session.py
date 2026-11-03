@@ -150,11 +150,22 @@ class VoiceSession:
         await self._state("listening")
         event_log.log("voice", action="start", stt=stt_cloud, tts=tts_cloud, wake=self._wake)
         if self._briefing is not None:
+            delivered = None
             try:
                 text, delivered = await self._briefing()
-                await self._say_standalone(text, delivered=delivered)
+                if text:
+                    await self._say_standalone(text, delivered=delivered)
+                elif self._wake:
+                    await self._say_standalone(self._greeting())
             except Exception as exc:
                 event_log.log("error", where="voice.reminders", type=type(exc).__name__)
+                if delivered is not None:
+                    try:
+                        await delivered(False)
+                    except Exception as receipt_exc:
+                        event_log.log(
+                            "error", where="voice.reminder_release", type=type(receipt_exc).__name__
+                        )
                 await self._say_standalone(
                     "Oi! Não consegui consultar seus lembretes agora. Pode falar."
                 )

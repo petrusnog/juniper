@@ -29,7 +29,13 @@ def store() -> ReminderStore:
 
 
 def owner() -> str:
-    return current_user.get() or "local"
+    user = current_user.get()
+    if not user:
+        raise ReminderError(
+            "Entre pelo cliente conectado ao servidor para gerenciar lembretes; "
+            "o CLI local sem login não tem um proprietário identificado."
+        )
+    return user
 
 
 def render(doc: dict[str, Any]) -> str:
@@ -75,6 +81,7 @@ class CreateReminder(_ReminderTool):
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         try:
             store()
+            owner()
             fields(**{k: v for k, v in kwargs.items() if k in CREATE})
             if bool(kwargs.get("event_id")) != bool(kwargs.get("calendar_id")):
                 raise ReminderError("Para vincular informe event_id e calendar_id juntos.")
@@ -83,15 +90,27 @@ class CreateReminder(_ReminderTool):
         return None
 
     async def run(self, **kwargs: Any) -> ToolResult:
+        from brain.tools.google_calendar import CalendarError, get_client
+
         error = await self.precheck(**kwargs)
         if error:
             return error
         try:
+            if kwargs.get("event_id"):
+                client = get_client()
+                calendar = client.resolve_calendar(kwargs.get("calendar_id"))
+                try:
+                    await client.get_event(calendar, str(kwargs["event_id"]))
+                except CalendarError as exc:
+                    raise ReminderError(
+                        f"Não consegui validar o vínculo com a agenda: {exc}"
+                    ) from exc
+                kwargs["calendar_id"] = calendar
             doc = await asyncio.to_thread(store().create, owner(), **kwargs)
             return ToolResult(
                 True, output="Lembrete criado: " + render(doc), metadata={"reminder_id": doc["id"]}
             )
-        except (ReminderError, MemoryUnavailableError) as exc:
+        except (ReminderError, MemoryUnavailableError, CalendarError) as exc:
             return ToolResult(False, error=str(exc))
 
 
@@ -125,7 +144,8 @@ class UpdateReminder(_ReminderTool):
     name = "update_reminder"
     description = (
         "Edita um lembrete seu pelo id. Só informe campos que mudam. Alterar o prazo "
-        "ou dia do aviso reinicia os avisos; editar título/notas preserva as entregas."
+        "ou dia do aviso reinicia os avisos; editar título/notas preserva as entregas. "
+        "Novo prazo sem notify_on mantém a antecedência em dias."
     )
     parameters = {"type": "object", "properties": {**ID, **CREATE}, "required": ["reminder_id"]}
     tier = Tier.WRITE

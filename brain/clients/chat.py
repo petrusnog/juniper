@@ -718,9 +718,8 @@ class ChatHandler:
         from brain.tools import reminders
 
         async def briefing() -> tuple[str, Callable[[bool], Awaitable[None]]]:
-            return await voice_briefing(
-                reminders.store(), conn.principal.user_id if conn.principal else "local"
-            )
+            assert conn.principal is not None
+            return await voice_briefing(reminders.store(), conn.principal.user_id)
 
         session = VoiceSession(
             services,
@@ -736,7 +735,7 @@ class ChatHandler:
             local_tts=bool(message.local_tts),
             route=message.route,
             wake=bool(message.wake),
-            briefing=briefing if reminders.CreateReminder.available() else None,
+            briefing=briefing if reminders.CreateReminder.available() and conn.principal else None,
             idle_timeout=services.wake_idle_timeout if message.wake else None,
         )
         self._voices[conn.id] = session

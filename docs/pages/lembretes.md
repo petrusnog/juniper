@@ -10,11 +10,11 @@ tags: lembrete reminder telegram voz agenda mongodb create_reminder list_reminde
 
 ## Visão geral
 
-A Juniper guarda lembretes na coleção `reminders` do MongoDB, separados da memória subjetiva. É necessário `memory.session.store: mongo` para as ferramentas, o dashboard e o job do servidor. O fuso é `agent.timezone`.
+O [ADR-032](../decisions/ADR-032.md) define os limites de identidade, entrega e arquitetura. A Juniper guarda lembretes na coleção `reminders` do MongoDB, separados da memória subjetiva. É necessário `memory.session.store: mongo` para as ferramentas, o dashboard e o job do servidor. O fuso é `agent.timezone`.
 
 Peça “me lembre de pagar a conta amanhã” ou “marque dentista amanhã às 16h e adicione um lembrete”. Para um evento novo com lembrete, `create_event(reminder=true)` usa uma única confirmação para ambos. Sem pedido de lembrete, ela oferece depois de criar o evento; aceitar chama `create_reminder` com os ids retornados, sem recriar o evento nem pedir confirmação adicional. Recusa explícita usa `reminder=false`.
 
-`create_reminder`, `list_reminders`, `update_reminder` e `delete_reminder` permitem gerenciar tudo na conversa. Criar/editar um lembrete explicitamente pedido não pede confirmação adicional; excluir pede. Para editar/excluir, consulte a lista e use o id completo. Só aparecem os lembretes do usuário autenticado. O terminal local sem autenticação usa o proprietário `local`.
+`create_reminder`, `list_reminders`, `update_reminder` e `delete_reminder` permitem gerenciar tudo na conversa. Criar/editar um lembrete explicitamente pedido não pede confirmação adicional; excluir pede. Para editar/excluir, consulte a lista e use o id completo. Só aparecem os lembretes do usuário autenticado. O terminal local sem identidade recusa a operação e orienta usar o cliente conectado ao servidor; não cria registros órfãos sob `local`. Registros antigos sob `local` exigem migração administrativa explícita para o user_id correto, sem presumir quem é o dono.
 
 Um prazo sem hora (`AAAA-MM-DD`) vence ao fim do dia no fuso do agente. `notify_on` permite avisar em um dia anterior; por padrão é o dia do prazo. Não há alarme no minuto exato, recorrência ou varredura periódica do Google Calendar.
 
@@ -27,13 +27,13 @@ Os status são independentes e cumulativos:
 - **Relembrado no chat de voz:** a fala inteira foi transmitida ao cliente sem erro; não comprova que o aparelho a reproduziu ou que a pessoa a ouviu.
 - **Vencido:** o prazo passou, mesmo que tenha sido avisado antes. Vencimento é calculado na consulta; não precisa esperar o job diário. Lembretes vencidos ficam no histórico, mas não são enviados.
 
-Na abertura da voz (botão ou ativação por voz), ela cumprimenta conforme o horário e avisa os lembretes disponíveis. A marcação no MongoDB evita repetir cada lembrete nas próximas sessões e aparelhos. Falha ou interrupção antes de transmitir a fala completa libera o aviso para outra tentativa. O envio Telegram não impede o aviso de voz e vice-versa.
+Quando há lembretes pendentes, a abertura da voz cumprimenta conforme o horário e os anuncia. Sem lembretes, mantém o comportamento anterior: wake word usa a saudação original e abertura pelo botão fica silenciosa, sem gastar TTS. A marcação no MongoDB evita repetir cada lembrete nas próximas sessões e aparelhos. Falha ou interrupção antes de transmitir a fala completa libera o aviso para outra tentativa. O envio Telegram não impede o aviso de voz e vice-versa.
 
-O servidor agenda o envio diariamente às 08:00, por padrão. Ao reiniciar depois desse horário, tenta recuperar os lembretes ainda válidos e não enviados; antes desse horário, aguarda. Não exige cron no contêiner. Um lembrete criado depois do job será avisado por voz na próxima abertura; pelo Telegram, somente na próxima execução (se ainda não venceu). Para antecipar esse caso ou repetir uma tentativa que falhou, rode o script manual abaixo. Falhas no Telegram não são marcadas como sucesso.
+O servidor agenda o envio diariamente às 08:00, por padrão. Ao reiniciar depois desse horário, tenta recuperar os lembretes ainda válidos e não enviados; antes desse horário, aguarda. Não exige cron no contêiner. O job faz mais duas passagens, após 60 e 300 segundos; só tenta lembretes sem recibo, ainda válidos. A saudação do Telegram acompanha o horário local, inclusive no catch-up tardio. Um lembrete criado depois do job será avisado por voz na próxima abertura; pelo Telegram, somente na próxima execução (se ainda não venceu). Para antecipar esse caso ou repetir uma tentativa que falhou, rode o script manual abaixo. Falhas no Telegram não são marcadas como sucesso.
 
 As entregas usam leases atômicos por lembrete/canal para evitar dois workers enviando simultaneamente. Um processo que cai libera a lease por expiração em até dez minutos. Telegram não oferece chave de idempotência para sendMessage: uma queda depois de ele aceitar a mensagem e antes de salvar o recibo pode resultar em repetição na próxima tentativa. Não há garantia de exatamente uma entrega nessa janela.
 
-Editar título/notas preserva os recibos. Reprogramar prazo/dia de aviso reinicia os dois canais. Editar/excluir durante envio é recusado; tente novamente ao terminar. As ferramentas de edição/exclusão de eventos sincronizam os lembretes vinculados. Se o Google gravar mas o MongoDB falhar, a resposta informa o sucesso parcial; não repita a criação do evento. Alterações feitas diretamente no Google não são sincronizadas automaticamente. Editar/apagar somente o lembrete não modifica o compromisso.
+Editar título/notas preserva os recibos. Reprogramar prazo/dia de aviso reinicia os dois canais. Ao mudar o prazo sem informar notify_on, preserva a antecedência em dias, tanto pela agenda como pela ferramenta de lembretes. Vínculos informados pelo modelo são conferidos na agenda antes de gravar. Editar/excluir durante envio é recusado; tente novamente ao terminar. As ferramentas de edição/exclusão de eventos sincronizam os lembretes vinculados. Se o Google gravar mas o MongoDB falhar, a resposta informa o sucesso parcial; não repita a criação do evento. Alterações feitas diretamente no Google não são sincronizadas automaticamente. Editar/apagar somente o lembrete não modifica o compromisso.
 
 ## Configurar Telegram
 
@@ -66,15 +66,15 @@ Ou, no checkout com ambiente Python ativo: `python -m brain.reminders`. O script
 
 ## Dashboard e diagnóstico
 
-A aba **Lembretes** permite criar, pesquisar, filtrar por status, editar e excluir, com recibos de cada canal e histórico dos vencidos. Usa o login do dono e a proteção anti-CSRF existente; a API obtém o proprietário da sessão, nunca de argumentos do navegador. Cada página mostra 25 itens; a consulta traz até 500 lembretes por usuário.
+A aba **Lembretes** permite criar, pesquisar, filtrar por status, editar e excluir, com recibos de cada canal e histórico dos vencidos. Usa o login do dono e a proteção anti-CSRF existente; a API obtém o proprietário da sessão, nunca de argumentos do navegador. Cada página mostra 25 itens; não há corte silencioso em 500. O job remove vencidos após a janela reminders.retention_days (90 dias por padrão). Textos e observações são enviados em JSON no corpo do POST, com limite de 16 KiB, sem passar pela URL; o transporte não registra cabeçalhos, URLs nem corpo. A autenticação, a origem e o CSRF continuam obrigatórios.
 
 ```bash
 docker compose -f docker-compose.prod.yml exec -T brain python -m brain logs -e reminder --json
 ```
 
-Eventos `telegram_sent`, `telegram_failed` e `telegram_unconfigured` identificam o lembrete sem gravar título, texto, chat id ou token. `voice.reminders`/`voice.reminder_receipt` indicam falha de consulta/gravação por voz. Os testes usam MongoDB simulado e Telegram/voz falsos; envio real depende das credenciais e do destino configurados no deploy.
+Eventos `telegram_sent`, `telegram_failed` e `telegram_unconfigured` identificam o lembrete sem gravar título, texto, chat id ou token. `voice.reminders`/`voice.reminder_receipt` indicam falha de consulta/gravação por voz. Os testes padrão usam MongoDB simulado e Telegram/voz falsos. tests/test_reminders_integration.py adiciona verificações de índice parcial, upsert e leases concorrentes contra MongoDB real, em banco temporário; são marcadas integration e puladas se o serviço não estiver disponível. Esses cenários ainda não foram exercitados aqui contra MongoDB real. API Telegram, TTS e fluxo no aparelho também não foram exercitados com serviços reais; dependem do deploy.
 
-## Para saber mais
+## Para saber mais {#para-saber-mais}
 
 - [Agenda Google](google-calendar.md): compromissos vinculados.
 - [Configuração](configuracao.md): opções de lembretes e Telegram.

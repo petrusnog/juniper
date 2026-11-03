@@ -43,11 +43,8 @@ export async function render() {
         if (item) {
           // Preserve channel receipts on text-only edits.
           for (const key of Object.keys(changes)) if (changes[key] === (item[key] || "")) delete changes[key];
-          // post() omits empty fields; one space explicitly clears optional notes/day.
-          if (changes.notes === "") changes.notes = " ";
-          if (changes.notify_on === "") changes.notify_on = " ";
         }
-        await post(item ? `/reminders/${item.id}/update` : "/reminders", changes);
+        await post(item ? `/reminders/${item.id}/update` : "/reminders", changes, true);
         if (item) node.remove(); else node.reset();
         await refresh();
       } catch (err) { error.textContent = err.message; }
@@ -66,7 +63,7 @@ export async function render() {
     const remove = h("button", { type: "button", text: "Excluir", onclick: async () => {
       if (!window.confirm(`Excluir o lembrete “${item.title}”? O evento da agenda será preservado.`)) return;
       remove.disabled = true;
-      try { await post(`/reminders/${item.id}/delete`, { confirm: item.id }); await refresh(); }
+      try { await post(`/reminders/${item.id}/delete`, { confirm: item.id }, true); await refresh(); }
       catch (error) { notice.textContent = error.message; remove.disabled = false; }
     }});
     body.append(edit, remove);

@@ -19,6 +19,11 @@ def line(doc: dict[str, Any]) -> str:
     return f"{doc['title']}, dia {due:%d/%m}, às {due:%H:%M}."
 
 
+def greeting() -> str:
+    hour = now().astimezone(ZoneInfo(settings.agent.timezone)).hour
+    return "Bom dia!" if hour < 12 else "Boa tarde!" if hour < 18 else "Boa noite!"
+
+
 async def telegram_send(chat_id: int, text: str) -> None:
     from telegram import Bot
 
@@ -39,6 +44,7 @@ async def telegram_send(chat_id: int, text: str) -> None:
 async def send_morning(store: ReminderStore, send: Send = telegram_send) -> int:
     if not settings.reminders.enabled:
         return 0
+    await asyncio.to_thread(store.prune)
     stamp = now().astimezone(ZoneInfo(settings.agent.timezone))
     if stamp.strftime("%H:%M") < settings.reminders.morning_at:
         return 0  # startup catch-up must never send before the configured morning
@@ -53,7 +59,7 @@ async def send_morning(store: ReminderStore, send: Send = telegram_send) -> int:
             continue
         success = False
         try:
-            await send(chat, "Bom dia! Seu lembrete: " + line(doc))
+            await send(chat, greeting() + " Seu lembrete: " + line(doc))
             success = True
             sent += 1
         except Exception as exc:
@@ -74,7 +80,14 @@ async def send_morning(store: ReminderStore, send: Send = telegram_send) -> int:
 async def morning_job() -> None:
     from brain.tools.reminders import store
 
-    await send_morning(store())
+    # Retry within the same day. Successful receipts make each pass idempotent.
+    for delay in (0, 60, 300):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            await send_morning(store())
+        except Exception as exc:
+            event_log.log("reminder", action="job_failed", reason=type(exc).__name__)
 
 
 async def voice_briefing(
@@ -86,10 +99,8 @@ async def voice_briefing(
         token = await asyncio.to_thread(store.claim, doc, "voice")
         if token:
             claimed.append((doc, token))
-    hour = now().astimezone(ZoneInfo(settings.agent.timezone)).hour
-    greeting = "Bom dia!" if hour < 12 else "Boa tarde!" if hour < 18 else "Boa noite!"
-    text = greeting + (
-        " Seus lembretes: " + " ".join(line(d) for d, _ in claimed) if claimed else " Pode falar."
+    text = (
+        greeting() + " Seus lembretes: " + " ".join(line(d) for d, _ in claimed) if claimed else ""
     )
 
     async def finish(success: bool) -> None:

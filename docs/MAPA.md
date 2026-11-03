@@ -119,3 +119,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Aceito) · `agente`, `memoria-v2`, `memoria-v3`, `produto-personalidade`
 - [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Aceito) · `configuracao`, `dashboard`, `memoria-v2`, `memoria-v3`
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
+- [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal (Proposto; implementação nesta branch, aprovação pelo merge do PR) · `lembretes`

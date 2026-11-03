@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -78,7 +79,7 @@ def public(doc: dict[str, Any], at: datetime | None = None) -> dict[str, Any]:
     if doc["due_at"] <= (at or now()):
         statuses.append("Vencido")
     return {k: v for k, v in doc.items() if not k.endswith("_lease")} | {
-        "id": doc["_id"],
+        "id": ("rem_" + doc["_id"] if re.fullmatch(r"[0-9a-f]{32}", doc["_id"]) else doc["_id"]),
         "statuses": statuses or ["Pendente"],
     }
 
@@ -117,7 +118,7 @@ class ReminderStore:
         data = fields(title, due_at, notify_on, notes)
         stamp = now()
         doc = {
-            "_id": uuid.uuid4().hex,
+            "_id": "rem_" + uuid.uuid4().hex,
             "owner_id": owner,
             **data,
             "created_at": stamp,
@@ -146,11 +147,14 @@ class ReminderStore:
         if not include_expired:
             query["due_at"] = {"$gt": now()}
         with self.connection.guard():
-            return [public(d) for d in self.collection().find(query).sort("due_at", 1).limit(500)]
+            return [public(d) for d in self.collection().find(query).sort("due_at", 1)]
 
     def get(self, owner: str, reminder_id: str) -> dict[str, Any]:
+        ids = [reminder_id]
+        if re.fullmatch(r"rem_[0-9a-f]{32}", reminder_id):
+            ids.append(reminder_id[4:])  # Compatibility with pre-prefix reminder records.
         with self.connection.guard():
-            doc = self.collection().find_one({"_id": reminder_id, "owner_id": owner})
+            doc = self.collection().find_one({"_id": {"$in": ids}, "owner_id": owner})
         if doc is None:
             raise ReminderError("Lembrete não encontrado. Use list_reminders para obter o id.")
         return public(doc)
@@ -173,7 +177,11 @@ class ReminderStore:
             raise ReminderError("Altere title, due_at, notify_on ou notes.")
         values = {k: doc.get(k) for k in allowed} | changes
         if "due_at" in changes and "notify_on" not in changes:
-            values["notify_on"] = None
+            zone = ZoneInfo(settings.agent.timezone)
+            advance = doc["due_at"].astimezone(zone).date() - date.fromisoformat(doc["notify_on"])
+            values["notify_on"] = (
+                parse_due(changes["due_at"]).astimezone(zone).date() - advance
+            ).isoformat()
         updated = fields(**values, require_future=bool({"due_at", "notify_on"} & changes.keys()))
         if "due_at" in changes or "notify_on" in changes:
             updated.update(telegram_sent_at=None, voice_reminded_at=None)
@@ -206,7 +214,18 @@ class ReminderStore:
         if owner is not None:
             query["owner_id"] = owner
         with self.connection.guard():
-            return list(self.collection().find(query).sort("due_at", 1).limit(500))
+            return list(self.collection().find(query).sort("due_at", 1))
+
+    def prune(self) -> int:
+        """Keep expired reminders for the configured history window."""
+        with self.connection.guard():
+            return int(
+                self.collection()
+                .delete_many(
+                    {"due_at": {"$lt": now() - timedelta(days=settings.reminders.retention_days)}}
+                )
+                .deleted_count
+            )
 
     def claim(self, doc: dict[str, Any], channel: str) -> str | None:
         lease = f"{channel}_lease"

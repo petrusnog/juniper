@@ -11,7 +11,7 @@ from brain.memory.secretfilter import mask_secrets
 
 # Our own ids (``mem_<14 digits><6 hex>``, session ids). The secret filter reads a long run of
 # digits as a card number and would mangle an id now and then, so ids are kept out of its sight.
-_ID = re.compile(r"\b(?:[a-z]{2,6}_\d{14}[0-9a-f]{6}|\d{8}-\d{6}-[0-9a-f]{6})\b")
+_ID = re.compile(r"\b(?:rem_[0-9a-f]{32}|[a-z]{2,6}_\d{14}[0-9a-f]{6}|\d{8}-\d{6}-[0-9a-f]{6})\b")
 HIDDEN_KEYS = frozenset({"embedding", "embedding_model", "vector"})
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 50
