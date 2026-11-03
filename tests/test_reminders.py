@@ -806,3 +806,126 @@ async def test_the_server_runs_the_reminder_tick_every_minute(store, monkeypatch
     async with asyncio.timeout(2):
         await task
     assert scheduled == ["reminders"]
+
+
+# --- round trips and the event loop: what makes the assistant feel slow ----------------------
+
+
+class _Counting:
+    """Wraps a Mongo collection and counts every driver call."""
+
+    def __init__(self, inner, calls):
+        self._inner, self._calls = inner, calls
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
+
+        def counted(*args, **kwargs):
+            self._calls.append(name)
+            return attr(*args, **kwargs)
+
+        return counted
+
+
+def counted(store):
+    """Make ``store`` report its driver calls (index creation excluded: it runs once)."""
+    store.collection()  # indexes and migration happen here, once
+    calls: list[str] = []
+    real = store.connection.collection
+    store.connection.collection = lambda name: _Counting(real(name), calls)
+    return calls
+
+
+async def test_creating_an_event_with_a_reminder_scans_the_calendar_no_more_than_without(
+    store, monkeypatch
+):
+    """Each scan lists every calendar one after the other: a needless one is seconds of wait."""
+    from brain.tools import google_calendar as gc
+    from tests.test_google_calendar import FakeClient
+
+    scans = 0
+    original = gc._conflicts
+
+    async def scan(*args, **kwargs):
+        nonlocal scans
+        scans += 1
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(gc, "get_client", lambda: FakeClient())
+    monkeypatch.setattr(gc, "_conflicts", scan)
+
+    async def as_the_dispatcher_does(**extra):
+        nonlocal scans
+        scans = 0
+        tool, args = gc.CreateEvent(), {"title": "Dentista", "start": "2030-05-11T16:00", **extra}
+        await tool.precheck(**args)
+        await tool.describe(**args)
+        assert (await tool.run(**args)).success
+        return scans
+
+    plain = await as_the_dispatcher_does()
+    with_reminder = await as_the_dispatcher_does(reminder=True)
+    assert with_reminder == plain
+
+
+async def test_creating_a_reminder_is_one_write_and_no_calendar_call(store, monkeypatch):
+    from brain.tools import google_calendar as gc
+
+    monkeypatch.setattr(gc, "get_client", lambda: (_ for _ in ()).throw(AssertionError("Google")))
+    calls = counted(store)
+    result = await tools.CreateReminder().run(title="Ligar", due_at=DUE, notify_at=NOTICE)
+    assert result.success
+    assert calls == ["insert_one"]
+
+
+async def test_an_idle_tick_is_a_single_query_whatever_the_history(store, monkeypatch):
+    from brain.reminders import delivery
+
+    for i in range(40):  # plenty of history: none of it may cost a call of its own
+        add(store, title=f"Antigo {i}", notify_at=NOTICE, due_at="2030-05-10T09:30:00-03:00")
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(days=2))
+    today = delivery.now().astimezone(delivery.ZoneInfo(settings.agent.timezone)).date()
+    monkeypatch.setitem(delivery._state, "pruned_on", today)
+    calls = counted(store)
+    await delivery.reminder_job()
+    assert calls == ["find"]
+
+
+async def test_opening_the_voice_with_nothing_due_is_a_single_query(store):
+    calls = counted(store)
+    text, _ = await voice_briefing(store, "alice")
+    assert text == "" and calls == ["find"]
+
+
+async def test_a_slow_database_never_blocks_the_event_loop(store, monkeypatch):
+    """A tick waiting on MongoDB must not freeze the chat: the loop keeps beating meanwhile."""
+    import time
+
+    from brain.reminders import delivery
+
+    monkeypatch.setitem(delivery._state, "pruned_on", None)
+    original = store.eligible
+
+    def slow(*args, **kwargs):
+        time.sleep(0.4)  # a database that takes its time, in the worker thread
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(store, "eligible", slow)
+    monkeypatch.setattr(store, "prune", lambda: time.sleep(0.4) or 0)
+    worst, running = 0.0, True
+
+    async def heartbeat():
+        nonlocal worst
+        last = time.perf_counter()
+        while running:
+            await asyncio.sleep(0.01)
+            now_ = time.perf_counter()
+            worst, last = max(worst, now_ - last), now_
+
+    beat = asyncio.create_task(heartbeat())
+    await delivery.reminder_job()
+    running = False
+    await beat
+    assert worst < 0.2  # the 0.8 s of waiting happened off the loop

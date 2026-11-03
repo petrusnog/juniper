@@ -524,14 +524,17 @@ class CreateEvent(Tool):
         )
 
     async def run(self, **kwargs: Any) -> ToolResult:
-        if kwargs.get("reminder"):
-            check = await self.precheck(**kwargs)
-            if check is not None:
-                return check
         try:
             client, calendar_id, title, start, end, conflicts = await self._plan(kwargs)
             if conflicts:  # re-checked: the calendar may have changed since precheck
                 return _conflict_result(client, conflicts, "criado")
+            if kwargs.get("reminder"):  # before the write, and without a second calendar scan
+                try:
+                    reminders.store()
+                    reminders.owner()
+                    reminder_fields(title, start.isoformat(), kwargs.get("reminder_at"))
+                except ReminderError as exc:
+                    return ToolResult(success=False, error=str(exc))
             note = str(kwargs.get("description") or "").strip()[:MAX_DESCRIPTION]
             description = f"{note}\n\n{SIGNATURE}" if note else SIGNATURE
             event = await client.insert_event(

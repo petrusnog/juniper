@@ -250,6 +250,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 4. `brain/tools/{system,web,shell}.py` são stubs que coexistem com o plano de tools de sistema: implementar ou remover.
 5. `mypy brain/` acusa erros herdados de stubs de bibliotecas; o CI roda só `pytest`.
 6. **Memória V3:** a imagem do SearXNG vem em `latest` (fixar uma tag testada); `ruff` aponta dois avisos antigos (`tests/test_config.py:110` e `tests/test_remote_cli.py:225`) que não são desta épica.
+7. **Latência do `create_event`:** o dispatcher consulta conflitos três vezes (checagem prévia, descrição da confirmação e execução), e cada consulta lista as agendas uma depois da outra com um único cliente HTTP (`httplib2`, que não é seguro entre threads). Com várias agendas, a criação de um evento passa de segundos. Reaproveitar o resultado da checagem prévia na mesma chamada e/ou consultar as agendas em paralelo (com um cliente por thread); os testes de lembretes já travam o número de consultas (`test_creating_an_event_with_a_reminder_...`).
 
 ---
 
