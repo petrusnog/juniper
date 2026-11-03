@@ -28,7 +28,6 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Marco | O que existe | Issues | ADR | Documentação |
 |---|---|---|---|---|
 | Base do agente | Loop `Agent`/`Dispatcher`/`Session`, 4 tiers, confirmação na conversa, router com failover, relógio | T-011 a T-042 | 001, 002, 003, 006, 007, 009 | [Agente](pages/agente.md), [LLM](pages/llm.md) |
-| Lembretes pessoais (nesta branch, pendente de merge) | CRUD isolado por usuário no MongoDB; agenda vinculada; job matinal com retry; recibos Telegram/voz; histórico com retenção; aba Lembretes e POST JSON no dashboard. Validação externa ainda pendente | PR de lembretes; issue de origem pendente de acesso à API | 032 (proposto) | [Lembretes](pages/lembretes.md) |
 | Agenda Google | `list_events`, `create_event`, `update_event`, `delete_event`, agendas gerenciadas | T-022 | 008, 010 | [Agenda Google](pages/google-calendar.md) |
 | Memória | Sessão retomável; longo prazo no MongoDB com embeddings locais (ONNX) e RAG; extração; perfil | Sprint 2 | 011 | [Memória](pages/memoria.md) |
 | Servidor e protocolo | WebSocket único (`protocol_version` 1), sessões, memória, executor, voz; heartbeat e reconexão | Sprint 3 | 012 | [API WebSocket](pages/protocolo.md), [Servidor](pages/servidor.md) |
@@ -47,9 +46,10 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Auditoria de vazamentos | Detector amplo em modo sombra sobre o texto bruto e o entregue do LLM; registros no MongoDB (`leak_audit`, TTL 30 dias); `juniper vazamentos`; turno com vazamento de alta precisão fica fora da memória e do sonho; `/vazou` e «isso vazou» (voz) gravam um relato com as últimas 10 interações (`leak_reports`) | #239 (T-165), #244 (T-167) | — | [Auditoria de vazamentos](pages/vazamentos.md) |
 | Usuários e credenciais | Usuário (`owner`/`tester`) e credencial `client_id`+`client_secret` por dispositivo, com o segredo visto uma vez e só o hash (HMAC com *pepper*) no MongoDB; espelho do dono para o banco fora do ar; `juniper users/login/logout`; página Usuários no dashboard (primeira escrita, com CSRF e confirmação); login do WebSocket, do dashboard, do Telegram (`/login`) e do app; revogação derruba a conexão. **Sem isolamento por usuário ainda** | branch `claude/blissful-knuth-xxtci9` | 027 | [Usuários e credenciais](pages/usuarios.md) |
 | Dashboard V2 | Ocorrências de qualquer tipo (coleção `issues`, estado, gravidade, notas) e a tool `report_issue` (WRITE com confirmação); ações do dono na memória (esquecer, peso, personalidade, sentimentos); tarefas em segundo plano (sonho e reindexação, uma por vez); leituras de logs, custos e saúde | branch `claude/dashboard-v2-features` | 028 | [Ocorrências e ações](pages/ocorrencias.md), [Dashboard](pages/dashboard.md) |
+| Lembretes pessoais | CRUD isolado por dono no MongoDB (`reminders`); agenda vinculada (`create_event(reminder=true)` e sincronia ao alterar/apagar); job matinal com retry e recibos independentes de Telegram e voz; abertura da voz anuncia os pendentes; retenção dos vencidos; aba Lembretes no dashboard. O CLI local sem login não oferece as tools. **Verificado com dublês e `mongomock`; Telegram, TTS e MongoDB reais não foram exercitados** | T-192 | 032 | [Lembretes](pages/lembretes.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
-**Tools registradas (26):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências); `web_search`, `web_fetch`, `learn_topic` (web e conhecimento, ADR-031); `create_reminder`, `list_reminders`, `update_reminder`, `delete_reminder` (lembretes pessoais, ADR-032, nesta branch).
+**Tools registradas (26):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências); `web_search`, `web_fetch`, `learn_topic` (web e conhecimento, ADR-031); `create_reminder`, `list_reminders`, `update_reminder`, `delete_reminder` (lembretes pessoais, ADR-032).
 
 **Não implementado (decidido ou planejado, sem código):**
 
@@ -210,8 +210,8 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [028](decisions/ADR-028.md) | Ações do dono no dashboard (ocorrências, memória, tarefas) com as defesas do ADR-027; leituras de logs, custos e saúde. |
 | [029](decisions/ADR-029.md) | Livre arbítrio: expressão livre (opina sobre tudo, discorda, fala de si), ação protegida (tiers e confirmação intocados) (aceito). |
 | [030](decisions/ADR-030.md) | Memória V3: emoção PAD, humor ALMA, Big Five em 10 aspectos + ironia, traço como média dos estados, bloco de voz, crenças sobre si e o mundo, sonho V2 (aceito). |
-| [032](decisions/ADR-032.md) | Lembretes pessoais, envio direto pelo brain como exceção ao ADR-016, recibos por canal e transporte HTTP limitado com JSON (proposto nesta branch). |
 | [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (aceito). |
+| [032](decisions/ADR-032.md) | Lembretes pessoais: coleção `reminders` por dono, recibos por canal, job matinal e envio direto do brain ao Telegram como exceção ao ADR-016 (aceito). |
 
 ---
 
@@ -229,10 +229,11 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 
 | Foco | Situação |
 |---|---|
-| Lembretes pessoais | Implementados nesta branch; falta merge, formalização da issue de origem e validação com Telegram, TTS e MongoDB reais. Detalhes no ADR-032. |
+| Validar os lembretes (ADR-032) | Exercitar com Telegram, TTS e MongoDB reais (rode `pytest -m integration` com o Mongo no ar) e ligar `reminders.telegram_chat_ids` no deploy. |
+| Corpo nas escritas do dashboard | Hoje os `POST` levam tudo na *query* (observações de lembrete até 500 caracteres). Aceitar corpo exige trocar o transporte (a `websockets` em `process_request`, ADR-020): task própria, com ADR e revisão de segurança. Destrava também o `study add`. |
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
-| `study add` no dashboard | Ainda não implementado. O transporte passa a aceitar JSON limitado para lembretes (ADR-032, nesta branch), mas falta a rota e a interface de estudo; continua na CLI. |
+| `study add` no dashboard | Fora: o texto de estudo não cabe na *query* dos `POST` (o servidor HTTP do dashboard não lê corpo). Continua na CLI. |
 | Calibrar a Memória V3 | Os valores novos (`alpha`, `max_step`, `max_band`, `maturation`, meia-vida do humor, tetos por hora da conversa, validade das notas da web, `rem_relief`) são pontos de partida **[a calibrar]** com uso real; ligar o Tavily (chave no `.env`) e conferir o plano gratuito. |
 | Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
@@ -243,13 +244,12 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 
 ## 11. Dívidas Técnicas Conhecidas
 
-1. **Lembretes: regularização do processo pendente:** o PR existente usa `feat/personal-reminders`, sem issue de origem. A API GitHub está bloqueada neste ambiente; criar a issue e atualizar título/corpo do PR requer acesso. Preservar a branch do PR existente, sem fechar/reabrir nem perder a revisão; registrar essa exceção. Não inventar número para `Closes #N`.
-2. **Issues abertas que já foram entregues** (#90 a #214, exceto a #177): fechar no GitHub. A causa é o merge sem `Closes #N` no corpo do PR.
-3. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
-4. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados por alguns ADRs).
-5. `brain/tools/{system,web,shell}.py` são stubs que coexistem com o plano de tools de sistema: implementar ou remover.
-6. `mypy brain/` acusa erros herdados de stubs de bibliotecas; o CI roda só `pytest`.
-7. **Memória V3:** a imagem do SearXNG vem em `latest` (fixar uma tag testada); `ruff` aponta dois avisos antigos (`tests/test_config.py:110` e `tests/test_remote_cli.py:225`) que não são desta épica.
+1. **Issues abertas que já foram entregues** (#90 a #214, exceto a #177): fechar no GitHub. A causa é o merge sem `Closes #N` no corpo do PR.
+2. **Versão desalinhada:** `pyproject.toml` = `3.0.0a1`, `brain/__init__.py` = `4.0.0`. Sincronizar (preferência: `dynamic = ["version"]` lendo `brain.__version__`).
+3. `CHANGELOG.md` e `BACKLOG.md` não existem no repo (citados por alguns ADRs).
+4. `brain/tools/{system,web,shell}.py` são stubs que coexistem com o plano de tools de sistema: implementar ou remover.
+5. `mypy brain/` acusa erros herdados de stubs de bibliotecas; o CI roda só `pytest`.
+6. **Memória V3:** a imagem do SearXNG vem em `latest` (fixar uma tag testada); `ruff` aponta dois avisos antigos (`tests/test_config.py:110` e `tests/test_remote_cli.py:225`) que não são desta épica.
 
 ---
 

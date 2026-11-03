@@ -28,18 +28,14 @@ let csrf = null;
 
 // The only writes the dashboard makes (users and credentials, ADR-027). The parameters ride in
 // the query (none is a secret) and the anti-CSRF token of the session in a header.
-export async function post(path, params = {}, jsonBody = false) {
+export async function post(path, params = {}) {
   if (!csrf) csrf = (await api("/me")).csrf;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
   }
-  const suffix = !jsonBody && query.toString() ? `?${query}` : "";
-  const response = await fetch(`/api${path}${suffix}`, {
-    method: "POST",
-    headers: { "X-CSRF-Token": csrf, ...(jsonBody ? { "Content-Type": "application/json" } : {}) },
-    ...(jsonBody ? { body: JSON.stringify(params) } : {}),
-  });
+  const suffix = query.toString() ? `?${query}` : "";
+  const response = await fetch(`/api${path}${suffix}`, { method: "POST", headers: { "X-CSRF-Token": csrf } });
   if (response.status === 401) {
     window.location.href = "/login";
     throw new Error("sessão expirada");

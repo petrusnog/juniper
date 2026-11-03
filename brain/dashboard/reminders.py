@@ -16,6 +16,11 @@ from brain.reminders.store import ReminderError
 Result = tuple[int, dict[str, Any], None]
 
 
+# The dashboard's writes ride in the query string (the HTTP server reads no body), so the notes
+# are capped well below the store's 2000 characters to keep the request line within its limit.
+MAX_NOTES = 500
+
+
 class ReminderApi:
     serves_get = True
 
@@ -47,6 +52,11 @@ class ReminderApi:
             for k in ("title", "due_at", "notify_on", "notes")
             if k in query
         }
+        if len(fields.get("notes", "")) > MAX_NOTES:
+            raise ReminderError(
+                f"Pelo dashboard as observações vão até {MAX_NOTES} caracteres; "
+                "para um texto maior use o chat."
+            )
         if method == "GET":
             if parts == [""]:
                 docs = store.list(who.user_id)

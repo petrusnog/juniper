@@ -29,7 +29,7 @@ export async function render() {
     // Use explicit ISO text: a browser-local datetime picker could silently change the agent timezone.
     const due = h("input", { required: true, value: item?.due_at || "", placeholder: "AAAA-MM-DD ou data/hora ISO", "aria-label": "Prazo" });
     const day = h("input", { type: "date", value: item?.notify_on || "", "aria-label": "Dia do aviso" });
-    const notes = h("textarea", { maxlength: 2000, "aria-label": "Observações", text: item?.notes || "" });
+    const notes = h("textarea", { maxlength: 500, "aria-label": "Observações", text: item?.notes || "" });
     const error = h("p", { class: "error", role: "alert" });
     const submit = h("button", { type: "submit", text: item ? "Salvar alterações" : "Criar lembrete" });
     const node = h("form", {}, h("label", { text: "Título" }), title,
@@ -43,8 +43,11 @@ export async function render() {
         if (item) {
           // Preserve channel receipts on text-only edits.
           for (const key of Object.keys(changes)) if (changes[key] === (item[key] || "")) delete changes[key];
+          // post() omits empty fields; one space explicitly clears optional notes/day.
+          if (changes.notes === "") changes.notes = " ";
+          if (changes.notify_on === "") changes.notify_on = " ";
         }
-        await post(item ? `/reminders/${item.id}/update` : "/reminders", changes, true);
+        await post(item ? `/reminders/${item.id}/update` : "/reminders", changes);
         if (item) node.remove(); else node.reset();
         await refresh();
       } catch (err) { error.textContent = err.message; }
@@ -63,7 +66,7 @@ export async function render() {
     const remove = h("button", { type: "button", text: "Excluir", onclick: async () => {
       if (!window.confirm(`Excluir o lembrete “${item.title}”? O evento da agenda será preservado.`)) return;
       remove.disabled = true;
-      try { await post(`/reminders/${item.id}/delete`, { confirm: item.id }, true); await refresh(); }
+      try { await post(`/reminders/${item.id}/delete`, { confirm: item.id }); await refresh(); }
       catch (error) { notice.textContent = error.message; remove.disabled = false; }
     }});
     body.append(edit, remove);

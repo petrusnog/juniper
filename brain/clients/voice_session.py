@@ -166,9 +166,10 @@ class VoiceSession:
                         event_log.log(
                             "error", where="voice.reminder_release", type=type(receipt_exc).__name__
                         )
-                await self._say_standalone(
-                    "Oi! Não consegui consultar seus lembretes agora. Pode falar."
-                )
+                if self._wake:  # a tap-to-open session stays silent, as before the reminders
+                    await self._say_standalone(
+                        "Oi! Não consegui consultar seus lembretes agora. Pode falar."
+                    )
         elif self._wake:
             await self._say_standalone(self._greeting())  # she greets; the mic stays closed
 

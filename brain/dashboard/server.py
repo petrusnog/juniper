@@ -1,8 +1,10 @@
 """The dashboard's HTTP server (ADR-020).
 
-The bounded HTTP/1 transport supports small JSON bodies for reminders (ADR-032).
-Existing query-based actions remain supported; session, Host and CSRF validation
-happens before any write. Request bodies and headers aren't logged.
+It reuses ``websockets`` (already a dependency of the brain) as an HTTP server: every request is
+answered in ``process_request``, so a WebSocket handler is never reached. It is read-only, so only
+``GET`` is answered (anything else is a 405), except the user-management routes of
+``admin.py`` (ADR-027), which take ``POST`` from a logged-in owner with an anti-CSRF token.
+The login sends the credential (``client_id.client_secret``) in a header.
 
 Every response carries security headers; everything but ``/health``, ``/login``, the static
 assets and the login call needs the session cookie (or the token as a bearer header); the ``Host``
@@ -23,6 +25,7 @@ from pathlib import Path
 from typing import Any, Final
 from urllib.parse import parse_qs, urlsplit
 
+from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
@@ -31,8 +34,6 @@ from brain.dashboard.actions import Actions
 from brain.dashboard.admin import AdminApi
 from brain.dashboard.api import Api, default_api
 from brain.dashboard.auth import COOKIE_NAME, SessionSigner, read_cookie
-from brain.dashboard.http import Peer as ServerConnection
-from brain.dashboard.http import respond
 from brain.dashboard.serialize import sanitize
 from brain.eventlog import event_log
 
@@ -106,15 +107,21 @@ class DashboardServer:
         self._signer = SessionSigner(self._auth.pepper, session_hours)
         self._allowed = list(allowed_hosts or [])
         self._static = static_dir.resolve()
-        self._server: asyncio.Server | None = None
-        self._requests: set[asyncio.Task[None]] = set()
+        self._server: Server | None = None
 
     # --- life cycle ---------------------------------------------------------------------------
 
     async def start(self) -> bool:
         """Open the port. ``False`` (logged) when it cannot: the chat server goes on without it."""
         try:
-            self._server = await asyncio.start_server(self._http, self.host, self.port)
+            self._server = await serve(
+                self._no_websocket,
+                self.host,
+                self.port,
+                process_request=self._process_request,
+                max_size=2**16,
+                ping_interval=None,
+            )
         except OSError as exc:
             event_log.log("error", where="dashboard.start", type=type(exc).__name__, port=self.port)
             logger.warning("Dashboard não subiu em %s:%s: %s", self.host, self.port, exc)
@@ -129,22 +136,13 @@ class DashboardServer:
         server, self._server = self._server, None
         if server is None:
             return
-        server.close()
+        server.close(close_connections=True)
         with contextlib.suppress(Exception):
             await server.wait_closed()
-        for task in list(self._requests):
-            task.cancel()
-        await asyncio.gather(*self._requests, return_exceptions=True)
         event_log.log("dashboard", action="stop")
 
-    async def _http(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        task = asyncio.current_task()
-        assert task is not None
-        self._requests.add(task)
-        try:
-            await respond(reader, writer, self._process_request)
-        finally:
-            self._requests.discard(task)
+    async def _no_websocket(self, websocket: ServerConnection) -> None:  # pragma: no cover
+        await websocket.close(1008, "sem websocket")
 
     # --- requests -----------------------------------------------------------------------------
 
@@ -261,21 +259,6 @@ class DashboardServer:
             refusal = self._write_refused(request)
             if refusal is not None:
                 return refusal
-            body = getattr(request, "body", b"")
-            if path.startswith("/api/reminders") and body:
-                if query:
-                    return self._json(400, {"error": "Envie os dados somente no corpo JSON."})
-                if request.headers.get("Content-Type", "").split(";")[0] != "application/json":
-                    return self._json(415, {"error": "Use application/json."})
-                try:
-                    payload = json.loads(body)
-                    if not isinstance(payload, dict) or not all(
-                        isinstance(k, str) and isinstance(v, str) for k, v in payload.items()
-                    ):
-                        raise ValueError
-                    query = {k: [v] for k, v in payload.items()}
-                except (ValueError, UnicodeError):
-                    return self._json(400, {"error": "Corpo JSON inválido."})
         status, body, reveal = await writer.handle(request.method, path, query, who)
         safe = sanitize(body)
         if reveal:  # the one-time client_secret skips the mask that would erase it

@@ -38,6 +38,11 @@ def owner() -> str:
     return user
 
 
+def usable() -> bool:
+    """Reminders on AND an authenticated owner (the local CLI has none), for the calendar hooks."""
+    return _store is not None and settings.reminders.enabled and bool(current_user.get())
+
+
 def render(doc: dict[str, Any]) -> str:
     return json.dumps(doc, default=str, ensure_ascii=False)
 

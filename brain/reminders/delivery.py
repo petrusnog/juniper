@@ -77,15 +77,30 @@ async def send_morning(store: ReminderStore, send: Send = telegram_send) -> int:
     return sent
 
 
+def pending(store: ReminderStore) -> int:
+    """Reminders a Telegram pass could still deliver (a chat is configured for the owner)."""
+    if not settings.reminders.enabled:
+        return 0
+    stamp = now().astimezone(ZoneInfo(settings.agent.timezone))
+    if stamp.strftime("%H:%M") < settings.reminders.morning_at:
+        return 0
+    chats = settings.reminders.telegram_chat_ids
+    return sum(1 for doc in store.eligible("telegram") if chats.get(doc["owner_id"]))
+
+
 async def morning_job() -> None:
     from brain.tools.reminders import store
 
-    # Retry within the same day. Successful receipts make each pass idempotent.
+    # Retry within the same day while something deliverable is still unsent; receipts make
+    # each pass idempotent.
     for delay in (0, 60, 300):
         if delay:
             await asyncio.sleep(delay)
         try:
-            await send_morning(store())
+            reminders = store()
+            await send_morning(reminders)
+            if not await asyncio.to_thread(pending, reminders):
+                return
         except Exception as exc:
             event_log.log("reminder", action="job_failed", reason=type(exc).__name__)
 

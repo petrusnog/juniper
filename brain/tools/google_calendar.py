@@ -570,7 +570,7 @@ class CreateEvent(Tool):
                     + str(exc)
                     + ". Não recrie o evento; tente create_reminder com os ids retornados."
                 )
-        elif "reminder" not in kwargs and reminders.CreateReminder.available():
+        elif "reminder" not in kwargs and reminders.usable():
             extra = " Pergunte à pessoa se deseja adicionar um lembrete matinal para esse evento."
             metadata["offer_reminder"] = True
         return ToolResult(
@@ -601,7 +601,7 @@ async def _sync_reminder(
     event: CalendarEvent, *, deleted: bool = False, moved: bool = False, renamed: bool = False
 ) -> str:
     """The Google write has succeeded: report partial failures without repeating it."""
-    if not reminders.CreateReminder.available():
+    if not reminders.usable():
         return ""
     try:
         store = reminders.store()
@@ -760,7 +760,7 @@ class DeleteEvent(Tool):
         except CalendarError:
             return None
         extra = ""
-        if reminders.CreateReminder.available():
+        if reminders.usable():
             try:
                 linked = await asyncio.to_thread(
                     reminders.store().linked, reminders.owner(), event.calendar_id, event.id

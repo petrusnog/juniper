@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import builtins
-import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -79,7 +78,7 @@ def public(doc: dict[str, Any], at: datetime | None = None) -> dict[str, Any]:
     if doc["due_at"] <= (at or now()):
         statuses.append("Vencido")
     return {k: v for k, v in doc.items() if not k.endswith("_lease")} | {
-        "id": ("rem_" + doc["_id"] if re.fullmatch(r"[0-9a-f]{32}", doc["_id"]) else doc["_id"]),
+        "id": doc["_id"],
         "statuses": statuses or ["Pendente"],
     }
 
@@ -150,11 +149,8 @@ class ReminderStore:
             return [public(d) for d in self.collection().find(query).sort("due_at", 1)]
 
     def get(self, owner: str, reminder_id: str) -> dict[str, Any]:
-        ids = [reminder_id]
-        if re.fullmatch(r"rem_[0-9a-f]{32}", reminder_id):
-            ids.append(reminder_id[4:])  # Compatibility with pre-prefix reminder records.
         with self.connection.guard():
-            doc = self.collection().find_one({"_id": {"$in": ids}, "owner_id": owner})
+            doc = self.collection().find_one({"_id": reminder_id, "owner_id": owner})
         if doc is None:
             raise ReminderError("Lembrete não encontrado. Use list_reminders para obter o id.")
         return public(doc)

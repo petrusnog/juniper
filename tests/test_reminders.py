@@ -568,8 +568,25 @@ async def test_job_retries_failed_delivery_without_repeating_success(store, monk
     monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
     await delivery.morning_job()
     assert send.await_count == 2
-    assert [call.args[0] for call in sleep.await_args_list] == [60, 300]
+    assert [call.args[0] for call in sleep.await_args_list] == [60]  # stops once all is sent
     assert store.list("alice")[0]["telegram_sent_at"]
+
+
+async def test_job_does_not_retry_when_nothing_is_left(store, monkeypatch):
+    from brain.reminders import delivery
+
+    add(store)
+    send = AsyncMock()
+    original = delivery.send_morning
+
+    async def attempt(store):
+        return await original(store, send)
+
+    sleep = AsyncMock()
+    monkeypatch.setattr(delivery, "send_morning", attempt)
+    monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
+    await delivery.morning_job()
+    assert send.await_count == 1 and not sleep.await_count
 
 
 async def test_late_catchup_uses_evening_greeting(store, monkeypatch):
@@ -610,16 +627,69 @@ async def test_successful_send_with_failed_receipt_is_documented_at_least_once(s
     assert store.get("alice", doc["id"])["telegram_sent_at"]
 
 
-def test_legacy_ids_remain_editable_and_new_ids_survive_dashboard_redaction(store):
+def test_ids_are_prefixed_and_survive_dashboard_redaction(store):
     from brain.dashboard.serialize import sanitize
 
     fresh = add(store)
+    assert fresh["id"].startswith("rem_") and len(fresh["id"]) == 36
     assert sanitize(fresh)["id"] == fresh["id"]
-    raw = store.collection().find_one({"_id": fresh["id"]})
-    old_id = "a1" * 16
-    store.collection().insert_one({**raw, "_id": old_id})
-    exposed = store.get("alice", old_id)["id"]
-    assert exposed == "rem_" + old_id and sanitize({"id": exposed})["id"] == exposed
-    assert store.update("alice", exposed, title="Migrado")["title"] == "Migrado"
-    store.delete("alice", exposed)
-    assert store.collection().find_one({"_id": old_id}) is None
+
+
+async def test_dashboard_notes_are_capped_because_they_ride_in_the_url(store):
+    from brain.dashboard.reminders import MAX_NOTES
+
+    api = ReminderApi(Sources(reminders=store))
+    alice = Principal("alice", "Alice", "owner", "c1", "browser", False)
+    ok = {"title": ["A"], "due_at": [DUE], "notes": ["x" * MAX_NOTES]}
+    assert (await api.handle("POST", "/api/reminders", ok, alice))[0] == 200
+    too_long = {**ok, "notes": ["x" * (MAX_NOTES + 1)]}
+    status, body, _ = await api.handle("POST", "/api/reminders", too_long, alice)
+    assert status == 400 and str(MAX_NOTES) in body["error"]
+    # The tools (chat) keep the store's larger limit.
+    assert store.create("alice", title="B", due_at=DUE, notes="x" * 2000)["notes"]
+
+
+async def test_without_an_owner_calendar_hooks_stay_silent(store, monkeypatch):
+    from types import SimpleNamespace
+
+    from brain.tools import google_calendar as gc
+
+    event = SimpleNamespace()  # never touched: the hook returns before reading it
+    token = current_user.set(None)  # the local CLI: no logged-in owner
+    try:
+        assert not tools.usable()
+        assert await gc._sync_reminder(event, deleted=True) == ""
+    finally:
+        current_user.reset(token)
+
+
+async def test_failed_briefing_is_silent_unless_wake(store, tmp_path):
+    from brain.clients.voice_session import VoiceSession
+    from tests.test_agent import FakeProvider
+    from tests.test_voice_session import Rig, wait_for
+
+    async def broken():
+        raise MemoryUnavailableError("mongo fora")
+
+    for wake in (False, True):
+        rig = Rig(tmp_path, FakeProvider([]))
+        session = VoiceSession(
+            rig.services,
+            send=AsyncMock(return_value=True),
+            submit=AsyncMock(),
+            cancel_turn=AsyncMock(),
+            turn_active=lambda: False,
+            ended=lambda: None,
+            clear_pending=lambda: None,
+            wake=wake,
+            briefing=broken,
+        )
+        try:
+            await session.start("broken")
+            if wake:
+                await wait_for(lambda s=session: s._speech is None)
+                assert rig.synth.spoken and "Não consegui" in rig.synth.spoken[0]
+            else:
+                assert not rig.synth.spoken
+        finally:
+            await session.end("server")
