@@ -111,4 +111,4 @@ Os testes usam um cliente falso e relógio fixo: listar, criar, conflitos (apag�
 
 ## Lembretes pessoais
 
-Além do popup nativo do Google, um evento pode ter um [lembrete pessoal](lembretes.md) no MongoDB, com resumo matinal por Telegram e aviso único na abertura da voz. Peça os dois juntos para uma só confirmação; se pediu só o evento, ela oferece o lembrete depois. As ferramentas da agenda mantêm o lembrete vinculado ao editar/excluir o compromisso. Alterações diretamente no Google não são acompanhadas automaticamente.
+Além do popup nativo do Google, um evento pode ter um [lembrete pessoal](lembretes.md) no MongoDB, avisado no horário escolhido (`reminder_at`, por padrão o início) por Telegram e na abertura da voz. **Evento e lembrete são coisas diferentes**: `create_event` marca o compromisso no calendário; `create_reminder` é só um aviso, sem evento. Peça os dois juntos para uma só confirmação (`reminder=true`); se pediu só o evento, ela oferece o aviso depois. As ferramentas da agenda mantêm o lembrete vinculado ao editar/excluir o compromisso. Alterações diretamente no Google não são acompanhadas automaticamente.

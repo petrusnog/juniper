@@ -41,68 +41,77 @@ async def telegram_send(chat_id: int, text: str) -> None:
         )
 
 
-async def send_morning(store: ReminderStore, send: Send = telegram_send) -> int:
+def recipients() -> list[int]:
+    """Who gets the Telegram notice: the same people allowed to talk to the bot (private chats)."""
+    return list(settings.telegram.allowed_user_ids)
+
+
+async def send_due(store: ReminderStore, send: Send = telegram_send) -> int:
+    """One pass: send every reminder whose notice time has come. Returns how many were completed.
+
+    A reminder goes to each allowed user. Recipients that already got it are skipped on a retry,
+    so a partial failure does not repeat the message to them.
+    """
     if not settings.reminders.enabled:
         return 0
-    await asyncio.to_thread(store.prune)
-    stamp = now().astimezone(ZoneInfo(settings.agent.timezone))
-    if stamp.strftime("%H:%M") < settings.reminders.morning_at:
-        return 0  # startup catch-up must never send before the configured morning
+    chats = recipients()
     sent = 0
     for doc in await asyncio.to_thread(store.eligible, "telegram"):
-        chat = settings.reminders.telegram_chat_ids.get(doc["owner_id"])
-        if not chat:
+        if not chats:
             event_log.log("reminder", action="telegram_unconfigured", reminder_id=doc["_id"])
             continue
         token = await asyncio.to_thread(store.claim, doc, "telegram")
         if token is None:
             continue
-        success = False
+        done: list[int] = []
+        failed = False
         try:
-            await send(chat, greeting() + " Seu lembrete: " + line(doc))
-            success = True
-            sent += 1
-        except Exception as exc:
-            # No message, title, chat id or bot token in the technical log.
-            event_log.log(
-                "reminder",
-                action="telegram_failed",
-                reminder_id=doc["_id"],
-                reason=type(exc).__name__,
-            )
+            for chat in chats:
+                if chat in doc.get("telegram_sent_to", []):
+                    continue
+                try:
+                    await send(chat, "Lembrete: " + line(doc))
+                    done.append(chat)
+                except Exception as exc:
+                    failed = True
+                    # No message, title, chat id or bot token in the technical log.
+                    event_log.log(
+                        "reminder",
+                        action="telegram_failed",
+                        reminder_id=doc["_id"],
+                        reason=type(exc).__name__,
+                    )
         finally:
-            await asyncio.to_thread(store.finish, doc, "telegram", token, success=success)
-        if success:
+            await asyncio.to_thread(
+                store.finish, doc, "telegram", token, success=not failed, delivered=done
+            )
+        if not failed:
+            sent += 1
             event_log.log("reminder", action="telegram_sent", reminder_id=doc["_id"])
     return sent
 
 
-def pending(store: ReminderStore) -> int:
-    """Reminders a Telegram pass could still deliver (a chat is configured for the owner)."""
-    if not settings.reminders.enabled:
-        return 0
-    stamp = now().astimezone(ZoneInfo(settings.agent.timezone))
-    if stamp.strftime("%H:%M") < settings.reminders.morning_at:
-        return 0
-    chats = settings.reminders.telegram_chat_ids
-    return sum(1 for doc in store.eligible("telegram") if chats.get(doc["owner_id"]))
+_state: dict[str, Any] = {"failing": False, "pruned_on": None}
 
 
-async def morning_job() -> None:
+async def reminder_job() -> None:
+    """The every-minute tick: clean old history once a day, then send what is due."""
     from brain.tools.reminders import store
 
-    # Retry within the same day while something deliverable is still unsent; receipts make
-    # each pass idempotent.
-    for delay in (0, 60, 300):
-        if delay:
-            await asyncio.sleep(delay)
-        try:
-            reminders = store()
-            await send_morning(reminders)
-            if not await asyncio.to_thread(pending, reminders):
-                return
-        except Exception as exc:
+    try:
+        reminders = store()
+        today = now().astimezone(ZoneInfo(settings.agent.timezone)).date()
+        if _state["pruned_on"] != today:
+            await asyncio.to_thread(reminders.prune)
+            _state["pruned_on"] = today
+        await send_due(reminders)
+        if _state["failing"]:
+            event_log.log("reminder", action="job_recovered")
+        _state["failing"] = False
+    except Exception as exc:
+        if not _state["failing"]:  # one line per outage, not one per minute
             event_log.log("reminder", action="job_failed", reason=type(exc).__name__)
+        _state["failing"] = True
 
 
 async def voice_briefing(

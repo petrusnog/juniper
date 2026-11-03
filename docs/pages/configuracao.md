@@ -326,10 +326,9 @@ A busca na web com failover ([ADR-031](../decisions/ADR-031.md)): a memória fal
 |---|---|---|
 | `reminders.enabled` | `true` | Habilita ferramentas, job e avisos de lembretes quando as sessões usam MongoDB. |
 | `reminders.retention_days` | `90` | Dias de histórico após o prazo; o job limpa vencidos anteriores à janela (1 a 3650). |
-| `reminders.morning_at` | `08:00` | Hora diária HH:MM no fuso do agente para o envio por Telegram. |
-| `reminders.telegram_chat_ids` | `{}` | Mapa user_id Juniper → chat_id privado positivo do Telegram. Sem associação não envia. |
+| `reminders.grace_hours` | `12` | Depois de um tempo fora do ar, o aviso atrasado ainda sai até N horas após o prazo (0 a 168). |
 
-O token `JUNIPER_TELEGRAM_BOT_TOKEN` precisa estar disponível no brain. Veja [Lembretes](lembretes.md) para configuração, recibos e limites do envio.
+Quem recebe o aviso no Telegram é a lista que já existe, `telegram.allowed_user_ids`, e o token é o `JUNIPER_TELEGRAM_BOT_TOKEN`, que precisa estar disponível no brain. Nenhuma variável nova. Veja [Lembretes](lembretes.md) para configuração, recibos e limites do envio.
 
 ## Para saber mais {#para-saber-mais}
 

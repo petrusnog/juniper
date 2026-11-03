@@ -42,10 +42,32 @@ def parse_due(value: object, *, require_future: bool = True) -> datetime:
     return parsed
 
 
+DEFAULT_HOUR = 9  # a notice given as a bare date goes out at 09:00 (agent timezone)
+RETRY_AFTER = timedelta(minutes=5)  # pause before Telegram retries a failed send
+
+
+def parse_notice(value: object) -> datetime:
+    """When to notify: ISO date and time, or a bare date (that day at ``DEFAULT_HOUR``)."""
+    try:
+        text = str(value or "")
+        parsed = (
+            datetime.combine(date.fromisoformat(text), time(DEFAULT_HOUR))
+            if len(text) == 10
+            else datetime.fromisoformat(text)
+        )
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=ZoneInfo(settings.agent.timezone))
+        return parsed.astimezone(UTC)
+    except (ValueError, TypeError):
+        raise ReminderError(
+            "notify_at deve ser data e hora ISO 8601 (ou AAAA-MM-DD, que avisa às 9h)."
+        ) from None
+
+
 def fields(
     title: object,
     due_at: object,
-    notify_on: object = None,
+    notify_at: object = None,
     notes: object = "",
     *,
     require_future: bool = True,
@@ -54,18 +76,19 @@ def fields(
     if not title or len(title) > 200:
         raise ReminderError("O título precisa ter entre 1 e 200 caracteres.")
     due = parse_due(due_at, require_future=require_future)
-    last_day = due.astimezone(ZoneInfo(settings.agent.timezone)).date()
-    try:
-        notify = date.fromisoformat(str(notify_on)) if notify_on else last_day
-    except ValueError:
-        raise ReminderError("notify_on deve ser AAAA-MM-DD.") from None
-    if notify > last_day:
-        raise ReminderError("O dia do aviso não pode ser posterior ao prazo.")
+    if notify_at:
+        notify = parse_notice(notify_at)
+    elif len(str(due_at or "")) == 10:  # an all-day deadline: warn that morning
+        notify = parse_notice(str(due_at))
+    else:
+        notify = due  # a timed deadline: warn at that moment
+    if notify > due:
+        raise ReminderError("O horário do aviso não pode ser posterior ao prazo.")
     return {
         "title": title,
         "notes": mask_secrets(str(notes or ""))[:2000],
         "due_at": due,
-        "notify_on": notify.isoformat(),
+        "notify_at": notify,
     }
 
 
@@ -77,7 +100,8 @@ def public(doc: dict[str, Any], at: datetime | None = None) -> dict[str, Any]:
         statuses.append("Relembrado no chat de voz")
     if doc["due_at"] <= (at or now()):
         statuses.append("Vencido")
-    return {k: v for k, v in doc.items() if not k.endswith("_lease")} | {
+    hidden = {"telegram_sent_to", "telegram_retry_at"}
+    return {k: v for k, v in doc.items() if not k.endswith("_lease") and k not in hidden} | {
         "id": doc["_id"],
         "statuses": statuses or ["Pendente"],
     }
@@ -92,14 +116,28 @@ class ReminderStore:
         c = self.connection.collection("reminders")
         if not self._indexed:
             c.create_index([("owner_id", 1), ("due_at", 1)])
-            c.create_index([("notify_on", 1), ("due_at", 1)])
+            c.create_index([("notify_at", 1), ("due_at", 1)])
             c.create_index(
                 [("owner_id", 1), ("calendar_id", 1), ("event_id", 1)],
                 unique=True,
                 partialFilterExpression={"event_id": {"$type": "string"}},
             )
+            self._migrate(c)
             self._indexed = True
         return c
+
+    @staticmethod
+    def _migrate(c: Any) -> None:
+        """Records from the first release carried a ``notify_on`` day instead of ``notify_at``."""
+        for doc in c.find({"notify_at": {"$exists": False}, "notify_on": {"$type": "string"}}):
+            at = min(parse_notice(doc["notify_on"]), doc["due_at"])
+            c.update_one(
+                {"_id": doc["_id"]},
+                {
+                    "$set": {"notify_at": at, "telegram_sent_to": [], "telegram_retry_at": None},
+                    "$unset": {"notify_on": ""},
+                },
+            )
 
     def create(
         self,
@@ -107,14 +145,14 @@ class ReminderStore:
         *,
         title: object,
         due_at: object,
-        notify_on: object = None,
+        notify_at: object = None,
         notes: object = "",
         event_id: str | None = None,
         calendar_id: str | None = None,
     ) -> dict[str, Any]:
         if not owner:
             raise ReminderError("Não consegui identificar o dono do lembrete.")
-        data = fields(title, due_at, notify_on, notes)
+        data = fields(title, due_at, notify_at, notes)
         stamp = now()
         doc = {
             "_id": "rem_" + uuid.uuid4().hex,
@@ -125,6 +163,8 @@ class ReminderStore:
             "revision": 1,
             "telegram_sent_at": None,
             "voice_reminded_at": None,
+            "telegram_sent_to": [],
+            "telegram_retry_at": None,
         }
         if event_id:
             doc.update(event_id=event_id, calendar_id=calendar_id)
@@ -168,19 +208,22 @@ class ReminderStore:
 
     def update(self, owner: str, reminder_id: str, **changes: Any) -> dict[str, Any]:
         doc = self.get(owner, reminder_id)
-        allowed = {"title", "due_at", "notify_on", "notes"}
+        allowed = {"title", "due_at", "notify_at", "notes"}
         if not changes or set(changes) - allowed:
-            raise ReminderError("Altere title, due_at, notify_on ou notes.")
+            raise ReminderError("Altere title, due_at, notify_at ou notes.")
         values = {k: doc.get(k) for k in allowed} | changes
-        if "due_at" in changes and "notify_on" not in changes:
-            zone = ZoneInfo(settings.agent.timezone)
-            advance = doc["due_at"].astimezone(zone).date() - date.fromisoformat(doc["notify_on"])
-            values["notify_on"] = (
-                parse_due(changes["due_at"]).astimezone(zone).date() - advance
-            ).isoformat()
-        updated = fields(**values, require_future=bool({"due_at", "notify_on"} & changes.keys()))
-        if "due_at" in changes or "notify_on" in changes:
-            updated.update(telegram_sent_at=None, voice_reminded_at=None)
+        if "due_at" in changes and "notify_at" not in changes:
+            # Moving the deadline keeps the lead time (how long before it the notice goes out).
+            lead = doc["due_at"] - doc["notify_at"]
+            values["notify_at"] = parse_due(changes["due_at"]) - lead
+        updated = fields(**values, require_future=bool({"due_at", "notify_at"} & changes.keys()))
+        if "due_at" in changes or "notify_at" in changes:
+            updated.update(
+                telegram_sent_at=None,
+                voice_reminded_at=None,
+                telegram_sent_to=[],
+                telegram_retry_at=None,
+            )
         with self.connection.guard():
             result = self.collection().update_one(
                 self._idle(doc), {"$set": {**updated, "updated_at": now()}, "$inc": {"revision": 1}}
@@ -197,20 +240,29 @@ class ReminderStore:
                     "Lembrete em envio ou alterado em outra janela; tente novamente."
                 )
 
+    def _horizon(self, stamp: datetime) -> datetime:
+        """A reminder this long past its deadline is stale: too late to be worth announcing."""
+        return stamp - timedelta(hours=settings.reminders.grace_hours)
+
     def eligible(
         self, channel: str, owner: str | None = None, at: datetime | None = None
     ) -> builtins.list[dict[str, Any]]:
+        """Reminders whose notice time has come, not yet delivered on ``channel``."""
         stamp = at or now()
-        day = stamp.astimezone(ZoneInfo(settings.agent.timezone)).date().isoformat()
         query: dict[str, Any] = {
-            "notify_on": {"$lte": day},
-            "due_at": {"$gt": stamp},
+            "notify_at": {"$lte": stamp},
+            "due_at": {"$gt": self._horizon(stamp)},
             f"{channel}_sent_at" if channel == "telegram" else "voice_reminded_at": None,
         }
+        if channel == "telegram":  # after a failed send, wait before the next attempt
+            query["$or"] = [
+                {"telegram_retry_at": None},
+                {"telegram_retry_at": {"$lte": stamp}},
+            ]
         if owner is not None:
             query["owner_id"] = owner
         with self.connection.guard():
-            return list(self.collection().find(query).sort("due_at", 1))
+            return list(self.collection().find(query).sort("notify_at", 1))
 
     def prune(self) -> int:
         """Keep expired reminders for the configured history window."""
@@ -233,18 +285,31 @@ class ReminderStore:
                     "_id": doc["_id"],
                     "revision": doc["revision"],
                     receipt: None,
-                    "due_at": {"$gt": now()},
+                    "due_at": {"$gt": self._horizon(now())},
                     "$or": [{lease: {"$exists": False}}, {f"{lease}.until": {"$lte": now()}}],
                 },
                 {"$set": {lease: {"token": token, "until": now() + timedelta(minutes=10)}}},
             )
         return token if result.modified_count else None
 
-    def finish(self, doc: dict[str, Any], channel: str, token: str, *, success: bool) -> None:
+    def finish(
+        self,
+        doc: dict[str, Any],
+        channel: str,
+        token: str,
+        *,
+        success: bool,
+        delivered: builtins.list[int] | None = None,
+    ) -> None:
+        """Release the lease. ``delivered`` are the Telegram recipients that did get it."""
         receipt = "telegram_sent_at" if channel == "telegram" else "voice_reminded_at"
         change: dict[str, Any] = {"$unset": {f"{channel}_lease": ""}}
+        if delivered:
+            change["$addToSet"] = {"telegram_sent_to": {"$each": delivered}}
         if success:
             change["$set"] = {receipt: now(), "updated_at": now()}
+        elif channel == "telegram":
+            change["$set"] = {"telegram_retry_at": now() + RETRY_AFTER}
         with self.connection.guard():
             self.collection().update_one(
                 {"_id": doc["_id"], "revision": doc["revision"], f"{channel}_lease.token": token},

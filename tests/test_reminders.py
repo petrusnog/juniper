@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -16,19 +17,21 @@ from brain.dashboard.reminders import ReminderApi
 from brain.dashboard.sources import Sources
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.mongo import MongoConnection
-from brain.reminders.delivery import send_morning, voice_briefing
-from brain.reminders.store import ReminderError, ReminderStore
+from brain.reminders.delivery import send_due, voice_briefing
+from brain.reminders.store import RETRY_AFTER, ReminderError, ReminderStore
 from brain.tools import reminders as tools
 
 NOW = datetime(2030, 5, 10, 12, tzinfo=UTC)  # 09:00 in São Paulo
 DUE = "2030-05-10T16:00:00-03:00"
+NOTICE = "2030-05-10T09:00:00-03:00"  # exactly NOW: the notice time has come
 
 
 @pytest.fixture
 def store(monkeypatch):
     monkeypatch.setattr(clock, "now", lambda *args: NOW)
     monkeypatch.setattr(settings.agent, "timezone", "America/Sao_Paulo")
-    monkeypatch.setattr(settings, "reminders", ReminderSettings(telegram_chat_ids={"alice": 123}))
+    monkeypatch.setattr(settings, "reminders", ReminderSettings())
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [123])
     connection = MongoConnection()
     connection._client = mongomock.MongoClient(tz_aware=True)
     result = ReminderStore(connection)
@@ -41,7 +44,9 @@ def store(monkeypatch):
 
 
 def add(store, owner="alice", **changes):
-    return store.create(owner, **({"title": "Dentista", "due_at": DUE} | changes))
+    return store.create(
+        owner, **({"title": "Dentista", "due_at": DUE, "notify_at": NOTICE} | changes)
+    )
 
 
 def test_crud_is_owner_scoped_and_dates_are_utc(store):
@@ -59,10 +64,18 @@ def test_crud_is_owner_scoped_and_dates_are_utc(store):
     assert not store.list("alice")
 
 
-def test_date_only_end_of_day_and_default_notify_day(store):
-    doc = add(store, due_at="2030-05-11")
-    assert doc["due_at"] == datetime(2030, 5, 12, 2, 59, 59, tzinfo=UTC)
-    assert doc["notify_on"] == "2030-05-11"
+def test_default_notice_time(store):
+    # An all-day deadline ends at 23:59:59 and warns at 09:00 that day.
+    day = store.create("alice", title="Aluguel", due_at="2030-05-11")
+    assert day["due_at"] == datetime(2030, 5, 12, 2, 59, 59, tzinfo=UTC)
+    assert day["notify_at"] == datetime(2030, 5, 11, 12, tzinfo=UTC)
+    # A timed deadline warns at that moment; a bare notice date means 09:00.
+    timed = store.create("alice", title="Ligar", due_at=DUE)
+    assert timed["notify_at"] == timed["due_at"]
+    early = store.create(
+        "alice", title="Ligar", due_at="2030-05-12T16:00:00-03:00", notify_at="2030-05-11"
+    )
+    assert early["notify_at"] == datetime(2030, 5, 11, 12, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(
@@ -72,8 +85,8 @@ def test_date_only_end_of_day_and_default_notify_day(store):
         {"title": "x" * 201},
         {"due_at": "bad"},
         {"due_at": "2020-01-01"},
-        {"notify_on": "2030-05-11"},
-        {"notify_on": "invalid"},
+        {"notify_at": "2030-05-10T17:00:00-03:00"},  # after the deadline
+        {"notify_at": "invalid"},
     ],
 )
 def test_invalid_reminders_do_not_write(store, changes):
@@ -105,48 +118,69 @@ def test_leases_prevent_duplicate_workers_and_conflicting_edits(store):
 async def test_success_marks_only_telegram_and_is_repeatable(store):
     doc = add(store)
     send = AsyncMock()
-    assert await send_morning(store, send) == 1
+    assert await send_due(store, send) == 1
     send.assert_awaited_once()
-    assert send.await_args.args[0] == 123
+    assert send.await_args.args[0] == 123  # an allowed Telegram user (a private chat)
     assert "Dentista" in send.await_args.args[1]
     found = store.get("alice", doc["id"])
     assert found["telegram_sent_at"] and not found["voice_reminded_at"]
-    assert await send_morning(store, send) == 0
+    assert await send_due(store, send) == 0
     assert send.await_count == 1
 
 
-async def test_failed_send_is_not_marked_and_can_retry(store):
+async def test_failed_send_is_not_marked_and_retries_after_a_pause(store, monkeypatch):
     doc = add(store)
     failed = AsyncMock(side_effect=OSError("offline"))
-    assert await send_morning(store, failed) == 0
+    assert await send_due(store, failed) == 0
     assert not store.get("alice", doc["id"])["telegram_sent_at"]
-    assert await send_morning(store, AsyncMock()) == 1
+    # The next minute's tick does not hammer Telegram: it waits for RETRY_AFTER.
+    again = AsyncMock()
+    assert await send_due(store, again) == 0 and not again.await_count
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + RETRY_AFTER + timedelta(seconds=1))
+    assert await send_due(store, again) == 1
 
 
-async def test_no_early_delivery_or_broadcast(store, monkeypatch):
-    add(store, owner="bob")
+async def test_nothing_goes_out_before_its_time_or_without_recipients(store, monkeypatch):
     send = AsyncMock()
-    assert await send_morning(store, send) == 0
-    add(store)
-    monkeypatch.setattr(settings.reminders, "morning_at", "10:00")
-    assert await send_morning(store, send) == 0
-    send.assert_not_awaited()
+    add(store, notify_at="2030-05-10T10:00:00-03:00")  # one hour from now
+    assert await send_due(store, send) == 0
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=1))
+    assert await send_due(store, send) == 1  # the minute it comes due, it goes
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [])
+    add(store, title="Sem destino")
+    assert await send_due(store, send) == 0 and send.await_count == 1
 
 
-async def test_expired_and_future_notice_not_delivered(store, monkeypatch):
+async def test_sent_to_every_allowed_user_and_a_retry_skips_who_already_got_it(store, monkeypatch):
+    monkeypatch.setattr(settings.telegram, "allowed_user_ids", [123, 456])
     doc = add(store)
-    add(store, due_at="2030-05-12")
-    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=8))
-    assert store.get("alice", doc["id"])["statuses"] == ["Vencido"]
-    assert not store.eligible("telegram")
+    calls: list[int] = []
+
+    async def flaky(chat: int, text: str) -> None:
+        calls.append(chat)
+        if chat == 456 and calls.count(456) == 1:
+            raise OSError("offline")
+
+    assert await send_due(store, flaky) == 0
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + RETRY_AFTER + timedelta(seconds=1))
+    assert await send_due(store, flaky) == 1
+    assert calls == [123, 456, 456]  # 123 was not messaged twice
+    assert store.get("alice", doc["id"])["telegram_sent_at"]
+
+
+async def test_late_notice_still_goes_within_the_grace_window_only(store, monkeypatch):
+    add(store)  # due at 16:00 (19:00 UTC), notice at 09:00
     send = AsyncMock()
-    assert await send_morning(store, send) == 0
-    send.assert_not_awaited()
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=8))  # 4 h past due
+    assert store.eligible("telegram")
+    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=20))  # 13 h past due
+    assert not store.eligible("telegram")
+    assert await send_due(store, send) == 0 and not send.await_count
 
 
 async def test_voice_once_across_sessions_and_independent_of_telegram(store):
     doc = add(store)
-    await send_morning(store, AsyncMock())
+    await send_due(store, AsyncMock())
     text, finish = await voice_briefing(store, "alice")
     assert "Bom dia" in text and "Dentista" in text
     other_text, other_finish = await voice_briefing(store, "alice")
@@ -178,11 +212,12 @@ async def test_voice_failure_releases_reminders_and_does_not_expose_other_owner(
 
 async def test_edits_preserve_receipts_until_rescheduled(store):
     doc = add(store)
-    await send_morning(store, AsyncMock())
+    await send_due(store, AsyncMock())
     changed = store.update("alice", doc["id"], title="Novo nome")
     assert changed["telegram_sent_at"]
     changed = store.update("alice", doc["id"], due_at="2030-05-11")
-    assert changed["notify_on"] == "2030-05-11"
+    # The 7 h lead (09:00 notice, 16:00 deadline) is kept: 23:59:59 - 7 h.
+    assert changed["notify_at"] == datetime(2030, 5, 11, 19, 59, 59, tzinfo=UTC)
     assert not changed["telegram_sent_at"] and not changed["voice_reminded_at"]
 
 
@@ -235,7 +270,7 @@ async def test_calendar_combined_request_and_sync(store, monkeypatch):
     assert result.success and len(client.inserted) == 1
     doc = store.get("alice", result.metadata["reminder_id"])
     assert doc["event_id"] == "new1"
-    assert "Lembrete matinal salvo" in result.output
+    assert "Aviso (lembrete) salvo" in result.output
     from brain.tools.google_calendar import CalendarEvent
 
     event = CalendarEvent(
@@ -527,12 +562,13 @@ async def test_calendar_link_is_validated_before_writing(store, monkeypatch):
     assert result.success and store.list("alice")[0]["event_id"] == "real"
 
 
-def test_rescheduling_keeps_advance_days(store):
-    doc = add(store, due_at="2030-05-15", notify_on="2030-05-13")
-    changed = store.update("alice", doc["id"], due_at="2030-05-20")
-    assert changed["notify_on"] == "2030-05-18"
-    explicit = store.update("alice", doc["id"], due_at="2030-05-22", notify_on="2030-05-21")
-    assert explicit["notify_on"] == "2030-05-21"
+def test_rescheduling_keeps_the_lead_time(store):
+    doc = add(store, due_at="2030-05-15T16:00:00-03:00", notify_at="2030-05-14T16:00:00-03:00")
+    changed = store.update("alice", doc["id"], due_at="2030-05-20T18:00:00-03:00")
+    assert changed["notify_at"] == datetime(2030, 5, 19, 21, tzinfo=UTC)  # still a day before
+    new = "2030-05-21T09:30:00-03:00"
+    explicit = store.update("alice", doc["id"], due_at="2030-05-22T10:00:00-03:00", notify_at=new)
+    assert explicit["notify_at"] == datetime(2030, 5, 21, 12, 30, tzinfo=UTC)
 
 
 async def test_delete_event_confirmation_mentions_linked_reminder(store, monkeypatch):
@@ -553,48 +589,46 @@ async def test_delete_event_confirmation_mentions_linked_reminder(store, monkeyp
     assert "Dentista" in text
 
 
-async def test_job_retries_failed_delivery_without_repeating_success(store, monkeypatch):
+async def test_the_minute_tick_sends_what_is_due_and_prunes_once_a_day(store, monkeypatch):
     from brain.reminders import delivery
 
     add(store)
-    send = AsyncMock(side_effect=[OSError("offline"), None])
-    original = delivery.send_morning
+    sent: list[str] = []
 
-    async def attempt(store):
-        return await original(store, send)
+    async def fake_send(chat: int, text: str) -> None:
+        sent.append(text)
 
-    sleep = AsyncMock()
-    monkeypatch.setattr(delivery, "send_morning", attempt)
-    monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
-    await delivery.morning_job()
-    assert send.await_count == 2
-    assert [call.args[0] for call in sleep.await_args_list] == [60]  # stops once all is sent
-    assert store.list("alice")[0]["telegram_sent_at"]
+    original = delivery.send_due
+
+    async def tick(reminders):
+        return await original(reminders, fake_send)
+
+    monkeypatch.setattr(delivery, "send_due", tick)
+    pruned = []
+    monkeypatch.setattr(store, "prune", lambda: pruned.append(1) or 0)
+    monkeypatch.setitem(delivery._state, "pruned_on", None)
+    await delivery.reminder_job()
+    await delivery.reminder_job()
+    assert len(sent) == 1 and len(pruned) == 1
 
 
-async def test_job_does_not_retry_when_nothing_is_left(store, monkeypatch):
+async def test_an_outage_is_logged_once_not_every_minute(store, monkeypatch):
     from brain.reminders import delivery
 
-    add(store)
-    send = AsyncMock()
-    original = delivery.send_morning
+    lines: list[str] = []
+    monkeypatch.setattr(
+        delivery.event_log, "log", lambda kind, **kw: lines.append(kw.get("action", ""))
+    )
+    monkeypatch.setitem(delivery._state, "failing", False)
+    monkeypatch.setitem(delivery._state, "pruned_on", None)
 
-    async def attempt(store):
-        return await original(store, send)
+    def down(*args, **kwargs):
+        raise MemoryUnavailableError("offline")
 
-    sleep = AsyncMock()
-    monkeypatch.setattr(delivery, "send_morning", attempt)
-    monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
-    await delivery.morning_job()
-    assert send.await_count == 1 and not sleep.await_count
-
-
-async def test_late_catchup_uses_evening_greeting(store, monkeypatch):
-    add(store, due_at="2030-05-11", notify_on="2030-05-10")
-    monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(hours=14))
-    send = AsyncMock()
-    await send_morning(store, send)
-    assert send.await_args.args[1].startswith("Boa noite!")
+    monkeypatch.setattr(store, "eligible", down)
+    for _ in range(3):
+        await delivery.reminder_job()
+    assert lines.count("job_failed") == 1
 
 
 def test_retention_prunes_expired_history_and_list_is_not_truncated(store, monkeypatch):
@@ -618,11 +652,11 @@ async def test_successful_send_with_failed_receipt_is_documented_at_least_once(s
     )
     send = AsyncMock()
     with pytest.raises(MemoryUnavailableError):
-        await send_morning(store, send)
+        await send_due(store, send)
     assert send.await_count == 1
     monkeypatch.setattr(store, "finish", original)
     monkeypatch.setattr(clock, "now", lambda *args: NOW + timedelta(minutes=11))
-    await send_morning(store, send)
+    await send_due(store, send)
     assert send.await_count == 2
     assert store.get("alice", doc["id"])["telegram_sent_at"]
 
@@ -693,3 +727,82 @@ async def test_failed_briefing_is_silent_unless_wake(store, tmp_path):
                 assert not rig.synth.spoken
         finally:
             await session.end("server")
+
+
+def test_records_from_the_first_release_are_migrated_to_notify_at(store):
+    doc = add(store)
+    raw = store.collection().find_one({"_id": doc["id"]})
+    legacy = {k: v for k, v in raw.items() if k not in ("notify_at", "_id")}
+    store.collection().insert_one({**legacy, "_id": "rem_legacy", "notify_on": "2030-05-10"})
+    store.collection().delete_one({"_id": doc["id"]})
+    fresh = ReminderStore(store.connection)  # the migration runs when a store first opens
+    migrated = fresh.get("alice", "rem_legacy")
+    assert migrated["notify_at"] == datetime(2030, 5, 10, 12, tzinfo=UTC)  # 09:00 that day
+    assert "notify_on" not in migrated
+
+
+def test_scheduler_ticks_at_the_top_of_every_minute():
+    from brain.scheduler import seconds_to_next_minute
+
+    assert seconds_to_next_minute(datetime(2030, 1, 1, 9, 0, 0)) == 60
+    assert seconds_to_next_minute(datetime(2030, 1, 1, 9, 0, 45)) == 15
+    assert seconds_to_next_minute(datetime(2030, 1, 1, 9, 0, 59, 999_999)) == 1  # never a busy loop
+
+
+async def test_run_every_minute_keeps_going_after_a_failing_run(monkeypatch):
+    from brain import scheduler
+
+    runs: list[int] = []
+
+    async def job() -> None:
+        runs.append(1)
+        raise RuntimeError("boom")  # logged by the scheduler, never stops it
+
+    async def stop_after_three(_seconds: float) -> None:
+        if len(runs) == 3:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(scheduler.asyncio, "sleep", stop_after_three)
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler.run_every_minute("reminders", job)
+    assert len(runs) == 3
+
+
+def test_the_model_is_told_event_and_reminder_are_different_things():
+    from pathlib import Path
+
+    from brain.tools.google_calendar import CreateEvent
+
+    create = tools.CreateReminder.description
+    assert "LEMBRETE ISOLADO" in create and "SEM criar evento" in create
+    assert "create_event" in create  # points the other way for a real appointment
+    event = CreateEvent.description
+    assert "EVENTO NA AGENDA" in event and "create_reminder" in event
+    for name in ("persona.core.md", "persona.core.compact.md"):
+        text = (Path(__file__).parent.parent / "prompts" / name).read_text(encoding="utf-8")
+        assert "create_event" in text and "create_reminder" in text
+        assert "reminder_at" in text
+
+
+async def test_the_server_runs_the_reminder_tick_every_minute(store, monkeypatch):
+    import os
+    import signal
+
+    from brain.clients import server as server_module
+    from brain.clients.server import BrainServer, run_server
+    from tests.test_server import TOKEN, RecordingHandler, wait_until
+
+    scheduled: list[str] = []
+
+    async def fake_every_minute(name, job):
+        scheduled.append(name)
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(server_module, "run_every_minute", fake_every_minute)
+    server = BrainServer("127.0.0.1", 0, TOKEN, RecordingHandler())
+    task = asyncio.create_task(run_server(server))
+    await wait_until(lambda: server.port != 0 and scheduled)
+    os.kill(os.getpid(), signal.SIGTERM)
+    async with asyncio.timeout(2):
+        await task
+    assert scheduled == ["reminders"]

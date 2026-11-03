@@ -139,12 +139,9 @@ metadocs:
   top_k: 3               # seções por consulta
   max_chars: 1500        # teto dos trechos entregues ao modelo
 
-# Lembretes pessoais: MongoDB, resumo matinal e primeiro aviso por voz.
+# Lembretes pessoais: guardados no MongoDB e avisados, a cada minuto, na hora que você escolheu
+# (Telegram para quem está em telegram.allowed_user_ids, e a voz na próxima abertura).
 reminders:
   enabled: true
-  retention_days: 90    # histórico de vencidos; limpeza no job
-  morning_at: "08:00"   # fuso de agent.timezone
-  # Associe o ID do usuário Juniper (juniper users list) ao chat privado do Telegram.
-  # Não é o client_id nem o nome de exibição. Sem associação, não envia.
-  telegram_chat_ids: {}
-  # Exemplo: {"usr_exemplo": 123456789}
+  retention_days: 90    # histórico de vencidos; limpeza diária
+  grace_hours: 12       # depois de um tempo fora do ar, o aviso atrasado ainda sai até N h do prazo
