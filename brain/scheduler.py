@@ -40,6 +40,22 @@ async def run_daily(name: str, hhmm: str, job: Callable[[], Any], *, catch_up: b
         await _run(name, job)
 
 
+def seconds_to_next_minute(now: datetime) -> float:
+    """Seconds from ``now`` to the top of the next minute (never less than a second)."""
+    return max(1.0, 60.0 - now.second - now.microsecond / 1_000_000)
+
+
+async def run_every_minute(name: str, job: Callable[[], Any]) -> None:
+    """Run ``job`` right away, then at the top of every minute, forever.
+
+    Runs never overlap: the next wait starts when the previous run ends. A job must be cheap when
+    there is nothing to do (the reminders tick is one indexed query).
+    """
+    while True:
+        await _run(name, job)
+        await asyncio.sleep(seconds_to_next_minute(datetime.now(ZoneInfo(settings.agent.timezone))))
+
+
 async def _run(name: str, job: Callable[[], Any]) -> None:
     try:
         if inspect.iscoroutinefunction(job):

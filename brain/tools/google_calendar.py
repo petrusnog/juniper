@@ -441,21 +441,17 @@ def _conflict_result(
 class CreateEvent(Tool):
     name = "create_event"
     description = (
-        "Marca um compromisso e checa conflitos em todas as agendas; se houver, NÃO cria. "
-        "Chame direto. Se a pessoa já pediu "
-        "lembrete junto, informe reminder=true: uma só confirmação cobre ambos. Se não "
-        "disse, omita reminder e ofereça o lembrete depois do evento criado."
+        "Cria um EVENTO NA AGENDA (compromisso no calendário); checa conflitos e, se houver, NÃO "
+        "cria. Chame direto. Só um aviso, sem compromisso: use create_reminder. Evento + aviso: "
+        "reminder=true e reminder_at, numa só confirmação. Sem pedido de aviso, omita reminder."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "reminder": {
-                "type": "boolean",
-                "description": "Criar também lembrete MongoDB, se solicitado.",
-            },
-            "reminder_on": {
+            "reminder": {"type": "boolean", "description": "Criar também o aviso (lembrete)."},
+            "reminder_at": {
                 "type": "string",
-                "description": "Dia do aviso AAAA-MM-DD, padrão dia do evento.",
+                "description": "Quando avisar (ISO com hora; padrão: no início).",
             },
             "title": {"type": "string", "description": "Ex.: 'Dentista'."},
             "start": {"type": "string", "description": "ISO 8601 local, ex.: '2026-10-12T16:00'."},
@@ -508,7 +504,7 @@ class CreateEvent(Tool):
             if kwargs.get("reminder"):
                 reminders.store()
                 reminders.owner()
-                reminder_fields(title, start.isoformat(), kwargs.get("reminder_on"))
+                reminder_fields(title, start.isoformat(), kwargs.get("reminder_at"))
         except (CalendarError, ReminderError) as exc:
             return ToolResult(success=False, error=str(exc))
         return _conflict_result(client, conflicts, "criado") if conflicts else None
@@ -522,7 +518,7 @@ class CreateEvent(Tool):
             client, calendar_id, title, start, end, _ = await self._plan(kwargs)
         except CalendarError:
             return None
-        extra = " e criar seu lembrete matinal" if kwargs.get("reminder") else ""
+        extra = " e criar o aviso (lembrete) deste evento" if kwargs.get("reminder") else ""
         return (
             f"marcar «{title}», {_fmt_range(start, end)}, na {_where(client, calendar_id)}{extra}"
         )
@@ -557,12 +553,12 @@ class CreateEvent(Tool):
                     reminders.owner(),
                     title=event.title,
                     due_at=event.start.isoformat(),
-                    notify_on=kwargs.get("reminder_on"),
+                    notify_at=kwargs.get("reminder_at"),
                     event_id=event.id,
                     calendar_id=event.calendar_id,
                 )
                 metadata["reminder_id"] = saved["id"]
-                extra = " Lembrete matinal salvo também."
+                extra = " Aviso (lembrete) salvo também."
             except (ReminderError, MemoryUnavailableError) as exc:
                 metadata["reminder_error"] = str(exc)
                 extra = (
@@ -571,7 +567,7 @@ class CreateEvent(Tool):
                     + ". Não recrie o evento; tente create_reminder com os ids retornados."
                 )
         elif "reminder" not in kwargs and reminders.usable():
-            extra = " Pergunte à pessoa se deseja adicionar um lembrete matinal para esse evento."
+            extra = " Pergunte à pessoa se quer um aviso (lembrete) para esse evento e a que horas."
             metadata["offer_reminder"] = True
         return ToolResult(
             success=True,
@@ -614,14 +610,8 @@ async def _sync_reminder(
             changes: dict[str, Any] = {}
             if renamed:
                 changes["title"] = event.title
-            if moved:
-                # Preserve the reminder's advance in calendar days when moving an event.
-                old_day = doc["due_at"].astimezone(_tz()).date()
-                advance = old_day - date.fromisoformat(doc["notify_on"])
-                changes.update(
-                    due_at=event.start.isoformat(),
-                    notify_on=(event.start.date() - advance).isoformat(),
-                )
+            if moved:  # the store keeps the lead time between the notice and the new start
+                changes["due_at"] = event.start.isoformat()
             if changes:
                 await asyncio.to_thread(store.update, reminders.owner(), doc["_id"], **changes)
         return " O lembrete vinculado também foi " + ("excluído." if deleted else "atualizado.")

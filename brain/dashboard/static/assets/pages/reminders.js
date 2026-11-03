@@ -28,24 +28,24 @@ export async function render() {
     const title = h("input", { required: true, maxlength: 200, value: item?.title || "", "aria-label": "Título" });
     // Use explicit ISO text: a browser-local datetime picker could silently change the agent timezone.
     const due = h("input", { required: true, value: item?.due_at || "", placeholder: "AAAA-MM-DD ou data/hora ISO", "aria-label": "Prazo" });
-    const day = h("input", { type: "date", value: item?.notify_on || "", "aria-label": "Dia do aviso" });
+    const day = h("input", { value: item?.notify_at || "", placeholder: "AAAA-MM-DD ou data/hora ISO", "aria-label": "Quando avisar" });
     const notes = h("textarea", { maxlength: 500, "aria-label": "Observações", text: item?.notes || "" });
     const error = h("p", { class: "error", role: "alert" });
     const submit = h("button", { type: "submit", text: item ? "Salvar alterações" : "Criar lembrete" });
     const node = h("form", {}, h("label", { text: "Título" }), title,
       h("label", { text: "Prazo (sem offset, usa o fuso da Juniper)" }), due,
-      h("label", { text: "Dia do aviso (vazio = dia do prazo)" }), day,
+      h("label", { text: "Quando avisar (vazio = no prazo; só a data = 9h)" }), day,
       h("label", { text: "Observações" }), notes, submit, error);
     node.addEventListener("submit", async event => {
       event.preventDefault(); submit.disabled = true;
       try {
-        const changes = { title: title.value, due_at: due.value, notify_on: day.value, notes: notes.value };
+        const changes = { title: title.value, due_at: due.value, notify_at: day.value, notes: notes.value };
         if (item) {
           // Preserve channel receipts on text-only edits.
           for (const key of Object.keys(changes)) if (changes[key] === (item[key] || "")) delete changes[key];
           // post() omits empty fields; one space explicitly clears optional notes/day.
           if (changes.notes === "") changes.notes = " ";
-          if (changes.notify_on === "") changes.notify_on = " ";
+          if (changes.notify_at === "") changes.notify_at = " ";
         }
         await post(item ? `/reminders/${item.id}/update` : "/reminders", changes);
         if (item) node.remove(); else node.reset();
@@ -56,7 +56,7 @@ export async function render() {
     return node;
   }
   function row(item) {
-    const body = h("div", {}, h("p", { text: `Prazo: ${when(item.due_at)} · aviso: ${item.notify_on}` }),
+    const body = h("div", {}, h("p", { text: `Prazo: ${when(item.due_at)} · aviso: ${when(item.notify_at)}` }),
       h("p", { text: item.notes }), h("p", { class: "muted small", text: `ID: ${item.id}` }),
       h("div", {}, ...item.statuses.map(s => badge(s, s === "Vencido" ? "warn" : ""))),
       h("p", { text: `Telegram: ${when(item.telegram_sent_at)} · Voz: ${when(item.voice_reminded_at)}` }));

@@ -43,7 +43,7 @@ from brain.eventlog import event_log
 from brain.logfiles import run_rotation
 from brain.memory.v2 import v2_enabled
 from brain.memory.v2.service import run_night_job
-from brain.scheduler import run_daily
+from brain.scheduler import run_daily, run_every_minute
 
 logger = logging.getLogger(__name__)
 
@@ -540,13 +540,11 @@ async def run_server(server: BrainServer, dashboard: Any | None = None) -> None:
     night = None
     reminder_job = None
     if settings.reminders.enabled:
-        from brain.reminders.delivery import morning_job
+        from brain.reminders.delivery import reminder_job as reminder_tick
         from brain.tools import reminders
 
         if reminders.CreateReminder.available():
-            reminder_job = loop.create_task(
-                run_daily("reminders", settings.reminders.morning_at, morning_job)
-            )
+            reminder_job = loop.create_task(run_every_minute("reminders", reminder_tick))
     if v2_enabled():
         night = loop.create_task(
             run_daily("v2_night", settings.memory.v2.night.at, run_night_job, catch_up=False)

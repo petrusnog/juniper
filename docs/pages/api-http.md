@@ -105,7 +105,7 @@ Também só `POST` do dono, com as mesmas defesas ([ADR-028](../decisions/ADR-02
 | `POST /api/memory/concerns/<id>/weight` | `value` (0 a 1), `reason` | Muda o peso (fica no histórico). |
 | `POST /api/memory/persona/revert` | `to` (versão, opcional) | Volta à versão anterior como uma versão nova. |
 | `GET /api/reminders` · `GET /api/reminders/<id>` | `status`, `q`, paginação | Os lembretes do dono logado, com os recibos de cada canal ([Lembretes](lembretes.md)). |
-| `POST /api/reminders` · `/<id>/update` | `title`, `due_at`, `notify_on`, `notes` (até 500 caracteres) | Cria ou edita; um espaço em `notes`/`notify_on` limpa o campo. |
+| `POST /api/reminders` · `/<id>/update` | `title`, `due_at`, `notify_at`, `notes` (até 500 caracteres) | Cria ou edita; um espaço em `notes`/`notify_on` limpa o campo. |
 | `POST /api/reminders/<id>/delete` | `confirm` = o id | Exclui o lembrete (o evento da agenda é preservado). |
 | `POST /api/jobs/dream` · `reindex` | `dry=1` (sonho), `force=1` (reindexação) | Inicia a tarefa em segundo plano; `409` se outra estiver rodando. |
 

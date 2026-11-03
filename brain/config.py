@@ -859,31 +859,13 @@ class LeakAuditSettings(BaseModel):
 
 
 class ReminderSettings(BaseModel):
-    """Lembretes pessoais persistidos no MongoDB e resumo matinal."""
+    """Lembretes pessoais persistidos no MongoDB e avisados no horário escolhido (ADR-032)."""
 
     enabled: bool = True
-    morning_at: str = "08:00"
+    # Dias que um lembrete vencido fica no histórico antes de a limpeza diária apagá-lo.
     retention_days: int = Field(default=90, ge=1, le=3650)
-    # Juniper user_id -> private Telegram chat_id. Never broadcast to the allowlist.
-    telegram_chat_ids: dict[str, int] = Field(default_factory=dict)
-
-    @field_validator("morning_at")
-    @classmethod
-    def _morning(cls, value: str) -> str:
-        try:
-            hour, minute = map(int, value.split(":"))
-            if not (0 <= hour < 24 and 0 <= minute < 60):
-                raise ValueError
-        except ValueError:
-            raise ValueError("reminders.morning_at deve ser HH:MM") from None
-        return f"{hour:02d}:{minute:02d}"
-
-    @field_validator("telegram_chat_ids")
-    @classmethod
-    def _private_chats(cls, value: dict[str, int]) -> dict[str, int]:
-        if any(not owner.strip() or chat <= 0 for owner, chat in value.items()):
-            raise ValueError("Use user_id e chat_id privado positivo para cada destinatário")
-        return value
+    # Depois de um tempo fora do ar, o aviso atrasado ainda sai até N horas depois do prazo.
+    grace_hours: float = Field(default=12.0, ge=0.0, le=168.0)
 
 
 class TelegramSettings(BaseModel):
