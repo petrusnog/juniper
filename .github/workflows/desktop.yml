@@ -1,0 +1,54 @@
+name: Desktop
+
+# ADR-033. Runs when the desktop app, the protocol schema or the shared URL-policy corpus change.
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "desktop/**"
+      - "docs/protocol/schema.json"
+      - "tests/fixtures/url_policy_cases.json"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, types and unit tests (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+      - run: npm run check:protocol
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  windows:
+    # Required for merge: junctions, hard links, 8.3 names and ADS exist only on a real NTFS volume.
+    name: Windows rules on a real volume
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - run: npm test

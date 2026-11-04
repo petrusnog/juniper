@@ -1,0 +1,12 @@
+body { margin: 0; font: 14px/1.4 Consolas, monospace; background: #0b0f14; color: #d6e2ee; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #1f2a36; }
+#status { color: #7aa2c8; margin-right: auto; }
+main { overflow-y: auto; padding: 12px; }
+.m { white-space: pre-wrap; margin: 6px 0; }
+.m.user { color: #9fe3b0; }
+.m.notice, .m.error { color: #e3c07a; }
+#activity { position: fixed; right: 8px; bottom: 56px; max-width: 320px; font-size: 12px; color: #7a8da0; }
+form#composer, form#login { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #1f2a36; }
+form#login { flex-direction: column; max-width: 420px; margin: 24px auto; border: 0; }
+input[type="text"], #text, #url, #cid, #secret { flex: 1; background: #101722; color: inherit; border: 1px solid #1f2a36; padding: 6px 8px; }
+button { background: #16324a; color: inherit; border: 1px solid #2b4d6b; padding: 6px 10px; cursor: pointer; }
