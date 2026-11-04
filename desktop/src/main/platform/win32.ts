@@ -28,15 +28,17 @@ export interface Win32Options {
   /** Extra folders to block (the app's own data folder). */
   appDataDir?: string;
   probe?: Probe;
+  /** Environment for the system folders (tests pass a fixed one). */
+  env?: NodeJS.ProcessEnv;
 }
 
 const RESERVED = /^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/i;
 const FORBIDDEN_CHARS = /[<>"|?*\x00-\x1f]/;  
 const SHORT_NAME = /~\d/;
 const SENSITIVE_NAME =
-  /^(\.env(\..*)?|ntuser\.(dat|ini).*|id_rsa.*|id_ed25519.*|.*\.(kdbx|pem|key|pfx|p12|ppk|rdp|ovpn|wallet|keystore))$/i;
+  /^(\.env([._-].*)?|\.envrc|ntuser\.(dat|ini).*|id_rsa.*|id_ed25519.*|.*\.(kdbx|pem|key|pfx|p12|ppk|rdp|ovpn|wallet|keystore))$/i;
 const EXECUTABLE =
-  /\.(exe|dll|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|hta|lnk|scr|msi|msc|reg|url|cpl|jar|pif)$/i;
+  /\.(exe|com|dll|bat|cmd|ps1|ps1xml|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|ws|hta|lnk|scr|msi|msc|reg|url|cpl|jar|pif|py|pyw|pth|sh|sct|gadget|application|appref-ms|settingcontent-ms|library-ms|search-ms|scf|chm|inf|xll|html|htm|svg|docm|xlsm|pptm)$|^\.(bashrc|zshrc|profile|bash_profile)$/i;
 const HOME_BLOCKED = [
   'AppData',
   '.ssh',
@@ -56,14 +58,31 @@ const HOME_BLOCKED = [
   '.netrc',
   '.git-credentials',
   '.gitconfig',
+  '.bash_history',
+  '.psql_history',
+  '.cargo',
+  '.m2',
+  '.nuget',
+  '.gradle',
   'tailscale',
+  'OneDrive\\Cofre Pessoal',
+  'OneDrive\\Personal Vault',
+  'Cofre Pessoal',
+  'Personal Vault',
+  'KeePass',
+  'Bitwarden',
+  '1Password',
 ];
-const SYSTEM_BLOCKED = [
-  'C:\\Windows',
-  'C:\\Program Files',
-  'C:\\Program Files (x86)',
-  'C:\\ProgramData',
-];
+function systemBlocked(env: NodeJS.ProcessEnv): string[] {
+  // The system drive is not always C:, so ask the environment, with the usual paths as fallback.
+  const drive = env.SystemDrive ?? 'C:';
+  return [
+    env.SystemRoot ?? `${drive}\\Windows`,
+    env.ProgramFiles ?? `${drive}\\Program Files`,
+    env['ProgramFiles(x86)'] ?? `${drive}\\Program Files (x86)`,
+    env.ProgramData ?? `${drive}\\ProgramData`,
+  ];
+}
 const MAX_PATH_CHARS = 1024;
 
 /** Case-insensitive key: NFC, then the upper/lower round trip the file system roughly does. */
@@ -116,7 +135,7 @@ export function createWin32Rules(options: Win32Options): PlatformRules {
     homeDir: () => home,
     blockedPaths: () => [
       ...HOME_BLOCKED.map(name => win.join(home, name)),
-      ...SYSTEM_BLOCKED,
+      ...systemBlocked(options.env ?? process.env),
       ...(options.appDataDir ? [options.appDataDir] : []),
     ],
     unsafeSyntax,

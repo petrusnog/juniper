@@ -222,14 +222,18 @@ class ExecutorHub:
                 seen.setdefault(name, remote.cls)
         return list(seen.values())
 
-    def target_for(self, tool_name: str) -> tuple[bool, str | None]:
-        """Whether the turn came from another channel than the device that runs ``tool_name``."""
+    def target_for(self, tool_name: str) -> tuple[bool, str | None, str | None]:
+        """Whether the turn came from another channel than the device that runs ``tool_name``.
+
+        Also the label and the connection id of that device: what the user is told, and where the
+        approved call must go (``invoke(..., device=id)``).
+        """
         candidates = self._offering(tool_name)
         if not candidates:
-            return False, None
+            return False, None, None
         origin = current_origin.get()
         target = next((c for c in candidates if c.conn is origin), candidates[0])
-        return origin is None or origin is not target.conn, _label(target)
+        return origin is None or origin is not target.conn, _label(target), target.conn.id
 
     def offers(self, conn: Connection, tool_name: str) -> bool:
         """Whether this very connection is an executor that offers ``tool_name``."""
@@ -241,9 +245,17 @@ class ExecutorHub:
 
     # --- invoke / result ---
 
-    async def invoke(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
-        """Manda a chamada ao dispositivo escolhido e espera o resultado. Nunca levanta."""
+    async def invoke(
+        self, tool_name: str, arguments: dict[str, Any], device: str | None = None
+    ) -> ToolResult:
+        """Manda a chamada ao dispositivo escolhido e espera o resultado. Nunca levanta.
+
+        Com ``device`` (a conexão que a pessoa aprovou), só esse dispositivo serve: se ele sumiu,
+        a chamada falha, em vez de ir para outro.
+        """
         candidates = self._offering(tool_name)
+        if device is not None:
+            candidates = [c for c in candidates if c.conn.id == device]
         if not candidates:
             return _unavailable(tool_name)
         origin = current_origin.get()

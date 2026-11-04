@@ -26,6 +26,8 @@ export const SEARCH_MS = 5000;
 export const SEARCH_DEPTH = 8;
 export const TRASH_ITEM_LIMIT = 200;
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.csv', '.json']);
+// Names that make a folder run code later: never the target of a move, copy or rename.
+const CODE_FOLDERS = new Set(['.git', '.vscode', 'hooks']);
 
 const fail = (code: string, error: string): ToolOutcome => ({
   success: false,
@@ -79,6 +81,25 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
     }
     return count;
   }
+
+  /** Only plain text is created from the model's own words (an allow-list, not a deny-list). */
+  const textName = (p: string): boolean => TEXT_EXTENSIONS.has(rules.extname(p).toLowerCase());
+
+  const isPlainFile = async (real: string): Promise<boolean> => {
+    const st = await fsp.lstat(real);
+    return st.isFile() && !st.isSymbolicLink();
+  };
+
+  /** Renames without ever replacing: a file appearing at the destination makes it fail. */
+  const moveNoOverwrite = async (src: string, dst: string): Promise<void> => {
+    const st = await fsp.lstat(src);
+    if (st.isDirectory()) {
+      await fsp.rename(src, dst); // the destination was just checked; an empty folder could race
+      return;
+    }
+    await fsp.link(src, dst); // fails with EEXIST if something is there
+    await fsp.unlink(src);
+  };
 
   const requireSingleLink = async (real: string): Promise<ToolOutcome | null> => {
     const st = await fsp.lstat(real);
@@ -227,6 +248,9 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
       async handle(args) {
         const r = await guarded(args.path, 'create');
         if (isOutcome(r)) return r;
+        if (!textName(r.real)) {
+          return fail('policy_denied', 'Só crio arquivos de texto (.txt, .md, .csv, .json).');
+        }
         if (r.exists) return fail('destination_exists', 'Já existe um arquivo com esse nome.');
         const content = String(args.content);
         if (Buffer.byteLength(content) > READ_LIMIT) {
@@ -267,9 +291,11 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
       const single = await requireSingleLink(src);
       if (single) return single;
       try {
-        await fsp.rename(src, dst);
-      } catch {
-        return fail('os_error', 'Não consegui mover (talvez seja outro disco).');
+        await moveNoOverwrite(src, dst);
+      } catch (e) {
+        return (e as NodeJS.ErrnoException).code === 'EEXIST'
+          ? fail('destination_exists', 'Já existe algo no destino.')
+          : fail('os_error', 'Não consegui mover (talvez seja outro disco).');
       }
       return ok(`Movi ${src} para ${dst}.`);
     }),
@@ -304,17 +330,26 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
         const target = await guarded(args.path, 'modify');
         if (isOutcome(target)) return target;
         if (!target.exists) return fail('os_error', 'O arquivo a substituir não existe.');
+        if (!(await isPlainFile(target.real))) {
+          return fail('policy_denied', 'Só substituo arquivos comuns; para pastas use fs_trash.');
+        }
+        if (args.content !== undefined && !textName(target.real)) {
+          return fail('policy_denied', 'Só gravo texto novo em .txt, .md, .csv ou .json.');
+        }
         const single = await requireSingleLink(target.real);
         if (single) return single;
-        let staged: string;
         const temp = rules.join(
           rules.dirname(target.real),
           `.juniper-${Math.random().toString(36).slice(2)}.tmp`,
         );
+        const cleanup = () => fsp.rm(temp, { force: true }).catch(() => undefined);
         try {
           if (args.source !== undefined) {
             const src = await guarded(args.source, 'read');
             if (isOutcome(src)) return src;
+            if (!(await isPlainFile(src.real))) {
+              return fail('policy_denied', 'A origem precisa ser um arquivo comum.');
+            }
             await fsp.copyFile(src.real, temp, constants.COPYFILE_EXCL);
           } else {
             const content = String(args.content);
@@ -323,12 +358,24 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
             }
             await fsp.writeFile(temp, content, { encoding: 'utf8', flag: 'wx' });
           }
-          staged = temp;
-          await trash.trash(target.real); // the original is recoverable before anything is lost
-          await fsp.rename(staged, target.real);
         } catch {
-          await fsp.rm(temp, { force: true }).catch(() => undefined);
-          return fail('os_error', 'Não consegui substituir (o original não foi apagado).');
+          await cleanup();
+          return fail('os_error', 'Não consegui preparar o arquivo novo (o original está intacto).');
+        }
+        try {
+          await trash.trash(target.real); // the original is recoverable before anything is lost
+        } catch {
+          await cleanup();
+          return fail('os_error', 'Não consegui usar a Lixeira, então não substituí nada.');
+        }
+        try {
+          await fsp.rename(temp, target.real);
+        } catch {
+          await cleanup();
+          return fail(
+            'os_error',
+            'O original foi para a Lixeira, mas não consegui gravar o novo no lugar. Restaure o arquivo pela Lixeira.',
+          );
         }
         return ok(`Substituí ${target.real}; o original está na Lixeira.`, { path: target.real });
       },
@@ -390,6 +437,11 @@ export function createFileTools(deps: FsDeps): LocalTool[] {
         const dst = await guarded(args.destination, 'create');
         if (isOutcome(dst)) return dst;
         if (dst.exists) return fail('destination_exists', 'Já existe algo no destino.');
+        for (const p of [src.real, dst.real]) {
+          if (CODE_FOLDERS.has(rules.basename(p).toLowerCase())) {
+            return fail('policy_denied', 'Não movo nem copio pastas que guardam configuração que executa código.');
+          }
+        }
         return run(src.real, dst.real);
       },
     };

@@ -153,7 +153,6 @@ class Agent:
         propagates, so a retry does not see half a turn.
         """
         bind_session(self.session.id)
-        self._dispatcher.begin_turn()
         event_log.log("turn_start", input_chars=len(user_input))
         self._checkpoint = self.session.checkpoint()
         self._current = user_input

@@ -79,10 +79,12 @@ class RemoteGateway(Protocol):
     ``ToolResult`` with a message the LLM can pass on to the user.
     """
 
-    async def invoke(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult: ...
+    async def invoke(
+        self, tool_name: str, arguments: dict[str, Any], device: str | None = None
+    ) -> ToolResult: ...
 
-    def target_for(self, tool_name: str) -> tuple[bool, str | None]:
-        """(``True`` if the turn came from another channel than the device, device label)."""
+    def target_for(self, tool_name: str) -> tuple[bool, str | None, str | None]:
+        """(``True`` if the turn came from another channel than the device, its label, its id)."""
         ...
 
 
@@ -97,6 +99,7 @@ class _Plan:
     decision: str = ""
     summary: str | None = None  # what the user is asked to approve (None: no confirmation needed)
     needs_confirm: bool = False
+    device: str | None = None  # the device the user was told about: the call goes only there
     in_context: bool = False  # approved by a "sim" to a question that named it
     started: float = field(default_factory=time.monotonic)
 
@@ -159,9 +162,14 @@ class Dispatcher:
             else settings.tools.security.confirmation_timeout
         )
 
-    def begin_turn(self) -> None:
-        """A new user turn: the file-content taint (ADR-033) starts over."""
-        self._tainted = False
+    @property
+    def tainted(self) -> bool:
+        """A file's text is in this conversation (ADR-033): it stays so until the conversation ends.
+
+        The text remains in the history the model sees on every later turn, including the turn
+        in which the user says "sim", so the taint is never reset between turns.
+        """
+        return self._tainted
 
     async def dispatch(self, call: ToolCall) -> Message:
         """Execute one ``call`` and wrap the outcome as a ``role="tool"`` message."""
@@ -271,15 +279,16 @@ class Dispatcher:
                 return plan
             call = plan.call = await _canonical(plan.tool, call)
             asks = tool_cls.tier is not Tier.READ and await _asks(plan.tool, tool_cls, call)
-            foreign, device = (False, None)
+            foreign, device, device_id = (False, None, None)
             if self._gateway is not None and tool_cls.asks_outside_origin:
-                foreign, device = self._gateway.target_for(call.name)
+                foreign, device, device_id = self._gateway.target_for(call.name)
             if not asks and tool_cls.tier is Tier.READ and foreign:
                 asks = True  # a file read ordered from another channel: the device is named
             if not asks and self._tainted and tool_cls.asks_when_tainted:
                 asks = True  # file content could be carried out by this tool
             if asks:
                 plan.needs_confirm = True
+                plan.device = device_id  # approved for this device, not for "whichever is there"
                 plan.summary = await _summary(plan.tool, call)
                 if foreign and device:
                     plan.summary = f"no seu PC «{device}»: {plan.summary or call.name}"
@@ -298,7 +307,12 @@ class Dispatcher:
         )
         try:
             if self._gateway is not None and plan.tool_cls.locality is Locality.EXECUTOR:
-                result = await self._gateway.invoke(plan.call.name, plan.call.arguments)
+                if plan.device is None:  # the common case: the gateway chooses (ADR-014 routing)
+                    result = await self._gateway.invoke(plan.call.name, plan.call.arguments)
+                else:  # approved for one device: the call goes only there
+                    result = await self._gateway.invoke(
+                        plan.call.name, plan.call.arguments, plan.device
+                    )
                 result = plan.tool.filter_result(result)
             else:
                 result = await plan.tool.run(**plan.call.arguments)

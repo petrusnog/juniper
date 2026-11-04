@@ -43,7 +43,7 @@ const ACTIVITY_LIMIT = 100;
 
 export class Executor {
   readonly activity: ActivityEntry[] = [];
-  private readonly answered = new Map<string, { at: number; outcome: ToolOutcome }>();
+  private readonly answered = new Map<string, { at: number; outcome: Promise<ToolOutcome> }>();
   private readonly paused = new Set<string>();
   private off: (() => void) | null = null;
 
@@ -120,7 +120,7 @@ export class Executor {
     }
     const seen = this.answered.get(invoke.call_id);
     if (seen !== undefined) {
-      this.reply(invoke.call_id, seen.outcome); // same answer, never the action twice
+      this.reply(invoke.call_id, await seen.outcome); // same answer, never the action twice
       return;
     }
     const tool = this.offered().find(t => t.name === invoke.tool_name);
@@ -131,20 +131,20 @@ export class Executor {
     if (problem !== null) {
       return this.refuse(invoke, 'invalid_args', `Argumentos inválidos: ${problem}.`);
     }
-    if (invoke.tier !== undefined && invoke.tier !== tool.tier) {
+    if (invoke.tier !== tool.tier) { // a missing tier is a mismatch too (the brain always sends it)
       return this.refuse(invoke, 'tier_mismatch', 'O tipo de ação recebido não confere com o declarado.');
     }
-    let outcome: ToolOutcome;
-    try {
-      outcome = await tool.handle(invoke.arguments ?? {});
-    } catch {
-      outcome = {
+    // The answer is remembered BEFORE running, so two invokes with the same call_id in flight at
+    // once still run the action only once.
+    const running = tool.handle(invoke.arguments ?? {}).catch(
+      (): ToolOutcome => ({
         success: false,
         error: 'Não consegui executar a ação neste computador.',
         metadata: { code: 'os_error' },
-      };
-    }
-    this.answered.set(invoke.call_id, { at: this.now(), outcome });
+      }),
+    );
+    this.answered.set(invoke.call_id, { at: this.now(), outcome: running });
+    const outcome = await running;
     const code = typeof outcome.metadata?.code === 'string' ? outcome.metadata.code : undefined;
     this.record({
       tool: tool.name,

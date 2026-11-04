@@ -52,11 +52,11 @@ Aplica a mesma [política de URL](executor.md#politica-url) do cérebro e do cel
 | `fs_replace` | `DESTRUCTIVE` | substitui; o original vai antes para a Lixeira |
 | `fs_trash` | `DESTRUCTIVE` | Lixeira; pasta só com `recursive` e até 200 itens |
 
-As tools são declaradas no cérebro (`brain/tools/files.py`): o schema e o tier vêm de lá, e o servidor só aceita `fs_*` de um desktop com a capacidade `fs`, com o mesmo tier. Do lado do cérebro, o texto lido volta em `<conteudo_arquivo>` (dado, não instrução), não vai para o log (só tamanho e `sha256`), contamina o turno (depois de ler, `web_fetch`, `web_search` e `open_url` pedem confirmação e a memória recusa guardar) e segredos detectados não são devolvidos. Um turno que não veio do desktop pede confirmação com o nome do PC, mesmo para ler. Veja o [ADR-033](../decisions/ADR-033.md) §4.
+As tools são declaradas no cérebro (`brain/tools/files.py`): o schema e o tier vêm de lá, e o servidor só aceita `fs_*` de um desktop com a capacidade `fs`, com o mesmo tier. Do lado do cérebro, o texto lido volta em `<conteudo_arquivo>` (dado, não instrução), não vai para o log (só tamanho e `sha256`), contamina a conversa (depois de ler, `web_fetch`, `web_search`, `open_url` e a busca de música pedem confirmação, e a memória, os lembretes e o gosto musical recusam guardar) e segredos detectados não são devolvidos. Um turno que não veio do desktop pede confirmação com o nome do PC, mesmo para ler, e a ação aprovada só vai para esse PC. O *wire log* dos provedores de LLM também omite o texto dos arquivos. Veja o [ADR-033](../decisions/ADR-033.md) §4.
 
 ### Política de caminhos {#caminhos file=desktop/src/core/policy/paths.ts}
 
-O caminho aprovado é o caminho usado. O cérebro mostra o caminho como será enviado (não o canoniza, porque roda em Linux); o desktop recusa a sintaxe perigosa (UNC, `\\?\`, `/`, `..`, variáveis, fluxos `:`, nomes reservados, ponto ou espaço final, nomes 8.3) e depois pede ao SO o caminho **real**. Para ler, o caminho real precisa estar na pasta do usuário e fora das listas fixas. Para alterar, precisa ser **exatamente** o aprovado, sem junção, link ou *reparse point* no meio (`path_changed`). As listas (pastas bloqueadas, nomes sensíveis como `.env`, `*.kdbx`, `id_rsa`, e nomes que executam código como `.exe`, `.bat`, `.lnk`, além de `.git/hooks` e `.vscode`) são do código do desktop, nunca vêm do cérebro.
+O caminho aprovado é o caminho usado. O cérebro mostra o caminho como será enviado (não o canoniza, porque roda em Linux); o desktop recusa a sintaxe perigosa (UNC, `\\?\`, `/`, `..`, variáveis, fluxos `:`, nomes reservados, ponto ou espaço final, nomes 8.3) e depois pede ao SO o caminho **real**. Para ler, o caminho real precisa estar na pasta do usuário e fora das listas fixas. Para alterar, precisa ser **exatamente** o aprovado, sem junção, link ou *reparse point* no meio (`path_changed`). `fs_write` e o texto novo de `fs_replace` só gravam `.txt`, `.md`, `.csv` e `.json`. As listas (pastas bloqueadas, nomes sensíveis como `.env`, `*.kdbx`, `id_rsa`, e nomes que executam código como `.exe`, `.bat`, `.lnk`, além de `.git/hooks` e `.vscode`) são do código do desktop, nunca vêm do cérebro.
 
 ## Limites {#limites}
 
@@ -64,6 +64,11 @@ O caminho aprovado é o caminho usado. O cérebro mostra o caminho como será en
 - **Não verificado em um Windows real nesta etapa:** os testes de NTFS (junção, *hard link*, ADS) só rodam no job `windows-latest`, e a janela do Electron nunca foi aberta neste ambiente. O que foi exercitado é o núcleo, as tools contra um disco real em Linux e o corpus de caminhos do Windows com uma sonda falsa.
 - A conferência do caminho depois de abrir o arquivo usa a canonização do SO; o Node não expõe o caminho final do *handle*, então uma troca de junção entre as duas conferências é reduzida, não eliminada.
 - O limite de leitura por «turno» é uma janela de dois minutos, porque o executor não vê os turnos.
+- **`kind` e `capabilities` são declarados pelo próprio cliente.** Uma credencial roubada de outro aparelho pode se declarar desktop com `fs`; hoje isso só rende algo se o PC verdadeiro estiver offline (com dois candidatos o `invoke` falha por ambiguidade). Fechar isso exige ligar o tipo do dispositivo à credencial no cadastro (ADR-027).
+- Só links simbólicos e junções contam como «atalho» (`lstat`); outros *reparse points* (OneDrive, WSL) não são detectados, mas um caminho real diferente ainda barra as alterações.
+- A leitura por *hard link* e a cópia de um arquivo com vários nomes não são bloqueadas; só alterar, mover e apagar são.
+- O botão «pausar arquivos» volta a «ligado» quando o app reinicia, e o `activity.log` não tem rotação.
+- Um «sim» pode cobrir mais de cinco ações destrutivas se elas vierem em mensagens diferentes do modelo no mesmo turno (o teto é por mensagem).
 
 ## Para saber mais {#para-saber-mais}
 

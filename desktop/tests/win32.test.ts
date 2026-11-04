@@ -172,3 +172,38 @@ describe('the approved path is the real path (links, junctions)', () => {
     expect(await verdict(`${HOME}\\Documents\\fora\\a.txt`, 'read', r)).toMatchObject({ ok: false });
   });
 });
+
+describe('lists from the security review', () => {
+  const env = { SystemDrive: 'D:' };
+  const withEnv = createWin32Rules({ home: HOME, probe: fakeProbe(base), env });
+
+  test('system folders follow the real system drive', () => {
+    expect(withEnv.blockedPaths()).toContain('D:\\Windows');
+    expect(withEnv.blockedPaths()).toContain('D:\\Program Files');
+  });
+
+  test.each(['.envrc', '.env_prod', '.env-local', '.env.local'])('%s is a secret file', name =>
+    expect(withEnv.isSensitiveName(name)).toBe(true),
+  );
+  test('.environment.txt is not', () => expect(withEnv.isSensitiveName('.environment.txt')).toBe(false));
+
+  test.each(['x.com', 'x.py', 'x.html', 'x.svg', 'x.docm', 'x.pth', 'x.sct', 'x.scf', 'x.chm', '.bashrc'])(
+    '%s runs code, so it is never created',
+    name => expect(withEnv.isExecutableName(name)).toBe(true),
+  );
+  test.each(['nota.txt', 'dados.csv', 'leia.md', 'conf.json'])('%s is plain text', name =>
+    expect(withEnv.isExecutableName(name)).toBe(false),
+  );
+
+  test.each([
+    'OneDrive\\Cofre Pessoal\\a.txt',
+    '.bash_history',
+    '.cargo\\credentials.toml',
+    '.m2\\settings.xml',
+    'KeePass\\x.txt',
+  ])('blocked: %s', async rel => {
+    const dir = rel.replace(/\\[^\\]+$/, '');
+    const r = createWin32Rules({ home: HOME, probe: fakeProbe([...base, `${HOME}\\${dir}`]), env });
+    expect(await resolvePath(r, `${HOME}\\${rel}`, 'read')).toMatchObject({ ok: false });
+  });
+});

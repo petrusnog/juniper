@@ -207,3 +207,77 @@ describe('write side', () => {
     await expect(fs.access(doc('a.txt'))).resolves.toBeUndefined();
   });
 });
+
+describe('review findings (ADR-033)', () => {
+  test('fs_write only creates plain-text files (an allow-list)', async () => {
+    for (const name of ['a.py', 'a.html', 'a.svg', 'semextensao', '.bashrc', 'a.docm']) {
+      expect(code(await run('fs_write', { path: doc(name), content: 'x' }))).toBe('policy_denied');
+      await expect(fs.access(doc(name))).rejects.toThrow();
+    }
+    expect(await run('fs_write', { path: doc('ok.md'), content: '# oi' })).toMatchObject({ success: true });
+  });
+
+  test('fs_replace refuses a folder as the target (it would skip the fs_trash limits)', async () => {
+    await fs.mkdir(doc('pasta'));
+    await fs.writeFile(doc('pasta/a.txt'), '1');
+    const r = await run('fs_replace', { path: doc('pasta'), content: 'oi' });
+    expect(code(r)).toBe('policy_denied');
+    expect(trashed).toEqual([]);
+    await expect(fs.access(doc('pasta/a.txt'))).resolves.toBeUndefined();
+  });
+
+  test('fs_replace refuses a folder or a link as the source', async () => {
+    await fs.writeFile(doc('a.txt'), 'x');
+    await fs.mkdir(doc('d'));
+    expect(code(await run('fs_replace', { path: doc('a.txt'), source: doc('d') }))).toBe('policy_denied');
+    expect(trashed).toEqual([]);
+  });
+
+  test('fs_replace only writes new text into a text file', async () => {
+    await fs.writeFile(doc('a.txt'), 'x');
+    await fs.writeFile(doc('b.md'), 'x');
+    expect(await run('fs_replace', { path: doc('b.md'), content: 'novo' })).toMatchObject({ success: true });
+    await fs.writeFile(doc('s.json'), '{}');
+    expect(code(await run('fs_replace', { path: doc('a.txt'), source: doc('s.json') }))).toBeUndefined();
+  });
+
+  test('fs_replace tells the truth when the final rename fails', async () => {
+    const list = createFileTools({
+      rules: posixRules(home),
+      trash: {
+        trash: async p => {
+          trashed.push(p);
+          await fs.rm(p); // the original is gone from its place, now in the "trash"
+          await fs.mkdir(p); // ...and a folder blocks the rename of the new file
+          await fs.writeFile(path.join(p, 'x'), '');
+        },
+      },
+    });
+    await fs.writeFile(doc('a.txt'), 'velho');
+    const r = await list.find(t => t.name === 'fs_replace')!.handle({ path: doc('a.txt'), content: 'novo' });
+    expect(r.success).toBe(false);
+    expect(r.error).toContain('Lixeira');
+    expect(r.error).not.toContain('intacto');
+    expect((await fs.readdir(doc(''))).some(n => n.endsWith('.tmp'))).toBe(false);
+  });
+
+  test('fs_move to a destination that appeared meanwhile never overwrites', async () => {
+    await fs.writeFile(doc('a.txt'), 'A');
+    await fs.writeFile(doc('b.txt'), 'B');
+    // Same check the tool does after its own exists() test, with the race already lost:
+    await expect(fs.link(doc('a.txt'), doc('b.txt'))).rejects.toMatchObject({ code: 'EEXIST' });
+    expect(await fs.readFile(doc('b.txt'), 'utf8')).toBe('B');
+  });
+
+  test('folders that run code later are not moved, copied or renamed', async () => {
+    await fs.mkdir(doc('tmp'));
+    await fs.mkdir(doc('repo'));
+    await fs.mkdir(doc('repo/.git'));
+    for (const dst of ['repo/.git/hooks', 'novo/.vscode', 'x/.git']) {
+      await fs.mkdir(path.dirname(doc(dst)), { recursive: true });
+      expect(code(await run('fs_move', { source: doc('tmp'), destination: doc(dst) }))).toBe('policy_denied');
+    }
+    expect(code(await run('fs_move', { source: doc('repo/.git'), destination: doc('repo/renomeado') }))).toBe('policy_denied');
+    await expect(fs.access(doc('repo/.git'))).resolves.toBeUndefined();
+  });
+});

@@ -77,6 +77,7 @@ describe('Executor revalidation', () => {
     ['invalid_args', { arguments: { path: 3 } }],
     ['invalid_args', { arguments: { path: 'x', extra: 1 } }],
     ['tier_mismatch', { tier: 'read' }],
+    ['tier_mismatch', { tier: undefined }],
   ])('refuses with %s and never runs the tool', async (code, over) => {
     runs = 0;
     const { conn } = setup([echo]);
@@ -95,6 +96,17 @@ describe('Executor revalidation', () => {
     await flush();
     expect(conn.results()).toHaveLength(2);
     expect(runs).toBe(1);
+  });
+
+  test('two invokes with the same call_id in flight run the action once', async () => {
+    runs = 0;
+    const { conn } = setup([{ ...echo, handle: async () => { runs += 1; await flush(); return { success: true, output: 'ok' }; } }]);
+    conn.emit(invoke());
+    conn.emit(invoke());
+    await flush();
+    await flush();
+    expect(runs).toBe(1);
+    expect(conn.results()).toHaveLength(2);
   });
 
   test('the replay window is ten minutes', async () => {

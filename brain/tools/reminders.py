@@ -92,6 +92,7 @@ class CreateReminder(_ReminderTool):
         "required": ["title", "due_at"],
     }
     tier = Tier.WRITE
+    blocked_when_tainted = True  # never keep file text (ADR-033)
     confirm = False
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
@@ -165,6 +166,7 @@ class UpdateReminder(_ReminderTool):
     )
     parameters = {"type": "object", "properties": {**ID, **CREATE}, "required": ["reminder_id"]}
     tier = Tier.WRITE
+    blocked_when_tainted = True
     confirm = False
 
     async def run(self, **kwargs: Any) -> ToolResult:

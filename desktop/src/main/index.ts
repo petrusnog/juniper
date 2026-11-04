@@ -102,6 +102,29 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
   return null;
 }
 
+const LOGIN_FAILURE: Record<string, string> = {
+  unauthorized: 'O cérebro recusou essa credencial.',
+  incompatible: 'O cérebro e o app falam versões diferentes do protocolo.',
+  timeout: 'O cérebro não respondeu (confira o endereço e o Tailscale).',
+};
+
+/** Waits until the connection is up or definitely refused (or `ms` pass). */
+function settled(conn: BrainConnection | null, ms: number): Promise<string> {
+  return new Promise(resolve => {
+    if (conn === null) return resolve('timeout');
+    const done = (state: string) => {
+      clearTimeout(timer);
+      off();
+      resolve(state);
+    };
+    const timer = setTimeout(() => done('timeout'), ms);
+    const off = conn.onState(state => {
+      if (['connected', 'unauthorized', 'incompatible', 'replaced'].includes(state)) done(state);
+    });
+    if (conn.state === 'connected') done('connected');
+  });
+}
+
 function trustedSender(event: IpcMainInvokeEvent): boolean {
   const frame = event.senderFrame;
   return (
@@ -152,6 +175,12 @@ function registerIpc(): void {
     };
     const error = await connect(login);
     if (error !== null) return { ok: false, error };
+    // Saved only once the brain accepted it: a wrong credential is never kept.
+    const outcome = await settled(connection, 10_000);
+    if (outcome !== 'connected') {
+      connection?.close();
+      return { ok: false, error: LOGIN_FAILURE[outcome] ?? 'Não consegui conectar.' };
+    }
     await store.save(login);
     return { ok: true };
   });
@@ -186,12 +215,13 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => window?.focus()); // arguments are ignored on purpose
   void app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    session.defaultSession.setPermissionCheckHandler(() => false);
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
       cb({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'",
+            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'",
           ],
         },
       });

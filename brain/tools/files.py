@@ -37,9 +37,13 @@ _NO_DESKTOP = ToolResult(
 
 # What must not leave the computer even when the person asked to read the file.
 _SECRET = re.compile(
-    r"(gsk_[A-Za-z0-9]{10,}|jsk_[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}"
-    r"|AKIA[0-9A-Z]{16}|AIza[\w-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
-    r"|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b)"
+    r"(gsk_[A-Za-z0-9]{10,}|jsk_[A-Za-z0-9_-]{10,}|sk-[\w-]{20,}|sk_(?:live|test)_\w{10,}"
+    r"|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}"
+    r"|AIza[\w-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\beyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{5,}"
+    r"|\b\d{6,}:[A-Za-z0-9_-]{30,}|://[^\s/:@]+:[^\s/@]+@"
+    r"|(?:password|passwd|senha|secret|token|api[_-]?key)[\"']?\s*[:=]\s*[\"']?[^\s\"',;]{6,}"
+    r"|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b)",
+    re.I,
 )
 _CARD = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 
@@ -63,7 +67,7 @@ def contains_secret(text: str) -> bool:
 
 def untrusted(text: str) -> str:
     """``text`` as untrusted file content (the tags cannot be closed from inside)."""
-    body = text.replace(UNTRUSTED_OPEN, "").replace(UNTRUSTED_CLOSE, "")
+    body = re.sub(r"</?\s*conteudo_arquivo\s*>", "", text, flags=re.I)
     return f"{UNTRUSTED_HEADER}\n{UNTRUSTED_OPEN}\n{body}\n{UNTRUSTED_CLOSE}"
 
 
