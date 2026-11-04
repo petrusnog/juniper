@@ -3,7 +3,8 @@ name: Desktop release
 # Gera o instalador do app desktop (Windows), assinado, e o publica no cérebro, para o app se
 # atualizar (ADR-033, no molde do "Mobile release" do ADR-026). Roda quando o master muda algo em
 # desktop/ e também à mão: Actions -> Desktop release -> Run workflow (branch master). O primeiro
-# disparo é manual.
+# disparo é manual. Enquanto o certificado não existe, um push em master só PULA (com um aviso),
+# para não deixar o master vermelho; já o disparo manual sem certificado falha, de propósito.
 #
 # Segredos (Settings -> Secrets and variables -> Actions), além dos do Deploy (TS_OAUTH_*, DEPLOY_*):
 #   WIN_CSC_LINK            o certificado de assinatura de código (.pfx) em base64
@@ -25,9 +26,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Barato e sem checkout: decide se há certificado. Segredos não podem ser lidos num `if:` de job,
+  # então a checagem fica num passo e o resultado vira uma saída.
+  guard:
+    name: certificado configurado?
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          missing=""
+          for name in CSC_LINK CSC_PASSWORD PUBLISHER; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            # Quem disparou à mão quer o instalador: sem certificado é erro, não silêncio.
+            echo "::error::falta:$missing (veja o cabeçalho deste workflow)"
+            exit 1
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Instalador do desktop NÃO gerado: falta:$missing. Configure o certificado e dispare à mão (veja o cabeçalho do workflow)."
+          fi
+
   release:
     name: instalador assinado
-    if: github.ref == 'refs/heads/master'
+    needs: guard
+    if: needs.guard.outputs.ready == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -36,19 +69,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # a versão é o número de commits
-      - name: Confere a assinatura configurada
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
-        run: |
-          # Sem certificado o instalador sairia sem assinatura e o app recusaria atualizar.
-          for name in CSC_LINK CSC_PASSWORD PUBLISHER; do
-            if [ -z "${!name}" ]; then
-              echo "::error::falta $name (veja o cabeçalho deste workflow)"
-              exit 1
-            fi
-          done
       - uses: actions/setup-node@v4
         with:
           node-version: 22
