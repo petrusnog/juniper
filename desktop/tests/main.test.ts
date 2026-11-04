@@ -30,6 +30,8 @@ describe('window and process hardening', () => {
     'requestSingleInstanceLock',
     'event.senderFrame',
     'frame.url.startsWith',
+    'registerSchemesAsPrivileged',
+    "protocol.handle('app'",
   ])('main/index.ts has %s', needle => {
     expect(main.replace(/senderFrame/, 'event.senderFrame')).toContain(needle);
   });
@@ -45,7 +47,7 @@ describe('window and process hardening', () => {
   test('only the microphone, only audio, only for our own window is allowed', () => {
     expect(main).toContain("permission === 'media'");
     expect(main).toContain("t === 'audio'");
-    expect(main).toContain("startsWith('file://')");
+    expect(main).toContain('url === APP_PAGE'); // exactly our page, not any URL of ours
     expect(main).toContain('types.length > 0'); // an empty list of media types is not "audio only"
     expect(main).not.toMatch(/setPermission\w+\(\s*\(\)\s*=>\s*true/);
   });
