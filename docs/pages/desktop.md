@@ -33,7 +33,7 @@ O `core` não importa Electron nem `fs`/`os`/`path`, e só `src/main/platform/` 
 
 ## Janela e segurança do Electron {#janela}
 
-`contextIsolation`, `sandbox`, sem `nodeIntegration`, `webSecurity`, CSP sem `unsafe-inline`, `unsafe-eval` nem rede (`connect-src 'none'`), navegação e janelas bloqueadas, permissões negadas, instância única que ignora argumentos, IPC só de quem for a janela principal. O renderer escreve tudo com `textContent`. Os testes de `desktop/tests/main.test.ts` conferem essas linhas no código-fonte, porque o Electron não sobe no CI de Linux.
+`contextIsolation`, `sandbox`, sem `nodeIntegration`, `webSecurity`, CSP sem `unsafe-inline`, `unsafe-eval` nem rede (`connect-src 'none'`), navegação e janelas bloqueadas, permissões negadas, instância única que ignora argumentos, IPC só de quem for a janela principal. A página é servida por um protocolo próprio, `app://juniper/` (só a pasta do renderer, só `.html`, `.js` e `.css`, sem sair dela), e não por `file://`: com o *fuse* `GrantFileProtocolExtraPrivileges` desligado, uma página `file://` dentro do `asar` simplesmente não carrega (a janela fica preta). O renderer escreve tudo com `textContent`. Os testes de `desktop/tests/main.test.ts` conferem essas linhas no código-fonte. O app empacotado (com os *fuses*) foi aberto sob Xvfb e inspecionado por CDP: a página carrega, a ponte existe e o `AudioWorklet` abre por `app://`; **só o app de Windows real continua sem teste**.
 
 ## Executor {#executor}
 

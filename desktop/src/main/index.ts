@@ -2,12 +2,11 @@
  * Electron main process: window, connection, executor and the secure store (ADR-033).
  * It composes the pure core with the real system; the renderer sees none of it.
  */
-import { app, BrowserWindow, ipcMain, safeStorage, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
 import { ChatController } from '../core/chat/ChatController';
 import { BrainConnection } from '../core/connection/BrainConnection';
@@ -32,6 +31,40 @@ import { currentPlatform, deviceName } from './platform';
 import { createUpdatePorts } from './update/ports';
 
 const VERSION = app.getVersion();
+
+// The window is served by our own scheme, not file://: with the `GrantFileProtocolExtraPrivileges`
+// fuse off (ADR-033) a file:// page inside the asar does not load at all. `app://juniper/` is a
+// standard, secure origin, so CSP `'self'`, the microphone and the AudioWorklet work, and only the
+// renderer folder can be read through it.
+const APP_ORIGIN = 'app://juniper';
+const APP_PAGE = `${APP_ORIGIN}/index.html`;
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+};
+
+function serveRenderer(): void {
+  const root = path.join(__dirname, '..', 'renderer');
+  protocol.handle('app', async request => {
+    const url = new URL(request.url);
+    const requested = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
+    const file = path.normalize(path.join(root, requested));
+    const type = MIME[path.extname(file).toLowerCase()];
+    // Nothing outside the renderer folder, and only the three kinds of file the window uses.
+    if (url.host !== 'juniper' || !file.startsWith(root + path.sep) || type === undefined) {
+      return new Response('Not found', { status: 404 });
+    }
+    try {
+      return new Response(await fs.promises.readFile(file), { headers: { 'Content-Type': type } });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+  });
+}
 const FILE_TOOLS_PREFIX = 'fs_';
 
 let window: BrowserWindow | null = null;
@@ -184,7 +217,7 @@ function trustedSender(event: IpcMainInvokeEvent): boolean {
     window !== null &&
     frame !== null &&
     frame === window.webContents.mainFrame &&
-    frame.url.startsWith('file://')
+    frame.url.startsWith(`${APP_ORIGIN}/`)
   );
 }
 
@@ -266,7 +299,7 @@ function createWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', e => e.preventDefault());
   window.webContents.on('will-redirect', e => e.preventDefault());
-  void window.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  void window.loadURL(APP_PAGE);
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -275,8 +308,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => window?.focus()); // arguments are ignored on purpose
   void app.whenReady().then(async () => {
     // Only the microphone, only for our own window (the voice chat); everything else is denied.
-    const page = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).toString();
-    const ours = (url: string | undefined): boolean => (url ?? '').startsWith('file://') && (url ?? '') === page;
+    const ours = (url: string | undefined): boolean => url === APP_PAGE;
     session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) => {
       const types = (details as { mediaTypes?: string[] }).mediaTypes ?? [];
       const wantsAudioOnly = permission === 'media' && types.length > 0 && types.every(t => t === 'audio');
@@ -303,6 +335,7 @@ if (!app.requestSingleInstanceLock()) {
       encrypt: t => safeStorage.encryptString(t),
       decrypt: b => safeStorage.decryptString(b),
     });
+    serveRenderer();
     registerIpc();
     createWindow();
     const saved = await store.load();
