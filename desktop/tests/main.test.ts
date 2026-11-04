@@ -26,6 +26,7 @@ describe('window and process hardening', () => {
     "'will-navigate'",
     "'will-redirect'",
     'setPermissionRequestHandler',
+    'setPermissionCheckHandler',
     'requestSingleInstanceLock',
     'event.senderFrame',
     'frame.url.startsWith',
@@ -39,6 +40,13 @@ describe('window and process hardening', () => {
       expect(source).toContain("connect-src 'none'");
       expect(source).not.toMatch(/unsafe-(inline|eval)/);
     }
+  });
+
+  test('only the microphone, only audio, only for our own window is allowed', () => {
+    expect(main).toContain("permission === 'media'");
+    expect(main).toContain("t === 'audio'");
+    expect(main).toContain("startsWith('file://')");
+    expect(main).not.toMatch(/setPermission\w+\(\s*\(\)\s*=>\s*true/);
   });
 
   test('the renderer never writes HTML', () => {

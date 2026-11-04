@@ -2,6 +2,8 @@
 import type { ConnectionState } from '../core/connection/BrainConnection';
 import type { ChatState } from '../core/chat/state';
 import type { ActivityEntry } from '../core/executor/Executor';
+import type { VoiceState } from '../core/voice/VoiceController';
+import type { AudioCommand, AudioEvent } from './audioProtocol';
 
 export interface UiSnapshot {
   connection: ConnectionState;
@@ -10,6 +12,7 @@ export interface UiSnapshot {
   filesPaused: boolean;
   hasCredential: boolean;
   secureStorage: boolean;
+  voice: VoiceState;
 }
 
 export const CHANNELS = {
@@ -22,6 +25,11 @@ export const CHANNELS = {
   logout: 'juniper:logout',
   pauseFiles: 'juniper:pause-files',
   event: 'juniper:event',
+  voiceStart: 'juniper:voice-start',
+  voiceEnd: 'juniper:voice-end',
+  voiceInterrupt: 'juniper:voice-interrupt',
+  audioEvent: 'juniper:audio-event',
+  audioCommand: 'juniper:audio-command',
 } as const;
 
 export interface LoginInput {
@@ -41,4 +49,10 @@ export interface JuniperBridge {
   logout(): Promise<void>;
   pauseFiles(paused: boolean): Promise<void>;
   onEvent(callback: (snapshot: UiSnapshot) => void): () => void;
+  voiceStart(): Promise<boolean>;
+  voiceEnd(): Promise<void>;
+  voiceInterrupt(): Promise<void>;
+  /** What the audio engine in the window reports (chunks, acknowledgements, headphones). */
+  audioEvent(event: AudioEvent): Promise<void>;
+  onAudioCommand(callback: (command: AudioCommand) => void): () => void;
 }

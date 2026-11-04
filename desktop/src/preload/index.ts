@@ -1,6 +1,7 @@
 /** The minimal bridge (contextBridge): fixed channels, no generic IPC, no path ever. */
 import { contextBridge, ipcRenderer } from 'electron';
 import { CHANNELS } from '../shared/ipc';
+import type { AudioCommand } from '../shared/audioProtocol';
 import type { JuniperBridge, UiSnapshot } from '../shared/ipc';
 
 const bridge: JuniperBridge = {
@@ -21,6 +22,15 @@ const bridge: JuniperBridge = {
     const listener = (_e: unknown, snapshot: UiSnapshot): void => callback(snapshot);
     ipcRenderer.on(CHANNELS.event, listener);
     return () => ipcRenderer.removeListener(CHANNELS.event, listener);
+  },
+  voiceStart: () => ipcRenderer.invoke(CHANNELS.voiceStart),
+  voiceEnd: () => ipcRenderer.invoke(CHANNELS.voiceEnd),
+  voiceInterrupt: () => ipcRenderer.invoke(CHANNELS.voiceInterrupt),
+  audioEvent: event => ipcRenderer.invoke(CHANNELS.audioEvent, event),
+  onAudioCommand: callback => {
+    const listener = (_e: unknown, command: AudioCommand): void => callback(command);
+    ipcRenderer.on(CHANNELS.audioCommand, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.audioCommand, listener);
   },
 };
 

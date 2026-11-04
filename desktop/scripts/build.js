@@ -13,7 +13,10 @@ async function main() {
     entryPoints: { 'main/index': path.join(root, 'main', 'index.ts'), 'preload/index': path.join(root, 'preload', 'index.ts') },
     outdir: out });
   await esbuild.build({ ...common, platform: 'browser', format: 'iife', target: 'chrome130',
-    entryPoints: { 'renderer/app': path.join(root, 'renderer', 'app.ts') }, outdir: out });
+    entryPoints: {
+      'renderer/app': path.join(root, 'renderer', 'app.ts'),
+      'renderer/pcm-worklet': path.join(root, 'renderer', 'pcm-worklet.ts'),
+    }, outdir: out });
   for (const f of ['index.html', 'app.css']) {
     fs.copyFileSync(path.join(root, 'renderer', f), path.join(out, 'renderer', f));
   }

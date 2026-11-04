@@ -16,6 +16,10 @@ import { bearerOf, mask } from '../core/connection/credential';
 import { Executor } from '../core/executor/Executor';
 import type { ActivityEntry } from '../core/executor/Executor';
 import { openUrlTool } from '../core/executor/openUrl';
+import { initialVoice, VoiceController } from '../core/voice/VoiceController';
+import { RemoteAudio } from '../core/voice/RemoteAudio';
+import { noStt, noTts } from '../core/voice/devices';
+import type { AudioEvent } from '../shared/audioProtocol';
 import { CHANNELS } from '../shared/ipc';
 import type { LoginInput, UiSnapshot } from '../shared/ipc';
 import { CredentialStore } from './credentialStore';
@@ -29,6 +33,9 @@ let window: BrowserWindow | null = null;
 let connection: BrainConnection | null = null;
 let chat: ChatController | null = null;
 let executor: Executor | null = null;
+let voice: VoiceController | null = null;
+let audio: RemoteAudio | null = null;
+const audioListeners = new Set<(event: AudioEvent) => void>();
 let filesPaused = false;
 let store: CredentialStore;
 let logFile: string;
@@ -52,6 +59,7 @@ function snapshot(): UiSnapshot {
     filesPaused,
     hasCredential: connection !== null,
     secureStorage: store.secure,
+    voice: voice?.getState() ?? initialVoice,
   };
 }
 
@@ -65,10 +73,18 @@ function wsFactory(url: string, headers: Record<string, string>): SocketLike {
   return socket as unknown as SocketLike; // `ws` event handlers are a superset of ours
 }
 
-async function connect(login: { url: string; clientId: string; clientSecret: string; deviceId: string }) {
+function teardown(): void {
+  void voice?.end();
+  audio?.dispose();
+  voice = null;
+  audio = null;
   connection?.close();
   executor?.stop();
   chat?.stop();
+}
+
+async function connect(login: { url: string; clientId: string; clientSecret: string; deviceId: string }) {
+  teardown();
   const endpoint = checkEndpoint(login.url);
   if (!endpoint.ok || endpoint.url === undefined) return endpoint.reason ?? 'endereço recusado';
   const platform = currentPlatform(app.getPath('userData'));
@@ -96,6 +112,15 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
   executor.setPaused(FILE_TOOLS_PREFIX, filesPaused);
   conn.onState(push);
   chat.subscribe(push);
+  audio = new RemoteAudio({
+    send: command => window?.webContents.send(CHANNELS.audioCommand, command),
+    onEvent: listener => {
+      audioListeners.add(listener);
+      return () => audioListeners.delete(listener);
+    },
+  });
+  voice = new VoiceController(conn, audio, noTts, noStt);
+  voice.subscribe(push);
   chat.start();
   executor.start();
   conn.connect();
@@ -153,10 +178,14 @@ function registerIpc(): void {
     executor?.setPaused(FILE_TOOLS_PREFIX, filesPaused);
     push();
   });
+  handle(CHANNELS.voiceStart, () => voice?.start() ?? false);
+  handle(CHANNELS.voiceEnd, () => voice?.end());
+  handle(CHANNELS.voiceInterrupt, () => voice?.interrupt());
+  handle(CHANNELS.audioEvent, (_e, event: AudioEvent) => {
+    audioListeners.forEach(l => l(event));
+  });
   handle(CHANNELS.logout, async () => {
-    connection?.close();
-    executor?.stop();
-    chat?.stop();
+    teardown();
     connection = null;
     chat = null;
     executor = null;
@@ -214,8 +243,17 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => window?.focus()); // arguments are ignored on purpose
   void app.whenReady().then(async () => {
-    session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
-    session.defaultSession.setPermissionCheckHandler(() => false);
+    // Only the microphone, only for our own window (the voice chat); everything else is denied.
+    const ours = (url: string | undefined): boolean => (url ?? '').startsWith('file://');
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) => {
+      const wantsAudioOnly =
+        permission === 'media' &&
+        (details as { mediaTypes?: string[] }).mediaTypes?.every(t => t === 'audio') === true;
+      cb(wantsAudioOnly && ours(details.requestingUrl));
+    });
+    session.defaultSession.setPermissionCheckHandler(
+      (_wc, permission, origin) => permission === 'media' && ours(origin),
+    );
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
       cb({
         responseHeaders: {

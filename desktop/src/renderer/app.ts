@@ -4,6 +4,7 @@
  * through the bridge in `window.juniper`.
  */
 import type { JuniperBridge, UiSnapshot } from '../shared/ipc';
+import { startAudioEngine } from './audio';
 
 declare global {
   interface Window {
@@ -22,6 +23,13 @@ const STATUS: Record<string, string> = {
   replaced: 'outra janela assumiu este dispositivo',
 };
 
+const VOICE_PHASE: Record<string, string> = {
+  starting: 'abrindo a conversa de voz…',
+  listening: 'ouvindo',
+  thinking: 'pensando…',
+  speaking: 'falando',
+};
+
 function render(s: UiSnapshot): void {
   $('status').textContent = STATUS[s.connection] ?? s.connection;
   $<HTMLInputElement>('pause').checked = s.filesPaused;
@@ -37,6 +45,13 @@ function render(s: UiSnapshot): void {
     }),
   );
   box.scrollTop = box.scrollHeight;
+  const v = s.voice;
+  $('voice').textContent = v.phase === 'off' ? 'voz' : 'encerrar voz';
+  $('voice-line').hidden = v.phase === 'off' && v.notice === null;
+  $('voice-line').textContent =
+    v.phase === 'off'
+      ? (v.notice ?? '')
+      : `${VOICE_PHASE[v.phase] ?? v.phase}${v.userText ? ` — «${v.userText}»` : ''}`;
   $('activity').textContent = s.activity
     .slice(-5)
     .map(a => `${a.tool}: ${a.outcome}${a.code ? ` (${a.code})` : ''}`)
@@ -46,6 +61,7 @@ function render(s: UiSnapshot): void {
 async function main(): Promise<void> {
   const api = window.juniper;
   api.onEvent(render);
+  startAudioEngine(api);
   render(await api.snapshot());
   $('composer').addEventListener('submit', async e => {
     e.preventDefault();
@@ -53,6 +69,16 @@ async function main(): Promise<void> {
     if (await api.send(input.value)) input.value = ''; // the text stays if it could not go
   });
   $('stop').addEventListener('click', () => void api.cancel());
+  $('voice').addEventListener('click', () => {
+    void api.snapshot().then(async s => {
+      if (s.voice.phase === 'off') await api.voiceStart();
+      else await api.voiceEnd();
+    });
+  });
+  $('voice-line').addEventListener('click', () => void api.voiceInterrupt());
+  $('headset').addEventListener('change', e =>
+    void api.audioEvent({ kind: 'headset', value: (e.target as HTMLInputElement).checked }),
+  );
   $('new').addEventListener('click', () => void api.newChat());
   $('logout').addEventListener('click', () => void api.logout());
   $('pause').addEventListener('change', e => void api.pauseFiles((e.target as HTMLInputElement).checked));

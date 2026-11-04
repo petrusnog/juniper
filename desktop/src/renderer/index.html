@@ -14,6 +14,8 @@
       <strong>Juniper</strong>
       <span id="status">desconectado</span>
       <label><input type="checkbox" id="pause" /> pausar arquivos</label>
+      <button id="voice">voz</button>
+      <label><input type="checkbox" id="headset" /> uso fone</label>
       <button id="new">nova conversa</button>
       <button id="logout">sair</button>
     </header>
@@ -25,6 +27,7 @@
       <button type="submit">Conectar</button>
       <p id="login-error"></p>
     </form>
+    <div id="voice-line" hidden></div>
     <main id="messages"></main>
     <aside id="activity" title="O que o computador fez a pedido da Juniper"></aside>
     <form id="composer">

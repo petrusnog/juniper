@@ -44,6 +44,10 @@ module.exports = tseslint.config(
   {
     // Tests may check the platform to skip Windows-only cases.
     files: ['tests/**/*.ts'],
-    rules: { 'no-restricted-syntax': 'off', 'no-restricted-imports': 'off' },
+    rules: {
+      'no-restricted-syntax': 'off',
+      'no-restricted-imports': 'off',
+      '@typescript-eslint/no-explicit-any': 'off', // fakes of the connection, as in the phone's tests
+    },
   },
 );
