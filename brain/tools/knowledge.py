@@ -58,6 +58,7 @@ class LearnTopic(Tool):
         "required": ["topic"],
     }
     tier = Tier.WRITE
+    blocked_when_tainted = True
     confirm = False  # her own notes: auditable and deletable (juniper memory knowledge)
     locality = Locality.CLOUD
 

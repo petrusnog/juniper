@@ -15,6 +15,7 @@ everything runs locally.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -80,6 +81,10 @@ class RemoteGateway(Protocol):
 
     async def invoke(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult: ...
 
+    def target_for(self, tool_name: str) -> tuple[bool, str | None]:
+        """(``True`` if the turn came from another channel than the device, device label)."""
+        ...
+
 
 @dataclass
 class _Plan:
@@ -120,6 +125,9 @@ class PendingBatch:
         return f"{text} É irreversível." if self.irreversible else text
 
 
+BATCH_LIMIT = 5  # file tools (ADR-033): more per message is refused, the model splits them
+
+
 class Dispatcher:
     """Runs the tool calls requested by the LLM.
 
@@ -142,12 +150,18 @@ class Dispatcher:
         self._conversational = conversational
         # Actions waiting for the user's "yes" (conversational mode). The agent consumes it.
         self.pending: PendingBatch | None = None
+        # A file tool already returned text in this turn (ADR-033): what could carry it out asks.
+        self._tainted = False
         self._registry = tool_registry or default_registry
         self._timeout = (
             confirmation_timeout
             if confirmation_timeout is not None
             else settings.tools.security.confirmation_timeout
         )
+
+    def begin_turn(self) -> None:
+        """A new user turn: the file-content taint (ADR-033) starts over."""
+        self._tainted = False
 
     async def dispatch(self, call: ToolCall) -> Message:
         """Execute one ``call`` and wrap the outcome as a ``role="tool"`` message."""
@@ -171,6 +185,7 @@ class Dispatcher:
         self, calls: Sequence[ToolCall], consent: str | None = None
     ) -> list[ToolResult]:
         plans = [await self._prepare(call) for call in calls]
+        _cap_batches(plans)
         if self._conversational and consent:
             for plan in plans:
                 if plan.needs_confirm and await _covered(plan, consent):
@@ -240,6 +255,12 @@ class Dispatcher:
         problem = validate_arguments(tool_cls.parameters, call.arguments)
         if problem is not None:
             return settle(f"argumentos inválidos: {problem}", "invalid")
+        if self._tainted and tool_cls.blocked_when_tainted:
+            return settle(
+                "recusado: neste turno você leu um arquivo da pessoa, e o conteúdo dele não "
+                "pode ser guardado na memória. Peça a ela que diga o que quer lembrar.",
+                "tainted_blocked",
+            )
 
         try:
             plan.tool = tool_cls()
@@ -249,9 +270,19 @@ class Dispatcher:
                 plan.early, plan.decision = early, "precheck_failed"
                 return plan
             call = plan.call = await _canonical(plan.tool, call)
-            if tool_cls.tier is not Tier.READ and await _asks(plan.tool, tool_cls, call):
+            asks = tool_cls.tier is not Tier.READ and await _asks(plan.tool, tool_cls, call)
+            foreign, device = (False, None)
+            if self._gateway is not None and tool_cls.asks_outside_origin:
+                foreign, device = self._gateway.target_for(call.name)
+            if not asks and tool_cls.tier is Tier.READ and foreign:
+                asks = True  # a file read ordered from another channel: the device is named
+            if not asks and self._tainted and tool_cls.asks_when_tainted:
+                asks = True  # file content could be carried out by this tool
+            if asks:
                 plan.needs_confirm = True
                 plan.summary = await _summary(plan.tool, call)
+                if foreign and device:
+                    plan.summary = f"no seu PC «{device}»: {plan.summary or call.name}"
         except Exception as exc:  # a tool bug must not kill the agent
             plan.early, plan.decision = self._crashed(call, exc), "crashed"
         return plan
@@ -267,8 +298,13 @@ class Dispatcher:
         )
         try:
             if self._gateway is not None and plan.tool_cls.locality is Locality.EXECUTOR:
-                return await self._gateway.invoke(plan.call.name, plan.call.arguments), decision
-            return await plan.tool.run(**plan.call.arguments), decision
+                result = await self._gateway.invoke(plan.call.name, plan.call.arguments)
+                result = plan.tool.filter_result(result)
+            else:
+                result = await plan.tool.run(**plan.call.arguments)
+            if result.success and plan.tool_cls.taints_turn:
+                self._tainted = True
+            return result, decision
         except Exception as exc:  # type only, never the message: it may hold secrets
             return self._crashed(plan.call, exc), "crashed"
 
@@ -282,14 +318,24 @@ class Dispatcher:
 
     @staticmethod
     def _log(plan: _Plan, result: ToolResult, decision: str) -> None:
+        cls = plan.tool_cls
+        args: dict[str, Any] = dict(plan.call.arguments)
+        output = result.output if result.success else None
+        if cls is not None:
+            for name in cls.sensitive_args:  # a file's text is never logged: only its size
+                if isinstance(args.get(name), str):
+                    args[name] = f"[{len(args[name])} chars]"
+            if cls.sensitive_output and output is not None:
+                digest = hashlib.sha256(output.encode()).hexdigest()
+                output = f"[{len(output)} chars sha256={digest[:16]}]"
         event_log.log(
             "tool_call",
             name=plan.call.name,
             tier=plan.tool_cls.tier if plan.tool_cls is not None else None,
-            args=plan.call.arguments,
+            args=args,
             decision=decision,
             success=result.success,
-            output=result.output if result.success else None,
+            output=output,
             error=result.error,
             duration_ms=round((time.monotonic() - plan.started) * 1000),
         )
@@ -320,9 +366,26 @@ class Dispatcher:
             return False
 
 
+def _cap_batches(plans: list[_Plan]) -> None:
+    """Refuse more than ``BATCH_LIMIT`` calls of one tool group in a message (ADR-033)."""
+    groups: dict[str, list[_Plan]] = {}
+    for plan in plans:
+        group = plan.tool_cls.batch_group if plan.tool_cls is not None else None
+        if group is not None and plan.early is None:
+            groups.setdefault(group, []).append(plan)
+    for members in groups.values():
+        if len(members) > BATCH_LIMIT:
+            for plan in members:
+                plan.early = ToolResult(
+                    success=False,
+                    error=f"são ações demais de uma vez (máximo {BATCH_LIMIT}); divida em lotes",
+                )
+                plan.decision, plan.needs_confirm = "batch_limit", False
+
+
 async def _covered(plan: _Plan, consent: str) -> bool:
     """Does the user's "yes" cover this action? Only if the question named all its subjects."""
-    if plan.tool is None:
+    if plan.tool is None or (plan.tool_cls is not None and not plan.tool_cls.context_approval):
         return False
     try:
         subjects = await plan.tool.subjects(**plan.call.arguments)

@@ -85,6 +85,7 @@ class Remember(_MemoryTool):
         "required": ["text"],
     }
     tier = Tier.WRITE
+    blocked_when_tainted = True  # never keep file text (ADR-033)
     confirm = False  # saving is silent: the user audits with `juniper memory list`
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
@@ -146,6 +147,7 @@ class UpdateProfile(_MemoryTool):
         "required": ["text"],
     }
     tier = Tier.WRITE
+    blocked_when_tainted = True
     confirm = False  # silent, like `remember`: `juniper memory profile` shows and edits it
 
     @classmethod

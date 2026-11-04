@@ -98,6 +98,7 @@ class WebSearch(Tool):
         "required": ["query"],
     }
     tier = Tier.WRITE  # it writes her own study notes, like learn_topic
+    asks_when_tainted = True  # a file was read this turn (ADR-033)
     confirm = False  # silent and auditable (juniper memory knowledge); a search is never asked
     locality = Locality.CLOUD
 
@@ -164,6 +165,7 @@ class WebFetch(Tool):
         "required": ["url"],
     }
     tier = Tier.READ
+    asks_when_tainted = True  # a file was read this turn (ADR-033)
     locality = Locality.CLOUD
 
     @classmethod

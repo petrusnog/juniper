@@ -115,6 +115,7 @@ class Connection:
         self.device_id = hello.client.device_id
         self.device_name = hello.client.device_name
         self.client_version = hello.client.version
+        self.capabilities: dict[str, bool] = dict(hello.client.capabilities or {})
         self.last_seen = time.monotonic()
         self.session_id: str | None = None
         # Quem se autenticou (ADR-027); `None` quando o servidor roda sem o serviço de identidade.

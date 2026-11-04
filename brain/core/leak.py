@@ -71,6 +71,7 @@ MARKERS: tuple[str, ...] = (
 INTERNAL_TAGS: tuple[str, ...] = (
     "formato",
     "conteudo_web",
+    "conteudo_arquivo",
     "think",
     "thinking",
     "notas",
