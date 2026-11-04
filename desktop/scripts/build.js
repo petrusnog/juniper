@@ -9,7 +9,9 @@ const root = path.join(__dirname, '..', 'src');
 async function main() {
   fs.rmSync(out, { recursive: true, force: true });
   const common = { bundle: true, sourcemap: false, logLevel: 'warning', target: 'node22' };
-  await esbuild.build({ ...common, platform: 'node', format: 'cjs', external: ['electron', 'bufferutil', 'utf-8-validate'],
+  // The signer this build trusts for self-updates; empty for a development build.
+  const publisher = process.env.JUNIPER_PUBLISHER || '';
+  await esbuild.build({ ...common, define: { __PUBLISHER__: JSON.stringify(publisher) }, platform: 'node', format: 'cjs', external: ['electron', 'bufferutil', 'utf-8-validate'],
     entryPoints: { 'main/index': path.join(root, 'main', 'index.ts'), 'preload/index': path.join(root, 'preload', 'index.ts') },
     outdir: out });
   await esbuild.build({ ...common, platform: 'browser', format: 'iife', target: 'chrome130',

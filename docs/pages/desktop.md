@@ -3,12 +3,12 @@ title: App desktop
 group: Documentação Técnica
 section: Clientes
 order: 25
-description: O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a fronteira de plataforma e as proteções de caminho.
+description: O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto e de voz, executor open_url e as tools de arquivo, atualização assinada, com a fronteira de plataforma e as proteções de caminho.
 status: proposto
 tags: desktop electron windows executor arquivos fs_list fs_read fs_write fs_trash lixeira caminhos junção plataforma PlatformRules safeStorage dpapi open_url chat
 ---
 
-> **Nota:** esta página detalha o [ADR-033](../decisions/ADR-033.md), que reabre o desktop descartado no [ADR-015](../decisions/ADR-015.md). Código em `desktop/` (veja o `README.md` de lá para rodar e testar). **Voz e empacotamento ainda não existem** (ver [Limites](#limites)).
+> **Nota:** esta página detalha o [ADR-033](../decisions/ADR-033.md), que reabre o desktop descartado no [ADR-015](../decisions/ADR-015.md). Código em `desktop/` (veja o `README.md` de lá para rodar e testar). A voz e a atualização estão implementadas, mas **nada do app foi aberto num Windows real** (ver [Limites](#limites)).
 
 ## Visão geral {#visao-geral}
 
@@ -58,10 +58,19 @@ As tools são declaradas no cérebro (`brain/tools/files.py`): o schema e o tier
 
 O caminho aprovado é o caminho usado. O cérebro mostra o caminho como será enviado (não o canoniza, porque roda em Linux); o desktop recusa a sintaxe perigosa (UNC, `\\?\`, `/`, `..`, variáveis, fluxos `:`, nomes reservados, ponto ou espaço final, nomes 8.3) e depois pede ao SO o caminho **real**. Para ler, o caminho real precisa estar na pasta do usuário e fora das listas fixas. Para alterar, precisa ser **exatamente** o aprovado, sem junção, link ou *reparse point* no meio (`path_changed`). `fs_write` e o texto novo de `fs_replace` só gravam `.txt`, `.md`, `.csv` e `.json`. As listas (pastas bloqueadas, nomes sensíveis como `.env`, `*.kdbx`, `id_rsa`, e nomes que executam código como `.exe`, `.bat`, `.lnk`, além de `.git/hooks` e `.vscode`) são do código do desktop, nunca vêm do cérebro.
 
+## Chat de voz {#voz}
+
+O botão «voz» abre a mesma sessão contínua do celular ([Voz por áudio](voz-audio.md), [ADR-023](../decisions/ADR-023.md)): o cérebro detecta o fim da fala, transcreve, responde e fala. O `VoiceController` (`src/core/voice/`) é o do app mobile portado e roda no processo principal; o microfone e o alto-falante ficam na janela (`src/renderer/audio.ts`), ligados por IPC (`RemoteAudio`). O microfone usa o cancelamento de eco e a supressão de ruído do Chromium e manda PCM 16 bits mono a 16 kHz em quadros de 100 ms; a fala dela é reproduzida na taxa que o cérebro declara. O desktop não sabe se há fone, então a caixa «uso fone» diz isso ao cérebro: sem fone o microfone fica fechado enquanto ela fala (e por 1 s depois), com fone dá para interrompê-la falando. Não há STT nem TTS do sistema como reserva (o cérebro cuida disso). A permissão de microfone é concedida só à própria janela e só para áudio; câmera, tela e o resto seguem negados.
+
+## Atualização {#atualizacao}
+
+O cérebro serve o instalador pela rede privada, no molde do [ADR-026](../decisions/ADR-026.md): `GET /desktop/update` (versão, tamanho, SHA-256) e `GET /desktop/update/installer`, ambos com a credencial, a partir de `Juniper-Setup.exe` e `desktop-latest.json` na pasta do app (`scripts/publish_desktop.sh`, chamado pelo workflow «Desktop release»). O app pergunta ao conectar e a cada seis horas; havendo versão mais nova, mostra o botão «Atualizar» (nunca instala sozinho). Antes de executar o instalador ele confere, nesta ordem: o tamanho, o SHA-256 e uma **assinatura Authenticode válida cujo Common Name seja exatamente o do certificado** com que esta versão foi feita (`JUNIPER_PUBLISHER`, gravado na compilação). Qualquer falha apaga o arquivo e não instala nada. Uma compilação sem esse nome (a de desenvolvimento) **nunca se atualiza**. O instalador é um NSIS por usuário, com *fuses* do Electron fechados e `asar` com validação de integridade.
+
 ## Limites {#limites}
 
-- **Não existe ainda:** voz no desktop (T-201) e o instalador com atualização assinada (T-202).
-- **Não verificado em um Windows real nesta etapa:** os testes de NTFS (junção, *hard link*, ADS) só rodam no job `windows-latest`, e a janela do Electron nunca foi aberta neste ambiente. O que foi exercitado é o núcleo, as tools contra um disco real em Linux e o corpus de caminhos do Windows com uma sonda falsa.
+- **Nada disto foi aberto num Windows real:** a voz (microfone, alto-falante, eco), o instalador NSIS, a assinatura e a atualização foram escritos e testados com dublês e com o corpus de unidade, mas o `electron-builder`, o `Get-AuthenticodeSignature` e o workflow «Desktop release» nunca executaram. O primeiro disparo é manual e pode precisar de ajustes. A configuração do `electron-builder` foi aceita pelo validador dele; só isso foi conferido.
+- A atualização depende de um certificado de assinatura de código que ainda não existe: sem os segredos `WIN_CSC_*` e a variável `JUNIPER_PUBLISHER` o workflow para, e o app instalado não se atualiza.
+- **Não verificado em um Windows real nesta etapa:** os testes de NTFS (junção, *hard link*, ADS) só rodam no job `windows-latest`, e a janela do Electron nunca foi aberta neste ambiente. O que foi exercitado é o núcleo, as tools contra um disco real em Linux, o corpus de caminhos do Windows com uma sonda falsa, a ponte de áudio com dublês e a verificação do instalador (tamanho, SHA-256, assinante) com portas falsas.
 - A conferência do caminho depois de abrir o arquivo usa a canonização do SO; o Node não expõe o caminho final do *handle*, então uma troca de junção entre as duas conferências é reduzida, não eliminada.
 - O limite de leitura por «turno» é uma janela de dois minutos, porque o executor não vê os turnos.
 - **`kind` e `capabilities` são declarados pelo próprio cliente.** Uma credencial roubada de outro aparelho pode se declarar desktop com `fs`; hoje isso só rende algo se o PC verdadeiro estiver offline (com dois candidatos o `invoke` falha por ambiguidade). Fechar isso exige ligar o tipo do dispositivo à credencial no cadastro (ADR-027).

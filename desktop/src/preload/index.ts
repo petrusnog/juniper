@@ -23,6 +23,8 @@ const bridge: JuniperBridge = {
     ipcRenderer.on(CHANNELS.event, listener);
     return () => ipcRenderer.removeListener(CHANNELS.event, listener);
   },
+  updateApply: () => ipcRenderer.invoke(CHANNELS.updateApply),
+  updateCheck: () => ipcRenderer.invoke(CHANNELS.updateCheck),
   voiceStart: () => ipcRenderer.invoke(CHANNELS.voiceStart),
   voiceEnd: () => ipcRenderer.invoke(CHANNELS.voiceEnd),
   voiceInterrupt: () => ipcRenderer.invoke(CHANNELS.voiceInterrupt),

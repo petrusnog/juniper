@@ -2,6 +2,7 @@
 import type { ConnectionState } from '../core/connection/BrainConnection';
 import type { ChatState } from '../core/chat/state';
 import type { ActivityEntry } from '../core/executor/Executor';
+import type { UpdateState } from '../core/update/UpdateController';
 import type { VoiceState } from '../core/voice/VoiceController';
 import type { AudioCommand, AudioEvent } from './audioProtocol';
 
@@ -13,6 +14,8 @@ export interface UiSnapshot {
   hasCredential: boolean;
   secureStorage: boolean;
   voice: VoiceState;
+  update: UpdateState;
+  version: string;
 }
 
 export const CHANNELS = {
@@ -29,6 +32,8 @@ export const CHANNELS = {
   voiceEnd: 'juniper:voice-end',
   voiceInterrupt: 'juniper:voice-interrupt',
   audioEvent: 'juniper:audio-event',
+  updateApply: 'juniper:update-apply',
+  updateCheck: 'juniper:update-check',
   audioCommand: 'juniper:audio-command',
 } as const;
 
@@ -49,6 +54,8 @@ export interface JuniperBridge {
   logout(): Promise<void>;
   pauseFiles(paused: boolean): Promise<void>;
   onEvent(callback: (snapshot: UiSnapshot) => void): () => void;
+  updateApply(): Promise<void>;
+  updateCheck(): Promise<void>;
   voiceStart(): Promise<boolean>;
   voiceEnd(): Promise<void>;
   voiceInterrupt(): Promise<void>;

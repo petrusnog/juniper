@@ -24,7 +24,10 @@ import { CHANNELS } from '../shared/ipc';
 import type { LoginInput, UiSnapshot } from '../shared/ipc';
 import { CredentialStore } from './credentialStore';
 import { createFileTools } from './executor/fs/tools';
+import { UpdateController } from '../core/update/UpdateController';
+import { PUBLISHER } from './buildInfo';
 import { currentPlatform, deviceName } from './platform';
+import { createUpdatePorts } from './update/ports';
 
 const VERSION = app.getVersion();
 const FILE_TOOLS_PREFIX = 'fs_';
@@ -35,6 +38,9 @@ let chat: ChatController | null = null;
 let executor: Executor | null = null;
 let voice: VoiceController | null = null;
 let audio: RemoteAudio | null = null;
+let updater: UpdateController | null = null;
+let updateTimer: ReturnType<typeof setInterval> | null = null;
+const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 const audioListeners = new Set<(event: AudioEvent) => void>();
 let filesPaused = false;
 let store: CredentialStore;
@@ -60,6 +66,8 @@ function snapshot(): UiSnapshot {
     hasCredential: connection !== null,
     secureStorage: store.secure,
     voice: voice?.getState() ?? initialVoice,
+    update: updater?.state ?? { phase: 'none' },
+    version: VERSION,
   };
 }
 
@@ -74,6 +82,9 @@ function wsFactory(url: string, headers: Record<string, string>): SocketLike {
 }
 
 function teardown(): void {
+  if (updateTimer !== null) clearInterval(updateTimer);
+  updateTimer = null;
+  updater = null;
   void voice?.end();
   audio?.dispose();
   voice = null;
@@ -121,6 +132,21 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
   });
   voice = new VoiceController(conn, audio, noTts, noStt);
   voice.subscribe(push);
+  updater = new UpdateController(
+    createUpdatePorts({
+      wsUrl: endpoint.url,
+      bearer: bearerOf(login),
+      tmpDir: app.getPath('temp'),
+      quit: () => app.quit(),
+    }),
+    VERSION,
+    PUBLISHER,
+  );
+  updater.subscribe(push);
+  conn.onState(state => {
+    if (state === 'connected') void updater?.check();
+  });
+  updateTimer = setInterval(() => void updater?.check(), UPDATE_CHECK_MS);
   chat.start();
   executor.start();
   conn.connect();
@@ -178,6 +204,8 @@ function registerIpc(): void {
     executor?.setPaused(FILE_TOOLS_PREFIX, filesPaused);
     push();
   });
+  handle(CHANNELS.updateApply, () => updater?.apply());
+  handle(CHANNELS.updateCheck, () => updater?.check());
   handle(CHANNELS.voiceStart, () => voice?.start() ?? false);
   handle(CHANNELS.voiceEnd, () => voice?.end());
   handle(CHANNELS.voiceInterrupt, () => voice?.interrupt());

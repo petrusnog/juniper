@@ -104,3 +104,45 @@ describe('CredentialStore', () => {
     expect(fs.existsSync(file)).toBe(false);
   });
 });
+
+describe('packaging and self-update (ADR-033)', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    build: { win: { artifactName: string }; electronFuses: Record<string, boolean>; asar: boolean; nsis: { oneClick: boolean } };
+  };
+
+  test('the installer has the name the brain serves', () => {
+    expect(pkg.build.win.artifactName).toBe('Juniper-Setup.exe');
+    const publish = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'publish_desktop.sh'), 'utf8');
+    expect(publish).toContain('Juniper-Setup.exe');
+  });
+
+  test('the Electron fuses that matter are set', () => {
+    expect(pkg.build.electronFuses).toMatchObject({
+      runAsNode: false,
+      enableNodeCliInspectArguments: false,
+      enableNodeOptionsEnvironmentVariable: false,
+      enableEmbeddedAsarIntegrityValidation: true,
+      onlyLoadAppFromAsar: true,
+    });
+    expect(pkg.build.asar).toBe(true);
+  });
+
+  test('a build with no publisher bakes in an empty one, so it never self-updates', () => {
+    const info = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'buildInfo.ts'), 'utf8');
+    expect(info).toContain("typeof __PUBLISHER__ === 'string' ? __PUBLISHER__ : ''");
+  });
+
+  test('the release workflow refuses to run without the certificate and checks the signer', () => {
+    const wf = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'desktop-release.yml'), 'utf8');
+    expect(wf).toContain('WIN_CSC_LINK');
+    expect(wf).toContain('Get-AuthenticodeSignature');
+    expect(wf).toContain('JUNIPER_PUBLISHER');
+  });
+
+  test('the downloaded installer is verified before it is run', () => {
+    const ports = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'update', 'ports.ts'), 'utf8');
+    expect(ports).toContain('Get-AuthenticodeSignature');
+    const controller = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'update', 'UpdateController.ts'), 'utf8');
+    expect(controller.indexOf('signedBy(')).toBeLessThan(controller.indexOf('ports.install('));
+  });
+});

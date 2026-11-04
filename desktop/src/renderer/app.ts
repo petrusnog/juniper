@@ -45,6 +45,17 @@ function render(s: UiSnapshot): void {
     }),
   );
   box.scrollTop = box.scrollHeight;
+  const u = s.update;
+  $('update-line').hidden = u.phase === 'none';
+  $<HTMLButtonElement>('update-apply').hidden = u.phase !== 'available';
+  $('update-text').textContent =
+    u.phase === 'available'
+      ? `Há uma versão nova (${u.version}).`
+      : u.phase === 'working'
+        ? ({ downloading: 'Baixando a atualização…', verifying: 'Conferindo a assinatura…', installing: 'Instalando…' }[u.step])
+        : u.phase === 'error'
+          ? u.message
+          : '';
   const v = s.voice;
   $('voice').textContent = v.phase === 'off' ? 'voz' : 'encerrar voz';
   $('voice-line').hidden = v.phase === 'off' && v.notice === null;
@@ -79,6 +90,7 @@ async function main(): Promise<void> {
   $('headset').addEventListener('change', e =>
     void api.audioEvent({ kind: 'headset', value: (e.target as HTMLInputElement).checked }),
   );
+  $('update-apply').addEventListener('click', () => void api.updateApply());
   $('new').addEventListener('click', () => void api.newChat());
   $('logout').addEventListener('click', () => void api.logout());
   $('pause').addEventListener('change', e => void api.pauseFiles((e.target as HTMLInputElement).checked));

@@ -11,7 +11,8 @@
     "start": "npm run build && electron .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "punycode": "^2.3.1",
@@ -22,6 +23,7 @@
     "@types/punycode": "^2.1.4",
     "@types/ws": "^8.5.12",
     "electron": "^33.0.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.14.0",
     "json-schema-to-typescript": "^15.0.4",
@@ -31,5 +33,42 @@
   },
   "engines": {
     "node": ">= 22.11.0"
+  },
+  "build": {
+    "appId": "app.juniper.desktop",
+    "productName": "Juniper",
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Juniper-Setup.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    }
   }
 }

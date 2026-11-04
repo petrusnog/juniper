@@ -40,7 +40,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Voz no terminal](pages/voz.md): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
 - [Bot do Telegram](pages/telegram.md): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
 - [App mobile](pages/mobile.md): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e…
-- [App desktop](pages/desktop.md): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a…
+- [App desktop](pages/desktop.md): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto e de voz, executor open_url e as tools de arquivo…
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
 - [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências…
@@ -111,10 +111,10 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-020](decisions/ADR-020.md): Dashboard web da Juniper (somente leitura, na tailnet) (Aceito) · `dashboard`, `produto-canais`
 - [ADR-021](decisions/ADR-021.md): Login global com MFA (Proposto) · `architecture`, `login`, `produto-privacidade`, `seguranca`, `usuarios`
 - [ADR-022](decisions/ADR-022.md): App mobile da Juniper (React Native, Android) (Proposto) · `mobile`, `produto-canais`
-- [ADR-023](decisions/ADR-023.md): Voz da Juniper (Google Chirp 3 HD, STT, orçamento e áudio no protocolo) (Proposto) · `integracoes-producao`, `mobile`, `produto-canais`, `protocolo`, `voz-audio`
+- [ADR-023](decisions/ADR-023.md): Voz da Juniper (Google Chirp 3 HD, STT, orçamento e áudio no protocolo) (Proposto) · `desktop`, `integracoes-producao`, `mobile`, `produto-canais`, `protocolo`, `voz-audio`
 - [ADR-024](decisions/ADR-024.md): Música (YouTube Data API, playlists e gosto musical) (Proposto) · `executor`, `integracoes-producao`, `musica`, `produto-integracoes`
 - [ADR-025](decisions/ADR-025.md): Metadocumentação: a Juniper responde sobre si mesma (Proposto) · `architecture`, `configuracao`, `metadocs`, `produto`
-- [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `mobile-dev`, `mobile`
+- [ADR-026](decisions/ADR-026.md): Auto-atualização do app Android: o cérebro serve o APK (Proposto) · `api-http`, `clientes-producao`, `configuracao`, `desktop`, `mobile-dev`, `mobile`
 - [ADR-027](decisions/ADR-027.md): Usuários e credenciais (client_id e client_secret) (Aceito) · `api-http`, `dashboard`, `desktop`, `login`, `usuarios`
 - [ADR-028](decisions/ADR-028.md): Ações no dashboard: ocorrências, memória e tarefas (Aceito) · `api-http`, `dashboard`, `ocorrencias`
 - [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Aceito) · `agente`, `memoria-v2`, `memoria-v3`, `produto-personalidade`

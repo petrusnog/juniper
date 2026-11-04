@@ -15,6 +15,7 @@ npm run lint         # inclui as regras de fronteira do ADR-033 §1.1
 npm run typecheck
 npm run build        # esbuild -> dist/
 npm start            # abre a janela (precisa do Electron instalado)
+npm run dist         # instalador NSIS em release/ (Windows; assina com CSC_LINK/CSC_KEY_PASSWORD)
 ```
 
 Na primeira execução a janela pede o endereço do cérebro (`ws://100.x.y.z:8765/v1/ws`, dentro do
