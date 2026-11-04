@@ -59,7 +59,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Isolamento de dados por usuário | Registros novos devem levar `owner_id`, mas nenhuma leitura filtra por usuário: um `tester` vê o mesmo cérebro do dono (memória, conversas, agenda, música). Por isso `deployment.auth.allow_testers` vem `false`. Precisa de ADR próprio. |
 | `run_shell`, `open_app` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,shell}.py` são stubs de 4 linhas. |
 | Memória V3: o que falta verificar | A busca e a leitura de páginas **reais** (Tavily, DuckDuckGo, SearXNG), o **contêiner do SearXNG**, o plano gratuito do Tavily, o comportamento do **modelo real** diante das ordens de tom e a medição do fundamento e da bajulação contra um modelo real. Tudo foi testado com modelos e provedores roteirizados ([Memória V3](pages/memoria-v3.md#limites)). Em aberto, do ADR-029: o que fazer se ela recusar uma reversão. |
-| Cliente desktop (Electron) | Descartado em 2026-10-27 ([ADR-015](decisions/ADR-015.md), substituído pelo app mobile). |
+| Cliente desktop (Electron, Windows) | **Proposto, sem código**, no [ADR-033](decisions/ADR-033.md) (reabre o [ADR-015](decisions/ADR-015.md)): chat de texto, executor `open_url` e tools de arquivo `fs_*` na home inteira com confirmação, lista de bloqueio e Lixeira. A web continua no cérebro (ADR-031); o desktop só abre URLs. |
 | Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
 | Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
 
@@ -212,6 +212,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [030](decisions/ADR-030.md) | Memória V3: emoção PAD, humor ALMA, Big Five em 10 aspectos + ironia, traço como média dos estados, bloco de voz, crenças sobre si e o mundo, sonho V2 (aceito). |
 | [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (aceito). |
 | [032](decisions/ADR-032.md) | Lembretes pessoais: coleção `reminders` por dono, recibos por canal, aviso no horário escolhido (job a cada minuto) e envio direto do brain ao Telegram como exceção ao ADR-016 (aceito). |
+| [033](decisions/ADR-033.md) | App desktop (Electron, Windows) como cliente fino e executor: `open_url` e tools `fs_*` na home inteira, com lista de bloqueio, caminhos canônicos e Lixeira (proposto). |
 
 ---
 
@@ -235,6 +236,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
 | `study add` no dashboard | Fora: o texto de estudo não cabe na *query* dos `POST` (o servidor HTTP do dashboard não lê corpo). Continua na CLI. |
 | Calibrar a Memória V3 | Os valores novos (`alpha`, `max_step`, `max_band`, `maturation`, meia-vida do humor, tetos por hora da conversa, validade das notas da web, `rem_relief`) são pontos de partida **[a calibrar]** com uso real; ligar o Tavily (chave no `.env`) e conferir o plano gratuito. |
+| App desktop (ADR-033) | Tasks 1 a 8 do ADR: esqueleto, login, chat, `open_url`, arquivos (leitura e depois escrita), voz e empacotamento. Nada iniciado. |
 | Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
 | Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |

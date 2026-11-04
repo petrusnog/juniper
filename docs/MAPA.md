@@ -102,14 +102,14 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`, `vazamentos`
 - [ADR-013](decisions/ADR-013.md): Deploy e infraestrutura de produção (Proposto) · `contribuindo`, `deploy-continuo`, `deploy-vps`, `integracoes-producao`, `mobile`, `producao`, `produto-privacidade`, `produto`, `protocolo`, `seguranca`
 - [ADR-014](decisions/ADR-014.md): Executor do desktop e a tool `open_url` (Proposto) · `contribuindo`, `executor`, `integrar-cliente`, `produto-ferramentas`, `produto-integracoes`, `protocolo`, `seguranca`, `tools`
-- [ADR-015](decisions/ADR-015.md): Cliente desktop (Electron) (Substituído pelo [ADR-022]) · `architecture`, `mobile`
+- [ADR-015](decisions/ADR-015.md): Cliente desktop (Electron) () · `architecture`, `mobile`
 - [ADR-016](decisions/ADR-016.md): Cliente de mensageria: o bot do Telegram (Proposto) · `clientes-producao`, `configuracao`, `produto-canais`, `telegram`
 - [ADR-017](decisions/ADR-017.md): Memória V2: do fato à personalidade viva (Aceito) · `agente`, `configuracao`, `memoria-v2`, `memoria`, `musica`, `produto-personalidade`
 - [ADR-018](decisions/ADR-018.md): Memória refinada: fato e lembrança (Aceito) · `configuracao`, `memoria-longo-prazo`, `memoria-v2`, `memoria`, `produto-memoria`, `produto-personalidade`
 - [ADR-019](decisions/ADR-019.md): Conhecimento próprio: estudo progressivo e notas (Aceito) · `memoria-v2`, `produto-personalidade`
 - [ADR-020](decisions/ADR-020.md): Dashboard web da Juniper (somente leitura, na tailnet) (Aceito) · `dashboard`, `produto-canais`
 - [ADR-021](decisions/ADR-021.md): Login global com MFA (Proposto) · `architecture`, `login`, `produto-privacidade`, `seguranca`, `usuarios`
-- [ADR-022](decisions/ADR-022.md): App mobile da Juniper (React Native, Android) (Proposto) · `architecture`, `mobile`, `produto-canais`
+- [ADR-022](decisions/ADR-022.md): App mobile da Juniper (React Native, Android) (Proposto) · `mobile`, `produto-canais`
 - [ADR-023](decisions/ADR-023.md): Voz da Juniper (Google Chirp 3 HD, STT, orçamento e áudio no protocolo) (Proposto) · `integracoes-producao`, `mobile`, `produto-canais`, `protocolo`, `voz-audio`
 - [ADR-024](decisions/ADR-024.md): Música (YouTube Data API, playlists e gosto musical) (Proposto) · `executor`, `integracoes-producao`, `musica`, `produto-integracoes`
 - [ADR-025](decisions/ADR-025.md): Metadocumentação: a Juniper responde sobre si mesma (Proposto) · `architecture`, `configuracao`, `metadocs`, `produto`
@@ -120,3 +120,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Aceito) · `configuracao`, `dashboard`, `memoria-v2`, `memoria-v3`
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
 - [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `lembretes`
+- [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`
