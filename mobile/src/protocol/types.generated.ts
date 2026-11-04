@@ -45,6 +45,9 @@ export type JuniperClientBrainProtocol =
   | VoiceTranscript
   | VoiceSay
   | VoiceFallback;
+export type Capabilities = {
+  [k: string]: boolean;
+} | null;
 export type DeviceId = string;
 export type DeviceName = string | null;
 export type Kind = string;
@@ -256,6 +259,7 @@ export interface Hello {
   type?: Type;
 }
 export interface ClientInfo {
+  capabilities?: Capabilities;
   device_id: DeviceId;
   device_name?: DeviceName;
   kind: Kind;

@@ -5,18 +5,18 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { LocalTool } from '../src/core/executor/Executor';
 import { createFileTools, LIST_LIMIT, SEARCH_LIMIT } from '../src/main/executor/fs/tools';
-import { posixRules } from './helpers/posixRules';
+import { linkDir, realDir, testRules } from './helpers/posixRules';
 
 let home: string;
 let trashed: string[];
 let tools: Record<string, LocalTool>;
 
 beforeEach(async () => {
-  home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'juniper-fs-')));
+  home = await realDir(await fs.mkdtemp(path.join(os.tmpdir(), 'juniper-fs-')));
   await fs.mkdir(path.join(home, 'Documents'));
   trashed = [];
   const list = createFileTools({
-    rules: posixRules(home),
+    rules: testRules(home),
     trash: { trash: async p => void (trashed.push(p), await fs.rm(p, { recursive: true })) },
   });
   tools = Object.fromEntries(list.map(t => [t.name, t]));
@@ -69,9 +69,9 @@ describe('read side', () => {
   });
 
   test('fs_read follows a link to a real place inside the home, but not outside', async () => {
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'juniper-out-'));
+    const outside = await realDir(await fs.mkdtemp(path.join(os.tmpdir(), 'juniper-out-')));
     await fs.writeFile(path.join(outside, 'x.txt'), 'fora');
-    await fs.symlink(outside, doc('fora'));
+    await linkDir(outside, doc('fora'));
     expect(await run('fs_read', { path: doc('fora/x.txt') })).toMatchObject({ success: false });
     await fs.rm(outside, { recursive: true });
   });
@@ -94,7 +94,7 @@ describe('read side', () => {
     await fs.writeFile(path.join(home, '.ssh', 'relatorio-chave.txt'), '1');
     await fs.mkdir(doc('sub'));
     await fs.writeFile(doc('sub/Relatorio-2026.txt'), '1');
-    await fs.symlink(path.join(home, '.ssh'), doc('atalho'));
+    await linkDir(path.join(home, '.ssh'), doc('atalho'));
     const r = await run('fs_search', { path: home, name: 'relatorio' });
     expect(r.output).toContain('Relatorio-2026.txt');
     expect(r.output).not.toContain('chave');
@@ -126,7 +126,7 @@ describe('write side', () => {
 
   test('fs_write through a link is path_changed', async () => {
     await fs.mkdir(doc('real'));
-    await fs.symlink(doc('real'), doc('link'));
+    await linkDir(doc('real'), doc('link'));
     expect(code(await run('fs_write', { path: doc('link/n.txt'), content: 'x' }))).toBe('path_changed');
     await expect(fs.access(doc('real/n.txt'))).rejects.toThrow();
   });
@@ -171,7 +171,7 @@ describe('write side', () => {
 
   test('fs_replace keeps the original if the trash fails', async () => {
     const list = createFileTools({
-      rules: posixRules(home),
+      rules: testRules(home),
       trash: { trash: async () => { throw new Error('no recycle bin'); } },
     });
     await fs.writeFile(doc('a.txt'), 'velho');
@@ -200,7 +200,7 @@ describe('write side', () => {
   });
 
   test('fs_trash never deletes for good when the trash fails', async () => {
-    const list = createFileTools({ rules: posixRules(home), trash: { trash: async () => { throw new Error('x'); } } });
+    const list = createFileTools({ rules: testRules(home), trash: { trash: async () => { throw new Error('x'); } } });
     await fs.writeFile(doc('a.txt'), 'x');
     const r = await list.find(t => t.name === 'fs_trash')!.handle({ path: doc('a.txt') });
     expect(r).toMatchObject({ success: false, metadata: { code: 'os_error' } });
@@ -243,7 +243,7 @@ describe('review findings (ADR-033)', () => {
 
   test('fs_replace tells the truth when the final rename fails', async () => {
     const list = createFileTools({
-      rules: posixRules(home),
+      rules: testRules(home),
       trash: {
         trash: async p => {
           trashed.push(p);

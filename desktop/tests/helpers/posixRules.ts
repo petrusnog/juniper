@@ -3,9 +3,14 @@
  * as the Windows rules (home, fixed lists, sensitive and executable names), with POSIX paths.
  * The Windows syntax cases are tested in win32.test.ts with a fake probe.
  */
+import { realpath } from 'node:fs';
 import fs from 'node:fs/promises';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import type { PlatformRules, Resolved } from '../../src/core/platform';
+import { createWin32Rules } from '../../src/main/platform/win32';
+
+const realpathNative = promisify(realpath.native);
 
 export function posixRules(home: string, blocked: string[] = []): PlatformRules {
   const p = path.posix;
@@ -51,3 +56,19 @@ export function posixRules(home: string, blocked: string[] = []): PlatformRules 
     },
   };
 }
+
+/**
+ * The rules these file tests run under: the REAL Windows rules on Windows (the CI runs them on
+ * NTFS), the POSIX stand-in elsewhere. Same decisions, so the same tests prove both.
+ */
+export function testRules(home: string): PlatformRules {
+  return process.platform === 'win32' ? createWin32Rules({ home }) : posixRules(home);
+}
+
+/** A directory link that works without privileges: a junction on Windows, a symlink elsewhere. */
+export async function linkDir(target: string, link: string): Promise<void> {
+  await fs.symlink(target, link, process.platform === 'win32' ? 'junction' : undefined);
+}
+
+/** `realpath` as the OS reports it (expands 8.3 names such as RUNNER~1 on Windows). */
+export const realDir = (p: string): Promise<string> => realpathNative(p);
