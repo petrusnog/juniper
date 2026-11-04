@@ -21,7 +21,7 @@ chmod 755 "$DIR"   # o container lê com outro usuário (uid 10001)
 
 SIZE="$(stat -c %s "$EXE")"
 SHA="$(sha256sum "$EXE" | cut -d' ' -f1)"
-[ "$SIZE" -gt 0 ] && [ "$SIZE" -le $((500 * 1024 * 1024)) ] || { echo "tamanho fora do limite: $SIZE" >&2; exit 2; }
+[ "$SIZE" -gt 0 ] && [ "$SIZE" -le $((300 * 1024 * 1024)) ] || { echo "tamanho fora do limite: $SIZE" >&2; exit 2; }
 
 if [ -f "$DIR/desktop-latest.json" ]; then
   CURRENT="$(sed -n 's/.*"version_code": *\([0-9][0-9]*\).*/\1/p' "$DIR/desktop-latest.json" | head -n 1)"

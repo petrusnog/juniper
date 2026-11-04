@@ -83,9 +83,13 @@ jobs:
           PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
         run: |
           powershell -NoProfile -Command '
+            # O mesmo critério do app: nome simples do assinante IGUAL ao publisher.
             $s = Get-AuthenticodeSignature -LiteralPath "desktop/release/Juniper-Setup.exe"
             if ($s.Status -ne "Valid") { Write-Error "assinatura: $($s.Status)"; exit 1 }
-            if ($s.SignerCertificate.Subject -notmatch "CN=\"?$env:PUBLISHER\"?(,|$)") { Write-Error "assinante inesperado: $($s.SignerCertificate.Subject)"; exit 1 }
+            $name = $s.SignerCertificate.GetNameInfo("SimpleName", $false)
+            if ($name -ne $env:PUBLISHER) { Write-Error "assinante inesperado: $name"; exit 1 }
+            $v = (Get-Item -LiteralPath "desktop/release/Juniper-Setup.exe").VersionInfo.ProductVersion
+            if ($v -ne "${{ steps.version.outputs.name }}") { Write-Error "versão do instalador: $v"; exit 1 }
           '
           cp desktop/release/Juniper-Setup.exe "$RUNNER_TEMP/Juniper-Setup.exe"
       - name: Guarda o instalador como artefato (cópia de segurança)

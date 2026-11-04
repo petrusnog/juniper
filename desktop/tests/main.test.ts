@@ -46,6 +46,7 @@ describe('window and process hardening', () => {
     expect(main).toContain("permission === 'media'");
     expect(main).toContain("t === 'audio'");
     expect(main).toContain("startsWith('file://')");
+    expect(main).toContain('types.length > 0'); // an empty list of media types is not "audio only"
     expect(main).not.toMatch(/setPermission\w+\(\s*\(\)\s*=>\s*true/);
   });
 
@@ -123,6 +124,7 @@ describe('packaging and self-update (ADR-033)', () => {
       enableNodeOptionsEnvironmentVariable: false,
       enableEmbeddedAsarIntegrityValidation: true,
       onlyLoadAppFromAsar: true,
+      grantFileProtocolExtraPrivileges: false,
     });
     expect(pkg.build.asar).toBe(true);
   });
@@ -142,7 +144,10 @@ describe('packaging and self-update (ADR-033)', () => {
   test('the downloaded installer is verified before it is run', () => {
     const ports = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'update', 'ports.ts'), 'utf8');
     expect(ports).toContain('Get-AuthenticodeSignature');
+    expect(ports).toContain("redirect: 'error'"); // the credential never follows a redirect
+    expect(ports).toContain("flags: 'wx'");
+    expect(ports).toContain("child.once('error'"); // a failed spawn is reported, not thrown
     const controller = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'update', 'UpdateController.ts'), 'utf8');
-    expect(controller.indexOf('signedBy(')).toBeLessThan(controller.indexOf('ports.install('));
+    expect(controller.indexOf('signedVersion(')).toBeLessThan(controller.indexOf('ports.install('));
   });
 });

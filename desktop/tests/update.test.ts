@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { codeOf, isTrustedSignature, UpdateController } from '../src/core/update/UpdateController';
+import { codeOf, trustedVersion, UpdateController } from '../src/core/update/UpdateController';
 import type { UpdatePorts } from '../src/core/update/UpdateController';
 
 const SHA = 'a'.repeat(64);
@@ -12,7 +12,7 @@ function fake(over: Partial<UpdatePorts> = {}) {
     download: async () => (log.push('download'), 'C:\\tmp\\setup.exe'),
     fileSize: async () => 1000,
     sha256: async () => SHA,
-    signedBy: async () => true,
+    signedVersion: async () => '0.1.60',
     remove: async () => void log.push('remove'),
     install: async () => void log.push('install'),
     ...over,
@@ -41,7 +41,7 @@ describe('UpdateController.check', () => {
     ['nothing published', { available: false }],
     ['bad sha', { ...INFO, sha256: 'xyz' }],
     ['zero size', { ...INFO, size: 0 }],
-    ['huge size', { ...INFO, size: 600 * 1024 * 1024 }],
+    ['huge size', { ...INFO, size: 400 * 1024 * 1024 }],
     ['missing fields', { available: true }],
   ])('refuses to offer: %s', async (_n, info) => {
     const c = new UpdateController(fake({ fetchInfo: async () => info }).ports, '0.1.1', 'Juniper');
@@ -84,7 +84,7 @@ describe('UpdateController.apply', () => {
   });
 
   test('nothing is installed without a valid signature by the publisher', async () => {
-    const { c, log } = await ready({ signedBy: async () => false });
+    const { c, log } = await ready({ signedVersion: async () => null });
     await c.apply();
     expect(log).toEqual(['download', 'remove']);
     expect((c.state as { message: string }).message).toContain('assinatura');
@@ -111,23 +111,55 @@ describe('UpdateController.apply', () => {
   });
 });
 
-describe('isTrustedSignature', () => {
-  const ok = (cn: string) => JSON.stringify({ status: 'Valid', subject: `CN=${cn}, O=Juniper, C=BR` });
-  test('accepts a valid signature whose CN is exactly the publisher', () => {
-    expect(isTrustedSignature(ok('Juniper Labs'), 'Juniper Labs')).toBe(true);
-    expect(isTrustedSignature(JSON.stringify({ status: 'Valid', subject: 'CN="Juniper, Labs", O=x' }), 'Juniper, Labs')).toBe(true);
+describe('apply: the signed file must be the announced release', () => {
+  async function ready(over: Partial<UpdatePorts> = {}) {
+    const { ports, log } = fake(over);
+    const c = new UpdateController(ports, '0.1.57', 'Juniper Labs');
+    await c.check();
+    return { c, log };
+  }
+
+  test('an old installer with a valid signature is refused (replay of a past release)', async () => {
+    const { c, log } = await ready({ signedVersion: async () => '0.1.20' });
+    await c.apply();
+    expect(log).toEqual(['download', 'remove']);
+    expect((c.state as { message: string }).message).toContain('versão anunciada');
+  });
+
+  test('a signed installer of another version than the announced one is refused', async () => {
+    const { c, log } = await ready({ signedVersion: async () => '0.1.99' });
+    await c.apply();
+    expect(log).not.toContain('install');
+  });
+
+  test('the file is hashed again right before it runs', async () => {
+    let calls = 0;
+    const { c, log } = await ready({
+      sha256: async () => (calls++ === 0 ? SHA : 'c'.repeat(64)), // swapped after being checked
+    });
+    await c.apply();
+    expect(log).toEqual(['download', 'remove']);
+    expect((c.state as { message: string }).message).toContain('mudou');
+  });
+});
+
+describe('trustedVersion', () => {
+  const out = (over: object = {}) =>
+    JSON.stringify({ status: 'Valid', name: 'Juniper Labs', version: '0.1.60', ...over });
+  test('a valid signature by exactly the publisher returns the signed file\'s version', () => {
+    expect(trustedVersion(out(), 'Juniper Labs')).toBe('0.1.60');
+    expect(trustedVersion(out({ name: 'juniper labs' }), 'Juniper Labs')).toBe('0.1.60');
   });
   test.each([
-    ['another signer', ok('Evil Corp')],
-    ['a CN that merely contains the name', ok('Juniper Labs Fake')],
-    ['an invalid status', JSON.stringify({ status: 'HashMismatch', subject: 'CN=Juniper Labs' })],
-    ['not signed', JSON.stringify({ status: 'NotSigned', subject: '' })],
+    ['another signer', out({ name: 'Evil Corp' })],
+    ['a name that merely contains the publisher', out({ name: 'Juniper Labs Fake' })],
+    ['a subject-shaped string', out({ name: 'O="x, CN=Juniper Labs", CN=Outro' })],
+    ['an invalid status', out({ status: 'HashMismatch' })],
+    ['not signed', out({ status: 'NotSigned', name: '' })],
+    ['no version', JSON.stringify({ status: 'Valid', name: 'Juniper Labs' })],
     ['garbage', 'erro do powershell'],
-  ])('refuses %s', (_n, out) => expect(isTrustedSignature(out, 'Juniper Labs')).toBe(false));
+  ])('refuses %s', (_n, o) => expect(trustedVersion(o, 'Juniper Labs')).toBeNull());
   test('refuses everything with an empty publisher', () => {
-    expect(isTrustedSignature(ok('Juniper Labs'), '')).toBe(false);
-  });
-  test('the publisher match is not a substring of another field', () => {
-    expect(isTrustedSignature(JSON.stringify({ status: 'Valid', subject: 'CN=Other, O=Juniper Labs' }), 'Juniper Labs')).toBe(false);
+    expect(trustedVersion(out(), '')).toBeNull();
   });
 });

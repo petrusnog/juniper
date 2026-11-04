@@ -22,8 +22,11 @@ export interface UpdatePorts {
   download(maxBytes: number): Promise<string>;
   fileSize(path: string): Promise<number>;
   sha256(path: string): Promise<string>;
-  /** Authenticode: `true` only for a valid signature whose signer is `publisher`. */
-  signedBy(path: string, publisher: string): Promise<boolean>;
+  /**
+   * Authenticode: the file's product version if its signature is valid and its signer is
+   * `publisher`, otherwise `null`. The version is read from the SIGNED file itself.
+   */
+  signedVersion(path: string, publisher: string): Promise<string | null>;
   remove(path: string): Promise<void>;
   /** Starts the installer and closes the app. */
   install(path: string): Promise<void>;
@@ -35,7 +38,7 @@ export type UpdateState =
   | { phase: 'working'; version: string; step: 'downloading' | 'verifying' | 'installing' }
   | { phase: 'error'; message: string };
 
-const MAX_INSTALLER_BYTES = 500 * 1024 * 1024;
+const MAX_INSTALLER_BYTES = 300 * 1024 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
 
 /** The build number of an app version like `0.1.57` is its last component (the commit count). */
@@ -121,8 +124,18 @@ export class UpdateController {
       if ((await this.ports.sha256(file)).toLowerCase() !== info.sha256) {
         throw new Refusal('O instalador baixado não confere com o SHA-256 anunciado.');
       }
-      if (!(await this.ports.signedBy(file, this.publisher))) {
+      const signed = await this.ports.signedVersion(file, this.publisher);
+      if (signed === null) {
         throw new Refusal('O instalador não tem uma assinatura válida da Juniper. Não instalei.');
+      }
+      // The announced version must be the one inside the signed file, and newer than this one:
+      // an old, legitimately signed installer cannot be passed off as a new release.
+      if (signed !== info.version_name || codeOf(signed) <= codeOf(this.installedVersion)) {
+        throw new Refusal('O instalador assinado não é da versão anunciada. Não instalei.');
+      }
+      // The file sat on disk while PowerShell looked at it: hash it again right before running.
+      if ((await this.ports.sha256(file)).toLowerCase() !== info.sha256) {
+        throw new Refusal('O instalador mudou depois de conferido. Não instalei.');
       }
       this.set({ phase: 'working', version, step: 'installing' });
       await this.ports.install(file);
@@ -140,18 +153,26 @@ export class UpdateController {
 
 class Refusal extends Error {}
 
-/** Reads the JSON that the PowerShell snippet prints and decides if the signer is trusted. */
-export function isTrustedSignature(output: string, publisher: string): boolean {
-  if (publisher === '') return false;
-  let data: { status?: unknown; subject?: unknown };
+/**
+ * Reads the JSON that the PowerShell snippet prints and returns the file's product version if the
+ * signature is valid and the signer's simple name (the certificate's CN, as Windows reports it) is
+ * exactly the publisher. No string parsing of a certificate subject.
+ */
+export function trustedVersion(output: string, publisher: string): string | null {
+  if (publisher === '') return null;
+  let data: { status?: unknown; name?: unknown; version?: unknown };
   try {
     data = JSON.parse(output.trim()) as typeof data;
   } catch {
-    return false;
+    return null;
   }
-  if (data.status !== 'Valid' || typeof data.subject !== 'string') return false;
-  // The subject is "CN=Name, O=Org, ...": the publisher must be the whole CN, not a substring.
-  const cn = /(?:^|,\s*)CN=("([^"]+)"|[^,]+)/i.exec(data.subject);
-  const name = (cn?.[2] ?? cn?.[1] ?? '').trim();
-  return name.toLowerCase() === publisher.toLowerCase();
+  if (
+    data.status !== 'Valid' ||
+    typeof data.name !== 'string' ||
+    typeof data.version !== 'string' ||
+    data.name.trim().toLowerCase() !== publisher.toLowerCase()
+  ) {
+    return null;
+  }
+  return data.version.trim();
 }

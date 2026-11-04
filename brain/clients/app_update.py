@@ -29,7 +29,8 @@ META_NAME: Final = "latest.json"
 MAX_APK_BYTES: Final = 200 * 1024 * 1024
 DESKTOP_ARTIFACT: Final = "Juniper-Setup.exe"
 DESKTOP_META: Final = "desktop-latest.json"
-MAX_INSTALLER_BYTES: Final = 500 * 1024 * 1024  # um Electron empacotado passa de 100 MB
+# Um Electron empacotado passa de 100 MB; o arquivo é lido inteiro para a memória.
+MAX_INSTALLER_BYTES: Final = 300 * 1024 * 1024
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 

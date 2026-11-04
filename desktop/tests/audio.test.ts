@@ -106,3 +106,29 @@ describe('RemoteAudio', () => {
     await expect(started).rejects.toThrow('disposed');
   });
 });
+
+import { parseAudioEvent } from '../src/shared/audioProtocol';
+
+describe('parseAudioEvent (what the main process accepts from the window)', () => {
+  test.each([
+    [{ kind: 'ack', id: 3, ok: true }, true],
+    [{ kind: 'chunk', data: 'AAAA' }, true],
+    [{ kind: 'stop-requested' }, true],
+    [{ kind: 'headset', value: false }, true],
+    [null, false],
+    ['chunk', false],
+    [{ kind: 'unknown' }, false],
+    [{ kind: 'ack', id: '3', ok: true }, false],
+    [{ kind: 'ack', id: 1.5, ok: true }, false],
+    [{ kind: 'chunk', data: 5 }, false],
+    [{ kind: 'chunk', data: 'A'.repeat(70_000) }, false],
+    [{ kind: 'headset', value: 'yes' }, false],
+  ])('%j -> %s', (event, accepted) => {
+    expect(parseAudioEvent(event) !== null).toBe(accepted);
+  });
+
+  test('an error text from the window is cut short', () => {
+    const e = parseAudioEvent({ kind: 'ack', id: 1, ok: false, error: 'x'.repeat(500) });
+    expect(e && 'error' in e && e.error?.length).toBe(80);
+  });
+});

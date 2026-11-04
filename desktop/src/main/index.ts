@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
 import { ChatController } from '../core/chat/ChatController';
 import { BrainConnection } from '../core/connection/BrainConnection';
@@ -19,6 +20,7 @@ import { openUrlTool } from '../core/executor/openUrl';
 import { initialVoice, VoiceController } from '../core/voice/VoiceController';
 import { RemoteAudio } from '../core/voice/RemoteAudio';
 import { noStt, noTts } from '../core/voice/devices';
+import { parseAudioEvent } from '../shared/audioProtocol';
 import type { AudioEvent } from '../shared/audioProtocol';
 import { CHANNELS } from '../shared/ipc';
 import type { LoginInput, UiSnapshot } from '../shared/ipc';
@@ -136,7 +138,7 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
     createUpdatePorts({
       wsUrl: endpoint.url,
       bearer: bearerOf(login),
-      tmpDir: app.getPath('temp'),
+      workDir: path.join(app.getPath('userData'), 'updates'),
       quit: () => app.quit(),
     }),
     VERSION,
@@ -209,8 +211,9 @@ function registerIpc(): void {
   handle(CHANNELS.voiceStart, () => voice?.start() ?? false);
   handle(CHANNELS.voiceEnd, () => voice?.end());
   handle(CHANNELS.voiceInterrupt, () => voice?.interrupt());
-  handle(CHANNELS.audioEvent, (_e, event: AudioEvent) => {
-    audioListeners.forEach(l => l(event));
+  handle(CHANNELS.audioEvent, (_e, event: unknown) => {
+    const valid = parseAudioEvent(event);
+    if (valid !== null) audioListeners.forEach(l => l(valid));
   });
   handle(CHANNELS.logout, async () => {
     teardown();
@@ -272,11 +275,11 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => window?.focus()); // arguments are ignored on purpose
   void app.whenReady().then(async () => {
     // Only the microphone, only for our own window (the voice chat); everything else is denied.
-    const ours = (url: string | undefined): boolean => (url ?? '').startsWith('file://');
+    const page = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).toString();
+    const ours = (url: string | undefined): boolean => (url ?? '').startsWith('file://') && (url ?? '') === page;
     session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) => {
-      const wantsAudioOnly =
-        permission === 'media' &&
-        (details as { mediaTypes?: string[] }).mediaTypes?.every(t => t === 'audio') === true;
+      const types = (details as { mediaTypes?: string[] }).mediaTypes ?? [];
+      const wantsAudioOnly = permission === 'media' && types.length > 0 && types.every(t => t === 'audio');
       cb(wantsAudioOnly && ours(details.requestingUrl));
     });
     session.defaultSession.setPermissionCheckHandler(

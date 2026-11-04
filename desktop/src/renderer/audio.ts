@@ -8,6 +8,7 @@ import type { JuniperBridge } from '../shared/ipc';
 import { decodeChunk, encodeChunk } from '../shared/pcm';
 
 const CHUNK_MS = 100;
+const MAX_QUEUED_SECONDS = 60;
 
 export function startAudioEngine(api: JuniperBridge): void {
   let capture: {
@@ -24,6 +25,7 @@ export function startAudioEngine(api: JuniperBridge): void {
 
   async function startCapture(id: number, rate: number): Promise<void> {
     try {
+      if (capture !== null) await closeCapture(); // never leave an earlier microphone open
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
       });
@@ -56,15 +58,22 @@ export function startAudioEngine(api: JuniperBridge): void {
     }
   }
 
-  async function stopCapture(id: number): Promise<void> {
-    capture?.stream.getTracks().forEach(t => t.stop());
-    await capture?.context.close().catch(() => undefined);
+  async function closeCapture(): Promise<void> {
+    const current = capture;
     capture = null;
+    current?.stream.getTracks().forEach(t => t.stop());
+    await current?.context.close().catch(() => undefined);
+  }
+
+  async function stopCapture(id: number): Promise<void> {
+    await closeCapture();
     ack(id, true);
   }
 
   async function openPlayer(id: number, rate: number): Promise<void> {
     try {
+      if (!Number.isFinite(rate) || rate < 8000 || rate > 48000) throw new Error('bad rate');
+      closePlayer();
       player = { context: new AudioContext(), rate, next: 0, sources: new Set() };
       ack(id, true);
     } catch (e) {
@@ -72,9 +81,22 @@ export function startAudioEngine(api: JuniperBridge): void {
     }
   }
 
+  function closePlayer(): void {
+    flush();
+    void player?.context.close().catch(() => undefined);
+    player = null;
+  }
+
   function play(data: string): void {
     if (player === null) return;
-    const samples = decodeChunk(data);
+    // Never queue more than a minute ahead: a flood from the other end would fill the memory.
+    if (player.next - player.context.currentTime > MAX_QUEUED_SECONDS) return;
+    let samples: Float32Array;
+    try {
+      samples = decodeChunk(data);
+    } catch {
+      return; // invalid base64: this chunk is lost, the conversation goes on
+    }
     if (samples.length === 0) return;
     const { context, rate } = player;
     const buffer = context.createBuffer(1, samples.length, rate);
@@ -126,9 +148,7 @@ export function startAudioEngine(api: JuniperBridge): void {
         flush();
         break;
       case 'player-close':
-        flush();
-        void player?.context.close().catch(() => undefined);
-        player = null;
+        closePlayer();
         ack(c.id, true);
         break;
     }
