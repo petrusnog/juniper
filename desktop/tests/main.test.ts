@@ -141,6 +141,16 @@ describe('packaging and self-update (ADR-033)', () => {
     expect(wf).toContain('JUNIPER_PUBLISHER');
   });
 
+  test('a push without the certificate skips the release instead of turning master red', () => {
+    const wf = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'desktop-release.yml'), 'utf8');
+    // The guard job decides; the release job needs it and runs only when it says "ready".
+    expect(wf).toContain('guard:');
+    expect(wf).toContain("needs.guard.outputs.ready == 'true'");
+    // A manual run without the certificate still fails on purpose: nobody thinks it published.
+    expect(wf).toMatch(/workflow_dispatch[\s\S]*exit 1/);
+    expect(wf).toContain('::notice::');
+  });
+
   test('the downloaded installer is verified before it is run', () => {
     const ports = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'update', 'ports.ts'), 'utf8');
     expect(ports).toContain('Get-AuthenticodeSignature');
