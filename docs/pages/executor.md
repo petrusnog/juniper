@@ -8,11 +8,11 @@ status: pronta
 tags: executor invoke register result open_url url política domínios confiança roteamento revalidação celular cli
 ---
 
-> **Nota:** esta página detalha o [ADR-014](../decisions/ADR-014.md). O protocolo de executor (`register`, `invoke`, `result`) e a tool `open_url` estão implementados, e o executor em uso é o [app Android](mobile.md#executor). Outras tools de executor (`open_app`, `run_shell`) são planos.
+> **Nota:** esta página detalha o [ADR-014](../decisions/ADR-014.md). O protocolo de executor (`register`, `invoke`, `result`) e a tool `open_url` estão implementados, e o executor em uso é o [app Android](mobile.md#executor). As tools de arquivo (`fs_*`) existem no [app desktop](desktop.md#arquivos); `open_app` e `run_shell` são planos.
 
 ## Visão geral {#visao-geral}
 
-Com o cérebro num servidor, o que a Juniper faz **no seu dispositivo** (abrir uma página no celular, rodar um comando git no computador) não pode rodar no servidor. O **executor** é o processo no dispositivo que anuncia suas capacidades como tools remotas (`locality = EXECUTOR`, [Tools](tools.md#locality)) e cumpre os pedidos do cérebro. Hoje o executor é o app Android; o código fica em `brain/clients/executors.py` (o `ExecutorHub`) e `brain/core/dispatcher.py` (a entrega pelo *gateway*).
+Com o cérebro num servidor, o que a Juniper faz **no seu dispositivo** (abrir uma página no celular, rodar um comando git no computador) não pode rodar no servidor. O **executor** é o processo no dispositivo que anuncia suas capacidades como tools remotas (`locality = EXECUTOR`, [Tools](tools.md#locality)) e cumpre os pedidos do cérebro. Hoje os executores são o app Android (`open_url`) e o [app desktop](desktop.md) (`open_url` e as tools de arquivo `fs_*`); o código fica em `brain/clients/executors.py` (o `ExecutorHub`) e `brain/core/dispatcher.py` (a entrega pelo *gateway*).
 
 ## Comandos estruturados {#comandos}
 
@@ -95,6 +95,7 @@ Tocar música usa este mesmo caminho: a tool `play_music` do cérebro busca a fa
 
 ## Para saber mais {#para-saber-mais}
 
+- [App desktop](desktop.md) (Documentação Técnica): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a fronteira de plataforma e as proteções de caminho.
 - [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
 - [Segurança](seguranca.md) (Documentação Técnica): Os quatro tiers, a confirmação na conversa, o tratamento de segredos e a regra "conteúdo externo é dado".
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.

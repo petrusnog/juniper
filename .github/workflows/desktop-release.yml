@@ -1,0 +1,129 @@
+name: Desktop release
+
+# Gera o instalador do app desktop (Windows), assinado, e o publica no cérebro, para o app se
+# atualizar (ADR-033, no molde do "Mobile release" do ADR-026). Roda quando o master muda algo em
+# desktop/ e também à mão: Actions -> Desktop release -> Run workflow (branch master). O primeiro
+# disparo é manual.
+#
+# Segredos (Settings -> Secrets and variables -> Actions), além dos do Deploy (TS_OAUTH_*, DEPLOY_*):
+#   WIN_CSC_LINK            o certificado de assinatura de código (.pfx) em base64
+#   WIN_CSC_KEY_PASSWORD    a senha do .pfx
+# Variável (não segredo): JUNIPER_PUBLISHER = o Common Name EXATO do certificado. O app instalado só
+# aceita atualização assinada por esse nome; sem ele o app não se atualiza.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "desktop/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: instalador assinado
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # a versão é o número de commits
+      - name: Confere a assinatura configurada
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
+        run: |
+          # Sem certificado o instalador sairia sem assinatura e o app recusaria atualizar.
+          for name in CSC_LINK CSC_PASSWORD PUBLISHER; do
+            if [ -z "${!name}" ]; then
+              echo "::error::falta $name (veja o cabeçalho deste workflow)"
+              exit 1
+            fi
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Instala e testa
+        working-directory: desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ""
+        run: |
+          npm ci
+          npm run check:protocol
+          npm run lint
+          npm run typecheck
+          npm test
+      - name: Versão
+        id: version
+        run: |
+          code="$(git rev-list --count HEAD)"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=0.1.$code" >> "$GITHUB_OUTPUT"
+          cd desktop && npm version "0.1.$code" --no-git-tag-version --allow-same-version
+      - name: Compila e assina o instalador
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          JUNIPER_PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
+        run: npm run dist
+      - name: Confere a assinatura do instalador que saiu
+        env:
+          PUBLISHER: ${{ vars.JUNIPER_PUBLISHER }}
+        run: |
+          powershell -NoProfile -Command '
+            # O mesmo critério do app: nome simples do assinante IGUAL ao publisher.
+            $s = Get-AuthenticodeSignature -LiteralPath "desktop/release/Juniper-Setup.exe"
+            if ($s.Status -ne "Valid") { Write-Error "assinatura: $($s.Status)"; exit 1 }
+            $name = $s.SignerCertificate.GetNameInfo("SimpleName", $false)
+            if ($name -ne $env:PUBLISHER) { Write-Error "assinante inesperado: $name"; exit 1 }
+            $v = (Get-Item -LiteralPath "desktop/release/Juniper-Setup.exe").VersionInfo.ProductVersion
+            if ($v -ne "${{ steps.version.outputs.name }}") { Write-Error "versão do instalador: $v"; exit 1 }
+          '
+          cp desktop/release/Juniper-Setup.exe "$RUNNER_TEMP/Juniper-Setup.exe"
+      - name: Guarda o instalador como artefato (cópia de segurança)
+        uses: actions/upload-artifact@v4
+        with:
+          name: juniper-desktop-${{ steps.version.outputs.name }}
+          path: ${{ runner.temp }}/Juniper-Setup.exe
+          retention-days: 14
+      - name: Entra na tailnet (nó temporário, tag:ci)
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Prepara o SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Publica na VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          tmp="$(ssh "${ssh_opts[@]}" "$remote" 'mktemp /tmp/juniper-desktop.XXXXXXXXXX')"
+          scp "${ssh_opts[@]}" "$RUNNER_TEMP/Juniper-Setup.exe" "$remote:$tmp"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "bash -s -- '$tmp' '$CODE' '$NAME'; rc=\$?; rm -f '$tmp'; exit \$rc" \
+            < scripts/publish_desktop.sh

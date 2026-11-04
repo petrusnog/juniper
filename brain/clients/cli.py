@@ -607,7 +607,12 @@ def docs() -> None:
 def serve() -> None:
     """Sobe o brain como servidor WebSocket para os clientes remotos (deployment.mode: server)."""
     from brain.auth import AuthService
-    from brain.clients.app_update import AppUpdates
+    from brain.clients.app_update import (
+        DESKTOP_ARTIFACT,
+        DESKTOP_META,
+        MAX_INSTALLER_BYTES,
+        AppUpdates,
+    )
     from brain.clients.chat import open_chat_handler
     from brain.clients.server import BrainServer, ensure_token, run_server
 
@@ -665,6 +670,12 @@ def serve() -> None:
                 except Exception as exc:  # noqa: BLE001  (the dashboard never stops the server)
                     voice.say(console, f"O dashboard não subiu: {exc}", "yellow")
             updates = AppUpdates(settings.app_update.dir)
+            desktop_updates = AppUpdates(
+                settings.app_update.dir,
+                artifact=DESKTOP_ARTIFACT,
+                meta=DESKTOP_META,
+                max_bytes=MAX_INSTALLER_BYTES,
+            )
             try:
                 await run_server(
                     BrainServer(
@@ -674,6 +685,7 @@ def serve() -> None:
                         handler,
                         health=handler.health,
                         app_updates=updates,
+                        desktop_updates=desktop_updates,
                         auth=auth,
                     ),
                     dashboard,

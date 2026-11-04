@@ -97,6 +97,21 @@ def _remote_class(spec: p.ToolSpec, tier: Tier) -> type[Tool]:
     )
 
 
+FILE_TOOL_PREFIX = "fs_"
+
+
+def _file_tool_refusal(conn: Connection, spec: p.ToolSpec, base: ToolRegistry) -> str | None:
+    """File tools (ADR-033): a desktop with the `fs` capability, declaring the server's own tier."""
+    if not spec.name.startswith(FILE_TOOL_PREFIX):
+        return None
+    if conn.kind != "desktop" or not conn.capabilities.get("fs"):
+        return "ferramenta de arquivo só vale para o desktop com a capacidade «fs»"
+    own = base.get(spec.name)
+    if own is None or spec.tier != own.tier.value:
+        return "ferramenta de arquivo desconhecida ou com tier diferente do servidor"
+    return None
+
+
 class ExecutorHub:
     """Quem está conectado como executor e o que cada um sabe fazer."""
 
@@ -125,7 +140,7 @@ class ExecutorHub:
         """Troca o catálogo da conexão; devolve as tools aceitas (as outras vão para o log)."""
         accepted: dict[str, RemoteTool] = {}
         for spec in specs:
-            reason = self._refusal(spec, accepted)
+            reason = self._refusal(spec, accepted) or _file_tool_refusal(conn, spec, self._base)
             if reason is None:
                 tier = Tier(spec.tier)
                 effective = tier
@@ -207,6 +222,19 @@ class ExecutorHub:
                 seen.setdefault(name, remote.cls)
         return list(seen.values())
 
+    def target_for(self, tool_name: str) -> tuple[bool, str | None, str | None]:
+        """Whether the turn came from another channel than the device that runs ``tool_name``.
+
+        Also the label and the connection id of that device: what the user is told, and where the
+        approved call must go (``invoke(..., device=id)``).
+        """
+        candidates = self._offering(tool_name)
+        if not candidates:
+            return False, None, None
+        origin = current_origin.get()
+        target = next((c for c in candidates if c.conn is origin), candidates[0])
+        return origin is None or origin is not target.conn, _label(target), target.conn.id
+
     def offers(self, conn: Connection, tool_name: str) -> bool:
         """Whether this very connection is an executor that offers ``tool_name``."""
         session = self._executors.get(conn.id)
@@ -217,9 +245,17 @@ class ExecutorHub:
 
     # --- invoke / result ---
 
-    async def invoke(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
-        """Manda a chamada ao dispositivo escolhido e espera o resultado. Nunca levanta."""
+    async def invoke(
+        self, tool_name: str, arguments: dict[str, Any], device: str | None = None
+    ) -> ToolResult:
+        """Manda a chamada ao dispositivo escolhido e espera o resultado. Nunca levanta.
+
+        Com ``device`` (a conexão que a pessoa aprovou), só esse dispositivo serve: se ele sumiu,
+        a chamada falha, em vez de ir para outro.
+        """
         candidates = self._offering(tool_name)
+        if device is not None:
+            candidates = [c for c in candidates if c.conn.id == device]
         if not candidates:
             return _unavailable(tool_name)
         origin = current_origin.get()

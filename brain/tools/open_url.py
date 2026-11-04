@@ -67,6 +67,7 @@ class OpenUrl(Tool):
         "required": ["url"],
     }
     tier = Tier.WRITE
+    asks_when_tainted = True  # a file was read this turn (ADR-033)
     locality = Locality.EXECUTOR
 
     async def precheck(self, **kwargs: Any) -> ToolResult | None:

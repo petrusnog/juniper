@@ -59,6 +59,22 @@ class Tool(ABC):
     # things that are the user's own, reversible and auditable (the long-term memory: `juniper
     # memory list/forget`). DESTRUCTIVE tools always ask (ADR-006).
     confirm: ClassVar[bool] = True
+    # --- file tools (ADR-033): how a tool takes part in the turn-level defences ---
+    # The result is a person's file: the event log keeps only its size and sha256, never the text.
+    sensitive_output: ClassVar[bool] = False
+    # Argument names whose value is never logged (only its length).
+    sensitive_args: ClassVar[tuple[str, ...]] = ()
+    # A successful call "taints" the rest of the turn (its output is untrusted file content).
+    taints_turn: ClassVar[bool] = False
+    # In a tainted turn this tool asks first (it could carry the content out) / is refused.
+    asks_when_tainted: ClassVar[bool] = False
+    blocked_when_tainted: ClassVar[bool] = False
+    # A READ tool that still asks when the turn did not come from the device that runs it.
+    asks_outside_origin: ClassVar[bool] = False
+    # A "sim" to a question that merely named the subjects is not enough (destructive file tools).
+    context_approval: ClassVar[bool] = True
+    # Calls of the same group in one message are capped (see Dispatcher.BATCH_LIMIT).
+    batch_group: ClassVar[str | None] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -131,6 +147,10 @@ class Tool(ABC):
         ignores the answer for DESTRUCTIVE tools and treats a failing hook as "ask".
         """
         return type(self).confirm
+
+    def filter_result(self, result: ToolResult) -> ToolResult:
+        """Last look at what a remote device returned, before the LLM sees it (default: as is)."""
+        return result
 
     async def describe(self, **kwargs: Any) -> str | None:
         """Optional one-line summary of what the call will do, shown when asking to confirm.

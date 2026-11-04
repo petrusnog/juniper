@@ -136,6 +136,7 @@ class MusicSearch(Tool):
         "required": ["query"],
     }
     tier = Tier.READ
+    asks_when_tainted = True  # the query leaves for a service (ADR-033)
     locality = Locality.CLOUD
 
     @classmethod
@@ -316,6 +317,7 @@ class MusicPlaylists(Tool):
     )
     parameters = {"type": "object", "properties": {}}
     tier = Tier.READ
+    asks_when_tainted = True
     locality = Locality.CLOUD
 
     @classmethod
@@ -548,6 +550,7 @@ class MusicFeedback(Tool):
         "required": ["signal"],
     }
     tier = Tier.WRITE
+    blocked_when_tainted = True
     locality = Locality.CLOUD
     confirm = False  # silent, like `remember`: `juniper music taste` shows and deletes it all
 

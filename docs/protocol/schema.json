@@ -155,6 +155,21 @@
     },
     "ClientInfo": {
       "properties": {
+        "capabilities": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capabilities"
+        },
         "device_id": {
           "title": "Device Id",
           "type": "string"

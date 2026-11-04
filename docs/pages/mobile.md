@@ -110,6 +110,7 @@ cd mobile && npm test && npm run typecheck && npx eslint .
 
 ## Para saber mais {#para-saber-mais}
 
+- [App desktop](desktop.md) (Documentação Técnica): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a fronteira de plataforma e as proteções de caminho.
 - [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
 - [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.

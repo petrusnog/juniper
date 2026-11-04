@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import time
 import uuid
 import zlib
@@ -80,9 +81,33 @@ def _headers(headers: Mapping[str, Any] | None) -> dict[str, str]:
     return {str(k).lower(): str(v) for k, v in (headers or {}).items()}
 
 
+_FILE_BLOCK = re.compile(r"<conteudo_arquivo>.*?</conteudo_arquivo>", re.S | re.I)
+_FILE_WRITERS = ("fs_write", "fs_replace")
+
+
+def scrub_file_content(value: Any) -> Any:
+    """``value`` without the text of the user's files (ADR-033 section 4.5).
+
+    The request to the LLM carries the whole history, which holds what ``fs_read`` returned and
+    what ``fs_write`` was asked to write. The event log must keep neither. Best effort for the
+    reply the model itself wrote about a file (that text is just its answer).
+    """
+    if isinstance(value, str):
+        return _FILE_BLOCK.sub("[conteúdo de arquivo omitido]", value)
+    if isinstance(value, list):
+        return [scrub_file_content(v) for v in value]
+    if isinstance(value, dict):
+        function = value.get("function")
+        if isinstance(function, dict) and function.get("name") in _FILE_WRITERS:
+            return {**value, "function": {**function, "arguments": "[argumentos omitidos]"}}
+        return {k: scrub_file_content(v) for k, v in value.items()}
+    return value
+
+
 def _log_request(
     req_id: str, service: str, method: str, url: str, headers: dict[str, str], body: Any
 ) -> None:
+    body = scrub_file_content(body)
     event_log.log(
         "http_request",
         limit=_limit(),

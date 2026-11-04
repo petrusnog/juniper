@@ -36,7 +36,7 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 
 | Direção | `type` | Campos |
 |---|---|---|
-| cliente → servidor | `hello` | `protocol_version` (int), `client` {`kind`, `version`, `device_id`, `device_name?`}, `resume?` {`session_id`} ou {`latest`: true}, `trace?` (bool) |
+| cliente → servidor | `hello` | `protocol_version` (int), `client` {`kind`, `version`, `device_id`, `device_name?`, `capabilities?` (mapa de booleanos, ex.: `{"fs": true}`)}, `resume?` {`session_id`} ou {`latest`: true}, `trace?` (bool) |
 | servidor → cliente | `welcome` | `protocol_version`, `server_version`, `heartbeat_seconds`, `session` {`id`, `resumed`, `turns`} |
 
 ```json

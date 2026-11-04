@@ -166,6 +166,8 @@ class ClientInfo(_Message):
     version: str
     device_id: str
     device_name: str | None = None
+    capabilities: dict[str, bool] | None = None
+    """O que o dispositivo se propõe a fazer além do chat (ex.: `{"fs": true}`, ADR-033)."""
 
 
 class Resume(_Message):

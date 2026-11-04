@@ -51,6 +51,8 @@ WS_PATH: Final = "/v1/ws"
 HEALTH_PATH: Final = "/health"
 UPDATE_PATH: Final = "/app/update"
 UPDATE_APK_PATH: Final = "/app/update/apk"
+DESKTOP_UPDATE_PATH: Final = "/desktop/update"
+DESKTOP_INSTALLER_PATH: Final = "/desktop/update/installer"
 # O download do APK (dezenas de MB, às vezes por um celular lento) acontece dentro do "handshake"
 # do websockets, que tem o prazo `open_timeout` (10 s por padrão): o arquivo chegava cortado no
 # meio. Um prazo maior vale para todos os handshakes; aceitável porque o servidor só existe dentro
@@ -115,6 +117,7 @@ class Connection:
         self.device_id = hello.client.device_id
         self.device_name = hello.client.device_name
         self.client_version = hello.client.version
+        self.capabilities: dict[str, bool] = dict(hello.client.capabilities or {})
         self.last_seen = time.monotonic()
         self.session_id: str | None = None
         # Quem se autenticou (ADR-027); `None` quando o servidor roda sem o serviço de identidade.
@@ -258,6 +261,7 @@ class BrainServer:
         *,
         health: HealthFn | None = None,
         app_updates: AppUpdates | None = None,
+        desktop_updates: AppUpdates | None = None,
         auth: AuthService | None = None,
         open_timeout_seconds: float = OPEN_TIMEOUT_SECONDS,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
@@ -271,6 +275,7 @@ class BrainServer:
         self._handler: ConnectionHandler = handler or BaseHandler()
         self._health = health or _default_health
         self._app_updates = app_updates
+        self._desktop_updates = desktop_updates
         self._open_timeout = open_timeout_seconds
         self._heartbeat = heartbeat_seconds
         self._idle_timeout = idle_timeout_seconds
@@ -315,7 +320,13 @@ class BrainServer:
             body = json.dumps({**self._health(), "version": __version__}).encode()
             headers = Headers([("Content-Type", "application/json"), ("Cache-Control", "no-store")])
             return Response(HTTPStatus.OK.value, "OK", headers, body)
-        if path not in (WS_PATH, UPDATE_PATH, UPDATE_APK_PATH):
+        if path not in (
+            WS_PATH,
+            UPDATE_PATH,
+            UPDATE_APK_PATH,
+            DESKTOP_UPDATE_PATH,
+            DESKTOP_INSTALLER_PATH,
+        ):
             return connection.respond(HTTPStatus.NOT_FOUND, "Not found\n")
         given = _bearer(request.headers)
         if self._auth is not None:
@@ -333,25 +344,37 @@ class BrainServer:
             return self._update_info()
         if path == UPDATE_APK_PATH:
             return self._update_apk(connection)
+        if path == DESKTOP_UPDATE_PATH:
+            return self._update_info(self._desktop_updates)
+        if path == DESKTOP_INSTALLER_PATH:
+            return self._update_file(connection, self._desktop_updates, "application/octet-stream")
         return None
 
     # --- HTTP: a versão publicada do app (ADR-026) ---
 
-    def _update_info(self) -> Response:
-        release = self._app_updates.release() if self._app_updates else None
+    def _update_info(self, updates: AppUpdates | None = None) -> Response:
+        updates = updates if updates is not None else self._app_updates
+        release = updates.release() if updates else None
         body = json.dumps(release.to_json() if release else {"available": False}).encode()
         headers = Headers([("Content-Type", "application/json"), ("Cache-Control", "no-store")])
         return Response(HTTPStatus.OK.value, "OK", headers, body)
 
     def _update_apk(self, connection: ServerConnection) -> Response:
-        release = self._app_updates.release() if self._app_updates else None
-        data = self._app_updates.apk_bytes(release) if self._app_updates and release else None
+        return self._update_file(
+            connection, self._app_updates, "application/vnd.android.package-archive"
+        )
+
+    def _update_file(
+        self, connection: ServerConnection, updates: AppUpdates | None, content_type: str
+    ) -> Response:
+        release = updates.release() if updates else None
+        data = updates.apk_bytes(release) if updates and release else None
         if release is None or data is None:
             return connection.respond(HTTPStatus.NOT_FOUND, "No release\n")
         event_log.log("app_update", action="download", version_code=release.version_code)
         headers = Headers(
             [
-                ("Content-Type", "application/vnd.android.package-archive"),
+                ("Content-Type", content_type),
                 ("Content-Length", str(len(data))),
                 ("Cache-Control", "no-store"),
             ]

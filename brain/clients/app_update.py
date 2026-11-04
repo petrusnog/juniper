@@ -1,10 +1,14 @@
-"""Publicação do app Android pelo próprio cérebro (ADR-026).
+"""Publicação do app Android e do instalador do desktop pelo próprio cérebro (ADR-026, ADR-033).
 
 O pipeline (ou `scripts/publish_app.sh`) deixa numa pasta o APK mais recente e um `latest.json`
 com a versão, o tamanho e o SHA-256. O servidor só **lê** essa pasta: o app pergunta se há versão
 nova (`GET /app/update`) e, se houver, baixa o arquivo (`GET /app/update/apk`). Quem autentica é o
 servidor (o mesmo token dos clientes); quem garante que o APK é da Juniper é o Android, que só
 aceita uma atualização assinada com a mesma chave do app instalado.
+
+O desktop usa a mesma pasta e a mesma classe, com outro par de arquivos (`Juniper-Setup.exe` e
+`desktop-latest.json`). Quem garante que o instalador é da Juniper é o próprio app, que confere o
+SHA-256 e a assinatura Authenticode antes de executá-lo; o servidor só entrega os bytes.
 """
 
 from __future__ import annotations
@@ -23,6 +27,10 @@ META_NAME: Final = "latest.json"
 # Um APK de React Native tem dezenas de MB; acima disto algo está errado (e o arquivo seria lido
 # inteiro para a memória).
 MAX_APK_BYTES: Final = 200 * 1024 * 1024
+DESKTOP_ARTIFACT: Final = "Juniper-Setup.exe"
+DESKTOP_META: Final = "desktop-latest.json"
+# Um Electron empacotado passa de 100 MB; o arquivo é lido inteiro para a memória.
+MAX_INSTALLER_BYTES: Final = 300 * 1024 * 1024
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -48,16 +56,26 @@ class AppRelease:
 class AppUpdates:
     """A pasta de publicação (somente leitura)."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        artifact: str = APK_NAME,
+        meta: str = META_NAME,
+        max_bytes: int = MAX_APK_BYTES,
+    ) -> None:
         self.directory = directory
+        self._artifact = artifact
+        self._meta = meta
+        self._max_bytes = max_bytes
         # O APK lido (uma cópia só, por arquivo): downloads em paralelo não multiplicam a memória
         # nem o tempo de leitura no laço de eventos.
         self._cache: tuple[tuple[int, int], bytes] | None = None
 
     def release(self) -> AppRelease | None:
         """A versão publicada, ou `None` se não há nada válido (nunca levanta)."""
-        meta_path = self.directory / META_NAME
-        apk_path = self.directory / APK_NAME
+        meta_path = self.directory / self._meta
+        apk_path = self.directory / self._artifact
         try:
             if not meta_path.is_file() or not apk_path.is_file():
                 return None
@@ -76,14 +94,14 @@ class AppUpdates:
         if release.version_code < 1 or not _SHA256.match(release.sha256):
             logger.warning("latest.json com versão ou SHA-256 inválidos")
             return None
-        if release.size != actual or not 0 < actual <= MAX_APK_BYTES:
+        if release.size != actual or not 0 < actual <= self._max_bytes:
             # Um upload pela metade (ou um latest.json de outra versão): melhor não oferecer.
             logger.warning("O APK publicado não bate com o latest.json (%s bytes)", actual)
             return None
         return release
 
     def apk_bytes(self, release: AppRelease) -> bytes | None:
-        path = self.directory / APK_NAME
+        path = self.directory / self._artifact
         try:
             stat = path.stat()
             key = (stat.st_mtime_ns, stat.st_size)

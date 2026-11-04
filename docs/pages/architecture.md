@@ -140,7 +140,7 @@ Exemplo: no app, você escreve *"amanhã quero uma ida ao dentista, às 16h"*.
 | Metadocumentação (responder sobre a própria arquitetura) | Implementado ([ADR-025](../decisions/ADR-025.md)). |
 | Login com MFA | Proposto ([ADR-021](../decisions/ADR-021.md)). |
 | `run_shell`, `open_app` | Previstos no modelo de segurança, ainda não implementados. `web_search` e `web_fetch` existem (ADR-031). |
-| Cliente desktop em Electron | Descartado em favor do app Android ([ADR-015](../decisions/ADR-015.md), [ADR-022](../decisions/ADR-022.md)). |
+| Cliente desktop em Electron | Proposto de novo, só Windows, no [ADR-033](../decisions/ADR-033.md); sem código ainda (o [ADR-015](../decisions/ADR-015.md) é a base técnica). |
 
 O histórico de cada escolha está nas [Decisões (ADRs)](adr.html).
 

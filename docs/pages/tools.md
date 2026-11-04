@@ -175,6 +175,7 @@ Cobrem: classe não instanciável, `to_schema()` igual ao formato do ADR-002 (e 
 
 ## Para saber mais {#para-saber-mais}
 
+- [App desktop](desktop.md) (Documentação Técnica): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a fronteira de plataforma e as proteções de caminho.
 - [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Ferramentas e permissões](produto-ferramentas.md) (Produto): Como a Juniper age no mundo real por meio de ferramentas, os quatro níveis de risco e como a permissão é dada na própria conversa.
 - [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
