@@ -32,6 +32,11 @@ const VOICE_PHASE: Record<string, string> = {
 
 function render(s: UiSnapshot): void {
   $('status').textContent = STATUS[s.connection] ?? s.connection;
+  $('status').title = s.connectionDetail ?? '';
+  $('connection-detail').hidden = s.connectionDetail === null || s.connection === 'connected';
+  $('connection-detail').textContent = [s.connectionHint, s.connectionDetail ? `Detalhe: ${s.connectionDetail}` : null]
+    .filter(Boolean)
+    .join(' ');
   $<HTMLInputElement>('pause').checked = s.filesPaused;
   $('login').hidden = s.hasCredential && s.connection !== 'unauthorized';
   $('composer').hidden = !s.hasCredential;

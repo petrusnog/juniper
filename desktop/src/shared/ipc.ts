@@ -8,6 +8,9 @@ import type { AudioCommand, AudioEvent } from './audioProtocol';
 
 export interface UiSnapshot {
   connection: ConnectionState;
+  /** Why the connection is not up (masked), with a hint on what to try. */
+  connectionDetail: string | null;
+  connectionHint: string | null;
   chat: ChatState;
   activity: ActivityEntry[];
   filesPaused: boolean;

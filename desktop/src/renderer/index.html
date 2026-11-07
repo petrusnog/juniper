@@ -21,12 +21,13 @@
     </header>
     <form id="login" hidden>
       <h2>Conectar ao cérebro</h2>
-      <input id="url" placeholder="ws://100.x.y.z:8765/v1/ws" autocomplete="off" />
+      <input id="url" placeholder="100.x.y.z (ou ws://100.x.y.z:8765/v1/ws)" autocomplete="off" />
       <input id="cid" placeholder="client_id" autocomplete="off" />
       <input id="secret" type="password" placeholder="client_secret" autocomplete="off" />
       <button type="submit">Conectar</button>
       <p id="login-error"></p>
     </form>
+    <div id="connection-detail" hidden></div>
     <div id="update-line" hidden><span id="update-text"></span> <button id="update-apply">Atualizar</button></div>
     <div id="voice-line" hidden></div>
     <main id="messages"></main>

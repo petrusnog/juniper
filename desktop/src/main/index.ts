@@ -13,6 +13,7 @@ import { BrainConnection } from '../core/connection/BrainConnection';
 import type { SocketLike } from '../core/connection/BrainConnection';
 import { checkEndpoint } from '../core/connection/endpoint';
 import { bearerOf, mask } from '../core/connection/credential';
+import { hintFor } from '../core/connection/diagnose';
 import { Executor } from '../core/executor/Executor';
 import type { ActivityEntry } from '../core/executor/Executor';
 import { openUrlTool } from '../core/executor/openUrl';
@@ -80,6 +81,7 @@ const audioListeners = new Set<(event: AudioEvent) => void>();
 let filesPaused = false;
 let store: CredentialStore;
 let logFile: string;
+let connectionLog: string;
 
 function log(entry: ActivityEntry): void {
   // Operation, tool and outcome only: never a path's content, never a secret (ADR-033).
@@ -87,8 +89,11 @@ function log(entry: ActivityEntry): void {
 }
 
 function snapshot(): UiSnapshot {
+  const detail = connection?.state === 'connected' ? null : (connection?.detail ?? null);
   return {
     connection: connection?.state ?? 'idle',
+    connectionDetail: detail,
+    connectionHint: hintFor(detail),
     chat: chat?.getState() ?? {
       sessionId: null,
       messages: [],
@@ -156,7 +161,16 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
     log,
   );
   executor.setPaused(FILE_TOOLS_PREFIX, filesPaused);
-  conn.onState(push);
+  conn.onState(state => {
+    // Every transition, with the reason, never the credential: this is the file to look at when
+    // the app cannot connect (userData/connection.log).
+    fs.appendFile(
+      connectionLog,
+      `${mask(JSON.stringify({ at: new Date().toISOString(), state, url: endpoint.url, detail: conn.detail }))}\n`,
+      () => undefined,
+    );
+    push();
+  });
   chat.subscribe(push);
   audio = new RemoteAudio({
     send: command => window?.webContents.send(CHANNELS.audioCommand, command),
@@ -272,7 +286,10 @@ function registerIpc(): void {
     const outcome = await settled(connection, 10_000);
     if (outcome !== 'connected') {
       connection?.close();
-      return { ok: false, error: LOGIN_FAILURE[outcome] ?? 'Não consegui conectar.' };
+      const why = connection?.detail ?? null;
+      const base = LOGIN_FAILURE[outcome] ?? 'Não consegui conectar.';
+      const hint = hintFor(why);
+      return { ok: false, error: [base, hint ?? (why ? `Detalhe: ${why}` : null)].filter(Boolean).join(' ') };
     }
     await store.save(login);
     return { ok: true };
@@ -330,6 +347,7 @@ if (!app.requestSingleInstanceLock()) {
     const userData = app.getPath('userData');
     fs.mkdirSync(userData, { recursive: true });
     logFile = path.join(userData, 'activity.log');
+    connectionLog = path.join(userData, 'connection.log');
     store = new CredentialStore(path.join(userData, 'credential.bin'), {
       isAvailable: () => safeStorage.isEncryptionAvailable(),
       encrypt: t => safeStorage.encryptString(t),

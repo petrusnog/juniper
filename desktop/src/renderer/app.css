@@ -12,3 +12,4 @@ form#login { flex-direction: column; max-width: 420px; margin: 24px auto; border
 form#login input { flex: none; }
 input[type="text"], #text, #url, #cid, #secret { flex: 1; background: #101722; color: inherit; border: 1px solid #1f2a36; padding: 6px 8px; }
 button { background: #16324a; color: inherit; border: 1px solid #2b4d6b; padding: 6px 10px; cursor: pointer; }
+#connection-detail { padding: 6px 12px; color: #e3c07a; font-size: 12px; border-bottom: 1px solid #1f2a36; }
