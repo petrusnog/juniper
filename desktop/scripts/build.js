@@ -19,7 +19,7 @@ async function main() {
       'renderer/app': path.join(root, 'renderer', 'app.ts'),
       'renderer/pcm-worklet': path.join(root, 'renderer', 'pcm-worklet.ts'),
     }, outdir: out });
-  for (const f of ['index.html', 'app.css']) {
+  for (const f of ['index.html', 'app.css', 'logo.png']) {
     fs.copyFileSync(path.join(root, 'renderer', f), path.join(out, 'renderer', f));
   }
 }

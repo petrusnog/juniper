@@ -35,3 +35,10 @@ tests/           vitest
 
 `npm run gen:protocol` regenera `src/shared/types.generated.ts`; `npm run check:protocol` falha
 se estiver velho.
+
+## Release e atualização automática
+
+O instalador de verdade vem do workflow «Desktop release» (Windows do GitHub Actions), assinado, e o
+app instalado se atualiza sozinho. O passo a passo (certificado, segredos, primeiro instalador) está
+em [`docs/pages/desktop.md`](../docs/pages/desktop.md#primeiro-release). O `npm run dist` local gera
+um instalador **sem** assinatura, que não se atualiza.

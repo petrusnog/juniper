@@ -65,3 +65,8 @@ docs/.obsidian/*
 
 # APK publicado do app (scripts/publish_app.sh), só existe na VPS
 /app-release/
+
+# Certificado de assinatura do app desktop: nunca vai para o repositorio (ADR-033)
+*.pfx
+*.pfx.base64.txt
+juniper-signing/

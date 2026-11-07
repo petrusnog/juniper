@@ -6,37 +6,79 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'"
     />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Juniper</title>
     <link rel="stylesheet" href="app.css" />
   </head>
-  <body>
-    <header>
-      <strong>Juniper</strong>
-      <span id="status">desconectado</span>
-      <label><input type="checkbox" id="pause" /> pausar arquivos</label>
-      <button id="voice">voz</button>
-      <label><input type="checkbox" id="headset" /> uso fone</label>
-      <button id="new">nova conversa</button>
-      <button id="logout">sair</button>
+  <body data-view="login">
+    <!-- Barra superior: a marca (logo + nome + cursor piscando) no canto esquerdo -->
+    <header id="bar">
+      <div class="brand" role="img" aria-label="Juniper">
+        <img class="brand-logo" src="logo.png" alt="" width="32" height="32" />
+        <span class="brand-name">Juniper</span><span class="cursor" aria-hidden="true">_</span>
+      </div>
+      <span id="status" class="status">desconectado</span>
+      <nav class="actions">
+        <button id="conversations" type="button">Conversas</button>
+        <button id="voice" type="button">Voz</button>
+        <button id="options-toggle" type="button" aria-expanded="false" aria-controls="options">Opções</button>
+      </nav>
     </header>
-    <form id="login" hidden>
-      <h2>Conectar ao cérebro</h2>
-      <input id="url" placeholder="100.x.y.z (ou ws://100.x.y.z:8765/v1/ws)" autocomplete="off" />
-      <input id="cid" placeholder="client_id" autocomplete="off" />
-      <input id="secret" type="password" placeholder="client_secret" autocomplete="off" />
-      <button type="submit">Conectar</button>
-      <p id="login-error"></p>
+
+    <section id="options" hidden>
+      <label><input type="checkbox" id="pause" /> pausar arquivos</label>
+      <label><input type="checkbox" id="headset" /> uso fone</label>
+      <span id="version" class="muted"></span>
+      <button id="logout" type="button" class="danger">Sair</button>
+    </section>
+
+    <div id="connection-detail" class="notice amber" hidden></div>
+    <div id="update-line" class="notice" hidden>
+      <span id="update-text"></span> <button id="update-apply" type="button">Atualizar agora</button>
+    </div>
+    <div id="voice-line" class="notice cyan" hidden></div>
+
+    <div id="body">
+      <aside id="drawer" hidden aria-label="Conversas">
+        <div class="drawer-head">
+          <h2>Conversas</h2>
+          <button id="new" type="button">Nova conversa</button>
+          <button id="drawer-close" type="button" aria-label="Fechar a lista">Fechar</button>
+        </div>
+        <ul id="session-list"></ul>
+      </aside>
+      <main id="messages" aria-live="polite"></main>
+    </div>
+
+    <footer id="footer">
+      <div id="activity" title="O que o computador fez a pedido da Juniper"></div>
+      <form id="composer">
+        <textarea id="text" rows="1" placeholder="Mensagem" autocomplete="off" spellcheck="true"></textarea>
+        <button id="send" type="submit" class="primary">Enviar</button>
+        <button id="stop" type="button" class="warn" hidden>Parar</button>
+      </form>
+    </footer>
+
+    <!-- Primeira execução: a marca grande, com JUNIPER em caixa alta e o cursor piscando -->
+    <form id="login">
+      <div class="brand large" role="img" aria-label="Juniper">
+        <img class="brand-logo" src="logo.png" alt="" width="96" height="96" />
+        <span class="brand-name">JUNIPER</span><span class="cursor" aria-hidden="true">_</span>
+      </div>
+      <h1>Conectar ao cérebro</h1>
+      <label>Endereço
+        <input id="url" placeholder="100.x.y.z (o app completa porta e caminho)" autocomplete="off" />
+      </label>
+      <label>client_id
+        <input id="cid" placeholder="jc_..." autocomplete="off" />
+      </label>
+      <label>client_secret
+        <input id="secret" type="password" placeholder="jsk_..." autocomplete="off" />
+      </label>
+      <button type="submit" class="primary">Conectar</button>
+      <p id="login-error" class="error"></p>
     </form>
-    <div id="connection-detail" hidden></div>
-    <div id="update-line" hidden><span id="update-text"></span> <button id="update-apply">Atualizar</button></div>
-    <div id="voice-line" hidden></div>
-    <main id="messages"></main>
-    <aside id="activity" title="O que o computador fez a pedido da Juniper"></aside>
-    <form id="composer">
-      <input id="text" placeholder="Fale com a Juniper" autocomplete="off" />
-      <button type="submit">Enviar</button>
-      <button type="button" id="stop">Cancelar</button>
-    </form>
+
     <script src="app.js"></script>
   </body>
 </html>

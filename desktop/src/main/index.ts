@@ -2,7 +2,7 @@
  * Electron main process: window, connection, executor and the secure store (ADR-033).
  * It composes the pure core with the real system; the renderer sees none of it.
  */
-import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -26,7 +26,8 @@ import { CHANNELS } from '../shared/ipc';
 import type { LoginInput, UiSnapshot } from '../shared/ipc';
 import { CredentialStore } from './credentialStore';
 import { createFileTools } from './executor/fs/tools';
-import { UpdateController } from '../core/update/UpdateController';
+import { canAutoApply, UpdateController } from '../core/update/UpdateController';
+import { isBusy } from '../core/chat/state';
 import { PUBLISHER } from './buildInfo';
 import { currentPlatform, deviceName } from './platform';
 import { createUpdatePorts } from './update/ports';
@@ -46,6 +47,7 @@ const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
 };
 
 function serveRenderer(): void {
@@ -77,6 +79,8 @@ let audio: RemoteAudio | null = null;
 let updater: UpdateController | null = null;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
 const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
+const AUTO_UPDATE_GRACE_MS = 8000; // the person sees "há uma versão nova" before it goes ahead
+let autoUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 const audioListeners = new Set<(event: AudioEvent) => void>();
 let filesPaused = false;
 let store: CredentialStore;
@@ -121,7 +125,28 @@ function wsFactory(url: string, headers: Record<string, string>): SocketLike {
   return socket as unknown as SocketLike; // `ws` event handlers are a superset of ours
 }
 
+/**
+ * Applies a waiting update by itself, but only while nothing is going on (no voice call, no answer
+ * being written). Called after every change of the update, the chat or the voice, so a busy moment
+ * only postpones it.
+ */
+function scheduleAutoUpdate(): void {
+  if (autoUpdateTimer !== null) clearTimeout(autoUpdateTimer);
+  autoUpdateTimer = setTimeout(() => {
+    autoUpdateTimer = null;
+    if (updater === null) return;
+    const ready = canAutoApply({
+      update: updater.state,
+      voicePhase: voice?.getState().phase ?? 'off',
+      chatBusy: chat !== null && isBusy(chat.getState()),
+    });
+    if (ready) void updater.apply();
+  }, AUTO_UPDATE_GRACE_MS);
+}
+
 function teardown(): void {
+  if (autoUpdateTimer !== null) clearTimeout(autoUpdateTimer);
+  autoUpdateTimer = null;
   if (updateTimer !== null) clearInterval(updateTimer);
   updateTimer = null;
   updater = null;
@@ -191,7 +216,12 @@ async function connect(login: { url: string; clientId: string; clientSecret: str
     VERSION,
     PUBLISHER,
   );
-  updater.subscribe(push);
+  updater.subscribe(() => {
+    push();
+    scheduleAutoUpdate();
+  });
+  chat.subscribe(scheduleAutoUpdate);
+  voice.subscribe(scheduleAutoUpdate);
   conn.onState(state => {
     if (state === 'connected') void updater?.check();
   });
@@ -247,6 +277,7 @@ function registerIpc(): void {
   handle(CHANNELS.send, (_e, text: string) => chat?.send(text) ?? false);
   handle(CHANNELS.cancel, () => chat?.cancel());
   handle(CHANNELS.newChat, () => chat?.newConversation());
+  handle(CHANNELS.sessions, () => chat?.refreshSessions());
   handle(CHANNELS.resume, (_e, id: string) => chat?.resume(id));
   handle(CHANNELS.pauseFiles, (_e, paused: boolean) => {
     filesPaused = paused === true;
@@ -297,11 +328,13 @@ function registerIpc(): void {
 }
 
 function createWindow(): void {
+  if (app.isPackaged) Menu.setApplicationMenu(null); // no File/Edit/View bar in the installed app
   window = new BrowserWindow({
     width: 900,
     height: 700,
     title: 'Juniper',
-    backgroundColor: '#0b0f14',
+    backgroundColor: '#000000', // the terminal black (tokens.ts), also while the page loads
+    icon: nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'logo.png')),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,

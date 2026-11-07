@@ -1,15 +1,145 @@
+/*
+ * Juniper's terminal look (docs/pages/dashboard.md#visual): black, the neon green of the logo and the
+ * Tango palette of Linux terminals. The values are EXACTLY the ones in mobile/src/theme/tokens.ts
+ * (a test keeps the two from drifting). Square corners, a green glow on focus, a blinking cursor.
+ */
+:root {
+  --bg: #000000;
+  --card: #06100a;
+  --ink: #d3f2cc;
+  --muted: #6f9a6a;
+  --border: #1d6b2b;
+  --accent: #39e639;
+  --on-accent: #000000;
+  --cyan: #34e2e2;
+  --blue: #729fcf;
+  --violet: #ad7fa8;
+  --green: #8ae234;
+  --amber: #fce94f;
+  --red: #ef2929;
+  --radius: 3px;
+  --blink: 1100ms; /* 550 ms on, 550 ms off, like the mark of the phone app */
+  --glow: 0 0 0 1px var(--accent), 0 0 10px rgba(57, 230, 57, 0.45);
+}
+
+* { box-sizing: border-box; }
 [hidden] { display: none !important; } /* an author `display` must not undo the hidden attribute */
-body { margin: 0; font: 14px/1.4 Consolas, monospace; background: #0b0f14; color: #d6e2ee; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
-header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #1f2a36; }
-#status { color: #7aa2c8; margin-right: auto; }
-main { overflow-y: auto; padding: 12px; }
-.m { white-space: pre-wrap; margin: 6px 0; }
-.m.user { color: #9fe3b0; }
-.m.notice, .m.error { color: #e3c07a; }
-#activity { position: fixed; right: 8px; bottom: 56px; max-width: 320px; font-size: 12px; color: #7a8da0; }
-form#composer, form#login { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #1f2a36; }
-form#login { flex-direction: column; max-width: 420px; margin: 24px auto; border: 0; }
-form#login input { flex: none; }
-input[type="text"], #text, #url, #cid, #secret { flex: 1; background: #101722; color: inherit; border: 1px solid #1f2a36; padding: 6px 8px; }
-button { background: #16324a; color: inherit; border: 1px solid #2b4d6b; padding: 6px 10px; cursor: pointer; }
-#connection-detail { padding: 6px 12px; color: #e3c07a; font-size: 12px; border-bottom: 1px solid #1f2a36; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 Consolas, "Cascadia Mono", ui-monospace, monospace;
+}
+
+/* --- the mark: logo + name + blinking cursor --------------------------------------------------- */
+.brand { display: flex; align-items: center; gap: 12px; color: var(--accent); font-weight: 700; letter-spacing: 1.5px; user-select: none; }
+.brand-logo { display: block; object-fit: contain; }
+.brand-name { font-size: 20px; }
+.brand.large { flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.brand.large .brand-name { font-size: 30px; }
+.brand.large .cursor { display: none; } /* the large mark keeps the cursor next to the name, below */
+.brand .cursor { margin-left: -9px; font-size: 20px; animation: blink var(--blink) steps(1, end) infinite; }
+.brand.large .brand-name::after { content: "_"; animation: blink var(--blink) steps(1, end) infinite; }
+@keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .brand .cursor, .brand.large .brand-name::after { animation: none; opacity: 1; }
+}
+
+/* --- top bar ------------------------------------------------------------------------------------ */
+#bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.status { margin-right: auto; color: var(--muted); font-size: 12px; }
+.status.ok { color: var(--green); }
+.status.problem { color: var(--red); }
+.actions { display: flex; gap: 6px; }
+
+button {
+  font: inherit;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: none; box-shadow: var(--glow); border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+button.warn { background: var(--amber); color: var(--on-accent); border-color: var(--amber); font-weight: 700; }
+button.danger { color: var(--red); border-color: var(--red); }
+
+#options { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px 14px; background: var(--card); border-bottom: 1px solid var(--border); font-size: 13px; }
+#options label { display: flex; align-items: center; gap: 6px; }
+#options .danger { margin-left: auto; }
+.muted { color: var(--muted); }
+input[type="checkbox"] { accent-color: var(--accent); }
+
+.notice { padding: 6px 14px; font-size: 13px; border-bottom: 1px solid var(--border); background: var(--card); color: var(--accent); }
+.notice.amber { color: var(--amber); }
+.notice.cyan { color: var(--cyan); cursor: pointer; }
+
+/* --- chat: the same bubbles as the phone app ----------------------------------------------------- */
+#body { flex: 1; display: flex; min-height: 0; }
+#messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.empty { margin: 40px 0; text-align: center; color: var(--muted); }
+.bubble {
+  max-width: min(88%, 780px);
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.bubble.user { align-self: flex-end; background: var(--bg); border-color: var(--accent); color: var(--accent); }
+.bubble.assistant { align-self: flex-start; }
+.bubble.error { align-self: flex-start; color: var(--red); }
+.bubble.notice { align-self: flex-start; background: var(--bg); color: var(--amber); }
+.bubble small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+/* --- conversation list --------------------------------------------------------------------------- */
+#drawer { width: 340px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--bg); }
+.drawer-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.drawer-head button { white-space: nowrap; }
+.drawer-head h2 { white-space: nowrap; margin: 0 auto 0 0; font-size: 15px; color: var(--ink); }
+.drawer-head h2::before { content: "> "; color: var(--accent); }
+#session-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+#session-list li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+#session-list li:hover, #session-list li.current { background: var(--card); }
+#session-list li.current .preview::before { content: "> "; color: var(--accent); }
+.preview { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { color: var(--muted); font-size: 12px; }
+
+/* --- composer ------------------------------------------------------------------------------------ */
+#footer { border-top: 1px solid var(--border); background: var(--card); }
+#activity { padding: 4px 14px 0; min-height: 0; color: var(--muted); font-size: 12px; white-space: pre-line; }
+#composer { display: flex; align-items: flex-end; gap: 8px; padding: 10px 14px; }
+#text {
+  flex: 1; resize: none; max-height: 140px; padding: 8px 10px;
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+#text::placeholder { color: var(--muted); }
+#composer button { padding: 9px 16px; }
+
+/* --- first run ----------------------------------------------------------------------------------- */
+#login { display: none; }
+body[data-view="login"] #bar, body[data-view="login"] #options, body[data-view="login"] #body, body[data-view="login"] #footer,
+body[data-view="login"] .notice:not(#connection-detail) { display: none; }
+body[data-view="login"] #login {
+  display: flex; flex-direction: column; gap: 12px; margin: auto;
+  width: min(420px, 92vw); padding: 24px;
+}
+#login h1 { margin: 4px 0 0; font-size: 18px; color: var(--ink); text-align: center; }
+#login h1::before { content: "> "; color: var(--accent); }
+#login label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+#login input { padding: 9px 10px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+#login input::placeholder { color: var(--muted); }
+#login .primary { padding: 10px; }
+.error { min-height: 1.2em; margin: 0; color: var(--red); font-size: 13px; }
+body[data-view="login"] #connection-detail { order: 2; }

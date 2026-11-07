@@ -9,6 +9,7 @@ const bridge: JuniperBridge = {
   send: text => ipcRenderer.invoke(CHANNELS.send, String(text)),
   cancel: () => ipcRenderer.invoke(CHANNELS.cancel),
   newChat: () => ipcRenderer.invoke(CHANNELS.newChat),
+  sessions: () => ipcRenderer.invoke(CHANNELS.sessions),
   resume: id => ipcRenderer.invoke(CHANNELS.resume, String(id)),
   login: input =>
     ipcRenderer.invoke(CHANNELS.login, {
