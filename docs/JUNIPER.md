@@ -2,7 +2,7 @@
 
 > **Propósito:** o estado atual do projeto, em uma página, para quem vai trabalhar nele (gente ou agente). Detalhes ficam nas notas ligadas: comece pelo [mapa da documentação](MAPA.md) e vá só ao que precisa.
 > **Idioma:** documentação em PT-BR. Código, comentários, docstrings e logs em inglês. Mensagens ao usuário final em PT-BR.
-> **Última atualização:** 2026-11-02 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
+> **Última atualização:** 2026-11-09 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
 
 ---
 
@@ -21,7 +21,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
 ---
 
-## 2. Estado Atual (2026-11-02)
+## 2. Estado Atual (2026-11-09)
 
 Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `master`, com a exceção do login com MFA (abaixo). As issues abertas no GitHub (#90 a #214) correspondem a trabalho já entregue cujo merge não as fechou; o estado verdadeiro é o desta tabela.
 
@@ -61,7 +61,8 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | `run_shell`, `open_app` | A política existe ([ADR-006](decisions/ADR-006.md)), mas `brain/tools/{system,shell}.py` são stubs de 4 linhas. |
 | Memória V3: o que falta verificar | A busca e a leitura de páginas **reais** (Tavily, DuckDuckGo, SearXNG), o **contêiner do SearXNG**, o plano gratuito do Tavily, o comportamento do **modelo real** diante das ordens de tom e a medição do fundamento e da bajulação contra um modelo real. Tudo foi testado com modelos e provedores roteirizados ([Memória V3](pages/memoria-v3.md#limites)). Em aberto, do ADR-029: o que fazer se ela recusar uma reversão. |
 | Desktop: verificação em Windows real (ADR-033) | Abrir a janela, o microfone e o alto-falante; rodar o job `windows-latest`; o workflow «Desktop release» só executou até a trava do certificado (um push sem certificado agora só pula) e precisa do certificado de assinatura (`WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, variável `JUNIPER_PUBLISHER`). Sem o certificado o app instalado não se atualiza. |
-| Wake word, iniciativa e scheduler de proatividade | Roadmap (§10). |
+| STT V2 ([ADR-034](decisions/ADR-034.md)) | **Proposta, sem código:** wake word «Juniper» no aparelho (livekit-wakeword), identidade por voz (só vozes conhecidas), transcrição com glossário e confiança, fim de fala melhor, arbitragem entre aparelhos e fala dentro do orçamento. Tasks T-203 a T-215. |
+| Iniciativa e scheduler de proatividade | Roadmap (§10). |
 | Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
 
 ---
@@ -214,6 +215,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [031](decisions/ADR-031.md) | Conhecimento fundamentado: a memória fala, a web ensina; `SearchProvider` (Tavily → SearXNG → DuckDuckGo), `web_search`, `web_fetch`, `learn_topic` (aceito). |
 | [032](decisions/ADR-032.md) | Lembretes pessoais: coleção `reminders` por dono, recibos por canal, aviso no horário escolhido (job a cada minuto) e envio direto do brain ao Telegram como exceção ao ADR-016 (aceito). |
 | [033](decisions/ADR-033.md) | App desktop (Electron, Windows) como cliente fino e executor: `open_url` e tools `fs_*` na home inteira, com lista de bloqueio, caminhos canônicos e Lixeira (proposto). |
+| [034](decisions/ADR-034.md) | STT V2: wake word «Juniper» local (livekit-wakeword), identidade por voz no cérebro (só vozes conhecidas; não é autenticação), transcrição com glossário e correção restrita, VAD e fim de turno, arbitragem entre aparelhos, fala dentro do orçamento (proposto). |
 
 ---
 
@@ -239,7 +241,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 | Calibrar a Memória V3 | Os valores novos (`alpha`, `max_step`, `max_band`, `maturation`, meia-vida do humor, tetos por hora da conversa, validade das notas da web, `rem_relief`) são pontos de partida **[a calibrar]** com uso real; ligar o Tavily (chave no `.env`) e conferir o plano gratuito. |
 | Validar o desktop no Windows (ADR-033) | Abrir o app num Windows real, conectar ao cérebro, conferir a CI `windows-latest` e o roteiro de aceite (texto, voz, arquivos, atualização); obter o certificado de assinatura e disparar o «Desktop release» à mão. |
 | Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
-| Wake word falada | Backlog (openWakeWord + modelo «Juniper» treinado à mão). Hoje: abrir a voz por toque (`juniper://voz`). |
+| STT V2 ([ADR-034](decisions/ADR-034.md)) | Proposta, com issues (T-203 a T-215): linha de base, fala dentro do orçamento, transcrição com contexto, VAD, wake word «Juniper» (livekit-wakeword; substitui o plano com openWakeWord), identidade por voz. Hoje: abrir a voz por toque (`juniper://voz`). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
 | Calibração da Memória V2 | Os valores numéricos seguem **[a calibrar]** com uso real (ADR-017). |
 

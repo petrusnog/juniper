@@ -17,6 +17,7 @@
 <h1>Voz por áudio <span class="tag g">pronta</span></h1>
 <p class="lead">Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do protocolo.</p>
 <div class="callout info"><p><strong>Nota:</strong> esta página detalha o <a href="adr-023.html">ADR-023</a>; o backend de voz está implementado e coberto por teste de aceite (<code>tests/test_acceptance_voice.py</code>). A <a href="voz.html">voz do terminal</a> é outra coisa: são as frases escritas que ela diz ao abrir o CLI.</p></div>
+<blockquote><p><strong>O que não existe:</strong> palavra de ativação falada, identidade por voz, vocabulário próprio na transcrição e resposta falada já gerada dentro do limite. A evolução está proposta no <a href="adr-034.html">ADR-034</a>, ainda sem código.</p></blockquote>
 <h2 id="visao-geral">Visão geral</h2>
 <p>O áudio <strong>passa pelo cérebro</strong> (<code>brain/voice/</code>), porque a credencial do Google e a trava de orçamento não podem ficar no cliente. O agente continua só com texto: a voz é uma camada em volta dele.</p>
 <pre><code class="lang-text">app ──áudio (PCM 16 kHz)──► cérebro: VAD → STT (Groq) → turno de chat (o de sempre) ──┐
