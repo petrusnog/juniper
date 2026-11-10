@@ -511,6 +511,18 @@ test('her voice starting and stopping on the device is told to the brain, edge b
   ]);
 });
 
+test.each(['elsewhere', 'unverified'])(
+  'a start answered with voice.end (%s) closes quietly: no notice, back to waiting',
+  async reason => {
+    const { connection, voice } = setup();
+    await voice.start(); // asked for the session; the brain answers "go back to waiting"
+    connection.receive({ type: 'voice.end', reason });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(voice.state.phase).toBe('off');
+    expect(voice.state.notice).toBeNull();
+  },
+);
+
 test('hold-to-talk: the microphone stays closed until the button goes down', async () => {
   const { connection, audio, voice } = await open();
   voice.setPushToTalk(true);

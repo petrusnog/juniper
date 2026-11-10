@@ -61,6 +61,18 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## Vários aparelhos e continuação {#varios-aparelhos kind=módulo file=brain/voice/arbiter.py}
+
+Dois celulares e um notebook na mesma mesa ouvem uma só palavra de ativação e os três abririam a conversa: três saudações, três respostas. Para o cérebro os aparelhos de uma pessoa são um só usuário, então ele escolhe ([ADR-034](../decisions/ADR-034.md)). As regras, em ordem:
+
+1. **Sessão aberta fica.** Se já há uma conversa de voz aberta para o usuário, uma palavra ouvida em outro aparelho não a toma (cortaria uma conversa no meio).
+2. **Toque sempre vence.** Uma sessão aberta por toque ganha de uma rodada em andamento e fecha a sessão por palavra de outro aparelho da pessoa.
+3. **Maior pontuação.** Os aparelhos que pedem dentro de `voice.wake_arbitration_ms` (300 ms) do primeiro formam uma rodada e vence o de maior `wake_score`; sem pontuação perde para quem a envia; empate vai para o que chegou primeiro. Um aparelho sozinho espera a janela e vence.
+
+Quem perde recebe `voice.end` com `reason: elsewhere` no lugar do `voice.ready`, e os apps voltam a esperar a palavra, sem aviso. Cada disputa vira um evento `voice`/`arbitration` (`won`, `score`).
+
+**Continuação.** Depois de uma resposta, a conversa aberta por palavra continua ouvindo por `voice.wake_idle_seconds` (15 s): a pessoa faz a pergunta seguinte («E na sexta?») sem repetir a palavra. Vencido o prazo sem fala, a sessão fecha por silêncio e o aparelho volta a esperar a palavra.
+
 ## Reprodução confirmada {#reproducao-confirmada}
 
 Sem fone, o cérebro ignora o microfone enquanto ela fala. O fim do som era **estimado** (o tamanho do áudio enviado, mais a cauda de eco de 1 s), e uma estimativa errada abria o microfone cedo (ela se ouvia) ou tarde (perdia o começo da fala). Os dois apps agora avisam, com `voice.playback`, quando o alto-falante realmente fica ocupado (`started`) e ocioso (`finished`) ([ADR-034](../decisions/ADR-034.md)):

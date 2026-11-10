@@ -218,6 +218,7 @@ class ChatHandler:
         self._self_docs = self_docs
         self._voice = voice
         self._voices: dict[str, VoiceSession] = {}
+        self._voice_starting: set[str] = set()  # connections between voice.start and the session
         self._provider = provider
         self._memory = memory
         self._turn_sink = turn_sink
@@ -719,7 +720,7 @@ class ChatHandler:
         if services is None:
             await conn.send(p.Error.from_code("voice_unavailable", VOICE_OFF_MESSAGE, message.id))
             return
-        if conn.id in self._voices:
+        if conn.id in self._voices or conn.id in self._voice_starting:
             await conn.send(p.Error.from_code("voice_busy", VOICE_BUSY_MESSAGE, message.id))
             return
         if not services.stt.cloud and not message.local_stt:
@@ -727,6 +728,15 @@ class ChatHandler:
                 p.Error.from_code("voice_unavailable", VOICE_NO_EARS_MESSAGE, message.id)
             )
             return
+        owner = str(conn.principal.user_id) if conn.principal else ""
+        self._voice_starting.add(conn.id)
+        try:
+            if not await self._may_open(conn, owner, message):
+                # another device of the same person answers: this one goes back to waiting
+                await conn.send(p.VoiceEnd(reason="elsewhere"))
+                return
+        finally:
+            self._voice_starting.discard(conn.id)
         from brain.reminders.delivery import voice_briefing
         from brain.tools import reminders
 
@@ -755,6 +765,26 @@ class ChatHandler:
         self._voices[conn.id] = session
         await session.start(message.id)
 
+    async def _may_open(self, conn: Connection, owner: str, message: p.VoiceStart) -> bool:
+        """Several devices of one person may hear one wake word: only one opens (ADR-034)."""
+        assert self._voice is not None
+        arbiter = self._voice.arbiter
+        if not message.wake:  # a touch always wins and closes the wake sessions of the person
+            for token in arbiter.touch(owner, conn.id):
+                other = self._voices.get(token)
+                if other is not None:
+                    await other.end("elsewhere")
+            return True
+        won = await arbiter.claim(owner, conn.id, message.wake_score)
+        event_log.log(
+            "voice",
+            action="arbitration",
+            won=won,
+            score=message.wake_score,
+            waited_ms=round(arbiter.window * 1000),
+        )
+        return won
+
     def _clear_pending(self, conn: Connection) -> None:
         conversation: Conversation | None = conn.state
         if conversation is not None:
@@ -762,6 +792,9 @@ class ChatHandler:
 
     def _voice_ended(self, conn: Connection) -> None:
         self._voices.pop(conn.id, None)
+        if self._voice is not None:
+            owner = str(conn.principal.user_id) if conn.principal else ""
+            self._voice.arbiter.release(owner, conn.id)
 
     async def _voice_message(self, conn: Connection, message: p.ClientMessage) -> None:
         session = self._voices.get(conn.id)

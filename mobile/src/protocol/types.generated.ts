@@ -130,6 +130,7 @@ export type LocalTts = boolean | null;
 export type Route = ('speaker' | 'headset') | null;
 export type Type18 = 'voice.start';
 export type Wake = boolean | null;
+export type WakeScore = number | null;
 export type Data = string;
 export type Last = boolean | null;
 export type Seq = number;
@@ -143,7 +144,7 @@ export type Route1 = 'speaker' | 'headset';
 export type Type22 = 'voice.route';
 export type State = 'started' | 'finished';
 export type Type23 = 'voice.playback';
-export type Reason = 'client' | 'command' | 'silence' | 'error' | 'server' | 'playback';
+export type Reason = 'client' | 'command' | 'silence' | 'error' | 'server' | 'playback' | 'elsewhere' | 'unverified';
 export type Type24 = 'voice.end';
 export type HeartbeatSeconds = number;
 export type ProtocolVersion1 = number;
@@ -407,6 +408,7 @@ export interface VoiceStart {
   route?: Route;
   type?: Type18;
   wake?: Wake;
+  wake_score?: WakeScore;
 }
 /**
  * Formato do áudio: PCM 16 bits little-endian, mono. A taxa vem de quem produz o áudio.

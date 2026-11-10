@@ -162,7 +162,7 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 
 | Direção | `type` | Campos | Quando |
 |---|---|---|---|
-| cliente → servidor | `voice.start` | `id`, `format` {`encoding`: `pcm_s16le`, `sample_rate` (8000–48000), `channels`: 1}, `local_stt?`, `local_tts?`, `route?` (`speaker`, `headset`), `wake?` | Abre a sessão; `format` é o do microfone (prefira 16 kHz). `wake: true`: a sessão foi aberta no modo mãos livres (botão da notificação, atalho ou link `juniper://voz`); o cérebro cumprimenta primeiro e encerra sozinho depois de tocar uma música ou após `voice.wake_idle_seconds` sem fala. |
+| cliente → servidor | `voice.start` | `id`, `format` {`encoding`: `pcm_s16le`, `sample_rate` (8000–48000), `channels`: 1}, `local_stt?`, `local_tts?`, `route?` (`speaker`, `headset`), `wake?`, `wake_score?` (0 a 1) | Abre a sessão; `format` é o do microfone (prefira 16 kHz). `wake: true`: a sessão foi aberta no modo mãos livres (botão da notificação, atalho ou link `juniper://voz`); o cérebro cumprimenta primeiro e encerra sozinho depois de tocar uma música ou após `voice.wake_idle_seconds` sem fala. |
 | servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: formatos e se STT e TTS são `cloud` ou `local`. |
 | ambos | `voice.audio` | `seq`, `data`, `turn_id?`, `last?` | Do cliente: o microfone. Do servidor: a fala do turno; `last` fecha a fala. |
 | servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo. `listening` **com** `turn_id` = descarte o áudio daquele turno (foi cortado). |
@@ -173,7 +173,7 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 | cliente → servidor | `voice.interrupt` | — | Calar a Juniper agora. |
 | cliente → servidor | `voice.route` | `route` | A saída de áudio mudou (fone com fio ligado ou desligado; o Bluetooth conta como `speaker`). |
 | cliente → servidor | `voice.playback` | `state` (`started` ou `finished`) | O alto-falante do aparelho ficou ocupado ou ocioso. `started` com o primeiro som; `finished` quando tudo o que foi enviado terminou de tocar, e pode alternar dentro de uma resposta (pausa entre frases). Com ele o cérebro fecha o microfone pelo tempo real do som; quem não envia continua na estimativa ([Voz por áudio](voz-audio.md#viva-voz)). |
-| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`, `playback`) | Encerra a sessão. `playback`: a música foi aberta e o comentário terminou; o app fecha a conversa de voz e a música segue tocando. |
+| ambos | `voice.end` | `reason` (`client`, `command`, `silence`, `error`, `server`, `playback`, `elsewhere`, `unverified`) | Encerra a sessão. `playback`: a música foi aberta e o comentário terminou; o app fecha a conversa de voz e a música segue tocando. `elsewhere`: outro aparelho da mesma pessoa atende (ouviu a palavra com mais pontuação, ou foi aberto por toque); pode chegar no lugar do `voice.ready`. `unverified`: a palavra de ativação não foi confirmada pela transcrição. Em ambos o aparelho só volta a esperar, sem aviso ([Voz por áudio](voz-audio.md#varios-aparelhos)). |
 
 `voice.audio` e `voice.end` valem nos dois sentidos; as demais só na direção da tabela (a outra recebe `bad_request`). Base64 inválido ou `seq` fora do limite também é `bad_request`. Sem fone (`route` diferente de `headset`, ou ausente), o servidor ignora o microfone enquanto a Juniper fala (e por 1 s depois), e o app também não o envia nessa janela.
 

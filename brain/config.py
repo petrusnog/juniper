@@ -283,6 +283,10 @@ class VoiceSettings(BaseModel):
     # O mesmo, para a conversa aberta pela palavra de ativação: sem pedido depois da saudação, ela
     # fecha logo e o celular volta a esperar a palavra.
     wake_idle_seconds: int = Field(default=15, ge=5, le=600)
+    # Quando vários aparelhos da mesma pessoa ouvem a mesma palavra de ativação, o cérebro espera
+    # tanto por todos e deixa responder o de maior pontuação (ADR-034). 0 desliga a espera (só
+    # impede dois ao mesmo tempo).
+    wake_arbitration_ms: int = Field(default=300, ge=0, le=2000)
     # Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício.
     usage_file: Path = Field(
         default_factory=lambda: Path.home() / ".juniper" / "voice" / "usage.json"

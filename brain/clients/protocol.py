@@ -539,6 +539,10 @@ class VoiceStart(_Message):
     """A sessão abriu porque a palavra de ativação foi dita (o celular estava em espera): a
     Juniper cumprimenta, espera pouco por quem fala (`voice.wake_idle_seconds`) e, se a conversa
     puser música para tocar, encerra a sessão (`voice.end` com `reason: playback`)."""
+    wake_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    """Com `wake`: a pontuação do detector da palavra de ativação (0 a 1). Se vários aparelhos do
+    mesmo usuário ouvem a mesma palavra, o cérebro deixa responder o de maior pontuação e fecha os
+    outros com `voice.end` (`reason: elsewhere`). Sem pontuação, perde para quem a envia."""
     route: VoiceRouteName | None = None
     """Por onde o aparelho toca a voz: `speaker` (viva-voz, o microfone ouve a própria Juniper) ou
     `headset` (fone, sem eco). Em `speaker` o cérebro ignora o microfone enquanto ela fala."""
@@ -654,7 +658,12 @@ class VoiceInterrupt(_Message):
     type: Literal["voice.interrupt"] = "voice.interrupt"
 
 
-VoiceEndReason = Literal["client", "command", "silence", "error", "server", "playback"]
+VoiceEndReason = Literal[
+    "client", "command", "silence", "error", "server", "playback", "elsewhere", "unverified"
+]
+# `elsewhere`: another device of the same person answers (it heard the wake word better, or was
+# opened by touch); `unverified`: the wake word was not confirmed by the transcription. Both are
+# silent for the person: the device just goes back to waiting.
 
 
 class VoiceEnd(_Message):

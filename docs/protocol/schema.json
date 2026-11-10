@@ -1351,7 +1351,9 @@
             "silence",
             "error",
             "server",
-            "playback"
+            "playback",
+            "elsewhere",
+            "unverified"
           ],
           "title": "Reason",
           "type": "string"
@@ -1647,6 +1649,20 @@
           ],
           "default": null,
           "title": "Wake"
+        },
+        "wake_score": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wake Score"
         }
       },
       "required": [

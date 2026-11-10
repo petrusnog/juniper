@@ -59,6 +59,10 @@ const END_TEXT: Record<string, string | null> = {
   error: 'A conversa de voz foi encerrada por um erro.',
   server: 'O servidor encerrou a conversa de voz.',
   playback: null, // the music started: the conversation closes on purpose, quietly
+  // another device of the same person answers, or the wake word was not confirmed: the device
+  // just goes back to waiting, with nothing to tell (ADR-034)
+  elsewhere: null,
+  unverified: null,
 };
 
 type Listener = () => void;
