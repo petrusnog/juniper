@@ -39,3 +39,10 @@ def test_branch_name_never_reaches_the_shell_by_interpolation() -> None:
     delete = steps[0]
     assert delete["env"]["BRANCH"] == "${{ github.event.pull_request.head.ref }}"
     assert 'safe="/"' in delete["run"]  # feature/T203 keeps its slash in the ref path
+
+
+def test_a_branch_that_is_the_base_of_an_open_pr_is_kept() -> None:
+    run = _load()["jobs"]["delete"]["steps"][0]["run"]
+    check, delete = run.index('"base=${BRANCH}"'), run.index("-X DELETE")
+    assert "state=open" in run and check < delete  # asked before deleting, not after
+    assert "exit 0" in run[check:delete]

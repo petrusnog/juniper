@@ -38,6 +38,7 @@ from brain.voice.stt import Transcriber, is_hallucination, normalise
 from brain.voice.tts import resample, wav_to_pcm
 
 SAMPLE_RATE: Final = 16_000  # what the voice session sends to the transcriber
+MAX_WAV_BYTES: Final = 24 * 1024 * 1024  # the Groq free tier takes up to 25 MB per call
 TERMS_FILE: Final = "termos.txt"
 
 
@@ -146,7 +147,7 @@ def load_cases(folder: Path) -> list[Case]:
     """Every ``*.wav`` of the folder with the text said in it. Raises `EvalError`."""
     if not folder.is_dir():
         raise EvalError(f"A pasta {folder} não existe.")
-    audios = sorted(folder.glob("*.wav"))
+    audios = sorted(a for a in folder.glob("*.wav") if a.is_file() and not a.is_symlink())
     if not audios:
         raise EvalError(f"Não há nenhum .wav em {folder}.")
     cases: list[Case] = []
@@ -170,6 +171,8 @@ def load_cases(folder: Path) -> list[Case]:
 def read_audio(path: Path) -> bytes:
     """The recording as 16 kHz mono 16-bit PCM, the format the voice session transcribes."""
     try:
+        if path.stat().st_size > MAX_WAV_BYTES:
+            raise EvalError(f"{path.name} passa de 24 MB: grave frases mais curtas.")
         pcm, rate = wav_to_pcm(path.read_bytes())
     except (OSError, VoiceError) as exc:
         raise EvalError(f"Não consegui ler {path.name}: precisa ser WAV mono de 16 bits.") from exc

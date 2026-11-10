@@ -894,6 +894,42 @@ async def test_a_turn_that_never_opened_does_not_lend_its_timing_to_the_next(
         await session.end("client", notify=False)
 
 
+async def test_two_utterances_at_once_never_swap_their_timing(tmp_path: Path) -> None:
+    """The cloud STT and the device STT can both deliver text: each turn keeps its own marks."""
+    from brain.clients.voice_session import VoiceSession, _Marks
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    seen: list[tuple[_Marks | None, _Marks | None]] = []
+
+    async def send(_message: p.ServerMessage) -> bool:
+        return True
+
+    async def slow_submit(_text: str) -> None:
+        before = session._pending_marks
+        await asyncio.sleep(0.02)  # the chat opening the turn takes a moment
+        seen.append((before, session._pending_marks))
+
+    async def nothing() -> None:
+        return None
+
+    session = VoiceSession(
+        rig.services,
+        send=send,
+        submit=slow_submit,
+        cancel_turn=nothing,
+        turn_active=lambda: False,
+        ended=lambda: None,
+        clear_pending=lambda: None,
+    )
+    first, second = _Marks(1.0, 1.5), _Marks(2.0, 2.5)
+    await session.start("v-1")
+    try:
+        await asyncio.gather(session._heard("um", first), session._heard("dois", second))
+    finally:
+        await session.end("client", notify=False)
+    assert seen == [(first, first), (second, second)]  # nobody's marks changed mid-turn
+
+
 async def test_the_technical_fallback_is_counted_when_it_cuts_a_reply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

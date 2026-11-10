@@ -25,7 +25,7 @@ O que cada uma **não** diz: o conjunto gravado mede a transcrição, não a con
 
 Uma pasta com um par por frase: `nome.wav` (mono, 16 bits, qualquer taxa; é reamostrado para 16 kHz, que é o que a sessão de voz envia ao STT) e `nome.txt` com **exatamente** o que foi dito. Um `termos.txt` opcional lista os nomes próprios e termos técnicos (um por linha; `#` abre comentário). Sem o `.txt` de uma gravação, a avaliação para e diz qual faltou.
 
-**O conjunto não vai para o git.** Tem a sua voz e o que você disse; mantenha-o fora do repositório (por exemplo em `~/juniper-voz/conjunto`). O relatório JSON também repete as frases.
+**O conjunto não vai para o git.** Tem a sua voz e o que você disse; mantenha-o fora do repositório (por exemplo em `~/juniper-voz/conjunto`). O relatório JSON também repete as frases (o script o grava com permissão 600). Se preferir guardar dentro do clone, use a pasta `voice-eval/`, que o `.gitignore` ignora. **Os `.wav` são enviados à API da Groq** para serem transcritos, como a voz em uso real; um `.wav` acima de 24 MB e atalhos (symlinks) são recusados.
 
 ### Roteiro de gravação {#roteiro}
 
@@ -54,13 +54,13 @@ Grave **sempre do mesmo jeito** (mesmo aparelho e mesma distância) entre a medi
 Usa a chave da Groq que o cérebro já usa (`JUNIPER_GROQ_API_KEY`, no `.env`); ela nunca é impressa.
 
 ```bash
-python scripts/voice_eval.py ~/juniper-voz/conjunto --json antes.json
+python scripts/voice_eval.py ~/juniper-voz/conjunto --json ~/juniper-voz/antes.json
 ```
 
 Depois de uma mudança, rode de novo e compare:
 
 ```bash
-python scripts/voice_eval.py ~/juniper-voz/conjunto --json depois.json --compare antes.json
+python scripts/voice_eval.py ~/juniper-voz/conjunto --json ~/juniper-voz/depois.json --compare ~/juniper-voz/antes.json
 ```
 
 O script espera 3,2 s entre as chamadas (`--pause`) para respeitar o limite do plano gratuito da Groq, cerca de 20 por minuto; 60 frases levam uns 4 minutos. `--model` e `--language` trocam o modelo e o idioma só para essa rodada.

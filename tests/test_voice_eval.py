@@ -136,6 +136,24 @@ def test_audio_is_resampled_to_what_the_voice_session_sends(tmp_path: Path) -> N
     assert len(pcm) == 16_000 * 500 // 1000 * 2
 
 
+def test_a_recording_too_big_for_the_stt_is_refused_before_it_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_wav(tmp_path / "grande.wav")
+    monkeypatch.setattr(ev, "MAX_WAV_BYTES", 10)
+    with pytest.raises(ev.EvalError, match=r"grande\.wav passa de 24 MB"):
+        ev.read_audio(tmp_path / "grande.wav")
+
+
+def test_a_symlink_is_not_taken_for_a_recording(tmp_path: Path) -> None:
+    make_set(tmp_path / "conjunto", {"ok": "frase"})
+    secret = tmp_path / "outro.wav"
+    write_wav(secret)
+    (tmp_path / "conjunto" / "atalho.wav").symlink_to(secret)
+    (tmp_path / "conjunto" / "atalho.txt").write_text("qualquer", encoding="utf-8")
+    assert [c.name for c in ev.load_cases(tmp_path / "conjunto")] == ["ok"]
+
+
 def test_stereo_or_unreadable_audio_is_an_error_not_a_crash(tmp_path: Path) -> None:
     write_wav(tmp_path / "estereo.wav", channels=2)
     (tmp_path / "lixo.wav").write_bytes(b"not a wav")

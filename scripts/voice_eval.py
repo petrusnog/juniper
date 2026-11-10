@@ -31,7 +31,10 @@ DEFAULT_PAUSE = 3.2
 
 
 def _compare(now: dict[str, Any], before_path: Path) -> str:
-    before = json.loads(before_path.read_text(encoding="utf-8"))
+    try:
+        before = json.loads(before_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return f"\nNão consegui ler {before_path} para comparar (precisa ser um relatório --json)."
 
     def line(label: str, key: str, percent: bool = True) -> str:
         a, b = before.get(key), now.get(key)
@@ -80,9 +83,9 @@ async def _run(args: argparse.Namespace) -> int:
     if args.compare:
         print(_compare(data, Path(args.compare).expanduser()))
     if args.json:
-        Path(args.json).expanduser().write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        out = Path(args.json).expanduser()
+        out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        out.chmod(0o600)  # it repeats what was said: private to the user
         print(f"\nRelatório gravado em {args.json}")
     return 1 if report.failures else 0  # a run with failed calls is not a valid measurement
 

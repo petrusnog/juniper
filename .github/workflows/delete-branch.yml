@@ -33,8 +33,15 @@ jobs:
           # The branch name goes through the environment, never interpolated into the script.
           # The "/" of names like feature/T203 is part of the ref path: keep it as is.
           encoded=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["BRANCH"], safe="/"))')
-          if gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded}"; then
+          # A branch that is the base of an open PR (a stacked PR) stays: deleting it would
+          # close that PR.
+          open_on_it=$(gh api -X GET "repos/${REPO}/pulls" -f state=open -f "base=${BRANCH}" --jq 'length')
+          if [ "${open_on_it}" != "0" ]; then
+            echo "::notice::Kept ${BRANCH}: ${open_on_it} open PR(s) are based on it."
+            exit 0
+          fi
+          if out=$(gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded}" 2>&1); then
             echo "Deleted ${BRANCH}"
           else
-            echo "::warning::Could not delete ${BRANCH} (already gone, or protected)."
+            echo "::warning::Could not delete ${BRANCH}: ${out}"
           fi

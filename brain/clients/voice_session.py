@@ -137,6 +137,7 @@ class VoiceSession:
             maxsize=MAX_UTTERANCES_QUEUED
         )
         self._pending_marks: _Marks | None = None  # handed to the turn that `_submit` opens
+        self._submitting = asyncio.Lock()  # one utterance at a time between marks and the turn
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._open = False
@@ -536,11 +537,12 @@ class VoiceSession:
             return
         if self._speech is not None or self._turn_active():
             await self._cut()  # what he says now replaces what she was saying
-        self._pending_marks = marks
-        try:
-            await self._submit(text)
-        finally:
-            self._pending_marks = None  # a turn that did not open must not lend its timing
+        async with self._submitting:  # the STT of the cloud and of the device can arrive together
+            self._pending_marks = marks
+            try:
+                await self._submit(text)
+            finally:
+                self._pending_marks = None  # a turn that did not open must not lend its timing
 
     async def _leak(self) -> None:
         """ "Isso vazou": cut what she is saying (it is probably the leak), keep the report and
