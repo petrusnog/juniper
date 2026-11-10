@@ -241,6 +241,12 @@ class VoiceSTTSettings(BaseModel):
     # Quanto tempo a nuvem fica de molho depois de um limite de uso (429) sem retry-after.
     cooldown_seconds: int = Field(default=3600, ge=60, le=86_400)
     timeout: float = Field(default=20.0, ge=1.0, le=120.0)
+    # Nomes próprios e termos que a transcrição deve acertar («Media Works», nomes de pessoas):
+    # vão ao Whisper como dica de vocabulário (ADR-034). Os primeiros têm prioridade se faltar
+    # espaço.
+    glossary: list[str] = Field(default_factory=list, max_length=200)
+    # Quanto cabe da dica: o Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la.
+    glossary_chars: int = Field(default=500, ge=50, le=1000)
 
 
 class VoiceVADSettings(BaseModel):

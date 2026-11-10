@@ -14,6 +14,7 @@ and, if it works, reports that the cloud is back. Only sizes are logged, never t
 from __future__ import annotations
 
 import io
+import math
 import re
 import time
 import unicodedata
@@ -79,6 +80,22 @@ def is_hallucination(text: str) -> bool:
     return len(words) >= 4 and len(set(words)) == 1
 
 
+def is_prompt_echo(text: str, prompt: str) -> bool:
+    """True when the engine wrote the vocabulary hint back instead of what was said.
+
+    Whisper does that on silence and noise when it is given a prompt. The hint starts with a
+    fixed label, and an echo repeats its opening, or is only words that came from the hint.
+    """
+    if not prompt:
+        return False
+    heard = normalise(text).split()
+    if not heard:
+        return False
+    hint = normalise(prompt).split()
+    opening = hint[:3]  # the label and the first terms: what an echo repeats from the top
+    return heard[: len(opening)] == opening or (len(heard) >= 4 and set(heard) <= set(hint))
+
+
 def to_wav(pcm: bytes, sample_rate: int) -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav:
@@ -89,10 +106,40 @@ def to_wav(pcm: bytes, sample_rate: int) -> bytes:
     return buffer.getvalue()
 
 
+# Whisper's own rule of thumb for "this segment is not speech": it thinks there is no speech AND
+# it is unsure of what it wrote. Both together, so a quiet but clear word is never dropped.
+SILENT_NO_SPEECH: Final = 0.6
+SILENT_LOGPROB: Final = -1.0
+
+
+@dataclass(frozen=True)
+class Transcription:
+    """What a transcriber heard, with how sure it was (ADR-034, section 4).
+
+    ``confidence`` is 0..1 (the geometric-mean probability of the words, ``exp(avg_logprob)``),
+    None when the engine does not say. ``silent`` is true when every segment looks like noise the
+    engine wrote words for: the voice session drops it like a known hallucination.
+    """
+
+    text: str
+    confidence: float | None = None
+    silent: bool = False
+
+
 class Transcriber(ABC):
     @abstractmethod
     async def transcribe(self, pcm: bytes, sample_rate: int) -> str:
         """The text of 16-bit mono PCM. Raises `VoiceError`."""
+
+    async def transcribe_detailed(
+        self, pcm: bytes, sample_rate: int, prompt: str = ""
+    ) -> Transcription:
+        """Like `transcribe`, with a vocabulary ``prompt`` and the engine's confidence.
+
+        The default wraps `transcribe` (no prompt, no confidence), so an engine that knows
+        nothing of either keeps working unchanged.
+        """
+        return Transcription(await self.transcribe(pcm, sample_rate))
 
     async def aclose(self) -> None:
         return None
@@ -126,6 +173,11 @@ class GroqTranscriber(Transcriber):
         await self._client.aclose()
 
     async def transcribe(self, pcm: bytes, sample_rate: int) -> str:
+        return (await self.transcribe_detailed(pcm, sample_rate)).text
+
+    async def transcribe_detailed(
+        self, pcm: bytes, sample_rate: int, prompt: str = ""
+    ) -> Transcription:
         if not self._key:
             raise VoiceError("not_configured", "A chave da Groq não está configurada.")
         wav = to_wav(pcm, sample_rate)
@@ -138,8 +190,9 @@ class GroqTranscriber(Transcriber):
                 data={
                     "model": self._model,
                     "language": self._language,
-                    "response_format": "json",
+                    "response_format": "verbose_json",
                     "temperature": "0",
+                    **({"prompt": prompt} if prompt else {}),
                 },
                 files={"file": ("fala.wav", wav, "audio/wav")},
             )
@@ -149,10 +202,14 @@ class GroqTranscriber(Transcriber):
             raise VoiceError("network_error", "Não consegui falar com a Groq.") from exc
         self._check(response)
         try:
-            text = response.json()["text"]
+            body = response.json()
+            text = body["text"]
         except (ValueError, KeyError, TypeError) as exc:
             raise VoiceError("api_error", "A Groq devolveu uma resposta ilegível.") from exc
-        return text.strip() if isinstance(text, str) else ""
+        confidence, silent = _confidence(body.get("segments") if isinstance(body, dict) else None)
+        return Transcription(
+            text.strip() if isinstance(text, str) else "", confidence=confidence, silent=silent
+        )
 
     @staticmethod
     def _check(response: httpx.Response) -> None:
@@ -173,6 +230,44 @@ class GroqTranscriber(Transcriber):
         raise VoiceError("api_error", f"A Groq respondeu com erro ({response.status_code}).")
 
 
+def _confidence(segments: object) -> tuple[float | None, bool]:
+    """The confidence of the speech and whether it is all noise, from Whisper's segments.
+
+    Segments weigh by their length. Anything malformed means "unknown", never an error: the text
+    is what matters and a missing field must not cost the user a turn.
+    """
+    if not isinstance(segments, list) or not segments:
+        return None, False
+    weighted = total = 0.0
+    silent = 0
+    for segment in segments:
+        if not isinstance(segment, dict):
+            return None, False
+        logprob = segment.get("avg_logprob")
+        no_speech = segment.get("no_speech_prob")
+        if not isinstance(logprob, (int, float)) or isinstance(logprob, bool):
+            return None, False
+        if (
+            isinstance(no_speech, (int, float))
+            and no_speech > SILENT_NO_SPEECH
+            and logprob < SILENT_LOGPROB
+        ):
+            silent += 1
+            continue
+        start, end = segment.get("start"), segment.get("end")
+        length = (
+            end - start
+            if isinstance(start, (int, float)) and isinstance(end, (int, float))
+            else 1.0
+        )
+        weight = max(length, 0.05)
+        weighted += weight * logprob
+        total += weight
+    if silent == len(segments):
+        return None, True
+    return min(1.0, max(0.0, math.exp(weighted / total))), False
+
+
 def _retry_after(response: httpx.Response) -> float | None:
     raw = response.headers.get("retry-after", "")
     try:
@@ -189,6 +284,7 @@ class Heard:
     text: str | None = None
     notices: list[Notice] = field(default_factory=list)
     local: bool = False  # True when the cloud could not be used: the client transcribes
+    confidence: float | None = None  # 0..1, when the engine says (ADR-034)
 
 
 class SpeechToText:
@@ -230,12 +326,16 @@ class SpeechToText:
         self._local = False
         return Notice("cloud", "recovered")
 
-    async def listen(self, pcm: bytes, sample_rate: int) -> Heard:
-        """Transcribe one utterance. Never raises: a failure is ``local=True`` plus one notice."""
+    async def listen(self, pcm: bytes, sample_rate: int, prompt: str = "") -> Heard:
+        """Transcribe one utterance. Never raises: a failure is ``local=True`` plus one notice.
+
+        ``prompt`` is the vocabulary hint for the engine (the glossary of ADR-034).
+        """
         if self._stt is None or self.waiting():
             return Heard(local=True)
         try:
-            text = await self._stt.transcribe(pcm, sample_rate)
+            heard = await self._stt.transcribe_detailed(pcm, sample_rate, prompt)
+            text = heard.text
         except VoiceError as exc:
             pause = exc.retry_after or (
                 self._cooldown if exc.code in ("quota", "not_configured") else ERROR_RETRY_SECONDS
@@ -247,11 +347,14 @@ class SpeechToText:
         if self._local:
             self._local = False
             notices.append(Notice("cloud", "recovered"))
-        if is_hallucination(text):
-            event_log.log("voice", action="stt", dropped=True, chars=len(text))
+        if heard.silent or is_hallucination(text) or is_prompt_echo(text, prompt):
+            event_log.log("voice", action="stt", dropped=True, chars=len(text), silent=heard.silent)
             return Heard(notices=notices)
-        event_log.log("voice", action="stt", mode="cloud", chars=len(text))
-        return Heard(text=text, notices=notices)
+        fields: dict[str, float | int] = {"chars": len(text), "prompt_chars": len(prompt)}
+        if heard.confidence is not None:
+            fields["confidence"] = round(heard.confidence, 2)
+        event_log.log("voice", action="stt", mode="cloud", **fields)
+        return Heard(text=text, notices=notices, confidence=heard.confidence)
 
     def _failed(self, code: str, pause: float, reason: str) -> Heard:
         self._retry_at = self._clock() + pause

@@ -909,6 +909,13 @@ class ChatHandler:
         )
 
 
+def _registered_names() -> list[str]:
+    """The names of the active users, for the transcriber's vocabulary (runs off the loop)."""
+    from brain.auth.store import UserStore
+
+    return [user.name for user in UserStore().list_users() if user.active]
+
+
 @contextlib.asynccontextmanager
 async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     """Monta o que o servidor precisa (LLM, sessões, memória) e solta tudo ao sair.
@@ -982,6 +989,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
             )
         )
     voice_services = open_voice_services() if settings.voice.enabled else None
+    if voice_services is not None:
+        voice_services.glossary.add_source(_registered_names)  # people she should spell right
     leak_audit = open_leak_audit(store)
     handler = ChatHandler(
         store,

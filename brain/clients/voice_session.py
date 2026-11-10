@@ -140,6 +140,7 @@ class VoiceSession:
         self._submitting = asyncio.Lock()  # one utterance at a time between marks and the turn
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
+        self._warmup: asyncio.Task[str] | None = None
         self._open = False
         self._closed = False
         self._broken = False  # the connection stopped taking messages: nothing more to send
@@ -156,6 +157,8 @@ class VoiceSession:
         self._open = True
         self._worker = asyncio.get_running_loop().create_task(self._listen_loop())
         self._watchdog = asyncio.get_running_loop().create_task(self._watch())
+        # load the vocabulary hint now, so the first phrase does not wait for the sources
+        self._warmup = asyncio.get_running_loop().create_task(self._services.glossary.prompt())
         stt_cloud = self._services.stt.cloud
         tts_cloud = self._services.speech.mode == "cloud"
         await self._send(
@@ -200,7 +203,7 @@ class VoiceSession:
         self._closed = True
         self._open = False
         current = asyncio.current_task()
-        for task in (self._watchdog, self._worker):
+        for task in (self._watchdog, self._worker, self._warmup):
             if task is not None and task is not current:
                 task.cancel()
         self._drop_speech()
@@ -506,7 +509,7 @@ class VoiceSession:
 
     async def _transcribe(self, pcm: bytes, speech_end: float) -> None:
         await self._state("thinking")
-        heard = await self._services.stt.listen(pcm, VAD_RATE)
+        heard = await self._services.stt.listen(pcm, VAD_RATE, await self._glossary_prompt())
         marks = _Marks(speech_end, self._clock())
         for notice in heard.notices:
             await self._fallback("stt", notice)
@@ -518,6 +521,14 @@ class VoiceSession:
             return
         await self._guarded_send(p.VoiceTranscript(text=heard.text))
         await self._heard(heard.text, marks)
+
+    async def _glossary_prompt(self) -> str:
+        """The vocabulary hint for this utterance; never an error (no hint is just no hint)."""
+        try:
+            return await self._services.glossary.prompt()
+        except Exception as exc:  # noqa: BLE001 - the phrase must be transcribed anyway
+            event_log.log("error", where="voice.glossary", type=type(exc).__name__)
+            return ""
 
     async def _heard(self, text: str, marks: _Marks | None = None) -> None:
         """One utterance of text, from either STT: a command, or a turn of chat."""
