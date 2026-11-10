@@ -135,6 +135,14 @@ export class VoiceController {
         void this.end();
       }),
       this.audio.onRouteChange(headset => this.changeRoute(headset)),
+      // her voice really starting and stopping: the brain keeps the microphone closed exactly
+      // that long (ADR-034). A device that cannot say simply sends nothing.
+      this.audio.onPlayback?.(playing =>
+        this.connection.send({
+          type: 'voice.playback',
+          state: playing ? 'started' : 'finished',
+        }),
+      ) ?? (() => undefined),
     ];
     try {
       await this.audio.start(INPUT_RATE);

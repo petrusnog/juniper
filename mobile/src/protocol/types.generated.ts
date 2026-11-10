@@ -26,6 +26,7 @@ export type JuniperClientBrainProtocol =
   | VoiceText
   | VoiceInterrupt
   | VoiceRoute
+  | VoicePlayback
   | VoiceEnd
   | Welcome
   | Ping
@@ -147,19 +148,21 @@ export type Type21 = 'voice.text';
 export type Type22 = 'voice.interrupt';
 export type Route1 = 'speaker' | 'headset';
 export type Type23 = 'voice.route';
+export type State = 'started' | 'finished';
+export type Type24 = 'voice.playback';
 export type Reason = 'client' | 'command' | 'silence' | 'error' | 'server' | 'playback';
-export type Type24 = 'voice.end';
+export type Type25 = 'voice.end';
 export type HeartbeatSeconds = number;
 export type ProtocolVersion1 = number;
 export type ServerVersion = string;
 export type Id16 = string;
 export type Resumed = boolean;
 export type Turns = number;
-export type Type25 = 'welcome';
+export type Type26 = 'welcome';
 export type Id17 = string;
 export type Name2 = string;
 export type Role = string;
-export type Type26 = 'ping';
+export type Type27 = 'ping';
 export type Code =
   | 'unauthorized'
   | 'unsupported_version'
@@ -180,20 +183,20 @@ export type Code =
 export type Message = string;
 export type ReplyTo = string | null;
 export type Retryable = boolean;
-export type Type27 = 'error';
+export type Type28 = 'error';
 export type ReplyTo1 = string;
 export type SessionId3 = string;
 export type TurnId2 = string;
-export type Type28 = 'chat.started';
+export type Type29 = 'chat.started';
 export type Text3 = string;
 export type TurnId3 = string;
-export type Type29 = 'chat.token';
+export type Type30 = 'chat.token';
 export type Finish = 'ok' | 'cancelled' | 'max_iterations' | 'error';
 export type Timing = {
   [k: string]: unknown;
 } | null;
 export type TurnId4 = string;
-export type Type30 = 'chat.end';
+export type Type31 = 'chat.end';
 export type Usage = {
   [k: string]: unknown;
 } | null;
@@ -205,7 +208,7 @@ export type ReplyTo2 = string;
 export type SessionId4 = string;
 export type Title1 = string;
 export type Turns1 = number;
-export type Type31 = 'session.state';
+export type Type32 = 'session.state';
 export type ReplyTo3 = string;
 export type Id18 = string;
 export type Preview = string;
@@ -214,61 +217,61 @@ export type TitleSource = string;
 export type Turns2 = number;
 export type UpdatedAt = string;
 export type Sessions = SessionSummary[];
-export type Type32 = 'session.listed';
+export type Type33 = 'session.listed';
 export type ReplyTo4 = string;
 export type SessionId5 = string;
 export type Title3 = string;
-export type Type33 = 'session.renamed';
+export type Type34 = 'session.renamed';
 export type SessionId6 = string;
 export type Source = string;
 export type Title4 = string;
-export type Type34 = 'session.titled';
+export type Type35 = 'session.titled';
 export type Reason1 = string;
 export type SessionId7 = string;
-export type Type35 = 'session.detached';
+export type Type36 = 'session.detached';
 export type Data1 = {
   [k: string]: unknown;
 } | null;
 export type Ok = boolean;
 export type ReplyTo5 = string;
-export type Type36 = 'memory.result';
+export type Type37 = 'memory.result';
 export type Tools1 = ToolSpec[];
-export type Type37 = 'registered';
+export type Type38 = 'registered';
 export type CallId1 = string;
 export type Tier1 = string | null;
 export type TimeoutMs = number;
 export type ToolName = string;
-export type Type38 = 'invoke';
+export type Type39 = 'invoke';
 export type ReplyTo6 = string;
 export type Description1 = string;
 export type Locality = string;
 export type Name3 = string;
 export type Tier2 = string;
 export type Tools2 = ToolInfo[];
-export type Type39 = 'tools.listed';
+export type Type40 = 'tools.listed';
 export type At = string;
 export type Layer = string;
 export type Text5 = string;
-export type Type40 = 'trace';
+export type Type41 = 'trace';
 export type ReplyTo7 = string;
 export type Stt = 'cloud' | 'local';
 export type Tts = 'cloud' | 'local';
-export type Type41 = 'voice.ready';
-export type State = 'listening' | 'thinking' | 'speaking' | 'idle';
+export type Type42 = 'voice.ready';
+export type State1 = 'listening' | 'thinking' | 'speaking' | 'idle';
 export type TurnId5 = string | null;
-export type Type42 = 'voice.state';
+export type Type43 = 'voice.state';
 export type Final = boolean;
 export type Original = string | null;
 export type Text6 = string;
-export type Type43 = 'voice.transcript';
+export type Type44 = 'voice.transcript';
 export type Last1 = boolean | null;
 export type Text7 = string;
 export type TurnId6 = string;
-export type Type44 = 'voice.say';
+export type Type45 = 'voice.say';
 export type Component = 'stt' | 'tts';
 export type Mode = 'local' | 'cloud';
 export type Reason2 = 'quota' | 'budget' | 'error' | 'recovered';
-export type Type45 = 'voice.fallback';
+export type Type46 = 'voice.fallback';
 
 export interface Hello {
   client: ClientInfo;
@@ -471,18 +474,30 @@ export interface VoiceRoute {
   type?: Type23;
 }
 /**
+ * The device's speaker became busy or idle (ADR-034).
+ *
+ * ``started``: the first sound is playing. ``finished``: everything sent so far has been played
+ * and the speaker is idle. It can alternate inside one reply (a gap between two sentences). It
+ * lets the brain close the microphone for exactly as long as the sound lasts instead of for an
+ * estimate; a client that never sends it keeps the estimate.
+ */
+export interface VoicePlayback {
+  state: State;
+  type?: Type24;
+}
+/**
  * Encerra a sessão de voz, de qualquer lado.
  */
 export interface VoiceEnd {
   reason?: Reason;
-  type?: Type24;
+  type?: Type25;
 }
 export interface Welcome {
   heartbeat_seconds: HeartbeatSeconds;
   protocol_version: ProtocolVersion1;
   server_version: ServerVersion;
   session: WelcomeSession;
-  type?: Type25;
+  type?: Type26;
   user?: WelcomeUser | null;
 }
 export interface WelcomeSession {
@@ -499,31 +514,31 @@ export interface WelcomeUser {
   role: Role;
 }
 export interface Ping {
-  type?: Type26;
+  type?: Type27;
 }
 export interface Error1 {
   code: Code;
   message: Message;
   reply_to?: ReplyTo;
   retryable: Retryable;
-  type?: Type27;
+  type?: Type28;
 }
 export interface ChatStarted {
   reply_to: ReplyTo1;
   session_id: SessionId3;
   turn_id: TurnId2;
-  type?: Type28;
+  type?: Type29;
 }
 export interface ChatToken {
   text: Text3;
   turn_id: TurnId3;
-  type?: Type29;
+  type?: Type30;
 }
 export interface ChatEnd {
   finish: Finish;
   timing?: Timing;
   turn_id: TurnId4;
-  type?: Type30;
+  type?: Type31;
   usage?: Usage;
 }
 export interface SessionState {
@@ -533,7 +548,7 @@ export interface SessionState {
   session_id: SessionId4;
   title?: Title1;
   turns: Turns1;
-  type?: Type31;
+  type?: Type32;
 }
 export interface HistoryItem {
   role: Role1;
@@ -542,7 +557,7 @@ export interface HistoryItem {
 export interface SessionListed {
   reply_to: ReplyTo3;
   sessions: Sessions;
-  type?: Type32;
+  type?: Type33;
 }
 export interface SessionSummary {
   id: Id18;
@@ -556,7 +571,7 @@ export interface SessionRenamed {
   reply_to: ReplyTo4;
   session_id: SessionId5;
   title: Title3;
-  type?: Type33;
+  type?: Type34;
 }
 /**
  * Pushed when the title of the open conversation changes without a request from this
@@ -566,22 +581,22 @@ export interface SessionTitled {
   session_id: SessionId6;
   source: Source;
   title: Title4;
-  type?: Type34;
+  type?: Type35;
 }
 export interface SessionDetached {
   reason: Reason1;
   session_id: SessionId7;
-  type?: Type35;
+  type?: Type36;
 }
 export interface MemoryResult {
   data?: Data1;
   ok: Ok;
   reply_to: ReplyTo5;
-  type?: Type36;
+  type?: Type37;
 }
 export interface Registered {
   tools: Tools1;
-  type?: Type37;
+  type?: Type38;
 }
 export interface Invoke {
   arguments?: Arguments;
@@ -589,7 +604,7 @@ export interface Invoke {
   tier?: Tier1;
   timeout_ms: TimeoutMs;
   tool_name: ToolName;
-  type?: Type38;
+  type?: Type39;
 }
 export interface Arguments {
   [k: string]: unknown;
@@ -597,7 +612,7 @@ export interface Arguments {
 export interface ToolsListed {
   reply_to: ReplyTo6;
   tools: Tools2;
-  type?: Type39;
+  type?: Type40;
 }
 export interface ToolInfo {
   description: Description1;
@@ -612,7 +627,7 @@ export interface Trace1 {
   at: At;
   layer: Layer;
   text: Text5;
-  type?: Type40;
+  type?: Type41;
 }
 export interface VoiceReady {
   input: VoiceFormat;
@@ -620,12 +635,12 @@ export interface VoiceReady {
   reply_to: ReplyTo7;
   stt: Stt;
   tts: Tts;
-  type?: Type41;
+  type?: Type42;
 }
 export interface VoiceState {
-  state: State;
+  state: State1;
   turn_id?: TurnId5;
-  type?: Type42;
+  type?: Type43;
 }
 /**
  * O que o cérebro entendeu que o Petrus disse (a legenda dele).
@@ -634,7 +649,7 @@ export interface VoiceTranscript {
   final?: Final;
   original?: Original;
   text: Text6;
-  type?: Type43;
+  type?: Type44;
 }
 /**
  * Fallback de TTS: o aparelho fala o `text` com a voz dele.
@@ -643,7 +658,7 @@ export interface VoiceSay {
   last?: Last1;
   text: Text7;
   turn_id: TurnId6;
-  type?: Type44;
+  type?: Type45;
 }
 /**
  * Troca de provedor: `local` = o aparelho assume; `cloud` = a nuvem voltou.
@@ -652,7 +667,7 @@ export interface VoiceFallback {
   component: Component;
   mode: Mode;
   reason: Reason2;
-  type?: Type45;
+  type?: Type46;
 }
 
 export const PROTOCOL_VERSION = 1;

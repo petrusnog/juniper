@@ -57,6 +57,8 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   private var playQueue = LinkedBlockingQueue<ByteArray>()
   private var playThread: Thread? = null
   @Volatile private var playing = false
+  // `flush()` asks the playback thread to forget what it counted (the track drops its buffer).
+  @Volatile private var flushRequested = false
   private var routingGuard: AudioRouting.OnRoutingChangedListener? = null
   @Volatile private var focusRequest: AudioFocusRequest? = null
 
@@ -380,22 +382,48 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
       playThread =
           Thread {
                 val queue = playQueue
+                // The brain is told when her voice really starts and stops (ADR-034): `write`
+                // only means the data is in the buffer, so "idle" is the queue being empty AND the
+                // playback head having caught up with every frame written.
+                var framesWritten = 0L
+                var audible = false
+                var idleMs = 0L
+                fun head(): Long = audioTrack.playbackHeadPosition.toLong() and 0xFFFFFFFFL
                 while (playing) {
-                  // Other media (the music app) is ducked while she speaks, and gets its volume
-                  // back a moment after she stops.
                   val chunk =
                       try {
-                        queue.poll(FOCUS_RELEASE_AFTER_MS, TimeUnit.MILLISECONDS)
+                        queue.poll(PLAYBACK_POLL_MS, TimeUnit.MILLISECONDS)
                       } catch (e: InterruptedException) {
                         break
                       }
                   if (!playing) break
+                  if (flushRequested) {
+                    flushRequested = false
+                    framesWritten = head()
+                    if (audible) {
+                      audible = false
+                      emit("juniperPlayback", false)
+                    }
+                  }
                   if (chunk == null) {
-                    abandonFocus()
+                    idleMs += PLAYBACK_POLL_MS
+                    if (audible && head() >= framesWritten) {
+                      audible = false
+                      emit("juniperPlayback", false)
+                    }
+                    // Other media (the music app) is ducked while she speaks, and gets its volume
+                    // back a moment after she stops.
+                    if (idleMs >= FOCUS_RELEASE_AFTER_MS) abandonFocus()
                     continue
                   }
+                  idleMs = 0L
                   requestFocus()
+                  if (!audible) {
+                    audible = true
+                    emit("juniperPlayback", true)
+                  }
                   audioTrack.write(chunk, 0, chunk.size)
+                  framesWritten += chunk.size / 2
                 }
               }
               .also {
@@ -417,6 +445,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun flush() {
     playQueue.clear()
+    flushRequested = true
     track?.let {
       runCatching {
         it.pause()
@@ -472,6 +501,7 @@ class JuniperAudioModule(private val reactContext: ReactApplicationContext) :
   companion object {
     /** How long after the last chunk the other media gets its volume back. */
     private const val FOCUS_RELEASE_AFTER_MS = 1200L
+    private const val PLAYBACK_POLL_MS = 50L
   }
 
   override fun invalidate() {

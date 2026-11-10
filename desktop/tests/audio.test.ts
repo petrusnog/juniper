@@ -72,6 +72,18 @@ describe('RemoteAudio', () => {
     await expect(started).rejects.toThrow('timeout');
   });
 
+  test('the window tells when her voice starts and stops playing', () => {
+    const w = new Window();
+    const audio = new RemoteAudio(w.transport);
+    const seen: boolean[] = [];
+    const off = audio.onPlayback((playing: boolean) => seen.push(playing));
+    w.emit({ kind: 'playback', playing: true });
+    w.emit({ kind: 'playback', playing: false });
+    off();
+    w.emit({ kind: 'playback', playing: true });
+    expect(seen).toEqual([true, false]);
+  });
+
   test('chunks, stop request and headphones come from the window', async () => {
     const w = new Window();
     const audio = new RemoteAudio(w.transport);
@@ -115,6 +127,10 @@ describe('parseAudioEvent (what the main process accepts from the window)', () =
     [{ kind: 'chunk', data: 'AAAA' }, true],
     [{ kind: 'stop-requested' }, true],
     [{ kind: 'headset', value: false }, true],
+    [{ kind: 'playback', playing: true }, true],
+    [{ kind: 'playback', playing: false }, true],
+    [{ kind: 'playback', playing: 'yes' }, false],
+    [{ kind: 'playback' }, false],
     [null, false],
     ['chunk', false],
     [{ kind: 'unknown' }, false],
