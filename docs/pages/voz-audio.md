@@ -10,6 +10,8 @@ tags: voz audio tts stt google chirp leda groq whisper vad orçamento fallback p
 
 > **Nota:** esta página detalha o [ADR-023](../decisions/ADR-023.md); o backend de voz está implementado e coberto por teste de aceite (`tests/test_acceptance_voice.py`). A [voz do terminal](voz.md) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
 
+> **O que não existe:** palavra de ativação falada, identidade por voz, vocabulário próprio na transcrição e resposta falada já gerada dentro do limite. A evolução está proposta no [ADR-034](../decisions/ADR-034.md), ainda sem código.
+
 ## Visão geral {#visao-geral}
 
 O áudio **passa pelo cérebro** (`brain/voice/`), porque a credencial do Google e a trava de orçamento não podem ficar no cliente. O agente continua só com texto: a voz é uma camada em volta dele.
