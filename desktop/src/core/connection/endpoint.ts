@@ -23,7 +23,34 @@ function inTailscaleRange(host: string): boolean {
   return a === 100 && b >= 64 && b <= 127;
 }
 
-export function checkEndpoint(raw: string): EndpointCheck {
+export const DEFAULT_PORT = '8765';
+export const WS_PATH = '/v1/ws';
+
+/**
+ * Completes what a person naturally types: `100.69.153.120`, `100.69.153.120:8765` or
+ * `ws://100.69.153.120` become `ws://100.69.153.120:8765/v1/ws`. Without the port, `ws://` goes to
+ * port 80, and without the path the brain answers 404: in both cases nothing reaches it.
+ */
+export function completeEndpoint(raw: string): string {
+  const text = raw.trim();
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text);
+  const host = (text.split(/[:/]/)[0] ?? '').toLowerCase();
+  // No scheme typed: a Tailscale address is the normal case (ws://), anything else needs TLS.
+  const scheme = inTailscaleRange(host) || host.endsWith('.ts.net') ? 'ws' : 'wss';
+  const withScheme = hasScheme ? text : `${scheme}://${text}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return text; // let the validation say it is invalid
+  }
+  if (url.protocol === 'ws:' && url.port === '') url.port = DEFAULT_PORT;
+  if (url.pathname === '' || url.pathname === '/') url.pathname = WS_PATH;
+  return url.toString();
+}
+
+export function checkEndpoint(input: string): EndpointCheck {
+  const raw = completeEndpoint(input);
   let url: URL;
   try {
     url = new URL(raw);

@@ -18,8 +18,9 @@ npm start            # abre a janela (precisa do Electron instalado)
 npm run dist         # instalador NSIS em release/ (Windows; assina com CSC_LINK/CSC_KEY_PASSWORD)
 ```
 
-Na primeira execução a janela pede o endereço do cérebro (`ws://100.x.y.z:8765/v1/ws`, dentro do
-Tailscale), o `client_id` e o `client_secret` do dispositivo (`juniper users login`, ADR-027).
+Na primeira execução a janela pede o endereço do cérebro (`100.x.y.z` basta: o app completa para
+`ws://100.x.y.z:8765/v1/ws`, dentro do Tailscale; se falhar, o motivo aparece na janela e em
+`%APPDATA%\Juniper\connection.log`), o `client_id` e o `client_secret` do dispositivo (`juniper users login`, ADR-027).
 
 ## Estrutura
 
@@ -34,3 +35,10 @@ tests/           vitest
 
 `npm run gen:protocol` regenera `src/shared/types.generated.ts`; `npm run check:protocol` falha
 se estiver velho.
+
+## Release e atualização automática
+
+O instalador de verdade vem do workflow «Desktop release» (Windows do GitHub Actions), assinado, e o
+app instalado se atualiza sozinho. O passo a passo (certificado, segredos, primeiro instalador) está
+em [`docs/pages/desktop.md`](../docs/pages/desktop.md#primeiro-release). O `npm run dist` local gera
+um instalador **sem** assinatura, que não se atualiza.

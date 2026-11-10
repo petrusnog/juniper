@@ -53,7 +53,8 @@
           ]
         }
       ],
-      "artifactName": "Juniper-Setup.exe"
+      "artifactName": "Juniper-Setup.exe",
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": true,

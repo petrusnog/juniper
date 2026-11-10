@@ -133,3 +133,100 @@ describe('credential', () => {
     expect(text).not.toContain('abcdefghij');
   });
 });
+
+import { completeEndpoint } from '../src/core/connection/endpoint';
+import { describeClose, describeSocketError, hintFor } from '../src/core/connection/diagnose';
+
+describe('completeEndpoint (what a person types becomes the brain address)', () => {
+  test.each([
+    ['100.69.153.120', 'ws://100.69.153.120:8765/v1/ws'],
+    ['100.69.153.120:8765', 'ws://100.69.153.120:8765/v1/ws'],
+    ['ws://100.69.153.120', 'ws://100.69.153.120:8765/v1/ws'],
+    ['ws://100.69.153.120/', 'ws://100.69.153.120:8765/v1/ws'],
+    ['ws://100.69.153.120:8765', 'ws://100.69.153.120:8765/v1/ws'],
+    ['  ws://100.69.153.120:8765/v1/ws  ', 'ws://100.69.153.120:8765/v1/ws'],
+    ['juniper.tail1234.ts.net', 'ws://juniper.tail1234.ts.net:8765/v1/ws'],
+    ['wss://brain.example.com', 'wss://brain.example.com/v1/ws'],
+    ['brain.example.com', 'wss://brain.example.com/v1/ws'],
+  ])('%s -> %s', (typed, expected) => expect(completeEndpoint(typed)).toBe(expected));
+
+  test('an explicit port and path are kept', () => {
+    expect(completeEndpoint('ws://100.69.153.120:9000/outro')).toBe('ws://100.69.153.120:9000/outro');
+  });
+
+  test('the incomplete address from the screenshot now passes the check, completed', () => {
+    expect(checkEndpoint('ws://100.69.153.120')).toEqual({ ok: true, url: 'ws://100.69.153.120:8765/v1/ws' });
+  });
+
+  test('completing never loosens the security rule', () => {
+    // typed with no scheme, a LAN address is completed to wss:// (TLS), never to plain ws://
+    expect(completeEndpoint('192.168.1.10')).toMatch(/^wss:/);
+    expect(checkEndpoint('ws://192.168.1.10').ok).toBe(false);
+    expect(checkEndpoint('http://100.69.153.120').ok).toBe(false);
+  });
+});
+
+describe('diagnosis', () => {
+  test('a socket error becomes a short masked detail', () => {
+    expect(describeSocketError({ message: 'connect ECONNREFUSED 100.69.153.120:8765' })).toContain('ECONNREFUSED');
+    expect(describeSocketError({ message: 'Bearer jsc_x.jsk_abcdefghijklmnop' })).not.toContain('abcdefghij');
+    expect(describeSocketError(undefined)).toBe('');
+    expect(describeSocketError({ message: 'x'.repeat(500) })).toHaveLength(200);
+  });
+
+  test('a close without an error still says why', () => {
+    expect(describeClose(1006)).toBe('conexão fechada, código 1006');
+    expect(describeClose(4401, 'unauthorized')).toContain('unauthorized');
+  });
+
+  test.each([
+    ['connect ECONNREFUSED 100.69.153.120:8765', '8765'],
+    ['connect ETIMEDOUT 100.69.153.120:8765', 'Tailscale'],
+    ['getaddrinfo ENOTFOUND brain', 'nome'],
+    ['Unexpected server response: 404', '/v1/ws'],
+    ['Unexpected server response: 401', 'credencial'],
+    ['Client network socket disconnected before secure TLS connection was established', 'ws://'],
+  ])('%s gives a hint mentioning %s', (detail, word) => expect(hintFor(detail)).toContain(word));
+
+  test('no detail, no hint', () => {
+    expect(hintFor(null)).toBeNull();
+    expect(hintFor('algo desconhecido')).toBeNull();
+  });
+});
+
+describe('BrainConnection keeps the reason a connection failed', () => {
+  test('the socket error is kept until the connection is up', () => {
+    const { connection, sockets } = setup();
+    connection.connect();
+    sockets[0]!.onerror?.({ message: 'connect ECONNREFUSED 100.64.0.1:8765' });
+    sockets[0]!.onclose?.({ code: 1006 });
+    expect(connection.detail).toContain('ECONNREFUSED');
+    expect(connection.state).toBe('offline');
+  });
+
+  test('a close with no error still leaves a detail', () => {
+    const { connection, sockets } = setup();
+    connection.connect();
+    sockets[0]!.onclose?.({ code: 1006 });
+    expect(connection.detail).toContain('1006');
+  });
+
+  test('a socket that cannot even be created is reported, not swallowed', () => {
+    const connection = new BrainConnection({
+      url: 'ws://100.64.0.1:8765/v1/ws', bearer: 'b', deviceId: 'd', appVersion: '1',
+      createSocket: () => { throw new Error('Invalid URL'); },
+      setTimer: () => 1, clearTimer: () => undefined,
+    });
+    connection.connect();
+    expect(connection.detail).toContain('Invalid URL');
+  });
+
+  test('the detail is cleared once connected', () => {
+    const { connection, sockets } = setup();
+    connection.connect();
+    sockets[0]!.onerror?.({ message: 'connect ECONNREFUSED' });
+    sockets[0]!.onopen?.();
+    sockets[0]!.recv({ type: 'welcome', session: { id: 's', resumed: false, turns: 0 } });
+    expect(connection.detail).toBeNull();
+  });
+});

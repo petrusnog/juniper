@@ -131,6 +131,16 @@ describe('packaging and self-update (ADR-033)', () => {
     expect(pkg.build.asar).toBe(true);
   });
 
+  test('the update applies itself when idle, and the installed app has no menu bar and the logo as icon', () => {
+    const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8');
+    expect(main).toContain('canAutoApply(');
+    expect(main).toContain('scheduleAutoUpdate');
+    expect(main).toContain('Menu.setApplicationMenu(null)');
+    expect(main).toContain('logo.png');
+    const win = (pkg.build.win as { icon?: string }).icon;
+    expect(win).toBe('build/icon.png');
+  });
+
   test('a build with no publisher bakes in an empty one, so it never self-updates', () => {
     const info = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'buildInfo.ts'), 'utf8');
     expect(info).toContain("typeof __PUBLISHER__ === 'string' ? __PUBLISHER__ : ''");
@@ -159,6 +169,7 @@ describe('packaging and self-update (ADR-033)', () => {
     expect(ports).toContain("redirect: 'error'"); // the credential never follows a redirect
     expect(ports).toContain("flags: 'wx'");
     expect(ports).toContain("child.once('error'"); // a failed spawn is reported, not thrown
+    expect(ports).toContain("'--updated', '--force-run'"); // so the installer starts the new version
     const controller = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'update', 'UpdateController.ts'), 'utf8');
     expect(controller.indexOf('signedVersion(')).toBeLessThan(controller.indexOf('ports.install('));
   });
