@@ -204,6 +204,7 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.md)). **Desligada po
 |---|---|---|
 | `voice.enabled` | `false` | Liga a sessão de voz (`voice.start`); desligada, o cérebro responde `voice_unavailable`. |
 | `voice.max_spoken_chars` | `800` | Quanto de uma resposta é lido em voz alta (100 a 5.000); o resto fica só na tela e a Juniper avisa. Também poupa o orçamento. |
+| `voice.reply_budget_chars` | `75%` do limite | Quanto o modelo é orientado a escrever numa resposta **falada** (100 a 5.000; não pode passar de `voice.max_spoken_chars`). Sem valor, 75% do limite (600 com o padrão). É uma orientação, não uma garantia: o corte do limite acima continua como fallback. |
 | `voice.idle_timeout_seconds` | `60` | Silêncio (ninguém falando) que encerra a conversa de voz (10 a 3.600). |
 | `voice.wake_idle_seconds` | `15` | O mesmo silêncio, para a conversa aberta pela palavra de ativação (5 a 600): sem pedido depois da saudação ela fecha logo e o celular volta a esperar a palavra. |
 | `voice.usage_file` | `~/.juniper/voice/usage.json` | Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício. Na VPS, ponha num volume (como a pasta `music`). |
