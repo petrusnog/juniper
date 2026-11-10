@@ -61,6 +61,17 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## Reprodução confirmada {#reproducao-confirmada}
+
+Sem fone, o cérebro ignora o microfone enquanto ela fala. O fim do som era **estimado** (o tamanho do áudio enviado, mais a cauda de eco de 1 s), e uma estimativa errada abria o microfone cedo (ela se ouvia) ou tarde (perdia o começo da fala). Os dois apps agora avisam, com `voice.playback`, quando o alto-falante realmente fica ocupado (`started`) e ocioso (`finished`) ([ADR-034](../decisions/ADR-034.md)):
+
+- Enquanto o aparelho diz que toca, o microfone fica fechado, mesmo depois do fim estimado. Um `started` sem `finished` (mensagem perdida) é acreditado só até 3 s depois do fim estimado, para o microfone nunca ficar fechado para sempre.
+- No `finished` a cauda de eco passa a contar do fim **real**, não do estimado.
+- Quando a música abre e a conversa deve fechar depois da fala, o cérebro espera o aparelho terminar.
+- Cliente que não envia a mensagem se comporta como antes. A fala por cima no alto-falante continua desligada (meio-duplex); reavaliar com dados.
+
+No Android a borda vem da `AudioTrack` (fila vazia e posição de reprodução alcançando os quadros escritos); no desktop, do fim das fontes de áudio da janela.
+
 ## Correção com o glossário {#correcao kind=módulo file=brain/voice/correction.py}
 
 Depois da transcrição e **antes** de o texto virar pedido, o cérebro troca por um termo do glossário o trecho que soa como ele: «abra o projeto mídia works» vira «abra o projeto Media Works» ([ADR-034](../decisions/ADR-034.md)). É um corretor determinístico e local, sem LLM, e foi desenhado para não conseguir inventar:

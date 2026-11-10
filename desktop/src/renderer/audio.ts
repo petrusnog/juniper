@@ -108,7 +108,20 @@ export function startAudioEngine(api: JuniperBridge): void {
     source.start(start);
     player.next = start + buffer.duration;
     player.sources.add(source);
-    source.onended = () => player?.sources.delete(source);
+    reportPlayback(true);
+    source.onended = () => {
+      player?.sources.delete(source);
+      if (player !== null && player.sources.size === 0) reportPlayback(false);
+    };
+  }
+
+  // Tells the brain when her voice really starts and stops, so it listens exactly when the
+  // sound is over (ADR-034). Only the edges are sent.
+  let reportedPlaying = false;
+  function reportPlayback(playing: boolean): void {
+    if (playing === reportedPlaying) return;
+    reportedPlaying = playing;
+    void api.audioEvent({ kind: 'playback', playing });
   }
 
   function flush(): void {
@@ -122,6 +135,7 @@ export function startAudioEngine(api: JuniperBridge): void {
     });
     player.sources.clear();
     player.next = 0;
+    reportPlayback(false);
   }
 
   api.onAudioCommand((c: AudioCommand) => {

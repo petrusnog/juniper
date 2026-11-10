@@ -20,6 +20,7 @@ export class RemoteAudio implements AudioDevice {
   private readonly chunkListeners = new Set<(data: string) => void>();
   private readonly stopListeners = new Set<() => void>();
   private readonly routeListeners = new Set<(headset: boolean) => void>();
+  private readonly playbackListeners = new Set<(playing: boolean) => void>();
   private headset = false;
   private readonly off: () => void;
 
@@ -51,6 +52,8 @@ export class RemoteAudio implements AudioDevice {
       this.chunkListeners.forEach(l => l(event.data));
     } else if (event.kind === 'stop-requested') {
       this.stopListeners.forEach(l => l());
+    } else if (event.kind === 'playback') {
+      this.playbackListeners.forEach(l => l(event.playing));
     } else if (event.kind === 'headset') {
       this.headset = event.value;
       this.routeListeners.forEach(l => l(event.value));
@@ -107,6 +110,10 @@ export class RemoteAudio implements AudioDevice {
   onRouteChange(listener: (headset: boolean) => void): () => void {
     this.routeListeners.add(listener);
     return () => this.routeListeners.delete(listener);
+  }
+  onPlayback(listener: (playing: boolean) => void): () => void {
+    this.playbackListeners.add(listener);
+    return () => this.playbackListeners.delete(listener);
   }
   openPlayer(sampleRate: number): Promise<void> {
     return this.request(id => ({ kind: 'player-open', id, rate: sampleRate }));

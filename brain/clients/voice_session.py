@@ -52,6 +52,8 @@ MAX_UTTERANCES_QUEUED: Final = 4
 ECHO_TAIL_SECONDS: Final = 1.0  # speaker: keep ignoring the microphone this long after she ends
 END_PLAYBACK_PAD_SECONDS: Final = 0.4  # after her last word, before the session closes
 PLAY_MARGIN_SECONDS: Final = 0.6  # the device may play a bit slower than the estimate
+DEVICE_GRACE_SECONDS: Final = 3.0  # a "started" with no "finished" is believed this long past the
+# estimated end of the sound, so a lost message can never leave the microphone closed for good
 SETTLE_SECONDS: Final = 0.4  # a pause in the reply this long lets a finished sentence be spoken
 
 Send = Callable[[p.ServerMessage], Awaitable[bool]]
@@ -133,6 +135,8 @@ class VoiceSession:
         self._tick = tick
         self._last_activity = clock()
         self._play_until = 0.0
+        self._device_reports = False  # the client sends voice.playback: trust it over the estimate
+        self._device_playing = False
         self._speech: _Speech | None = None
         # each utterance with the instant its closing pause was detected (for the latency log)
         self._utterances: asyncio.Queue[tuple[bytes, float]] = asyncio.Queue(
@@ -251,6 +255,23 @@ class VoiceSession:
         self._touch()
         await self._heard(message.text.strip(), _Marks(None, self._clock()))
 
+    def playback(self, message: p.VoicePlayback) -> None:
+        """The device says its speaker became busy or idle (ADR-034): the real edge of the sound."""
+        if not self._open:
+            return
+        self._device_reports = True
+        if message.state == "started":
+            self._device_playing = True
+            return
+        self._device_playing = False
+        # the echo tail now counts from the real end of the sound, not from the estimated one
+        self._play_until = min(self._play_until, self._clock())
+        self._touch()
+
+    def _device_busy(self) -> bool:
+        """True while the device says it is playing (bounded by the estimate, see the grace)."""
+        return self._device_playing and self._clock() < self._play_until + DEVICE_GRACE_SECONDS
+
     def set_route(self, route: str) -> None:
         """The device's audio output changed (headphones plugged in or out)."""
         self._route = route
@@ -267,7 +288,7 @@ class VoiceSession:
         """
         if self._route == "headset":
             return False  # headphones cannot echo: speaking over her still cuts her off
-        speaking = self._speech is not None and self._speech.spoke
+        speaking = (self._speech is not None and self._speech.spoke) or self._device_busy()
         gated = speaking or self._clock() < self._play_until + ECHO_TAIL_SECONDS
         if gated and not self._gated:
             self._vad.reset()  # what was half heard before she started is dropped with the rest
@@ -471,6 +492,8 @@ class VoiceSession:
         """
         pause = max(0.0, self._play_until - self._clock()) + END_PLAYBACK_PAD_SECONDS
         await asyncio.sleep(pause)
+        while self._device_busy():  # a device that says it is still playing is believed (bounded)
+            await asyncio.sleep(0.05)
         await self.end("playback")
 
     async def _send_audio(self, speech: _Speech, pcm: bytes, seq: int) -> int:

@@ -285,7 +285,15 @@ class ChatHandler:
         elif isinstance(message, p.VoiceStart):
             await self._voice_start(conn, message)
         elif isinstance(
-            message, (p.VoiceAudio, p.VoiceText, p.VoiceInterrupt, p.VoiceRoute, p.VoiceEnd)
+            message,
+            (
+                p.VoiceAudio,
+                p.VoiceText,
+                p.VoiceInterrupt,
+                p.VoiceRoute,
+                p.VoicePlayback,
+                p.VoiceEnd,
+            ),
         ):
             await self._voice_message(conn, message)
         elif message.type == "memory.request":
@@ -771,6 +779,8 @@ class ChatHandler:
             await session.interrupt()
         elif isinstance(message, p.VoiceRoute):
             session.set_route(message.route)
+        elif isinstance(message, p.VoicePlayback):
+            session.playback(message)
         elif isinstance(message, p.VoiceEnd):
             await session.end("client", notify=False)
 

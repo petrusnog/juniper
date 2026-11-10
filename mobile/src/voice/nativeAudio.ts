@@ -90,6 +90,13 @@ export const nativeAudio: AudioDevice = {
     );
     return () => subscription.remove();
   },
+  onPlayback(listener) {
+    const emitter = new NativeEventEmitter(NativeModules.JuniperAudio);
+    const subscription = emitter.addListener('juniperPlayback', (playing: unknown) =>
+      listener(playing === true),
+    );
+    return () => subscription.remove();
+  },
   async openPlayer(sampleRate) {
     await (NativeModules.JuniperAudio as NativeAudio).openPlayer(sampleRate);
   },

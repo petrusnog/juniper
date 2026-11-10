@@ -634,6 +634,22 @@ class VoiceRoute(_Message):
     route: VoiceRouteName
 
 
+VoicePlaybackState = Literal["started", "finished"]
+
+
+class VoicePlayback(_Message):
+    """The device's speaker became busy or idle (ADR-034).
+
+    ``started``: the first sound is playing. ``finished``: everything sent so far has been played
+    and the speaker is idle. It can alternate inside one reply (a gap between two sentences). It
+    lets the brain close the microphone for exactly as long as the sound lasts instead of for an
+    estimate; a client that never sends it keeps the estimate.
+    """
+
+    type: Literal["voice.playback"] = "voice.playback"
+    state: VoicePlaybackState
+
+
 class VoiceInterrupt(_Message):
     type: Literal["voice.interrupt"] = "voice.interrupt"
 
@@ -669,6 +685,7 @@ ClientMessage = (
     | VoiceText
     | VoiceInterrupt
     | VoiceRoute
+    | VoicePlayback
     | VoiceEnd
 )
 ServerMessage = (

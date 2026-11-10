@@ -1450,6 +1450,30 @@
       "title": "VoiceInterrupt",
       "type": "object"
     },
+    "VoicePlayback": {
+      "description": "The device's speaker became busy or idle (ADR-034).\n\n``started``: the first sound is playing. ``finished``: everything sent so far has been played\nand the speaker is idle. It can alternate inside one reply (a gap between two sentences). It\nlets the brain close the microphone for exactly as long as the sound lasts instead of for an\nestimate; a client that never sends it keeps the estimate.",
+      "properties": {
+        "state": {
+          "enum": [
+            "started",
+            "finished"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "type": {
+          "const": "voice.playback",
+          "default": "voice.playback",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "VoicePlayback",
+      "type": "object"
+    },
     "VoiceReady": {
       "properties": {
         "input": {
@@ -1890,6 +1914,7 @@
       "voice.end": "#/$defs/VoiceEnd",
       "voice.fallback": "#/$defs/VoiceFallback",
       "voice.interrupt": "#/$defs/VoiceInterrupt",
+      "voice.playback": "#/$defs/VoicePlayback",
       "voice.ready": "#/$defs/VoiceReady",
       "voice.route": "#/$defs/VoiceRoute",
       "voice.say": "#/$defs/VoiceSay",
@@ -1983,6 +2008,9 @@
     },
     {
       "$ref": "#/$defs/VoiceRoute"
+    },
+    {
+      "$ref": "#/$defs/VoicePlayback"
     },
     {
       "$ref": "#/$defs/VoiceEnd"

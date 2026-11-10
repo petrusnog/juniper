@@ -21,6 +21,8 @@ export interface AudioDevice {
   /** Loudspeaker (`true`) or headphones (`false`). */
   applyRoute(speaker: boolean): Promise<void>;
   onRouteChange(listener: (headset: boolean) => void): () => void;
+  /** Her voice became audible (`true`) or went quiet (`false`). Optional: not every device says. */
+  onPlayback?(listener: (playing: boolean) => void): () => void;
   openPlayer(sampleRate: number): Promise<void>;
   /** Queues PCM for playback, after what is already queued. */
   play(base64Pcm: string): void;
