@@ -22,7 +22,10 @@ issue do GitHub.
    - A descrição explica **o que foi alterado** (o template já traz as seções).
    - Inclua `Closes #<número da issue>` para fechar a issue ao mergear.
 6. **Merge.** *Squash merge*, mantendo o título `T-051: <descrição>`. Um commit por
-   task em `master`. Apague a branch depois do merge.
+   task em `master`. A branch é apagada depois do merge: o workflow `delete-branch.yml` faz isso
+   sozinho (o mesmo efeito da opção «Automatically delete head branches» do repositório).
+7. **Issue.** Comente na issue ao começar (branch e primeiro passo), confira que ela fechou depois
+   do merge e, se a task pertence a uma épica, marque-a no checklist da épica.
 
 ## Testes
 

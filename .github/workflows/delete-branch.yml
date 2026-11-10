@@ -1,0 +1,40 @@
+name: Delete branch
+
+# Apaga a branch de um PR assim que ele é mergeado em master (CONTRIBUTING.md: "Apague a branch
+# depois do merge"). É o mesmo efeito da opção "Automatically delete head branches" das
+# configurações do repositório; o workflow existe para a regra estar versionada e valer mesmo
+# que essa opção esteja desligada.
+#
+# Só age em branches do próprio repositório (nunca de forks) e nunca na branch padrão.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  delete:
+    name: delete merged branch
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != github.event.repository.default_branch
+    steps:
+      - name: Delete the head branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # The branch name goes through the environment, never interpolated into the script.
+          # The "/" of names like feature/T203 is part of the ref path: keep it as is.
+          encoded=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["BRANCH"], safe="/"))')
+          if gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded}"; then
+            echo "Deleted ${BRANCH}"
+          else
+            echo "::warning::Could not delete ${BRANCH} (already gone, or protected)."
+          fi
