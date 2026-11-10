@@ -268,6 +268,38 @@ class VoiceVADSettings(BaseModel):
     max_utterance_seconds: int = Field(default=30, ge=3, le=120)
 
 
+class VoiceSpeakerSettings(BaseModel):
+    """Quem está falando: reconhecimento da voz de quem se cadastrou (ADR-034, T-213/T-214).
+
+    Dado biométrico: os vetores ficam cifrados no MongoDB, com a chave neste servidor.
+    """
+
+    # off: não identifica. shadow: identifica e registra a semelhança, sem mudar nada (para
+    # calibrar o limiar com uso real). enforce: só responde a voz cadastrada; as outras são
+    # ignoradas. Sem nenhuma voz cadastrada, enforce se comporta como off.
+    mode: Literal["off", "shadow", "enforce"] = "off"
+    # O modelo de vetor de voz (ONNX do sherpa-onnx: WeSpeaker, 3D-Speaker...). Arquivo que o
+    # operador coloca no servidor; sem ele a identificação fica indisponível.
+    model_file: Path | None = None
+    # Onde fica a chave que cifra os vetores (criada no primeiro cadastro, modo 600). Guarde um
+    # backup à parte do banco: sem ela os cadastros viram ilegíveis e é preciso recadastrar.
+    key_file: Path = Field(
+        default_factory=lambda: Path.home() / ".juniper" / "voice" / "speaker.key"
+    )
+    # Semelhança mínima (cosseno, 0 a 1) para dizer «é fulano». Ponto de partida [a calibrar]
+    # com o modo shadow: alto demais deixa a Juniper surda para o dono, baixo demais a deixa
+    # responder a quem não deveria.
+    threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    # Vantagem mínima sobre a segunda pessoa cadastrada; duas vozes parecidas ficam «ninguém».
+    margin: float = Field(default=0.05, ge=0.0, le=1.0)
+    threads: int = Field(default=1, ge=1, le=8)
+
+    @field_validator("model_file", "key_file")
+    @classmethod
+    def _expand(cls, v: Path | None) -> Path | None:
+        return v.expanduser() if v is not None else None
+
+
 class VoiceSettings(BaseModel):
     """Voz por áudio, pelo cérebro (ver ADR-023). Desligada por padrão."""
 
@@ -294,6 +326,7 @@ class VoiceSettings(BaseModel):
     tts: VoiceTTSSettings = Field(default_factory=VoiceTTSSettings)
     stt: VoiceSTTSettings = Field(default_factory=VoiceSTTSettings)
     vad: VoiceVADSettings = Field(default_factory=VoiceVADSettings)
+    speaker: VoiceSpeakerSettings = Field(default_factory=VoiceSpeakerSettings)
 
     @field_validator("usage_file")
     @classmethod

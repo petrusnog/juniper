@@ -24,9 +24,13 @@ dependencies = [
     "tokenizers>=0.19",
     "websockets>=14",
     "python-telegram-bot>=21,<23",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]
+# Reconhecimento da voz de quem se cadastrou (ADR-034): o extrator de vetor de voz. Só é usado
+# quando `voice.speaker.model_file` aponta para um modelo.
+voice-id = ["sherpa-onnx>=1.10"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",

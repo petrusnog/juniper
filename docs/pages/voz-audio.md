@@ -175,5 +175,6 @@ Extensão compatível do [protocolo](protocolo.md) (sem mudar `protocol_version`
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
 - [Voz no terminal](voz.md) (Documentação Técnica): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
 - [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
+- [Reconhecer quem fala](voz-identidade.md) (Documentação Técnica): O cadastro das vozes conhecidas, a proteção do dado biométrico e o que a voz reconhecida pode e não pode decidir.
 - [Avaliar a voz](voz-avaliacao.md) (Documentação Técnica): Como medir a escuta antes e depois de uma mudança: o conjunto de frases gravadas, WER e CER, e os eventos de latência e de corte da fala.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.

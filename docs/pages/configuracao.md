@@ -208,6 +208,12 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.md)). **Desligada po
 | `voice.idle_timeout_seconds` | `60` | Silêncio (ninguém falando) que encerra a conversa de voz (10 a 3.600). |
 | `voice.wake_idle_seconds` | `15` | O mesmo silêncio, para a conversa aberta pela palavra de ativação (5 a 600): sem pedido depois da saudação ela fecha logo e o celular volta a esperar a palavra. |
 | `voice.wake_arbitration_ms` | `300` | Quando vários aparelhos da mesma pessoa ouvem a mesma palavra de ativação, o cérebro espera tanto por todos e deixa responder o de maior pontuação (0 a 2.000). `0` não espera: só impede dois ao mesmo tempo. |
+| `voice.speaker.mode` | `off` | Reconhecer quem fala ([Reconhecer quem fala](voz-identidade.md)). `off`: não identifica. `shadow`: identifica e registra a semelhança, sem mudar nada (para calibrar). `enforce`: só responde a voz cadastrada. |
+| `voice.speaker.model_file` | vazio | O modelo de voz (ONNX do sherpa-onnx), um arquivo que você coloca no servidor. Sem ele a identificação fica indisponível. |
+| `voice.speaker.key_file` | `~/.juniper/voice/speaker.key` | A chave que cifra os vetores de voz (criada no primeiro cadastro, permissão 600). Guarde um backup à parte do banco: sem ela é preciso recadastrar. |
+| `voice.speaker.threshold` | `0.6` | Semelhança mínima (0 a 1) para dizer «é fulano». Ponto de partida a calibrar com o modo `shadow`. |
+| `voice.speaker.margin` | `0.05` | Vantagem mínima sobre a segunda pessoa cadastrada; duas vozes parecidas demais resultam em «ninguém». |
+| `voice.speaker.threads` | `1` | Fios de CPU do modelo de voz (1 a 8). |
 | `voice.usage_file` | `~/.juniper/voice/usage.json` | Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício. Na VPS, ponha num volume (como a pasta `music`). |
 | `voice.tts.provider` | `google` | Quem fala: Google Cloud Text-to-Speech. |
 | `voice.tts.voice` | `pt-BR-Chirp3-HD-Leda` | A voz (Chirp 3 HD). |

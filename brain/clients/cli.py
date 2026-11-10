@@ -1152,6 +1152,10 @@ from brain.clients import users_cli  # noqa: E402
 
 users_cli.install(app, console)
 
+from brain.clients import voices_cli  # noqa: E402
+
+voices_cli.install(app, console)
+
 profile_app = typer.Typer(
     help="Seu perfil: o parágrafo de identidade que a Juniper lê em toda mensagem.",
     invoke_without_command=True,

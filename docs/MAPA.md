@@ -45,6 +45,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
 - [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências…
 - [Avaliar a voz](pages/voz-avaliacao.md): Como medir a escuta da Juniper antes e depois de uma mudança: o conjunto de frases gravadas e seu roteiro, o script que calcula…
+- [Reconhecer quem fala](pages/voz-identidade.md): Como a Juniper aprende a voz de quem se cadastrou, onde guarda esse dado biométrico e como o protege, como cadastrar, testar e…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -95,11 +96,11 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-001](decisions/ADR-001.md): Idioma, Providers de LLM e Camada HMI (Aprovado) · `architecture`, `contribuindo`, `produto-llm`
 - [ADR-002](decisions/ADR-002.md): Schema de Tools (Aprovado) · `architecture`, `contribuindo`, `llm`, `produto-ferramentas`, `tools`
 - [ADR-003](decisions/ADR-003.md): Configuração (Aprovado) · `architecture`, `configuracao`, `contribuindo`, `integracoes-producao`, `memoria-sessao`
-- [ADR-006](decisions/ADR-006.md): Política de Segurança para Execução de Comandos (Aprovado) · `architecture`, `contribuindo`, `memoria-sessao`, `produto-ferramentas`, `produto-integracoes`, `seguranca`, `tools`
+- [ADR-006](decisions/ADR-006.md): Política de Segurança para Execução de Comandos (Aprovado) · `architecture`, `contribuindo`, `memoria-sessao`, `produto-ferramentas`, `produto-integracoes`, `seguranca`, `tools`, `voz-identidade`
 - [ADR-007](decisions/ADR-007.md): Arquitetura de Deployment (Aprovado) · `agente`, `architecture`, `contribuindo`, `produto`, `seguranca`, `tools`
 - [ADR-008](decisions/ADR-008.md): Integração com Google Calendar (primeira tool real) (Proposto) · `google-calendar`, `integracoes-producao`, `produto-integracoes`
 - [ADR-009](decisions/ADR-009.md): DeepInfra como provider principal e nova ordem do failover (Aceito) · `architecture`, `contribuindo`, `integracoes-producao`, `llm`, `produto-llm`
-- [ADR-010](decisions/ADR-010.md): Gerenciamento completo da agenda do usuário (Aceito) · `agente`, `architecture`, `contribuindo`, `desktop`, `google-calendar`, `integracoes-producao`, `integrar-cliente`, `mobile`, `produto-ferramentas`, `produto-integracoes`, `produto`, `protocolo`, `seguranca`, `servidor`, `voz-audio`
+- [ADR-010](decisions/ADR-010.md): Gerenciamento completo da agenda do usuário (Aceito) · `agente`, `architecture`, `contribuindo`, `desktop`, `google-calendar`, `integracoes-producao`, `integrar-cliente`, `mobile`, `produto-ferramentas`, `produto-integracoes`, `produto`, `protocolo`, `seguranca`, `servidor`, `voz-audio`, `voz-identidade`
 - [ADR-011](decisions/ADR-011.md): Arquitetura de Memória (Proposto) · `memoria-longo-prazo`, `memoria-sessao`, `memoria`, `produto-memoria`
 - [ADR-012](decisions/ADR-012.md): Protocolo cliente ↔ brain (Proposto) · `architecture`, `contribuindo`, `integrar-cliente`, `observabilidade`, `produto-canais`, `protocolo`, `seguranca`, `servidor`, `vazamentos`
 - [ADR-013](decisions/ADR-013.md): Deploy e infraestrutura de produção (Proposto) · `contribuindo`, `deploy-continuo`, `deploy-vps`, `integracoes-producao`, `mobile`, `producao`, `produto-privacidade`, `produto`, `protocolo`, `seguranca`
@@ -123,4 +124,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `desktop`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
 - [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `lembretes`
 - [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`, `desktop`
-- [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `voz-audio`, `voz-avaliacao`
+- [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `voz-audio`, `voz-avaliacao`, `voz-identidade`

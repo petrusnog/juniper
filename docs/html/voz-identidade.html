@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Reconhecer quem fala — Livro de bolso Juniper</title>
+<meta name="description" content="Como a Juniper aprende a voz de quem se cadastrou, onde guarda esse dado biométrico e como o protege, como cadastrar, testar e apagar uma voz, e o que a voz reconhecida pode e não pode decidir.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/voz-identidade.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Clientes / Reconhecer quem fala</div>
+<h1>Reconhecer quem fala <span class="tag a">proposto</span></h1>
+<p class="lead">Como a Juniper aprende a voz de quem se cadastrou, onde guarda esse dado biométrico e como o protege, como cadastrar, testar e apagar uma voz, e o que a voz reconhecida pode e não pode decidir.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página detalha a seção 3 do <a href="adr-034.html">ADR-034</a>. Código: <code>brain/voice/speaker.py</code> e <code>brain/clients/voices_cli.py</code>. <strong>Estado:</strong> parcial — o cadastro, o cofre e a comparação estão prontos e testados com um extrator de mentira; falta ligar o reconhecimento à sessão de voz (T-214) e <strong>nunca rodou com um modelo de voz de verdade</strong>.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Cada voz cadastrada vira um <strong>vetor</strong>: algumas centenas de números que um modelo calcula a partir do áudio. Duas gravações da mesma pessoa dão vetores que apontam para o mesmo lado (cosseno perto de 1); pessoas diferentes, não. Para saber de quem é uma fala, o cérebro calcula o vetor dela e compara com os cadastrados.</p>
+<pre><code class="lang-text">gravações (WAV) ──► modelo ──► vetor ──► cifrado ──► MongoDB (voiceprints)
+fala ──► modelo ──► vetor ──► cosseno com cada cadastrado ──► «é a Ana» · «ninguém conhecido»</code></pre>
+<h2 id="nao-e-autenticacao">O que a voz decide, e o que não</h2>
+<p><strong>Voz não é autenticação.</strong> Ela decide se a Juniper <em>responde</em> e <em>como chama a pessoa</em>. Nunca levanta um tier, uma permissão ou uma confirmação (<a href="adr-006.html">ADR-006</a>, <a href="adr-010.html">ADR-010</a>): uma gravação da voz do dono não ganha nada que o aparelho, com a credencial dele, já não tivesse. Ações que importam continuam presas à credencial do aparelho e à confirmação em conversa.</p>
+<h2 id="protecao">Dado biométrico: como é protegido</h2>
+<ul><li><strong>Cifrado em repouso.</strong> O vetor vai ao MongoDB cifrado com AES-256-GCM, e a chave é um <strong>arquivo do servidor</strong> (<code>voice.speaker.key_file</code>, criado no primeiro cadastro com permissão 600), fora do banco. Quem leva só o banco não lê nada.</li><li><strong>Preso ao próprio registro.</strong> A cifra amarra o vetor ao id do cadastro e ao usuário: mover o registro para outra pessoa o torna ilegível, em vez de passar a valer para ela.</li><li><strong>Só com consentimento.</strong> O cadastro exige o «sim» da pessoa (<code>--consent</code> ou a pergunta na tela) e guarda quem registrou e quando.</li><li><strong>Sem áudio guardado.</strong> As gravações são lidas, viram vetor e são descartadas.</li><li><strong>Apagar é imediato e completo</strong>, por voz ou por pessoa.</li><li><strong>Nunca em log, cliente ou terceiro.</strong> Só a semelhança (um número) pode ir ao log. A lista (<code>juniper voices list</code>) não mostra o vetor.</li><li><strong>Perdeu a chave?</strong> Os cadastros ficam ilegíveis (são ignorados, não dão erro) e é preciso cadastrar de novo. Guarde um backup da chave <strong>à parte</strong> do backup do banco: o <code>backup_memory.sh</code> leva o banco, não a chave.</li><li><strong>Trocou de modelo?</strong> Cada cadastro lembra qual modelo o gerou e é ignorado (nunca misturado) se o modelo configurado for outro.</li></ul>
+<h2 id="cli">Cadastrar, listar, testar e apagar</h2>
+<p>Roda onde o servidor está (veja <a href="operacao.html#atalho">Operação</a>). O usuário já tem de existir (<a href="usuarios.html">Usuários e credenciais</a>).</p>
+<pre><code class="lang-bash">juniper voices add Ana --wav ana1.wav --wav ana2.wav --wav ana3.wav --label normal
+juniper voices list
+juniper voices test gravacao.wav
+juniper voices remove vp_1a2b3c4d5e6f
+juniper voices forget Ana</code></pre>
+<ul><li><strong><code>add</code></strong>: três gravações ou mais, WAV mono de 16 bits, de 1,5 a 30 s cada, da mesma pessoa falando normalmente. A Juniper pergunta se a pessoa concorda (ou use <code>--consent</code>). São recusadas amostras curtas, quase mudas, estouradas ou que <strong>não pareçam a mesma voz</strong> (o pior par de amostras precisa passar de 0,5 de semelhança). Uma pessoa pode ter mais de uma voz (<code>--label rouca</code>).</li><li><strong><code>list</code></strong>: id, pessoa, rótulo, número de amostras, modelo, quem consentiu e quando.</li><li><strong><code>test</code></strong>: diz de quem soa uma gravação, com a semelhança e a vantagem sobre o segundo colocado; serve para escolher o limiar.</li><li><strong><code>remove</code></strong> / <strong><code>forget</code></strong>: apaga uma voz ou todas as de uma pessoa, na hora.</li></ul>
+<h2 id="modelo">O modelo e o limiar</h2>
+<p>O vetor vem de um modelo de reconhecimento de falante em ONNX, rodando na CPU pelo <strong>sherpa-onnx</strong> (biblioteca Apache-2.0; modelos como WeSpeaker ou 3D-Speaker). Ambos são opcionais até alguém usar o reconhecimento:</p>
+<ol><li>Instale o extra: <code>pip install &quot;.[voice-id]&quot;</code>. A imagem de produção ainda <strong>não</strong> o instala.</li><li>Coloque o arquivo do modelo no servidor e aponte <code>voice.speaker.model_file</code> para ele. A licença e o desempenho de cada modelo precisam ser conferidos antes de escolher um.</li></ol>
+<p>A decisão «é fulano» exige duas coisas: a semelhança chegar a <code>voice.speaker.threshold</code> e a vantagem sobre a segunda pessoa cadastrada chegar a <code>voice.speaker.margin</code>. Duas vozes parecidas demais resultam em <strong>ninguém</strong>, nunca em um palpite. O limiar padrão (0,6) é só um ponto de partida: alto demais deixa a Juniper surda para o dono, baixo demais a faz responder a quem não deveria. Calibre com <code>juniper voices test</code> e o modo <code>shadow</code>.</p>
+<p>As opções estão em <a href="configuracao.html#voice">Configuração</a>.</p>
+<h2 id="verificado">O que foi verificado</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Como</th><th>O quê</th></tr></thead><tbody><tr><td><strong>Automatizado</strong> (<code>tests/test_voice_speaker.py</code>, <code>tests/test_voices_cli.py</code>)</td><td>Cifra e vínculo ao registro, consentimento, recusa de amostras ruins ou de vozes misturadas, limiar e margem, cache, exclusão, a CLI inteira</td></tr><tr><td><strong>Simulado</strong></td><td>Vozes representadas por conjuntos de tons e um extrator de mentira (<code>tests/fake_speaker.py</code>); mostra que a lógica de comparação funciona, não que um modelo real separa pessoas</td></tr><tr><td><strong>Com modelo e vozes reais</strong></td><td>Pendente: falso aceite, falsa rejeição e o limiar certo só existem com pessoas de verdade</td></tr></tbody></table></div>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="voz-audio.html">Voz por áudio</a> (Documentação Técnica): a sessão de voz onde o reconhecimento vai atuar.</li><li><a href="usuarios.html">Usuários e credenciais</a> (Documentação Técnica): a quem uma voz cadastrada se liga.</li><li><a href="voz-avaliacao.html">Avaliar a voz</a> (Documentação Técnica): como medir; os falsos aceites e rejeições entram nas mesmas medições.</li><li><a href="produto-privacidade.html">Privacidade e segurança</a> (Produto): para onde vão os seus dados.</li><li><a href="configuracao.html">Configuração</a> (Referência): as opções <code>voice.speaker.*</code>.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>
