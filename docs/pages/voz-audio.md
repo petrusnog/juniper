@@ -61,6 +61,18 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## Correção com o glossário {#correcao kind=módulo file=brain/voice/correction.py}
+
+Depois da transcrição e **antes** de o texto virar pedido, o cérebro troca por um termo do glossário o trecho que soa como ele: «abra o projeto mídia works» vira «abra o projeto Media Works» ([ADR-034](../decisions/ADR-034.md)). É um corretor determinístico e local, sem LLM, e foi desenhado para não conseguir inventar:
+
+- **Só entra texto do glossário.** Nenhuma outra palavra é acrescentada ou removida; números nunca são tocados, e um termo que contém dígito só entra se o som for idêntico.
+- **Som parecido, não sentido parecido.** A comparação usa uma chave de som em pt-BR (sem acento, caixa nem espaço; «ph»/«f», «k»/«c», «h» mudo). Aceita palavras coladas («mediaworks») ou separadas («me dia works»).
+- **Parecido o bastante basta; mais ou menos exige dúvida.** Semelhança de 0,88 ou mais corrige sempre (o Whisper costuma estar confiante no erro); entre 0,80 e 0,88 só se a confiança da transcrição for menor que 0,8 (confiança desconhecida conta como alta). Termos de até 4 letras só casam com o mesmo som.
+- **Empate não é escolha.** Se dois termos servem quase igualmente, nada é trocado.
+- **Sem termo e sem certeza, ela pergunta.** Confiança abaixo de `voice.stt.repeat_below_confidence` e nenhuma correção: «Não tenho certeza se entendi direito. Pode repetir?», sem abrir turno. Uma palavra só (um «sim», um «não») passa direto.
+
+O `voice.transcript` leva o `text` corrigido e, quando houve troca, o `original`. O log conta as correções e a semelhança de cada uma; o par de frases só vai para ele com `voice.stt.debug_transcripts`. Para desligar tudo: `voice.stt.correct_terms: false`. O risco que sobra é uma palavra comum parecida com um termo («contato», «Contabo») em fala de baixa confiança; por isso o glossário deve ter os termos que importam, e não tudo.
+
 ## Viva-voz, fone e música tocando {#viva-voz}
 
 Fora de um fone com fio, a voz sai por um alto-falante (o do carro por Bluetooth ou o do celular) e o microfone ouve a própria Juniper. O que existe contra o laço de «ela se ouve e responde a si mesma»:

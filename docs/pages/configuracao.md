@@ -222,6 +222,9 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.md)). **Desligada po
 | `voice.stt.cooldown_seconds` | `3600` | Quanto a nuvem fica de molho depois de um limite de uso sem `retry-after` (60 a 86.400). |
 | `voice.stt.glossary` | `[]` | Nomes próprios e termos que a transcrição deve acertar (`Media Works`, nomes de pessoas); até 200, cada um com até 60 caracteres. Vão ao Whisper como dica de vocabulário; os primeiros têm prioridade se faltar espaço. Os nomes dos usuários cadastrados entram sozinhos. |
 | `voice.stt.glossary_chars` | `500` | Quanto cabe da dica (50 a 1.000). O Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la. |
+| `voice.stt.correct_terms` | `true` | Troca o trecho que soa como um termo do glossário por ele («mídia works» → «Media Works»). Só põe termos do glossário; nunca reescreve a fala. |
+| `voice.stt.repeat_below_confidence` | `0.3` | Abaixo desta confiança (0 a 1) e sem termo que explique, ela pede para repetir em vez de adivinhar. Uma palavra só nunca dispara o pedido. `0` desliga. |
+| `voice.stt.debug_transcripts` | `false` | Grava no log o par «ouvido → corrigido». Desligado, o log só conta as correções (a fala é dado pessoal). |
 | `voice.stt.timeout` | `20.0` | Segundos de espera por uma transcrição (1 a 120). |
 | `voice.vad.speech_start_ms` | `120` | Fala contínua necessária para contar como início de fala. |
 | `voice.vad.silence_ms` | `700` | Silêncio que encerra uma fala. |

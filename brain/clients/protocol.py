@@ -596,6 +596,9 @@ class VoiceTranscript(_Message):
     type: Literal["voice.transcript"] = "voice.transcript"
     text: str
     final: bool = True
+    # What the speech-to-text wrote, when the brain corrected it with a glossary term (ADR-034);
+    # absent when `text` is exactly what was heard.
+    original: str | None = None
 
 
 class VoiceSay(_Message):

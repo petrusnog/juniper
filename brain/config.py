@@ -247,6 +247,15 @@ class VoiceSTTSettings(BaseModel):
     glossary: list[str] = Field(default_factory=list, max_length=200)
     # Quanto cabe da dica: o Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la.
     glossary_chars: int = Field(default=500, ge=50, le=1000)
+    # Troca o trecho que soa como um termo do glossário por ele («mídia works» → «Media Works»).
+    # Só põe termos do glossário; nunca reescreve a fala (ADR-034).
+    correct_terms: bool = True
+    # Abaixo desta confiança (0 a 1) e sem termo que explique, ela pede para repetir em vez de
+    # adivinhar. 0 desliga o pedido.
+    repeat_below_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Grava no log o par «ouvido → corrigido». Desligado, o log só conta as correções (a fala é
+    # dado pessoal).
+    debug_transcripts: bool = False
 
 
 class VoiceVADSettings(BaseModel):
