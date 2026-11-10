@@ -24,7 +24,7 @@ dependencies = [
     "tokenizers>=0.19",
     "websockets>=14",
     "python-telegram-bot>=21,<23",
-    "cryptography>=42",
+    "cryptography>=43.0.1",
 ]
 
 [project.optional-dependencies]

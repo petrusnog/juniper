@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import random
 import re
 import secrets
 import time
@@ -26,7 +27,7 @@ from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
 from brain.clients.server import Connection
-from brain.clients.voice_session import VoiceSession
+from brain.clients.voice_session import VoiceSession, greetings_for
 from brain.config import settings
 from brain.core.agent import LIMIT_MESSAGE, NOTHING_PENDING_HINT, Agent, ContextProvider
 from brain.core.dispatcher import Dispatcher
@@ -109,6 +110,7 @@ class TurnRun:
     task: asyncio.Task[None] | None = None
     cancelled: bool = False
     voice: VoiceSession | None = None  # set when the turn was started by a voice utterance
+    speaker: str | None = None  # the name of the recognised voice that started it (ADR-034)
 
 
 @dataclass
@@ -503,7 +505,11 @@ class ChatHandler:
                 await conn.send(p.Error.from_code("turn_in_progress", BUSY_MESSAGE, message.id))
                 return
             run = TurnRun(
-                turn_id=f"t-{secrets.token_hex(4)}", reply_to=message.id, owner=conn, voice=voice
+                turn_id=f"t-{secrets.token_hex(4)}",
+                reply_to=message.id,
+                owner=conn,
+                voice=voice,
+                speaker=voice.current_speaker if voice is not None else None,
             )
             conversation.turn = run  # a partir daqui a conversa está ocupada
             message_trace.step(
@@ -637,6 +643,7 @@ class ChatHandler:
             and self.executors.offers(run.owner, "open_url"),
             gateway=self.executors,
             playback=playback,
+            speaker=run.speaker,
             spoken_budget=(
                 self._voice.reply_budget_chars
                 if run.voice is not None and self._voice is not None
@@ -761,6 +768,7 @@ class ChatHandler:
             wake=bool(message.wake),
             briefing=briefing if reminders.CreateReminder.available() and user_id else None,
             idle_timeout=services.wake_idle_timeout if message.wake else None,
+            greeting=self._greeting_for(conn),
         )
         self._voices[conn.id] = session
         await session.start(message.id)
@@ -784,6 +792,15 @@ class ChatHandler:
             waited_ms=round(arbiter.window * 1000),
         )
         return won
+
+    @staticmethod
+    def _greeting_for(conn: Connection) -> Callable[[], str] | None:
+        """A wake session greets the person the device belongs to by name (no name in code)."""
+        name = conn.principal.name if conn.principal else None
+        if not name:
+            return None
+        options = greetings_for(name)
+        return lambda: random.choice(options)
 
     def _clear_pending(self, conn: Connection) -> None:
         conversation: Conversation | None = conn.state

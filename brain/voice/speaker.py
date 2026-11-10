@@ -39,6 +39,7 @@ from typing import Any, Final
 
 import numpy as np
 
+from brain.eventlog import event_log
 from brain.memory.mongo import MongoConnection
 from brain.voice.errors import VoiceError
 
@@ -163,14 +164,33 @@ class VoiceKey:
 
     @classmethod
     def load_or_create(cls, path: Path) -> VoiceKey:
-        if path.is_file():
+        """The key in ``path``, created (private) on first use. Raises `VoiceError` if unusable."""
+        try:
+            if not path.is_file():
+                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                try:
+                    # never world-readable, never half-written under a name others can read
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                except FileExistsError:
+                    pass  # another process created it between the check and now: read it
+                else:
+                    with os.fdopen(fd, "wb") as handle:
+                        handle.write(secrets.token_bytes(KEY_BYTES))
+                        handle.flush()
+                        os.fsync(handle.fileno())
+            if path.stat().st_mode & 0o077:
+                raise VoiceError(
+                    "speaker_unavailable",
+                    "A chave de voz está legível por outros usuários (use chmod 600).",
+                )
             return cls(path.read_bytes())
-        path.parent.mkdir(parents=True, exist_ok=True)
-        key = secrets.token_bytes(KEY_BYTES)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # never world-readable
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(key)
-        return cls(key)
+        except VoiceError:
+            raise
+        except (OSError, ValueError) as exc:
+            raise VoiceError(
+                "speaker_unavailable",
+                "Não consegui abrir a chave de voz (arquivo ausente ou inválido).",
+            ) from exc
 
     def seal(self, plain: bytes, bound_to: bytes) -> bytes:
         nonce = secrets.token_bytes(NONCE_BYTES)
@@ -196,8 +216,12 @@ class Voiceprint:
     created_at: datetime
 
 
-def _bound(voiceprint_id: str, user_id: str) -> bytes:
-    return f"{voiceprint_id}|{user_id}".encode()
+SEAL_VERSION: Final = b"\x01"  # first byte of a sealed vector: room to change the scheme later
+
+
+def _bound(voiceprint_id: str, user_id: str, model_id: str, dim: int) -> bytes:
+    """What a sealed vector is tied to: change any of it in the database and it stops opening."""
+    return f"v1|{voiceprint_id}|{user_id}|{model_id}|{dim}".encode()
 
 
 class VoiceprintStore:
@@ -211,9 +235,14 @@ class VoiceprintStore:
         return self.connection.collection(COLLECTION)
 
     def add(self, voiceprint: Voiceprint) -> None:
-        sealed = self._key.seal(
+        sealed = SEAL_VERSION + self._key.seal(
             voiceprint.vector.astype("<f4").tobytes(),
-            _bound(voiceprint.voiceprint_id, voiceprint.user_id),
+            _bound(
+                voiceprint.voiceprint_id,
+                voiceprint.user_id,
+                voiceprint.model_id,
+                int(voiceprint.vector.shape[0]),
+            ),
         )
         with self.connection.guard():
             self._collection().insert_one(
@@ -244,20 +273,32 @@ class VoiceprintStore:
         ]
 
     def load(self, model_id: str) -> list[Voiceprint]:
-        """The usable voiceprints: made by ``model_id`` and readable with the current key.
+        return self.load_all(model_id)[0]
 
-        One that cannot be read (another key, a damaged record) is skipped, not an error: it
-        simply never matches anyone.
+    def load_all(self, model_id: str) -> tuple[list[Voiceprint], int]:
+        """``(usable voiceprints, how many records could not be used)``.
+
+        Unusable means made by another model, sealed with another key or damaged. They never
+        match anyone, but they are *counted*: records that exist and cannot be read are not the
+        same as nobody having registered (the caller must not read that as "answer everyone").
         """
         found: list[Voiceprint] = []
+        unusable = 0
         for doc in self._documents(None):
             if doc.get("model_id") != model_id:
+                unusable += 1
                 continue
             try:
+                sealed = bytes(doc["vector_sealed"])
+                if sealed[:1] != SEAL_VERSION:
+                    raise ValueError("unknown seal version")
                 raw = self._key.open(
-                    bytes(doc["vector_sealed"]), _bound(str(doc["_id"]), str(doc["user_id"]))
+                    sealed[1:],
+                    _bound(str(doc["_id"]), str(doc["user_id"]), model_id, int(doc["dim"])),
                 )
-            except Exception:  # noqa: BLE001 - wrong key or tampered record
+            except Exception as exc:  # noqa: BLE001 - wrong key or tampered record
+                event_log.log("error", where="voice.voiceprint", type=type(exc).__name__)
+                unusable += 1
                 continue
             found.append(
                 Voiceprint(
@@ -272,7 +313,7 @@ class VoiceprintStore:
                     created_at=doc["created_at"],
                 )
             )
-        return found
+        return found, unusable
 
     def remove(self, voiceprint_id: str) -> bool:
         with self.connection.guard():
@@ -308,7 +349,7 @@ class SpeakerIdentifier:
         *,
         threshold: float = 0.6,
         margin: float = 0.05,
-        ttl: float = 30.0,
+        ttl: float = 5.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.embedder = embedder
@@ -318,6 +359,7 @@ class SpeakerIdentifier:
         self._ttl = ttl
         self._clock = clock
         self._cache: list[Voiceprint] = []
+        self._unusable = 0
         self._loaded_at: float | None = None
 
     def invalidate(self) -> None:
@@ -326,14 +368,23 @@ class SpeakerIdentifier:
 
     def voiceprints(self) -> list[Voiceprint]:
         if self._loaded_at is None or self._clock() - self._loaded_at >= self._ttl:
-            self._cache = self.store.load(self.embedder.model_id)
+            self._cache, self._unusable = self.store.load_all(self.embedder.model_id)
             self._loaded_at = self._clock()
+            if self._unusable:
+                event_log.log("voice", action="speaker_unreadable", records=self._unusable)
         return self._cache
+
+    def enrolled(self) -> bool:
+        """Does anyone have a registered voice? Unreadable records count: they are someone's."""
+        prints = self.voiceprints()
+        return bool(prints) or self._unusable > 0
 
     def compare(self, vector: np.ndarray) -> Identity:
         prints = self.voiceprints()
         if not prints:
-            return Identity(known=False, enrolled=False)
+            # nothing usable. If records exist but cannot be read (lost key, other model), the
+            # answer is "enrolled, and this is nobody I can recognise", never "answer everyone"
+            return Identity(known=False, enrolled=self._unusable > 0)
         best_by_person: dict[str, tuple[float, Voiceprint]] = {}
         for vp in prints:
             if vp.vector.shape != vector.shape:

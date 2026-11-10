@@ -275,3 +275,11 @@ async def test_an_empty_report_has_no_rates_instead_of_dividing_by_zero() -> Non
     assert report.words.rate is None and report.latency()["p95_ms"] is None
     assert "WER: n/d" in ev.render(report)
     assert json.dumps(report.to_dict())
+
+
+def test_only_regular_files_with_a_sane_rate_are_read(tmp_path: Path) -> None:
+    with pytest.raises(ev.EvalError, match="arquivo comum"):
+        ev.read_audio(tmp_path)  # a directory (or a device, a FIFO) is not a recording
+    write_wav(tmp_path / "lento.wav", rate=1, ms=3000)
+    with pytest.raises(ev.EvalError, match="taxa"):
+        ev.read_audio(tmp_path / "lento.wav")

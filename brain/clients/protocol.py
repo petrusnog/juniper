@@ -585,7 +585,9 @@ class VoiceAudio(_Message):
         return base64.b64decode(self.data)
 
 
-VoiceStateName = Literal["listening", "thinking", "speaking", "idle"]
+# `unrecognized`: a voice that is not one of the registered ones was heard and ignored (ADR-034);
+# sent only when nothing else is going on, and followed by `listening`. A client may show it.
+VoiceStateName = Literal["listening", "thinking", "speaking", "idle", "unrecognized"]
 
 
 class VoiceState(_Message):
@@ -603,6 +605,10 @@ class VoiceTranscript(_Message):
     # What the speech-to-text wrote, when the brain corrected it with a glossary term (ADR-034);
     # absent when `text` is exactly what was heard.
     original: str | None = None
+    # Who spoke, when the voice was recognised (ADR-034): the person's name and how sure the
+    # comparison was (0 to 1). Absent when voice identification is off or the voice is unknown.
+    speaker: str | None = None
+    speaker_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class VoiceSay(_Message):

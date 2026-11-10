@@ -350,3 +350,111 @@ def test_without_a_configured_model_there_is_no_identifier() -> None:
 
     with pytest.raises(VoiceError, match="model_file"):
         open_identifier(VoiceSpeakerSettings())
+
+
+# --- findings of the security review (T-213/T-214) -------------------------------------------
+
+
+def test_records_that_exist_but_cannot_be_read_are_never_read_as_nobody_enrolled(
+    identifier: SpeakerIdentifier, key: VoiceKey
+) -> None:
+    sign_up(identifier, "ana", ANA)
+    lost_key = SpeakerIdentifier(
+        ToneEmbedder(), VoiceprintStore(VoiceKey(bytes(range(32))), identifier.store.connection)
+    )
+    heard = lost_key.identify(voice_pcm(ANA, 1.5), RATE)
+    assert heard.enrolled is True and heard.known is False  # closed, not "answer everyone"
+    assert lost_key.enrolled() is True
+
+
+def test_a_changed_model_also_counts_as_enrolled_but_unreadable(
+    identifier: SpeakerIdentifier,
+) -> None:
+    sign_up(identifier, "ana", ANA)
+    other = SpeakerIdentifier(ToneEmbedder(), identifier.store)
+    other.embedder.model_id = "fake:another-model"  # type: ignore[misc]
+    heard = other.identify(voice_pcm(ANA, 1.5), RATE)
+    assert heard.enrolled is True and heard.known is False
+
+
+def test_unreadable_records_are_logged_by_count_only(
+    identifier: SpeakerIdentifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.voice import speaker as module
+
+    seen: list[tuple[str, dict]] = []
+    monkeypatch.setattr(module.event_log, "log", lambda e, **kw: seen.append((e, kw)))
+    sign_up(identifier, "ana", ANA)
+    lost_key = SpeakerIdentifier(
+        ToneEmbedder(), VoiceprintStore(VoiceKey(bytes(range(32))), identifier.store.connection)
+    )
+    lost_key.voiceprints()
+    assert ("voice", {"action": "speaker_unreadable", "records": 1}) in seen
+
+
+def test_nobody_enrolled_at_all_is_still_nobody(identifier: SpeakerIdentifier) -> None:
+    assert identifier.enrolled() is False
+
+
+def test_a_record_with_its_model_or_size_edited_stops_opening(
+    identifier: SpeakerIdentifier,
+) -> None:
+    sign_up(identifier, "ana", ANA)
+    coll = identifier.store.connection.collection("voiceprints")
+    coll.update_many({}, {"$set": {"dim": 32}})  # bound into the seal
+    assert identifier.store.load_all("fake:tone") == ([], 1)
+
+
+def test_a_sealed_vector_of_an_unknown_version_is_unusable(identifier: SpeakerIdentifier) -> None:
+    sign_up(identifier, "ana", ANA)
+    (doc,) = stored(identifier)
+    raw = bytes(doc["vector_sealed"])
+    coll = identifier.store.connection.collection("voiceprints")
+    coll.update_many({}, {"$set": {"vector_sealed": b"\x09" + raw[1:]}})
+    assert identifier.store.load_all("fake:tone") == ([], 1)
+
+
+def test_the_voiceprint_cache_is_short_so_a_deletion_is_felt_soon() -> None:
+    assert SpeakerIdentifier.__init__.__kwdefaults__["ttl"] <= 5.0  # type: ignore[index]
+
+
+def test_a_key_that_others_can_read_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "speaker.key"
+    VoiceKey.load_or_create(path)
+    path.chmod(0o644)
+    with pytest.raises(VoiceError, match="chmod 600"):
+        VoiceKey.load_or_create(path)
+
+
+def test_a_key_file_of_the_wrong_size_is_a_typed_error_not_a_crash(tmp_path: Path) -> None:
+    path = tmp_path / "speaker.key"
+    path.write_bytes(b"cut short")
+    path.chmod(0o600)
+    with pytest.raises(VoiceError) as caught:
+        VoiceKey.load_or_create(path)
+    assert caught.value.code == "speaker_unavailable"
+
+
+def test_the_key_directory_is_private(tmp_path: Path) -> None:
+    path = tmp_path / "voice" / "speaker.key"
+    VoiceKey.load_or_create(path)
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+def test_two_processes_creating_the_key_at_once_end_up_with_the_same_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "speaker.key"
+    real = Path.is_file
+    calls = {"n": 0}
+
+    def late(self: Path) -> bool:  # the other process wins the race right after our check
+        if self == path and calls["n"] == 0:
+            calls["n"] += 1
+            VoiceKey.load_or_create(path)
+            return False
+        return real(self)
+
+    monkeypatch.setattr(Path, "is_file", late)
+    first = VoiceKey.load_or_create(path)
+    assert first.open(first.seal(b"x", b"y"), b"y") == b"x"

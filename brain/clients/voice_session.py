@@ -31,7 +31,9 @@ from brain.clients import protocol as p
 from brain.eventlog import event_log
 from brain.voice.commands import is_end_command, is_leak_command, is_stop_command
 from brain.voice.correction import Corrected, correct, should_ask
+from brain.voice.errors import VoiceError
 from brain.voice.services import VoiceServices
+from brain.voice.speaker import Identity
 from brain.voice.speech import Notice
 from brain.voice.text import SentenceChunker
 from brain.voice.tts import resample
@@ -44,8 +46,14 @@ GREETINGS: Final = (
     "Oi! Pode falar.",
     "Tô ouvindo, pode falar.",
     "Diz aí, o que você quer ouvir?",
-    "Oi, Petrus! Pode pedir.",
 )
+
+
+def greetings_for(name: str | None) -> tuple[str, ...]:
+    """The greetings of a wake session; one of them uses the name of the person it belongs to."""
+    return (*GREETINGS, f"Oi, {name}! Pode pedir.") if name else GREETINGS
+
+
 CANT_HEAR_MESSAGE = "Não consegui te ouvir agora. Pode repetir?"
 NOT_SURE_MESSAGE = "Não tenho certeza se entendi direito. Pode repetir?"
 MAX_UTTERANCES_QUEUED: Final = 4
@@ -147,6 +155,10 @@ class VoiceSession:
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._warmup: asyncio.Task[str] | None = None
+        self._speaker_warmup: asyncio.Task[None] | None = None
+        # does anyone have a registered voice? None until known; `enforce` is strict until then
+        self._speakers_enrolled: bool | None = None
+        self.current_speaker: str | None = None  # the recognised name of the utterance being served
         self._open = False
         self._closed = False
         self._broken = False  # the connection stopped taking messages: nothing more to send
@@ -165,6 +177,8 @@ class VoiceSession:
         self._watchdog = asyncio.get_running_loop().create_task(self._watch())
         # load the vocabulary hint now, so the first phrase does not wait for the sources
         self._warmup = asyncio.get_running_loop().create_task(self._services.glossary.prompt())
+        if self._services.speaker is not None and self._services.speaker_mode != "off":
+            self._speaker_warmup = asyncio.get_running_loop().create_task(self._load_speakers())
         stt_cloud = self._services.stt.cloud
         tts_cloud = self._services.speech.mode == "cloud"
         await self._send(
@@ -209,7 +223,7 @@ class VoiceSession:
         self._closed = True
         self._open = False
         current = asyncio.current_task()
-        for task in (self._watchdog, self._worker, self._warmup):
+        for task in (self._watchdog, self._worker, self._warmup, self._speaker_warmup):
             if task is not None and task is not current:
                 task.cancel()
         self._drop_speech()
@@ -239,6 +253,10 @@ class VoiceSession:
             if event.kind in ("speech_start", "barge_in"):
                 self._touch()
             if event.kind == "barge_in":
+                if self._gating():
+                    # whose voice it is cannot be told from 300 ms: speaking over her does not cut
+                    # her off while only registered voices may (a known voice says "para")
+                    continue
                 await self._cut()
                 await self._state("listening")
             elif event.kind == "utterance":
@@ -532,9 +550,103 @@ class VoiceSession:
             if self._closed:  # an end command ended the session from inside this very task
                 return
 
+    def _gating(self) -> bool:
+        """True while only registered voices may be answered (`enforce` with someone enrolled).
+
+        Strict until it is known that nobody is enrolled, and strict when the identifier itself is
+        missing: a broken setup must not turn into "answer everyone".
+        """
+        return self._services.speaker_mode == "enforce" and self._speakers_enrolled is not False
+
+    async def _load_speakers(self) -> None:
+        speaker = self._services.speaker
+        if speaker is None:
+            return
+        try:
+            enrolled = await asyncio.to_thread(speaker.enrolled)
+        except Exception as exc:  # noqa: BLE001 - stay strict (None) if the store cannot be read
+            event_log.log("error", where="voice.speaker", type=type(exc).__name__)
+            return
+        self._speakers_enrolled = enrolled
+
+    async def _identify(self, pcm: bytes) -> tuple[Identity | None, bool]:
+        """Whose voice is it? ``(identity, failed)``; never raises."""
+        speaker = self._services.speaker
+        if speaker is None:
+            return None, True
+        try:
+            who = await speaker.identify_async(pcm, VAD_RATE)
+        except VoiceError as exc:
+            event_log.log("voice", action="speaker_error", code=exc.code)
+            return None, True
+        except Exception as exc:  # noqa: BLE001 - a model that breaks costs the phrase, not the call
+            event_log.log("error", where="voice.speaker", type=type(exc).__name__)
+            return None, True
+        self._speakers_enrolled = who.enrolled
+        return who, False
+
+    @staticmethod
+    def _accepts(who: Identity | None, failed: bool) -> bool:
+        """May this voice be answered? Not if it is unknown, unidentifiable or the check failed."""
+        return not failed and who is not None and (not who.enrolled or who.known)
+
+    async def _permitted(self, who: Identity | None) -> bool:
+        """A registered voice is only answered while its person is an active user."""
+        if who is None or not who.known or who.user_id is None:
+            return True  # nothing recognised: `_accepts` already decided
+        return await self._services.speaker_allowed(who.user_id)
+
+    async def _ignore(self, who: Identity | None, failed: bool) -> None:
+        """A voice that may not be answered: no turn, no cut, no reply (ADR-034)."""
+        event_log.log(
+            "voice",
+            action="speaker_ignored",
+            reason="error"
+            if failed
+            else ("inactive" if who is not None and who.known else "unknown"),
+            score=None if who is None else round(who.score, 2),
+        )
+        if self._speech is None and not self._turn_active():
+            await self._state("unrecognized")
+            await self._state("listening")
+
     async def _transcribe(self, pcm: bytes, speech_end: float) -> None:
-        await self._state("thinking")
-        heard = await self._services.stt.listen(pcm, VAD_RATE, await self._glossary_prompt())
+        services = self._services
+        gating = self._gating()
+        watching = services.speaker_mode != "off"
+        who: Identity | None = None
+        failed = False
+        if watching and gating and services.speaker_identify_first:
+            # nothing of an unknown voice leaves the server: recognise first, transcribe after
+            who, failed = await self._identify(pcm)
+            if gating and not (self._accepts(who, failed) and await self._permitted(who)):
+                await self._ignore(who, failed)
+                return
+            await self._state("thinking")
+            heard = await services.stt.listen(pcm, VAD_RATE, await self._glossary_prompt())
+        else:
+            if not gating:
+                await self._state("thinking")
+            prompt = await self._glossary_prompt()
+            if watching:
+                heard, (who, failed) = await asyncio.gather(
+                    services.stt.listen(pcm, VAD_RATE, prompt), self._identify(pcm)
+                )
+            else:
+                heard = await services.stt.listen(pcm, VAD_RATE, prompt)
+            if gating:
+                if not (self._accepts(who, failed) and await self._permitted(who)):
+                    await self._ignore(who, failed)  # the transcription is thrown away
+                    return
+                await self._state("thinking")
+        if who is not None and services.speaker_mode == "shadow":
+            event_log.log(
+                "voice",
+                action="speaker_shadow",
+                known=who.known,
+                score=round(who.score, 2),
+                margin=None if who.margin is None else round(who.margin, 2),
+            )
         marks = _Marks(speech_end, self._clock())
         for notice in heard.notices:
             await self._fallback("stt", notice)
@@ -554,10 +666,21 @@ class VoiceSession:
             if self._speech is None and not self._turn_active():
                 await self._state("listening")
             return
+        name = None
+        recognised = who if (who is not None and who.known and gating) else None
+        if recognised is not None and recognised.user_id is not None:
+            name = await services.speaker_name(recognised.user_id)
         await self._guarded_send(
-            p.VoiceTranscript(text=fixed.text, original=fixed.original if fixed.changed else None)
+            p.VoiceTranscript(
+                text=fixed.text,
+                original=fixed.original if fixed.changed else None,
+                speaker=name,
+                speaker_confidence=(
+                    None if name is None or recognised is None else round(recognised.score, 2)
+                ),
+            )
         )
-        await self._heard(fixed.text, marks)
+        await self._heard(fixed.text, marks, name)
 
     async def _fix(self, text: str, confidence: float | None) -> Corrected:
         """The text with sound-alikes of glossary terms put right; never an error."""
@@ -586,7 +709,9 @@ class VoiceSession:
             event_log.log("error", where="voice.glossary", type=type(exc).__name__)
             return ""
 
-    async def _heard(self, text: str, marks: _Marks | None = None) -> None:
+    async def _heard(
+        self, text: str, marks: _Marks | None = None, speaker: str | None = None
+    ) -> None:
         """One utterance of text, from either STT: a command, or a turn of chat."""
         if not text:
             return
@@ -606,10 +731,12 @@ class VoiceSession:
             await self._cut()  # what he says now replaces what she was saying
         async with self._submitting:  # the STT of the cloud and of the device can arrive together
             self._pending_marks = marks
+            self.current_speaker = speaker  # read by the chat when it opens the turn
             try:
                 await self._submit(text)
             finally:
                 self._pending_marks = None  # a turn that did not open must not lend its timing
+                self.current_speaker = None
 
     async def _leak(self) -> None:
         """ "Isso vazou": cut what she is saying (it is probably the leak), keep the report and

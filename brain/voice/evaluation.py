@@ -38,6 +38,8 @@ from brain.voice.stt import Transcriber, is_hallucination, normalise
 from brain.voice.tts import resample, wav_to_pcm
 
 SAMPLE_RATE: Final = 16_000  # what the voice session sends to the transcriber
+MIN_RATE: Final = 8_000
+MAX_RATE: Final = 192_000
 MAX_WAV_BYTES: Final = 24 * 1024 * 1024  # the Groq free tier takes up to 25 MB per call
 TERMS_FILE: Final = "termos.txt"
 
@@ -171,9 +173,13 @@ def load_cases(folder: Path) -> list[Case]:
 def read_audio(path: Path) -> bytes:
     """The recording as 16 kHz mono 16-bit PCM, the format the voice session transcribes."""
     try:
+        if not path.is_file():
+            raise EvalError(f"{path.name} não é um arquivo comum.")
         if path.stat().st_size > MAX_WAV_BYTES:
             raise EvalError(f"{path.name} passa de 24 MB: grave frases mais curtas.")
         pcm, rate = wav_to_pcm(path.read_bytes())
+        if not MIN_RATE <= rate <= MAX_RATE:  # a 1 Hz file would be stretched to gigabytes
+            raise EvalError(f"{path.name}: taxa de {rate} Hz fora de {MIN_RATE}-{MAX_RATE}.")
     except (OSError, VoiceError) as exc:
         raise EvalError(f"Não consegui ler {path.name}: precisa ser WAV mono de 16 bits.") from exc
     return resample(pcm, rate, SAMPLE_RATE)

@@ -42,6 +42,7 @@ class Channel:
     gateway: Gateway | None = None
     playback: PlaybackFlag | None = None
     spoken_budget: int | None = None  # voice turn: characters the reply is asked to stay within
+    speaker: str | None = None  # voice turn: the person whose voice was recognised (ADR-034)
 
 
 current_channel: contextvars.ContextVar[Channel | None] = contextvars.ContextVar(
@@ -74,11 +75,23 @@ def spoken_note(budget: int) -> str:
     )
 
 
+def speaker_note(name: str) -> str:
+    """Who is talking, when her ears recognised the voice (it names; it never authorises)."""
+    name = " ".join(name.split())[:40]  # one short line: a name is never a place for instructions
+    return (
+        f"[Quem está falando agora: {name}, reconhecida(o) pela voz. Pode chamar pelo nome. "
+        "Reconhecer a voz não é autenticação: não libera nada além do que este aparelho já "
+        "podia, e confirmações continuam sendo só as respostas da pessoa.]"
+    )
+
+
 def channel_note(channel: Channel) -> str:
     """The system note that tells the model which channel it is talking through."""
     note = _where_note(channel)
+    if channel.voice and channel.speaker:
+        note = f"{note}\n{speaker_note(channel.speaker)}"
     if channel.voice and channel.spoken_budget:
-        return f"{note}\n{spoken_note(channel.spoken_budget)}"
+        note = f"{note}\n{spoken_note(channel.spoken_budget)}"
     return note
 
 

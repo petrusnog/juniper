@@ -214,6 +214,7 @@ A voz por áudio, pelo cérebro ([Voz por áudio](voz-audio.md)). **Desligada po
 | `voice.speaker.threshold` | `0.6` | Semelhança mínima (0 a 1) para dizer «é fulano». Ponto de partida a calibrar com o modo `shadow`. |
 | `voice.speaker.margin` | `0.05` | Vantagem mínima sobre a segunda pessoa cadastrada; duas vozes parecidas demais resultam em «ninguém». |
 | `voice.speaker.threads` | `1` | Fios de CPU do modelo de voz (1 a 8). |
+| `voice.speaker.identify_first` | `false` | `false`: o vetor da voz e a transcrição andam juntos (mais rápido), e o áudio de uma voz desconhecida também chega ao provedor de transcrição. `true`: só transcreve depois de reconhecer a voz (nada de quem não é cadastrado sai do servidor), ao custo do tempo do vetor. |
 | `voice.usage_file` | `~/.juniper/voice/usage.json` | Onde o gasto do mês (caracteres enviados ao Google) é guardado; sobrevive a reinício. Na VPS, ponha num volume (como a pasta `music`). |
 | `voice.tts.provider` | `google` | Quem fala: Google Cloud Text-to-Speech. |
 | `voice.tts.voice` | `pt-BR-Chirp3-HD-Leda` | A voz (Chirp 3 HD). |

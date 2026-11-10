@@ -240,11 +240,13 @@ export type ReplyTo6 = string;
 export type Stt = 'cloud' | 'local';
 export type Tts = 'cloud' | 'local';
 export type Type39 = 'voice.ready';
-export type State1 = 'listening' | 'thinking' | 'speaking' | 'idle';
+export type State1 = 'listening' | 'thinking' | 'speaking' | 'idle' | 'unrecognized';
 export type TurnId5 = string | null;
 export type Type40 = 'voice.state';
 export type Final = boolean;
 export type Original = string | null;
+export type Speaker = string | null;
+export type SpeakerConfidence = number | null;
 export type Text6 = string;
 export type Type41 = 'voice.transcript';
 export type Last1 = boolean | null;
@@ -603,6 +605,8 @@ export interface VoiceState {
 export interface VoiceTranscript {
   final?: Final;
   original?: Original;
+  speaker?: Speaker;
+  speaker_confidence?: SpeakerConfidence;
   text: Text6;
   type?: Type41;
 }

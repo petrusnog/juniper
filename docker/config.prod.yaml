@@ -32,3 +32,8 @@ voice:
   # O gasto do mês da voz do Google fica no volume da música: sobrevive a deploys. Sem isso, cada
   # contêiner novo recomeçaria o mês do zero e o teto de US$ 10 deixaria de valer.
   usage_file: /home/juniper/.juniper/music/voice-usage.json
+  speaker:
+    # A chave que cifra os vetores de voz mora no volume de estado: no sistema de arquivos do
+    # contêiner ela morreria a cada deploy e os cadastros ficariam ilegíveis. Guarde um backup
+    # dela à parte do banco (docs/pages/voz-identidade.md). O modo continua `off` até você ligar.
+    key_file: /home/juniper/.juniper/state/voice/speaker.key

@@ -1679,7 +1679,8 @@
             "listening",
             "thinking",
             "speaking",
-            "idle"
+            "idle",
+            "unrecognized"
           ],
           "title": "State",
           "type": "string"
@@ -1754,6 +1755,32 @@
           ],
           "default": null,
           "title": "Original"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker"
+        },
+        "speaker_confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker Confidence"
         },
         "text": {
           "title": "Text",

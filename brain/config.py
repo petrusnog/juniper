@@ -293,6 +293,10 @@ class VoiceSpeakerSettings(BaseModel):
     # Vantagem mínima sobre a segunda pessoa cadastrada; duas vozes parecidas ficam «ninguém».
     margin: float = Field(default=0.05, ge=0.0, le=1.0)
     threads: int = Field(default=1, ge=1, le=8)
+    # false: o vetor da voz e a transcrição andam juntos (mais rápido), e o áudio de uma voz
+    # desconhecida também chega ao provedor de transcrição. true: só transcreve depois de
+    # reconhecer a voz (nada de quem não é cadastrado sai do servidor), ao custo do tempo do vetor.
+    identify_first: bool = False
 
     @field_validator("model_file", "key_file")
     @classmethod
