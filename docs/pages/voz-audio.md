@@ -10,7 +10,7 @@ tags: voz audio tts stt google chirp leda groq whisper vad orçamento fallback p
 
 > **Nota:** esta página detalha o [ADR-023](../decisions/ADR-023.md); o backend de voz está implementado e coberto por teste de aceite (`tests/test_acceptance_voice.py`). A [voz do terminal](voz.md) é outra coisa: são as frases escritas que ela diz ao abrir o CLI.
 
-> **O que não existe:** palavra de ativação falada, identidade por voz, vocabulário próprio na transcrição e resposta falada já gerada dentro do limite. A evolução está proposta no [ADR-034](../decisions/ADR-034.md), ainda sem código.
+> **O que não existe:** palavra de ativação falada, identidade por voz, vocabulário próprio na transcrição e resposta falada já gerada dentro do limite. A evolução está proposta no [ADR-034](../decisions/ADR-034.md); até agora só a medição foi entregue ([Avaliar a voz](voz-avaliacao.md)).
 
 ## Visão geral {#visao-geral}
 
@@ -133,4 +133,5 @@ Extensão compatível do [protocolo](protocolo.md) (sem mudar `protocol_version`
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
 - [Voz no terminal](voz.md) (Documentação Técnica): Como ela fala: os prefixos, fala fixa versus gerada por IA, e a regra para comandos novos.
 - [Bot do Telegram](telegram.md) (Documentação Técnica): O bot do Telegram como cliente da Juniper: como funciona, como criar e configurar, o que ele aceita e o que não faz.
+- [Avaliar a voz](voz-avaliacao.md) (Documentação Técnica): Como medir a escuta antes e depois de uma mudança: o conjunto de frases gravadas, WER e CER, e os eventos de latência e de corte da fala.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.

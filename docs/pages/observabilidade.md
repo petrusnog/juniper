@@ -46,6 +46,7 @@ Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma exe
 | `web_fetch` | Uma página baixada no servidor | `domain`, `bytes`, `truncated`, `ms` |
 | `knowledge_hit` | O bloco `<conhecimento>` trouxe notas dela para a conversa | `topics` |
 | `knowledge_learn` | Ela aprendeu na hora (`learn_topic` ou o estudo do sonho) | `provider`, `sources`, `added`, `corroborated`, `ms` |
+| `voice` | A sessão de voz: cada STT, cada falha dele e, por turno, `latency` (`stt_ms`, `think_ms`, `speak_ms`, `total_ms`, `silence_ms`) e `truncated` (`spoken_chars`, `max_chars`); nunca o texto falado ([Avaliar a voz](voz-avaliacao.md#eventos)) | `action`, mais os campos da ação |
 | `mood_forced` | `juniper mood set` | `mood`, `degree`, `hours` |
 
 Valores de `decision` em `tool_call`:
@@ -220,5 +221,6 @@ Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token),
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.
 - [Dashboard](dashboard.md) (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.
+- [Avaliar a voz](voz-avaliacao.md) (Documentação Técnica): Medir a escuta antes e depois de uma mudança: o conjunto gravado, WER e CER e os eventos de latência da voz.
 - [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
 - [Operação e manutenção](operacao.md) (Produção): O dia a dia do servidor: comandos dentro do contêiner, logs, saúde, comandos administrativos da memória, atualização manual, troca de segredos e como recriar tudo do zero.

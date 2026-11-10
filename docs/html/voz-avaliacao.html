@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Avaliar a voz — Livro de bolso Juniper</title>
+<meta name="description" content="Como medir a escuta da Juniper antes e depois de uma mudança: o conjunto de frases gravadas e seu roteiro, o script que calcula WER, CER, termos próprios e latência, e os eventos de latência e de corte da fala no log.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/voz-avaliacao.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Clientes / Avaliar a voz</div>
+<h1>Avaliar a voz <span class="tag g">pronta</span></h1>
+<p class="lead">Como medir a escuta da Juniper antes e depois de uma mudança: o conjunto de frases gravadas e seu roteiro, o script que calcula WER, CER, termos próprios e latência, e os eventos de latência e de corte da fala no log.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página nasce do <a href="adr-034.html">ADR-034</a> (seção 9: «linha de base antes das alterações»). Código: <code>brain/voice/evaluation.py</code> e <code>scripts/voice_eval.py</code>; os eventos saem de <code>brain/clients/voice_session.py</code>. Como a voz funciona é assunto de <a href="voz-audio.html">Voz por áudio</a>.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Dizer que a escuta «melhorou» sem medir é opinião. Há duas medidas, e elas respondem a perguntas diferentes:</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Medida</th><th>Responde</th><th>De onde vem</th></tr></thead><tbody><tr><td><strong>Conjunto gravado</strong></td><td>O texto saiu certo? Quantas palavras erradas, em quais frases, quão rápido?</td><td><code>scripts/voice_eval.py</code>, sob demanda</td></tr><tr><td><strong>Eventos da sessão</strong></td><td>Quanto tempo o turno leva do fim da fala ao primeiro som? Com que frequência a fala é cortada?</td><td>O log de eventos, em uso real</td></tr></tbody></table></div>
+<p>O que cada uma <strong>não</strong> diz: o conjunto gravado mede a transcrição, não a conversa inteira (o LLM e a voz não entram); os eventos dizem onde o tempo foi, não se o texto saiu certo.</p>
+<h2 id="conjunto">O conjunto de frases</h2>
+<p>Uma pasta com um par por frase: <code>nome.wav</code> (mono, 16 bits, qualquer taxa; é reamostrado para 16 kHz, que é o que a sessão de voz envia ao STT) e <code>nome.txt</code> com <strong>exatamente</strong> o que foi dito. Um <code>termos.txt</code> opcional lista os nomes próprios e termos técnicos (um por linha; <code>#</code> abre comentário). Sem o <code>.txt</code> de uma gravação, a avaliação para e diz qual faltou.</p>
+<p><strong>O conjunto não vai para o git.</strong> Tem a sua voz e o que você disse; mantenha-o fora do repositório (por exemplo em <code>~/juniper-voz/conjunto</code>). O relatório JSON também repete as frases.</p>
+<h3 id="roteiro">Roteiro de gravação</h3>
+<p>Cerca de 60 frases. Dê nomes que ordenem por categoria (<code>01-comando-hora.wav</code>). Use as suas próprias palavras onde a lista dá exemplos.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Categoria</th><th>Quantas</th><th>Exemplos</th></tr></thead><tbody><tr><td>Comandos curtos</td><td>10</td><td>«Juniper, que horas são?», «Para.», «Toca Djavan.»</td></tr><tr><td>Frases longas</td><td>10</td><td>Pedidos de duas ou três orações, com pausa no meio</td></tr><tr><td>Nomes próprios e termos seus</td><td>15</td><td>«Abra o projeto Media Works.», nomes de pessoas, lugares, ferramentas que você usa</td></tr><tr><td>Números, datas e horas</td><td>5</td><td>«Marca dentista dia 14 às 15h30.»</td></tr><tr><td>Ambíguas</td><td>5</td><td>Palavras que soam parecido: «sem»/«cem», «acento»/«assento»</td></tr><tr><td>Com ruído</td><td>10</td><td>Repetir frases de cima com TV, ventilador ou rua ao fundo</td></tr><tr><td>Distância</td><td>5</td><td>As mesmas frases a 1 m e a 3 m do microfone</td></tr></tbody></table></div>
+<p>Se houver mais de uma pessoa, grave cada uma numa subcategoria (<code>ana-</code>, <code>petrus-</code>): sotaque e velocidade mudam muito o resultado. Para converter uma gravação do celular:</p>
+<pre><code class="lang-bash">ffmpeg -i entrada.m4a -ar 16000 -ac 1 -c:a pcm_s16le saida.wav</code></pre>
+<p>Grave <strong>sempre do mesmo jeito</strong> (mesmo aparelho e mesma distância) entre a medição de antes e a de depois; senão a diferença é do microfone, não da mudança. Gravar pelo próprio app é o mais fiel, porque ele já passa pelo cancelamento de eco e de ruído do Android.</p>
+<h2 id="rodar">Rodar a avaliação</h2>
+<p>Usa a chave da Groq que o cérebro já usa (<code>JUNIPER_GROQ_API_KEY</code>, no <code>.env</code>); ela nunca é impressa.</p>
+<pre><code class="lang-bash">python scripts/voice_eval.py ~/juniper-voz/conjunto --json antes.json</code></pre>
+<p>Depois de uma mudança, rode de novo e compare:</p>
+<pre><code class="lang-bash">python scripts/voice_eval.py ~/juniper-voz/conjunto --json depois.json --compare antes.json</code></pre>
+<p>O script espera 3,2 s entre as chamadas (<code>--pause</code>) para respeitar o limite do plano gratuito da Groq, cerca de 20 por minuto; 60 frases levam uns 4 minutos. <code>--model</code> e <code>--language</code> trocam o modelo e o idioma só para essa rodada.</p>
+<h3 id="relatorio">O que o relatório diz</h3>
+<ul><li><strong>WER</strong> e <strong>CER</strong>: erros de palavra e de caractere sobre o que foi dito, somados no conjunto inteiro (uma frase longa pesa mais que uma curta). A comparação ignora maiúsculas, acentos e pontuação: mede <em>quais palavras</em> foram ouvidas, não vírgulas.</li><li><strong>Termos próprios errados</strong>: das vezes em que um termo do <code>termos.txt</code> foi dito, quantas saíram erradas. É o número que o glossário da T-205 deve mover.</li><li><strong>Latência da transcrição</strong>: média, mediana e p95 da chamada ao STT.</li><li><strong>Falhas</strong> (erro tipado da Groq, como o limite de uso) e <strong>descartadas</strong> (a resposta que o filtro de alucinação do Whisper jogaria fora). Uma falha diz que a chamada não funcionou, não que a palavra foi mal ouvida: a frase fica <strong>fora</strong> de WER, CER e termos, o relatório avisa e o script sai com código 1. Uma rodada com falhas não vale como linha de base; repita (talvez com <code>--pause</code> maior). A avaliação segue até o fim mesmo assim.</li><li>As frases com erro, as piores primeiro, com o que foi dito e o que foi ouvido.</li></ul>
+<h2 id="eventos">Eventos da sessão</h2>
+<p>Dois eventos <code>voice</code> (veja a tabela em <a href="observabilidade.html#eventos">Observabilidade</a>). Nenhum leva texto falado nem áudio, só tempos e tamanhos.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th><code>action</code></th><th>Quando</th><th>Campos</th></tr></thead><tbody><tr><td><code>latency</code></td><td>No primeiro som de cada turno falado</td><td><code>stt_ms</code>, <code>think_ms</code>, <code>speak_ms</code>, <code>total_ms</code>, <code>silence_ms</code></td></tr><tr><td><code>truncated</code></td><td>A resposta passou do limite e o corte de segurança disse «O resto está na tela.»</td><td><code>spoken_chars</code>, <code>max_chars</code></td></tr></tbody></table></div>
+<p>O caminho do <code>latency</code>: o VAD detecta a pausa que fechou a fala → o STT devolve o texto (<code>stt_ms</code>) → o modelo escreve o primeiro pedaço (<code>think_ms</code>) → a primeira frase vira som (<code>speak_ms</code>). <code>total_ms</code> é a soma, contada <strong>a partir da pausa detectada</strong>. A pessoa espera também essa pausa, <code>silence_ms</code> (700 ms na configuração padrão), então o tempo que ela sente é <code>silence_ms + total_ms</code>. Quando o aparelho transcreve sozinho (<code>voice.text</code>), o cérebro não ouviu o áudio: o evento traz só <code>think_ms</code> e <code>speak_ms</code>.</p>
+<p>O <code>truncated</code> existe para medir o corte de segurança do limite de fala (<code>voice.max_spoken_chars</code>): ele deve ficar raro. Cada ocorrência é uma resposta que o modelo escreveu maior do que podia ser falada.</p>
+<p>Medianas do dia, com o <code>jq</code> (veja <a href="observabilidade.html#log-tecnico">Observabilidade</a> para <code>juniper logs</code>):</p>
+<pre><code class="lang-bash">juniper logs --json -e voice --days 7 \
+  | jq -s &#x27;[.[] | select(.action==&quot;latency&quot;) | .total_ms] | sort | .[length/2|floor]&#x27;
+juniper logs --json -e voice --days 7 | jq -s &#x27;[.[] | select(.action==&quot;truncated&quot;)] | length&#x27;</code></pre>
+<h2 id="linha-de-base">Linha de base</h2>
+<p><strong>Ainda não medida.</strong> Depende do conjunto gravado e da chave da Groq, que não existiam quando o harness foi escrito; fica na task T-216. Até lá, nenhum número desta página é resultado: o que existe é o harness e a instrumentação, testados com um transcritor falso e áudio sintético.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Medida</th><th>Antes (T-216)</th><th>Depois</th></tr></thead><tbody><tr><td>WER</td><td>a medir</td><td></td></tr><tr><td>CER</td><td>a medir</td><td></td></tr><tr><td>Termos próprios errados</td><td>a medir</td><td></td></tr><tr><td>Latência do STT (mediana / p95)</td><td>a medir</td><td></td></tr><tr><td><code>total_ms</code> do turno (mediana)</td><td>a medir</td><td></td></tr><tr><td>Respostas cortadas por 100 turnos</td><td>a medir</td><td></td></tr></tbody></table></div>
+<h2 id="verificado">O que foi verificado</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Como</th><th>O quê</th></tr></thead><tbody><tr><td><strong>Automatizado</strong> (<code>tests/test_voice_eval.py</code>, <code>tests/test_voice_session.py</code>)</td><td>WER, CER, termos e percentis em casos de resposta conhecida; leitura do conjunto e erros claros quando falta algo; falha da Groq e alucinação tratadas sem parar a rodada; os eventos <code>latency</code> e <code>truncated</code> na sessão de voz, sem texto falado</td></tr><tr><td><strong>Simulado</strong></td><td>Nada: o Whisper real nunca rodou neste harness</td></tr><tr><td><strong>Com voz e microfone reais</strong></td><td>Pendente: gravar o conjunto e rodar a avaliação (T-216)</td></tr></tbody></table></div>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="voz-audio.html">Voz por áudio</a> (Documentação Técnica): como a voz funciona hoje: STT, VAD, TTS, orçamento e as mensagens do protocolo.</li><li><a href="observabilidade.html">Observabilidade</a> (Documentação Técnica): o log de eventos, <code>juniper logs</code> e a tabela de eventos.</li><li><a href="mobile.html">App mobile</a> (Documentação Técnica): o cliente de voz no Android, onde a gravação mais fiel é feita.</li><li><a href="configuracao.html">Configuração</a> (Referência): <code>voice.stt</code>, <code>voice.vad</code> e <code>voice.max_spoken_chars</code>.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

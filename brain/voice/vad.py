@@ -48,6 +48,7 @@ class Vad:
         self._start_frames = max(1, cfg.speech_start_ms // FRAME_MS)
         self._barge_frames = max(1, cfg.barge_in_ms // FRAME_MS)
         self._end_frames = max(1, cfg.silence_ms // FRAME_MS)
+        self.end_silence_ms = self._end_frames * FRAME_MS  # the pause that closes an utterance
         self._min_frames = max(1, cfg.min_utterance_ms // FRAME_MS)
         self._max_frames = cfg.max_utterance_seconds * 1000 // FRAME_MS
         self._preroll: deque[bytes] = deque(maxlen=PREROLL_MS // FRAME_MS)
