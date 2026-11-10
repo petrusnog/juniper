@@ -259,6 +259,10 @@ class VoiceSettings(BaseModel):
     enabled: bool = False
     # Quanto de uma resposta é lido em voz alta; o resto fica só na tela.
     max_spoken_chars: int = Field(default=800, ge=100, le=5000)
+    # Quanto o modelo é orientado a escrever numa resposta falada (ADR-034). Sem valor, 75% do
+    # `max_spoken_chars`: sobra folga para a frase que passar um pouco, e o corte de segurança do
+    # `max_spoken_chars` fica como fallback, não como comportamento normal.
+    reply_budget_chars: int | None = Field(default=None, ge=100, le=5000)
     # Silêncio (sem ninguém falar) que encerra a conversa de voz.
     idle_timeout_seconds: int = Field(default=60, ge=10, le=3600)
     # O mesmo, para a conversa aberta pela palavra de ativação: sem pedido depois da saudação, ela
@@ -276,6 +280,22 @@ class VoiceSettings(BaseModel):
     @classmethod
     def _expand_usage(cls, v: Path) -> Path:
         return v.expanduser()
+
+    @model_validator(mode="after")
+    def _budget_fits_the_limit(self) -> VoiceSettings:
+        if self.reply_budget_chars is not None and self.reply_budget_chars > self.max_spoken_chars:
+            raise ValueError(
+                "voice.reply_budget_chars não pode passar de voice.max_spoken_chars "
+                f"({self.reply_budget_chars} > {self.max_spoken_chars})"
+            )
+        return self
+
+    @property
+    def reply_budget(self) -> int:
+        """The characters a spoken reply is asked to stay within."""
+        if self.reply_budget_chars is not None:
+            return self.reply_budget_chars
+        return max(100, self.max_spoken_chars * 3 // 4)
 
 
 class MusicSettings(BaseModel):

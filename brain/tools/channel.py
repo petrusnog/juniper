@@ -41,6 +41,7 @@ class Channel:
     can_open: bool = False  # a device of this very connection can open links
     gateway: Gateway | None = None
     playback: PlaybackFlag | None = None
+    spoken_budget: int | None = None  # voice turn: characters the reply is asked to stay within
 
 
 current_channel: contextvars.ContextVar[Channel | None] = contextvars.ContextVar(
@@ -58,8 +59,30 @@ def link_only() -> bool:
     return channel is not None and not channel.can_open
 
 
+def spoken_note(budget: int) -> str:
+    """What a reply meant to be *heard* must look like (ADR-034, section 6).
+
+    The model cannot be forced to count, so the note gives it a budget and a shape; the
+    sentence chunker still cuts at the technical limit if it overruns (and logs that it did).
+    """
+    return (
+        f"[Resposta por voz: o que você escrever será falado em voz alta, e o limite é de cerca "
+        f"de {budget} caracteres. Responda em poucas frases completas, em tom de conversa, sem "
+        "listas, tabelas, código nem links, e termine a última frase. Se o assunto pedir mais "
+        "do que cabe, dê o essencial e diga que pode detalhar; o texto longo só vem se a "
+        "pessoa pedir.]"
+    )
+
+
 def channel_note(channel: Channel) -> str:
     """The system note that tells the model which channel it is talking through."""
+    note = _where_note(channel)
+    if channel.voice and channel.spoken_budget:
+        return f"{note}\n{spoken_note(channel.spoken_budget)}"
+    return note
+
+
+def _where_note(channel: Channel) -> str:
     how = "voz" if channel.voice else "texto"
     if channel.can_open:
         return (

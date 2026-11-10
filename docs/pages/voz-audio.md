@@ -33,6 +33,12 @@ app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Led
 - **A voz não autentica:** a sessão herda a autenticação da conexão ([Login com MFA](login.md)).
 - **Dados que saem da máquina:** o áudio do usuário vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.
 
+## Resposta curta para ser ouvida {#orcamento-fala}
+
+O limite de `voice.max_spoken_chars` é um corte **depois** da geração. Para ele deixar de ser o comportamento normal, o turno de voz leva na nota de canal um orçamento (`voice.reply_budget_chars`, 75% do limite se não for definido) e a instrução de responder em poucas frases completas, sem lista, código nem link, oferecendo detalhar quando o assunto for maior ([ADR-034](../decisions/ADR-034.md)). Turnos de texto não mudam e continuam com a resposta completa.
+
+Isso é uma orientação ao modelo, não uma garantia: se a resposta passar do limite, o `SentenceChunker` corta no fim de uma frase, diz «O resto está na tela.» e o evento `truncated` registra o caso ([Avaliar a voz](voz-avaliacao.md#eventos)). A meta é ele ficar raro, não impossível.
+
 ## Falar: texto preparado e o sintetizador {#falar}
 
 O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice`):

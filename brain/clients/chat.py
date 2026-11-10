@@ -628,6 +628,11 @@ class ChatHandler:
             and self.executors.offers(run.owner, "open_url"),
             gateway=self.executors,
             playback=playback,
+            spoken_budget=(
+                self._voice.reply_budget_chars
+                if run.voice is not None and self._voice is not None
+                else None
+            ),
         )
         current_channel.set(channel)
         conversation.agent.channel_note = channel_note(channel)
