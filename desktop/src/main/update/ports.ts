@@ -103,10 +103,11 @@ export function createUpdatePorts(o: PortOptions): UpdatePorts {
     remove: file => fsp.rm(file, { force: true }),
 
     install(file: string): Promise<void> {
-      // NSIS silent install; the installer replaces the app and starts it again. The app only
+      // NSIS silent install. `--updated --force-run` is what makes the installer start the new
+      // version by itself after a silent install (electron-builder's NSIS template). The app only
       // closes once the installer really started: a missing or blocked file is an error to show.
       return new Promise((resolve, reject) => {
-        const child = spawn(file, ['/S'], { detached: true, stdio: 'ignore' });
+        const child = spawn(file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore' });
         child.once('error', reject);
         child.once('spawn', () => {
           child.unref();

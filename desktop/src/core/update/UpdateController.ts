@@ -176,3 +176,16 @@ export function trustedVersion(output: string, publisher: string): string | null
   }
   return data.version.trim();
 }
+
+/**
+ * Whether an update that is waiting may be applied right now: only when the person is not in the
+ * middle of something (a voice call or an answer being written), because installing closes the
+ * app. A change in either state is checked again, so it goes ahead as soon as things are quiet.
+ */
+export function canAutoApply(input: {
+  update: UpdateState;
+  voicePhase: string;
+  chatBusy: boolean;
+}): boolean {
+  return input.update.phase === 'available' && input.voicePhase === 'off' && !input.chatBusy;
+}

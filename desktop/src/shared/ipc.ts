@@ -8,6 +8,9 @@ import type { AudioCommand, AudioEvent } from './audioProtocol';
 
 export interface UiSnapshot {
   connection: ConnectionState;
+  /** Why the connection is not up (masked), with a hint on what to try. */
+  connectionDetail: string | null;
+  connectionHint: string | null;
   chat: ChatState;
   activity: ActivityEntry[];
   filesPaused: boolean;
@@ -23,6 +26,7 @@ export const CHANNELS = {
   send: 'juniper:send',
   cancel: 'juniper:cancel',
   newChat: 'juniper:new',
+  sessions: 'juniper:sessions',
   resume: 'juniper:resume',
   login: 'juniper:login',
   logout: 'juniper:logout',
@@ -49,6 +53,8 @@ export interface JuniperBridge {
   send(text: string): Promise<boolean>;
   cancel(): Promise<void>;
   newChat(): Promise<void>;
+  /** Asks the brain for the list of conversations (it arrives in the next snapshot). */
+  sessions(): Promise<void>;
   resume(sessionId: string): Promise<void>;
   login(input: LoginInput): Promise<{ ok: boolean; error?: string }>;
   logout(): Promise<void>;

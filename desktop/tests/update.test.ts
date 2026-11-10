@@ -163,3 +163,25 @@ describe('trustedVersion', () => {
     expect(trustedVersion(out(), '')).toBeNull();
   });
 });
+
+import { canAutoApply } from '../src/core/update/UpdateController';
+
+describe('canAutoApply (it updates itself only when nothing is going on)', () => {
+  const available = { phase: 'available', version: '0.1.60' } as const;
+  test('quiet: goes ahead', () => {
+    expect(canAutoApply({ update: available, voicePhase: 'off', chatBusy: false })).toBe(true);
+  });
+  test.each(['listening', 'thinking', 'speaking', 'starting'])('a voice call (%s) postpones it', phase => {
+    expect(canAutoApply({ update: available, voicePhase: phase, chatBusy: false })).toBe(false);
+  });
+  test('an answer being written postpones it', () => {
+    expect(canAutoApply({ update: available, voicePhase: 'off', chatBusy: true })).toBe(false);
+  });
+  test.each([
+    [{ phase: 'none' }],
+    [{ phase: 'working', version: 'x', step: 'downloading' }],
+    [{ phase: 'error', message: 'x' }],
+  ] as const)('nothing to apply in %j', update => {
+    expect(canAutoApply({ update, voicePhase: 'off', chatBusy: false })).toBe(false);
+  });
+});

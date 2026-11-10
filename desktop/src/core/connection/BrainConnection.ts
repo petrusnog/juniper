@@ -19,6 +19,7 @@ import {
   serialize,
 } from '../../shared/protocol';
 import { delayFor } from './backoff';
+import { describeClose, describeSocketError } from './diagnose';
 
 export type ConnectionState =
   | 'idle'
@@ -64,6 +65,8 @@ type Listener<T> = (value: T) => void;
 
 export class BrainConnection {
   state: ConnectionState = 'idle';
+  /** The last reason a connection failed or closed (masked); `null` while all is well. */
+  detail: string | null = null;
   private socket: SocketLike | null = null;
   private attempt = 0;
   private openedAt = 0;
@@ -128,6 +131,7 @@ export class BrainConnection {
       return;
     }
     this.state = state;
+    if (state === 'connected') this.detail = null;
     this.stateListeners.forEach(l => l(state));
   }
 
@@ -139,7 +143,8 @@ export class BrainConnection {
     let socket: SocketLike;
     try {
       socket = this.o.createSocket(this.o.url, { Authorization: `Bearer ${this.o.bearer}` });
-    } catch {
+    } catch (e) {
+      this.detail = describeSocketError(e) || 'não consegui abrir o socket';
       this.scheduleRetry();
       return;
     }
@@ -163,8 +168,10 @@ export class BrainConnection {
       );
     };
     socket.onmessage = event => this.handle(socket, event.data);
-    socket.onerror = () => undefined; // onclose follows and carries the outcome
-    socket.onclose = event => this.closed(socket, event.code);
+    socket.onerror = event => {
+      this.detail = describeSocketError(event) || this.detail; // onclose follows and ends it
+    };
+    socket.onclose = event => this.closed(socket, event.code, event.reason);
   }
 
   private handle(socket: SocketLike, data: unknown): void {
@@ -187,11 +194,12 @@ export class BrainConnection {
     this.messageListeners.forEach(l => l(message));
   }
 
-  private closed(socket: SocketLike, code: number): void {
+  private closed(socket: SocketLike, code: number, reason?: string): void {
     if (this.socket !== socket) {
       return;
     }
     this.socket = null;
+    if (this.detail === null) this.detail = describeClose(code, reason);
     if (code === CLOSE_UNAUTHORIZED) return this.stop('unauthorized');
     if (code === CLOSE_UNSUPPORTED_VERSION) return this.stop('incompatible');
     if (code === CLOSE_REPLACED) return this.stop('replaced');
