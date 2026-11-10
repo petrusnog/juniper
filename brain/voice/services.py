@@ -107,7 +107,7 @@ def open_voice_services() -> VoiceServices:
         idle_timeout=float(cfg.idle_timeout_seconds),
         wake_idle_timeout=float(cfg.wake_idle_seconds),
         reply_budget_chars=cfg.reply_budget,
-        glossary=Glossary(cfg.stt.glossary, char_budget=cfg.stt.glossary_chars),
+        glossary=Glossary(["Juniper", *cfg.stt.glossary], char_budget=cfg.stt.glossary_chars),
         arbiter=WakeArbiter(cfg.wake_arbitration_ms / 1000),
         correct_terms=cfg.stt.correct_terms,
         repeat_below=cfg.stt.repeat_below_confidence,

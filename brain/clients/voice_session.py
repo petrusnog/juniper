@@ -39,6 +39,7 @@ from brain.voice.text import SentenceChunker
 from brain.voice.tts import resample
 from brain.voice.vad import SAMPLE_RATE as VAD_RATE
 from brain.voice.vad import Vad
+from brain.voice.wake import strip_wake_word
 
 AUDIO_CHUNK_MS: Final = 100
 SAY_SECONDS_PER_CHAR: Final = 0.07  # how long the device takes to say a character (an estimate)
@@ -113,6 +114,7 @@ class VoiceSession:
         local_tts: bool = False,
         route: str | None = None,
         wake: bool = False,
+        wake_word: bool = False,
         greeting: Callable[[], str] | None = None,
         briefing: Callable[[], Awaitable[tuple[str, Callable[[bool], Awaitable[None]]]]]
         | None = None,
@@ -134,6 +136,10 @@ class VoiceSession:
         self.local_tts = local_tts
         self._route = route
         self._wake = wake
+        # opened by the spoken word: no greeting (the command came with it), and the first phrase
+        # must contain the name, or the detector was wrong (ADR-034)
+        self._wake_word = wake_word
+        self._wake_unconfirmed = wake_word
         self._greeting = greeting or (lambda: random.choice(GREETINGS))
         self._briefing = briefing
         self._gated = False
@@ -191,7 +197,16 @@ class VoiceSession:
             )
         )
         await self._state("listening")
-        event_log.log("voice", action="start", stt=stt_cloud, tts=tts_cloud, wake=self._wake)
+        event_log.log(
+            "voice",
+            action="start",
+            stt=stt_cloud,
+            tts=tts_cloud,
+            wake=self._wake,
+            wake_word=self._wake_word,
+        )
+        if self._wake_word:
+            return  # she says nothing first: the command is already on its way
         if self._briefing is not None:
             delivered = None
             try:
@@ -715,6 +730,18 @@ class VoiceSession:
         """One utterance of text, from either STT: a command, or a turn of chat."""
         if not text:
             return
+        if self._wake_unconfirmed:
+            heard_name, text = strip_wake_word(text)
+            if not heard_name:
+                # the detector fired on something that was not her name: close, in silence
+                event_log.log("voice", action="wake_false")
+                await self.end("unverified")
+                return
+            self._wake_unconfirmed = False
+            event_log.log("voice", action="wake_confirmed")
+            if not text:
+                await self._state("listening")
+                return  # only her name: the rest of the request comes next
         if is_end_command(text):
             await self.end("command")
             return

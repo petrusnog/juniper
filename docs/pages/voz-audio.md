@@ -61,6 +61,19 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## Palavra de ativação: a segunda checagem {#palavra kind=módulo file=brain/voice/wake.py}
+
+O detector da palavra «Juniper» roda **no aparelho**, sem rede e sem LLM ([ADR-034](../decisions/ADR-034.md)). Ele é rápido e barato e, por isso mesmo, às vezes erra (uma TV, um nome parecido). O cérebro confere antes de gastar qualquer coisa:
+
+- **Como o cérebro sabe que foi a palavra falada:** o `voice.start` traz `wake` **e** `wake_score`. Só `wake` (sem pontuação) é a abertura pelo atalho do celular, que continua cumprimentando primeiro, como sempre.
+- **Sessão aberta pela palavra** não cumprimenta nem lê os lembretes: o pedido veio junto com a palavra («Juniper, que horas são?»; o aparelho manda o pré-buffer antes do áudio ao vivo) e a resposta é a primeira coisa que ela diz.
+- **Confirmação:** a primeira transcrição precisa conter o nome. A comparação é por som, e também aceita o que o Whisper escreve de fato («Júnior», «Junipe»). Sem o nome, a sessão fecha em silêncio com `voice.end` (`unverified`) e o evento `wake_false` conta a falsa ativação.
+- **Vocativo fora:** o nome no começo da frase (ou depois de um «oi») é retirado antes do pedido virar texto: o modelo recebe «que horas são?». Dito no fim da frase, o nome confirma e a frase fica como está.
+- **Só o nome** («Juniper.»): ela espera o pedido, e as frases seguintes não precisam do nome.
+- O vocabulário da transcrição sempre leva «Juniper» como primeiro termo.
+
+O que falta aqui é o detector em si: o modelo «Juniper» ainda não foi treinado, e o código nativo do celular e do desktop não foi escrito.
+
 ## Vários aparelhos e continuação {#varios-aparelhos kind=módulo file=brain/voice/arbiter.py}
 
 Dois celulares e um notebook na mesma mesa ouvem uma só palavra de ativação e os três abririam a conversa: três saudações, três respostas. Para o cérebro os aparelhos de uma pessoa são um só usuário, então ele escolhe ([ADR-034](../decisions/ADR-034.md)). As regras, em ordem:

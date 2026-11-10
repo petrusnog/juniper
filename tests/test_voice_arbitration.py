@@ -64,10 +64,9 @@ async def test_the_device_that_heard_better_answers_and_the_other_goes_back_to_w
         await ask_to_open(phone, wake=True, wake_score=0.93)
         got = await asyncio.gather(outcome(phone), outcome(laptop))
         assert got == ["ready", "elsewhere"]
-        await collect(phone, p.VoiceAudio)  # her greeting, once
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.3)
         assert len(rig.handler._voices) == 1  # one session for two devices
-    assert len(rig.synth.spoken) == 1  # and one greeting
+    assert rig.synth.spoken == []  # opened by the word: nobody greets, the command is coming
 
 
 async def test_a_wake_word_on_another_device_does_not_take_an_open_session_over(
@@ -135,18 +134,17 @@ def test_the_score_is_a_probability() -> None:
 async def test_after_her_answer_a_follow_up_needs_no_new_wake_word(tmp_path: Path) -> None:
     replies = [say("Amanhã teremos sol, com máxima de 29 graus."), say("Na sexta pode chover.")]
     async with quick_rig(
-        tmp_path, replies=replies, stt=FakeStt("previsão de amanhã", "e na sexta?")
+        tmp_path, replies=replies, stt=FakeStt("Juniper, previsão de amanhã", "e na sexta?")
     ) as rig:
         phone = await connect_client(rig.server, "celular", "mobile")
         await ask_to_open(phone, wake=True, wake_score=0.9)
         assert await outcome(phone) == "ready"
-        await collect(phone, p.VoiceAudio)  # the greeting
         await say_phrase(phone)
         first = await collect(phone, p.VoiceTranscript, p.ChatEnd, p.VoiceAudio)
         await say_phrase(phone)  # the follow-up: same session, no voice.start
         second = await collect(phone, p.VoiceTranscript, p.ChatEnd, p.VoiceAudio)
         assert len(rig.handler._voices) == 1  # still the one session
-    assert of(first, p.VoiceTranscript)[0].text == "previsão de amanhã"
+    assert of(first, p.VoiceTranscript)[0].text == "Juniper, previsão de amanhã"
     assert of(second, p.VoiceTranscript)[0].text == "e na sexta?"
 
 
@@ -163,7 +161,7 @@ async def test_the_follow_up_window_is_the_configured_one(
 
     monkeypatch.setattr(voice_session.VoiceSession, "__init__", fast)
     async with quick_rig(
-        tmp_path, replies=[say(LONG)], stt=FakeStt("que horas são"), wake_idle=0.6
+        tmp_path, replies=[say(LONG)], stt=FakeStt("Juniper, que horas são"), wake_idle=0.6
     ) as rig:
         phone = await connect_client(rig.server, "celular", "mobile")
         await ask_to_open(phone, wake=True, wake_score=0.9)

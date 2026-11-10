@@ -766,6 +766,7 @@ class ChatHandler:
             local_tts=bool(message.local_tts),
             route=message.route,
             wake=bool(message.wake),
+            wake_word=bool(message.wake) and message.wake_score is not None,
             briefing=briefing if reminders.CreateReminder.available() and user_id else None,
             idle_timeout=services.wake_idle_timeout if message.wake else None,
             greeting=self._greeting_for(conn),
