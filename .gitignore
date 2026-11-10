@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 build/
+# ...menos os recursos de empacotamento do app desktop (o icone do instalador, ADR-033)
+!desktop/build/
 dist/
 *.egg-info/
 .eggs/
