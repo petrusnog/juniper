@@ -166,7 +166,7 @@ Extensão compatível do [ADR-023](../decisions/ADR-023.md): uma sessão de voz 
 | servidor → cliente | `voice.ready` | `reply_to`, `input`, `output`, `stt`, `tts` | Sessão aberta: formatos e se STT e TTS são `cloud` ou `local`. |
 | ambos | `voice.audio` | `seq`, `data`, `turn_id?`, `last?` | Do cliente: o microfone. Do servidor: a fala do turno; `last` fecha a fala. |
 | servidor → cliente | `voice.state` | `state` (`listening`, `thinking`, `speaking`, `idle`), `turn_id?` | O que está acontecendo. `listening` **com** `turn_id` = descarte o áudio daquele turno (foi cortado). |
-| servidor → cliente | `voice.transcript` | `text`, `final` | O que o usuário disse, como foi entendido. |
+| servidor → cliente | `voice.transcript` | `text`, `final`, `original` (opcional) | O que o usuário disse, como foi entendido. `original` só aparece quando o cérebro trocou um trecho por um termo do glossário ([Voz por áudio](voz-audio.md#correcao)); `text` é o que virou o pedido. |
 | servidor → cliente | `voice.say` | `turn_id`, `text`, `last?` | Fallback de TTS: o aparelho fala o texto. |
 | servidor → cliente | `voice.fallback` | `component` (`stt`, `tts`), `mode` (`local`, `cloud`), `reason` (`quota`, `budget`, `error`, `recovered`) | Troca de provedor. |
 | cliente → servidor | `voice.text` | `id`, `text` | Fala transcrita no aparelho (fallback de STT). |
