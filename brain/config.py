@@ -245,6 +245,11 @@ class VoiceSTTSettings(BaseModel):
     # vão ao Whisper como dica de vocabulário (ADR-034). Os primeiros têm prioridade se faltar
     # espaço.
     glossary: list[str] = Field(default_factory=list, max_length=200)
+    # Liga o que pede mais da Groq (ADR-034): a dica de vocabulário (`prompt`) e a resposta
+    # `verbose_json`, que traz a confiança da transcrição. Desligado, a requisição é a de sempre
+    # (`json`, sem dica) e a confiança fica desconhecida: o corretor só troca sons quase idênticos
+    # e ela nunca pede para repetir por confiança baixa. Ligue depois de ver a Groq aceitar.
+    contextual: bool = False
     # Quanto cabe da dica: o Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la.
     glossary_chars: int = Field(default=500, ge=50, le=1000)
     # Troca o trecho que soa como um termo do glossário por ele («mídia works» → «Media Works»).

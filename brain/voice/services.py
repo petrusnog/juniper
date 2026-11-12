@@ -27,6 +27,7 @@ class VoiceServices:
     reply_budget_chars: int = 600  # what the model is asked to stay within (ADR-034)
     glossary: Glossary = field(default_factory=Glossary)  # the vocabulary hint for the STT
     correct_terms: bool = True  # swap sound-alikes of glossary terms (ADR-034)
+    contextual: bool = False  # send the vocabulary hint and ask for the confidence (off: as before)
     repeat_below: float = 0.3  # ask to repeat under this confidence; 0 never asks
     debug_transcripts: bool = False  # log the heard → corrected pair (personal data)
     _closers: tuple[Synthesizer | Transcriber, ...] = ()
@@ -54,6 +55,7 @@ def open_voice_services() -> VoiceServices:
         reply_budget_chars=cfg.reply_budget,
         glossary=Glossary(cfg.stt.glossary, char_budget=cfg.stt.glossary_chars),
         correct_terms=cfg.stt.correct_terms,
+        contextual=cfg.stt.contextual,
         repeat_below=cfg.stt.repeat_below_confidence,
         debug_transcripts=cfg.stt.debug_transcripts,
         _closers=tuple(p for p in (synthesizer, transcriber) if p is not None),

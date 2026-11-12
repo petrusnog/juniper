@@ -115,13 +115,17 @@ def test_a_real_phrase_is_not_an_echo_even_with_a_term_in_it() -> None:
 # --- the Groq request and confidence ---------------------------------------------------------
 
 
-def groq(body: dict, seen: list[httpx.Request] | None = None) -> GroqTranscriber:
+def groq(
+    body: dict, seen: list[httpx.Request] | None = None, *, contextual: bool = True
+) -> GroqTranscriber:
     def handler(request: httpx.Request) -> httpx.Response:
         if seen is not None:
             seen.append(request)
         return httpx.Response(200, json=body)
 
-    return GroqTranscriber(api_key="gsk_testtesttest", transport=httpx.MockTransport(handler))
+    return GroqTranscriber(
+        api_key="gsk_testtesttest", contextual=contextual, transport=httpx.MockTransport(handler)
+    )
 
 
 def form(request: httpx.Request) -> dict[str, str]:
@@ -146,6 +150,22 @@ async def test_the_request_asks_for_segments_and_carries_the_prompt() -> None:
     assert fields["response_format"] == "verbose_json"
     assert fields["prompt"] == f"{LABEL}: Petrus."
     assert fields["language"] == "pt"
+
+
+async def test_with_contextual_off_the_request_is_the_plain_one_even_if_a_hint_is_given() -> None:
+    seen: list[httpx.Request] = []
+    stt = groq({"text": "oi"}, seen, contextual=False)
+    got = await stt.transcribe_detailed(b"\x00\x00" * 160, 16_000, f"{LABEL}: Petrus.")
+    fields = form(seen[0])
+    assert fields["response_format"] == "json" and "prompt" not in fields
+    assert got.text == "oi" and got.confidence is None
+
+
+def test_contextual_is_off_by_default() -> None:
+    from brain.config import settings
+
+    assert settings.voice.stt.contextual is False
+    assert GroqTranscriber(api_key="gsk_x")._contextual is False
 
 
 async def test_without_a_hint_no_prompt_field_is_sent() -> None:
@@ -282,6 +302,7 @@ async def test_a_voice_session_hands_the_vocabulary_to_the_transcriber(tmp_path:
     engine = Listening()
     async with Rig(tmp_path, FakeProvider([say(LONG)])) as rig:
         rig.services.stt = SpeechToText(engine)
+        rig.services.contextual = True
         rig.services.glossary = Glossary(["Media Works"])
         rig.services.glossary.add_source(broken)  # a dead source must not stop the phrase
         client, _ = await rig.open()
@@ -291,3 +312,35 @@ async def test_a_voice_session_hands_the_vocabulary_to_the_transcriber(tmp_path:
     assert [m.text for m in messages if isinstance(m, p.VoiceTranscript)] == [
         "abra o projeto Media Works"
     ]
+
+
+async def test_with_contextual_off_a_session_sends_no_hint_but_still_corrects(
+    tmp_path: Path,
+) -> None:
+    from brain.clients import protocol as p
+    from tests.test_agent import FakeProvider, say
+    from tests.test_voice_session import LONG, Rig, collect, say_phrase
+
+    class Listening(Transcriber):
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        async def transcribe(self, pcm: bytes, sample_rate: int) -> str:
+            raise NotImplementedError
+
+        async def transcribe_detailed(
+            self, pcm: bytes, sample_rate: int, prompt: str = ""
+        ) -> Transcription:
+            self.prompts.append(prompt)
+            return Transcription("abra o projeto mídia works")
+
+    engine = Listening()
+    async with Rig(tmp_path, FakeProvider([say(LONG)])) as rig:
+        rig.services.stt = SpeechToText(engine)
+        rig.services.glossary = Glossary(["Media Works"])  # contextual stays off (the default)
+        client, _ = await rig.open()
+        await say_phrase(client)
+        messages = await collect(client, p.VoiceTranscript, p.ChatEnd)
+    assert engine.prompts == [""]  # nothing extra asked of the provider
+    transcript = next(m for m in messages if isinstance(m, p.VoiceTranscript))
+    assert transcript.text == "abra o projeto Media Works"  # the glossary still fixes the sound

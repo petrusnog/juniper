@@ -155,9 +155,13 @@ class GroqTranscriber(Transcriber):
         model: str | None = None,
         language: str | None = None,
         timeout: float | None = None,
+        contextual: bool | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         cfg = settings.voice.stt
+        # off: the request is exactly the plain one (`json`, no hint); on: `verbose_json` for the
+        # confidence and the vocabulary hint (ADR-034)
+        self._contextual = cfg.contextual if contextual is None else contextual
         key = api_key
         if key is None and settings.groq_api_key is not None:
             key = settings.groq_api_key.get_secret_value()
@@ -190,9 +194,9 @@ class GroqTranscriber(Transcriber):
                 data={
                     "model": self._model,
                     "language": self._language,
-                    "response_format": "verbose_json",
+                    "response_format": "verbose_json" if self._contextual else "json",
                     "temperature": "0",
-                    **({"prompt": prompt} if prompt else {}),
+                    **({"prompt": prompt} if prompt and self._contextual else {}),
                 },
                 files={"file": ("fala.wav", wav, "audio/wav")},
             )

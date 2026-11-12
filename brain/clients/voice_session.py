@@ -557,6 +557,8 @@ class VoiceSession:
 
     async def _glossary_prompt(self) -> str:
         """The vocabulary hint for this utterance; never an error (no hint is just no hint)."""
+        if not self._services.contextual:
+            return ""  # the hint is only sent when voice.stt.contextual is on
         try:
             return await self._services.glossary.prompt()
         except Exception as exc:  # noqa: BLE001 - the phrase must be transcribed anyway
