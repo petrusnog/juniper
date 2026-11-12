@@ -44,6 +44,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Voz por áudio](pages/voz-audio.md): Falar com a Juniper e ouvi-la: Google Chirp 3 HD pelo cérebro, STT da Groq, trava de orçamento e as mensagens de áudio do…
 - [Executor](pages/executor.md): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
 - [Dashboard](pages/dashboard.md): O painel web da Juniper: memórias, afetos, a evolução (humor, personalidade e crenças), estudos, sonhos, conversas, ocorrências…
+- [Avaliar a voz](pages/voz-avaliacao.md): Como medir a escuta da Juniper antes e depois de uma mudança: o conjunto de frases gravadas e seu roteiro, o script que calcula…
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
@@ -122,4 +123,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `desktop`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
 - [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `lembretes`
 - [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`, `desktop`
-- [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento (Proposto) · `voz-audio`
+- [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento (Proposto) · `voz-audio`, `voz-avaliacao`

@@ -56,6 +56,20 @@ Send = Callable[[p.ServerMessage], Awaitable[bool]]
 
 
 @dataclass
+class _Marks:
+    """When each stage of one spoken turn happened, on the injected clock (T-203).
+
+    Only instants: the log gets the differences in milliseconds, never the words.
+    ``speech_end`` is when the pause that closed the utterance was detected (None when the device
+    transcribed by itself and the brain never heard the audio).
+    """
+
+    speech_end: float | None
+    transcribed: float
+    first_token: float | None = None
+
+
+@dataclass
 class _Speech:
     """What she is saying now: one turn (``chat``) or one standalone sentence."""
 
@@ -67,6 +81,7 @@ class _Speech:
     spoke: bool = False
     end_after: bool = False  # music started this turn: end the session when she is done
     delivered: Callable[[bool], Awaitable[None]] | None = None
+    marks: _Marks | None = None  # the timing of this turn, until the first sound is logged
 
 
 class VoiceSession:
@@ -117,7 +132,12 @@ class VoiceSession:
         self._last_activity = clock()
         self._play_until = 0.0
         self._speech: _Speech | None = None
-        self._utterances: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_UTTERANCES_QUEUED)
+        # each utterance with the instant its closing pause was detected (for the latency log)
+        self._utterances: asyncio.Queue[tuple[bytes, float]] = asyncio.Queue(
+            maxsize=MAX_UTTERANCES_QUEUED
+        )
+        self._pending_marks: _Marks | None = None  # handed to the turn that `_submit` opens
+        self._submitting = asyncio.Lock()  # one utterance at a time between marks and the turn
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._open = False
@@ -215,7 +235,7 @@ class VoiceSession:
             elif event.kind == "utterance":
                 self._touch()
                 try:
-                    self._utterances.put_nowait(event.pcm)
+                    self._utterances.put_nowait((event.pcm, self._clock()))
                 except asyncio.QueueFull:
                     event_log.log("voice", action="utterance_dropped")
 
@@ -224,7 +244,7 @@ class VoiceSession:
         if not self._open:
             return
         self._touch()
-        await self._heard(message.text.strip())
+        await self._heard(message.text.strip(), _Marks(None, self._clock()))
 
     def set_route(self, route: str) -> None:
         """The device's audio output changed (headphones plugged in or out)."""
@@ -262,6 +282,7 @@ class VoiceSession:
         self._touch()
         self._drop_speech()
         speech = _Speech(turn_id, True, SentenceChunker(max_chars=self._services.max_spoken_chars))
+        speech.marks, self._pending_marks = self._pending_marks, None
         self._begin(speech)
         self._vad.set_playing(True)
         await self._state("thinking", turn_id)
@@ -270,6 +291,8 @@ class VoiceSession:
         speech = self._speech
         if speech is None or speech.turn_id != turn_id or speech.chunker is None:
             return
+        if speech.marks is not None and speech.marks.first_token is None:
+            speech.marks.first_token = self._clock()
         for sentence in speech.chunker.feed(piece):
             speech.queue.put_nowait(sentence)
         self._disarm_settle()
@@ -294,6 +317,14 @@ class VoiceSession:
         self._disarm_settle()
         for sentence in speech.chunker.flush():
             speech.queue.put_nowait(sentence)
+        if speech.chunker.truncated:
+            # the technical fallback fired ("O resto está na tela."): count it, it should be rare
+            event_log.log(
+                "voice",
+                action="truncated",
+                spoken_chars=speech.chunker.spoken_chars,
+                max_chars=self._services.max_spoken_chars,
+            )
         speech.queue.put_nowait(None)
 
     # --- internals ---
@@ -363,6 +394,7 @@ class VoiceSession:
                     continue  # the device said it cannot speak: the caption is all there is
                 if not speech.spoke:
                     speech.spoke = True
+                    self._log_latency(speech)
                     await self._state("speaking", speech.turn_id)
                 if spoken.audio is not None:
                     last_was_audio = True
@@ -396,6 +428,34 @@ class VoiceSession:
                 return
             self._speech = None
             await self._state("listening")
+
+    def _log_latency(self, speech: _Speech) -> None:
+        """One ``voice``/``latency`` event when a turn makes its first sound (T-203, ADR-034).
+
+        ``stt_ms`` is the transcription, ``think_ms`` from the text to the model's first token,
+        ``speak_ms`` from that token to the first sound, ``total_ms`` the whole way from the pause
+        that closed the utterance; ``silence_ms`` is how long that pause had to be, which the
+        person waits through too. Without the brain's own audio (device STT) only the last two
+        stages are known.
+        """
+        marks, speech.marks = speech.marks, None
+        if marks is None:
+            return
+        now = self._clock()
+        first_token = marks.first_token if marks.first_token is not None else now
+
+        def ms(seconds: float) -> int:
+            return round(seconds * 1000)
+
+        fields: dict[str, int] = {
+            "think_ms": ms(first_token - marks.transcribed),
+            "speak_ms": ms(now - first_token),
+        }
+        if marks.speech_end is not None:
+            fields["stt_ms"] = ms(marks.transcribed - marks.speech_end)
+            fields["total_ms"] = ms(now - marks.speech_end)
+            fields["silence_ms"] = self._vad.end_silence_ms
+        event_log.log("voice", action="latency", **fields)
 
     async def _end_after_playback(self) -> None:
         """Music started this turn and her comment is said: close the conversation.
@@ -434,9 +494,9 @@ class VoiceSession:
     async def _listen_loop(self) -> None:
         """Transcribe the utterances one at a time (the audio keeps being analysed meanwhile)."""
         while True:
-            pcm = await self._utterances.get()
+            pcm, speech_end = await self._utterances.get()
             try:
-                await self._transcribe(pcm)
+                await self._transcribe(pcm, speech_end)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - never end the session for one utterance
@@ -444,9 +504,10 @@ class VoiceSession:
             if self._closed:  # an end command ended the session from inside this very task
                 return
 
-    async def _transcribe(self, pcm: bytes) -> None:
+    async def _transcribe(self, pcm: bytes, speech_end: float) -> None:
         await self._state("thinking")
         heard = await self._services.stt.listen(pcm, VAD_RATE)
+        marks = _Marks(speech_end, self._clock())
         for notice in heard.notices:
             await self._fallback("stt", notice)
         if heard.text is None:
@@ -456,9 +517,9 @@ class VoiceSession:
                 await self._state("listening")
             return
         await self._guarded_send(p.VoiceTranscript(text=heard.text))
-        await self._heard(heard.text)
+        await self._heard(heard.text, marks)
 
-    async def _heard(self, text: str) -> None:
+    async def _heard(self, text: str, marks: _Marks | None = None) -> None:
         """One utterance of text, from either STT: a command, or a turn of chat."""
         if not text:
             return
@@ -476,7 +537,12 @@ class VoiceSession:
             return
         if self._speech is not None or self._turn_active():
             await self._cut()  # what he says now replaces what she was saying
-        await self._submit(text)
+        async with self._submitting:  # the STT of the cloud and of the device can arrive together
+            self._pending_marks = marks
+            try:
+                await self._submit(text)
+            finally:
+                self._pending_marks = None  # a turn that did not open must not lend its timing
 
     async def _leak(self) -> None:
         """ "Isso vazou": cut what she is saying (it is probably the leak), keep the report and

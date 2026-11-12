@@ -102,6 +102,7 @@ class Rig:
         synth: FakeSynth | None = None,
         cloud_stt: bool = True,
         limit: int = 10_000,
+        max_chars: int = 800,
         idle: float = 60.0,
         wake_idle: float = 15.0,
         with_voice: bool = True,
@@ -114,7 +115,7 @@ class Rig:
         self.services = VoiceServices(
             speech=SpeechService(self.synth, budget),
             stt=SpeechToText(self.stt if cloud_stt else None, cooldown_seconds=3600),
-            max_spoken_chars=800,
+            max_spoken_chars=max_chars,
             idle_timeout=idle,
             wake_idle_timeout=wake_idle,
         )
@@ -789,3 +790,169 @@ async def test_by_default_the_microphone_is_closed_while_she_speaks_on_any_route
         await stream_audio(client, quiet(900), seq)
         await asyncio.sleep(0.2)
         assert provider.calls == 1 and rig.stt.texts == ["eco"]  # the echo was never heard
+
+
+# --- measuring the voice (T-203, ADR-034) ----------------------------------------------------
+
+
+def capture_events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
+    from brain.clients import voice_session
+
+    seen: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        voice_session.event_log, "log", lambda event, **kw: seen.append((event, kw))
+    )
+    return seen
+
+
+def voice_events(seen: list[tuple[str, dict[str, Any]]], action: str) -> list[dict[str, Any]]:
+    return [kw for event, kw in seen if event == "voice" and kw.get("action") == action]
+
+
+async def test_the_first_sound_of_a_turn_logs_where_the_time_went(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brain.voice.vad import Vad
+
+    seen = capture_events(monkeypatch)
+    async with Rig(tmp_path, FakeProvider([say(LONG)]), stt=FakeStt("que horas são")) as rig:
+        client, _ = await rig.open()
+        await say_phrase(client)
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+    (latency,) = voice_events(seen, "latency")  # one per turn, at its first sound
+    assert set(latency) == {
+        "action",
+        "stt_ms",
+        "think_ms",
+        "speak_ms",
+        "total_ms",
+        "silence_ms",
+    }
+    stages = [latency[k] for k in ("stt_ms", "think_ms", "speak_ms")]
+    assert all(isinstance(v, int) and v >= 0 for v in stages)
+    assert abs(latency["total_ms"] - sum(stages)) <= 3  # the stages add up to the whole
+    assert latency["silence_ms"] == Vad().end_silence_ms
+    assert "que horas" not in str(seen)  # instants and sizes, never the words
+
+
+async def test_a_turn_from_the_device_stt_logs_only_the_stages_the_brain_saw(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = capture_events(monkeypatch)
+    async with Rig(tmp_path, FakeProvider([say(LONG)]), cloud_stt=False) as rig:
+        client, _ = await rig.open(local_stt=True)
+        await client.send(type="voice.text", id="t-1", text="toca Djavan")
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+    (latency,) = voice_events(seen, "latency")
+    assert set(latency) == {"action", "think_ms", "speak_ms"}  # no audio, no stt_ms or total_ms
+
+
+async def test_a_greeting_has_no_turn_and_logs_no_latency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = capture_events(monkeypatch)
+    async with Rig(tmp_path, FakeProvider([])) as rig:
+        client, _ = await rig.open(wake=True)
+        await collect(client, p.VoiceAudio)
+    assert voice_events(seen, "latency") == []
+
+
+async def test_a_turn_that_never_opened_does_not_lend_its_timing_to_the_next(
+    tmp_path: Path,
+) -> None:
+    """The chat can refuse a voice turn (busy): the timing it was given must not survive."""
+    from brain.clients.voice_session import VoiceSession
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    sent: list[p.ServerMessage] = []
+
+    async def send(message: p.ServerMessage) -> bool:
+        sent.append(message)
+        return True
+
+    async def refuse(_text: str) -> None:
+        return None  # the chat said "busy": no turn_started follows
+
+    async def nothing() -> None:
+        return None
+
+    session = VoiceSession(
+        rig.services,
+        send=send,
+        submit=refuse,
+        cancel_turn=nothing,
+        turn_active=lambda: False,
+        ended=lambda: None,
+        clear_pending=lambda: None,
+    )
+    await session.start("v-1")
+    try:
+        await session.text(p.VoiceText(id="t-1", text="primeira"))
+        await session.turn_started("t-9")  # a turn from some other path
+        assert session._speech is not None and session._speech.marks is None
+    finally:
+        await session.end("client", notify=False)
+
+
+async def test_two_utterances_at_once_never_swap_their_timing(tmp_path: Path) -> None:
+    """The cloud STT and the device STT can both deliver text: each turn keeps its own marks."""
+    from brain.clients.voice_session import VoiceSession, _Marks
+
+    rig = Rig(tmp_path, FakeProvider([]))
+    seen: list[tuple[_Marks | None, _Marks | None]] = []
+
+    async def send(_message: p.ServerMessage) -> bool:
+        return True
+
+    async def slow_submit(_text: str) -> None:
+        before = session._pending_marks
+        await asyncio.sleep(0.02)  # the chat opening the turn takes a moment
+        seen.append((before, session._pending_marks))
+
+    async def nothing() -> None:
+        return None
+
+    session = VoiceSession(
+        rig.services,
+        send=send,
+        submit=slow_submit,
+        cancel_turn=nothing,
+        turn_active=lambda: False,
+        ended=lambda: None,
+        clear_pending=lambda: None,
+    )
+    first, second = _Marks(1.0, 1.5), _Marks(2.0, 2.5)
+    await session.start("v-1")
+    try:
+        await asyncio.gather(session._heard("um", first), session._heard("dois", second))
+    finally:
+        await session.end("client", notify=False)
+    assert seen == [(first, first), (second, second)]  # nobody's marks changed mid-turn
+
+
+async def test_the_technical_fallback_is_counted_when_it_cuts_a_reply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = capture_events(monkeypatch)
+    long_reply = "Esta é uma frase completa e inteira. " * 40  # about 1,500 characters
+    async with Rig(
+        tmp_path, FakeProvider([say(long_reply)]), stt=FakeStt("explica tudo"), max_chars=200
+    ) as rig:
+        client, _ = await rig.open()
+        await say_phrase(client)
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+    (cut,) = voice_events(seen, "truncated")
+    assert cut["max_chars"] == 200 and 0 < cut["spoken_chars"] <= 200
+    assert rig.synth.spoken[-1] == "O resto está na tela."  # the fallback still does its job
+
+
+async def test_a_reply_that_fits_never_logs_the_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = capture_events(monkeypatch)
+    async with Rig(tmp_path, FakeProvider([say(LONG)]), stt=FakeStt("que horas são")) as rig:
+        client, _ = await rig.open()
+        await say_phrase(client)
+        await collect(client, p.ChatEnd, p.VoiceAudio)
+    assert voice_events(seen, "truncated") == []
+    assert "O resto está na tela." not in rig.synth.spoken

@@ -107,6 +107,30 @@ e pare quando tiver a resposta:
 - Toda task nasce de uma issue (`[T-0xx]`). Branch `feature/T0xx` a partir de `master`; commits
   `T-0xx: ...`; PR `T-0xx: ...` com `Closes #N` (confira depois do merge que a issue fechou) e o
   template preenchido. Veja `CONTRIBUTING.md` (o merge documentado ali é *squash*).
+- **Branches (obrigatório).** Uma task, uma branch: `feature/T0xx` (número da task, sem hífen),
+  criada de `master` **atualizado** (`git fetch origin master && git checkout -B feature/T0xx
+  origin/master`). Isso vale mesmo quando o ambiente sugere outra branch (como `claude/...`): essa
+  só serve para trabalho que não é de uma task. Nunca empilhe uma task sobre a branch de outra
+  nem reaproveite branch já mergeada. Branch mergeada é apagada: o workflow
+  `.github/workflows/delete-branch.yml` apaga a do PR no merge; confira e, se sobrou, apague.
+- **Movimentar as issues (obrigatório).** A issue conta a história da task; não deixe ela parada
+  enquanto o trabalho anda. O repositório não tem quadro de projeto nem rótulo de andamento, então
+  o movimento é feito assim:
+  1. **Ao começar:** comentário na issue da task com a branch (`feature/T0xx`) e o que vem primeiro.
+  2. **Ao abrir o PR:** `Closes #N` no corpo (um PR por task; `Refs #N` só para ADR ou docs sem
+     task) e, se o escopo mudou ou algum critério de aceite ficou de fora, comentário na issue
+     dizendo qual e por quê. Nunca marque como feito um critério que só foi simulado.
+  3. **Se houver épica:** a épica tem um comentário-checklist das tasks; marque a task quando o PR
+     dela for mergeado (edite o comentário, não crie outro). A épica só fecha quando todas as
+     tasks e os critérios dela estiverem cumpridos.
+  4. **Depois do merge:** confira que a issue fechou. Se não fechou, feche com `state_reason:
+     completed` e comente o PR. Task descartada ou substituída fecha como `not_planned`, com o
+     motivo.
+  5. **Dívida ou desvio achado no caminho** vira issue nova (ou linha na §11 do `JUNIPER.md`),
+     ligada à task de origem; não fica só na conversa.
+  Todo comentário que você escrever no GitHub termina com o rodapé de atribuição do ambiente. Não
+  atribua issue a ninguém e não mexa em issue que não seja da task em curso, a não ser que o
+  Petrus peça.
 - Antes de abrir PR: `pytest -m "not integration"` verde; mudou `docs/pages` ou
   `docs/decisions`? Rode `python scripts/build_docs.py` (o teste de docs falha se o HTML ou o
   mapa estiverem velhos). PRs só de `docs/` são isentos de testes novos.

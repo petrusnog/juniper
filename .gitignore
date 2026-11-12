@@ -72,3 +72,7 @@ docs/.obsidian/*
 *.pfx
 *.pfx.base64.txt
 juniper-signing/
+
+# STT evaluation sets and reports (T-203): recordings and what was said, never versioned
+/voice-eval/
+/.voice-eval/
