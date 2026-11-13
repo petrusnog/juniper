@@ -24,6 +24,7 @@ from brain.core.leak_audit import Block, build_record, detect, quarantined
 from brain.core.leak_report import REPORT_EXCHANGES, Exchange, exchanges_from_history
 from brain.core.session import Session, Turn
 from brain.core.style import DashFilter
+from brain.core.title import draft_title, generate, is_thin
 from brain.eventlog import bind_session, event_log
 from brain.llm.base import LLMProvider
 from brain.llm.types import Message, TokenUsage, ToolCall
@@ -73,8 +74,15 @@ class Agent:
         turn_sink: Callable[[str, Turn], Any] | None = None,
         self_docs: Callable[[str], str | None] | None = None,
         leak_sink: Callable[[dict[str, Any]], Any] | None = None,
+        title_sink: Callable[[str, str, str], Any] | None = None,
     ) -> None:
         self._provider = provider
+        # Told ``(session id, title, source)`` when the model names the conversation (T-225), so
+        # the clients that show it can update their list.
+        self._title_sink = title_sink
+        self._background: set[asyncio.Task[None]] = set()
+        # The first naming was tried: a draft that came out empty is not retried on every turn.
+        self._title_tried = False
         # Stores the evidence of a suspicious answer (T-165, core/leak_audit.py); None = log only.
         self._leak_sink = leak_sink
         self._dispatcher = dispatcher
@@ -183,6 +191,7 @@ class Agent:
             if interrupted:
                 partial = "".join(self._streaming) or "".join(self._streaming_raw)
                 self._finish_turn(user_input, "", partial=partial)
+                self._name_conversation()
             with self._stages.stage("persist"):
                 self._persist()
             if interrupted:
@@ -190,6 +199,7 @@ class Agent:
             self._log_timing()
             raise
         self._finish_turn(user_input, reply)
+        self._name_conversation()
         with self._stages.stage("persist"):
             self._persist()
             await self._sink(self._turns[-1])
@@ -231,6 +241,91 @@ class Agent:
                 leaked=self._leaked,
             )
         )
+
+    # --- the title of the conversation (T-225, core/title.py) ---
+
+    def _name_conversation(self) -> None:
+        """Give the conversation a title: a draft from the first message right away (saved with
+        the first turn), then the model's, in the background. A greeting-only opener is named
+        again after the third exchange, once there is something to name."""
+        session = self.session
+        if session.title_source == "user":
+            return
+        if not session.title and not self._title_tried and session.turns_total >= 1:
+            self._title_tried = True
+            first = self._exchanges(1)
+            draft = draft_title(first[0][0] if first else "")
+            if draft:
+                session.title, session.title_source = draft, "draft"
+            self._spawn_title(self._exchanges(1))
+        elif (
+            session.turns_total == 3
+            and session.title_source in ("draft", "auto")
+            and (first := self._exchanges(1))
+            and is_thin(first[0][0])
+        ):
+            self._spawn_title(self._exchanges(3))
+
+    def _exchanges(self, count: int) -> list[tuple[str, str]]:
+        """The first ``count`` exchanges of the conversation as (user, reply), from the history
+        (not from the last ten the agent remembers: a resumed conversation can be longer)."""
+        return [(e.user, e.assistant) for e in exchanges_from_history(self.session.history)[:count]]
+
+    def _spawn_title(self, exchanges: list[tuple[str, str]]) -> None:
+        try:
+            task = asyncio.get_running_loop().create_task(self._retitle(exchanges))
+        except RuntimeError:  # no running loop (a synchronous caller): the draft stays
+            return
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+    async def _retitle(self, exchanges: list[tuple[str, str]]) -> None:
+        """Ask the model for the title and apply it unless the person renamed meanwhile."""
+        session = self.session
+        try:
+            title = await generate(self._provider, exchanges)
+            if not title or session.title_source == "user":
+                return
+            applied = True
+            if self._store is not None and hasattr(self._store, "set_title"):
+                applied = await asyncio.to_thread(self._store.set_title, session.id, title, "auto")
+            if not applied or session.title_source == "user":
+                return  # the stored copy is the person's (or gone): what they chose stands
+            session.title, session.title_source = title, "auto"
+            event_log.log("session_titled", source="auto", chars=len(title))
+            if self._title_sink is not None:
+                result = self._title_sink(session.id, title, "auto")
+                if asyncio.iscoroutine(result):
+                    await result
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001  (a title is never worth a conversation)
+            event_log.log("error", where="agent.title", type=type(exc).__name__)
+
+    async def settle(self, timeout: float = 5.0) -> None:
+        """Wait for the naming still in flight (the conversation is being closed, or a test)."""
+        pending = [t for t in self._background if not t.done()]
+        if pending:
+            _, late = await asyncio.wait(pending, timeout=timeout)
+            for task in late:  # too slow: the draft stays, and nothing runs on after the close
+                task.cancel()
+            await asyncio.gather(*late, return_exceptions=True)
+
+    @property
+    def store(self) -> SessionStore | None:
+        return self._store
+
+    def switch_session(self, session: Session) -> None:
+        """Continue another saved conversation in this agent (the local terminal's /retomar)."""
+        self.session = session
+        self.clear_pending()
+        self._recent = deque(
+            exchanges_from_history(session.history)[-REPORT_EXCHANGES:], maxlen=REPORT_EXCHANGES
+        )
+
+    def rename(self, title: str) -> None:
+        """The person renamed this conversation: from now on nothing else changes it."""
+        self.session.title, self.session.title_source = title, "user"
 
     def _log_timing(self) -> None:
         """Record where this turn's time went (the ``timing`` event; the CLI may show it too)."""

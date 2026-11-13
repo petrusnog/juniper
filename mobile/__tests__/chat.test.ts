@@ -263,6 +263,77 @@ test('the conversation list is mirrored', () => {
   expect(controller.state.sessions?.[0].id).toBe('s-1');
 });
 
+test('titles: the list, the open conversation and a rename follow what the brain says', () => {
+  const { connection, controller } = setup();
+  connection.receive(WELCOME(false, 's-1'));
+  connection.receive({
+    type: 'session.listed',
+    reply_to: 'id-2',
+    sessions: [
+      {
+        id: 's-1',
+        preview: 'oi',
+        turns: 1,
+        updated_at: '2026-10-27T00:00:00Z',
+      },
+      {
+        id: 's-2',
+        preview: 'bolo',
+        turns: 2,
+        updated_at: '2026-10-27T00:00:00Z',
+        title: 'Receita de bolo',
+        title_source: 'auto',
+      },
+    ],
+  });
+  expect(controller.state.sessions?.[1].title).toBe('Receita de bolo');
+  expect(controller.state.title).toBe('');
+  // Juniper names the open conversation
+  connection.receive({
+    type: 'session.titled',
+    session_id: 's-1',
+    title: 'Conversa sobre jardinagem',
+    source: 'auto',
+  });
+  expect(controller.state.title).toBe('Conversa sobre jardinagem');
+  expect(controller.state.sessions?.[0].title).toBe(
+    'Conversa sobre jardinagem',
+  );
+  // the person renames another one: only its line changes
+  expect(controller.rename('  Meu bolo  ', 's-2')).toBe(true);
+  expect(connection.sent.at(-1)).toMatchObject({
+    type: 'session.rename',
+    title: 'Meu bolo',
+    session_id: 's-2',
+  });
+  connection.receive({
+    type: 'session.renamed',
+    reply_to: 'id-9',
+    session_id: 's-2',
+    title: 'Meu bolo',
+  });
+  expect(controller.state.sessions?.[1]).toMatchObject({
+    title: 'Meu bolo',
+    title_source: 'user',
+  });
+  expect(controller.state.title).toBe('Conversa sobre jardinagem');
+  // an empty title is not sent
+  const before = connection.sent.length;
+  expect(controller.rename('   ')).toBe(false);
+  expect(connection.sent).toHaveLength(before);
+  // resuming brings the title with the state
+  connection.receive({
+    type: 'session.state',
+    reply_to: 'id-3',
+    session_id: 's-2',
+    turns: 2,
+    history: [],
+    note: '',
+    title: 'Meu bolo',
+  });
+  expect(controller.state.title).toBe('Meu bolo');
+});
+
 test('detached: another device took the conversation and the app says so', () => {
   const { connection, controller } = setup();
   connection.receive(WELCOME());
@@ -309,6 +380,7 @@ test('the confirmation "sim" is a plain message: the app has no confirmation sta
     'pendingSend',
     'sessionId',
     'sessions',
+    'title',
   ]);
 });
 

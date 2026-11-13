@@ -94,6 +94,10 @@ class Session:
         # Turns finished in this conversation since it began. Unlike ``history`` it is never
         # compacted, so a turn number keeps meaning the same thing across resumes.
         self.turns_total = 0
+        # What every client's list shows (T-225, core/title.py). ``title_source`` says who made
+        # it: "" (none yet), "draft" (first words), "auto" (the model) or "user" (renamed).
+        self.title = ""
+        self.title_source = ""
 
     def messages(self) -> list[Message]:
         """System prompt followed by the history, ready for the LLM."""

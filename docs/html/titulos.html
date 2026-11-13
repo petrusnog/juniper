@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Título das conversas — Livro de bolso Juniper</title>
+<meta name="description" content="Como cada conversa ganha um título (a Juniper nomeia, você renomeia), onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/titulos.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Núcleo / Título das conversas</div>
+<h1>Título das conversas <span class="tag g">pronta</span></h1>
+<p class="lead">Como cada conversa ganha um título (a Juniper nomeia, você renomeia), onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Cada conversa tem um <strong>título</strong>: um nome curto («Receita de bolo de cenoura», «Plano de viagem a Lisboa») que a própria Juniper dá a partir do começo da conversa e que você pode trocar quando quiser. É esse nome, e não mais a primeira mensagem ou um id, que as listas de conversas de todos os clientes mostram (<a href="adr-036.html">ADR-036</a>). As conversas anteriores a este recurso continuam sem título e aparecem pela primeira mensagem, como antes.</p>
+<h2 id="nomear">Como a Juniper dá o título</h2>
+<ol><li><strong>Rascunho, na hora.</strong> Terminado o primeiro turno, as primeiras palavras do que você disse viram o título provisório (<code>draft</code>) e são salvas com a conversa. Assim ela nunca fica sem nome, nem com o modelo fora do ar.</li><li><strong>O modelo, logo depois.</strong> Em segundo plano, uma chamada curta pede de 2 a 6 palavras, no seu idioma, a partir da primeira troca. O resultado (<code>auto</code>) substitui o rascunho e os clientes recebem o aviso <code>session.titled</code>. Se o modelo falhar, demorar mais de 20 s ou devolver lixo, o rascunho fica.</li><li><strong>Um cumprimento não é assunto.</strong> Se a primeira mensagem foi só «oi» ou «bom dia», a Juniper nomeia de novo, uma vez, depois da terceira troca.</li><li><strong>Você manda.</strong> Um título que você escolheu (<code>user</code>) nunca é trocado pela Juniper, nem por um turno que estava sendo salvo quando você renomeou, nem pelo modelo que terminava de pensar.</li></ol>
+<p>Todo título, venha de onde vier, é uma linha só, sem tags nem formatação, com segredos mascarados e no máximo 80 caracteres (<code>clean_title</code>). Renomear não conta como usar a conversa: a ordem da lista não muda.</p>
+<h2 id="clientes">Onde aparece e como renomear</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Lista</th><th>Renomear</th></tr></thead><tbody><tr><td><strong>App mobile</strong></td><td><strong>Conversas</strong>: o título (ou a primeira mensagem, nas antigas); o da conversa aberta fica sob a linha de estado</td><td><strong>Renomear</strong> em cada conversa da lista</td></tr><tr><td><strong>Desktop</strong></td><td>Painel <strong>Conversas</strong></td><td><strong>Renomear</strong> em cada linha (Enter salva, Esc cancela)</td></tr><tr><td><strong>Dashboard</strong></td><td>Página <strong>Conversas</strong>: o título em destaque e o id como detalhe; a Auditoria e as Ocorrências mostram o título da conversa de cada registro (<a href="atividade.html">Registro de atividade</a>)</td><td>Na conversa, o campo <strong>Título</strong> (só o dono)</td></tr><tr><td><strong>Telegram</strong></td><td><code>/conversas</code></td><td><code>/renomear &lt;título&gt;</code></td></tr><tr><td><strong>Terminal</strong></td><td><code>/conversas</code> no chat e <code>juniper conversas</code></td><td><code>/renomear &lt;título&gt;</code> no chat e <code>juniper renomear &lt;número|id&gt; &lt;título&gt;</code></td></tr></tbody></table></div>
+<h3 id="comandos">Comandos de texto</h3>
+<p>Para os clientes que só têm uma linha de texto (o bot do Telegram e o terminal, no modo local e no modo servidor):</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Comando</th><th>O que faz</th></tr></thead><tbody><tr><td><code>/conversas</code></td><td>Lista as 10 mais recentes, numeradas: <code>1. Receita de bolo · há 2 h · 6 mensagens</code>, com «← esta» na que está aberta.</td></tr><tr><td><code>/renomear &lt;título&gt;</code> (ou <code>/titulo</code>)</td><td>Renomeia a conversa aberta.</td></tr><tr><td><code>/retomar &lt;número|id&gt;</code></td><td>Volta a uma conversa da lista (o número da lista ou o começo do id; um começo de id que serve para mais de uma pede o número).</td></tr></tbody></table></div>
+<p>Não passam pelo modelo, não entram no histórico da conversa e não contam como mensagem. No Telegram valem enquanto a Juniper não está respondendo (o bot atende uma mensagem por vez).</p>
+<h2 id="protocolo">Protocolo</h2>
+<p>Só acréscimos compatíveis (<a href="protocolo.html#sessoes">API WebSocket</a>): <code>SessionSummary.title</code> e <code>title_source</code>, <code>SessionState.title</code>, <code>session.rename</code> (sem <code>session_id</code>, renomeia a conversa aberta), <code>session.renamed</code> (a resposta) e <code>session.titled</code> (empurrada à conexão que tem a conversa aberta quando a Juniper a nomeia ou outra janela a renomeia). A <code>protocol_version</code> não mudou.</p>
+<h2 id="armazenamento">Onde fica</h2>
+<p><code>title</code> e <code>title_source</code> são campos da sessão, nos dois stores. <code>set_title</code> grava sem mexer em <code>updated_at</code>; ele recusa trocar um título do usuário por um do modelo, e <code>save</code> adota o título do usuário que encontrar gravado quando a cópia em memória ainda tem o antigo (<a href="memoria-sessao.html#titulo">Memória de sessão</a>).</p>
+<h2 id="limitacoes">Limitações</h2>
+<ul><li>Conversas anteriores ao recurso não ganham título em lote; ganham quando retomadas e você manda a próxima mensagem.</li><li>Uma conversa aberta em dois lugares: o outro cliente fica sabendo na hora (<code>session.titled</code>) se estiver conectado; senão, na próxima vez que listar.</li><li>O app mobile e o desktop só foram exercitados por testes automatizados e pela leitura do código; não foram abertos num aparelho real.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_session_title.py tests/test_conversations.py tests/test_dashboard_session_title.py -v
+cd mobile &amp;&amp; npm test        # chat.test.ts e ChatScreen.test.tsx
+cd desktop &amp;&amp; npm test       # tests/chat.test.ts</code></pre>
+<p>Cobrem a limpeza do título, o rascunho, o cumprimento, a chamada ao modelo (feita, falha, vazia), os dois stores (inclusive o título do usuário contra um <code>save</code> atrasado), o servidor (lista, <code>session.titled</code>, renomear a aberta e uma salva, janela alheia), o Telegram, o terminal, os comandos <code>juniper conversas</code>/<code>renomear</code> e o dashboard (lista, detalhe, renomear só pelo dono e com CSRF).</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="memoria-sessao.html">Memória de sessão</a> (Documentação Técnica): Como a conversa é guardada e retomada, em arquivos ou no MongoDB.</li><li><a href="protocolo.html">API WebSocket</a> (Documentação Técnica): As mensagens entre os clientes e o cérebro, inclusive as de sessão.</li><li><a href="agente.html">Agente</a> (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.</li><li><a href="telegram.html">Telegram</a> (Clientes): O bot do Telegram como cliente do cérebro.</li><li><a href="dashboard.html">Dashboard</a> (Documentação Técnica): O painel web: conversas, auditoria, ocorrências e mais.</li><li><a href="cli.html">CLI</a> (Documentação Técnica): Os comandos do <code>juniper</code>, o modo remoto e os erros em português.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

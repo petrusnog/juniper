@@ -54,7 +54,7 @@ O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobi
 | **Memória central** | O núcleo da persona, o perfil, a personalidade (com a linha do tempo de cada traço), as crenças com as evidências, as preocupações e o **simulador do prompt**: escreva uma mensagem e veja o que a Memória V2 acrescentaria. |
 | **Estudos** | Os temas (9 por página, com paginação), com passo, posição e intensidade; as notas por passo, as perguntas em aberto e cada nota com incerteza, fonte e data; "Todas as notas" com filtros. |
 | **Sonhos** | Cada execução com horário, status, duração, conversas lidas, tokens gastos e as fases; abaixo, o diário. |
-| **Conversas** | As sessões, quantos turnos esperam o próximo sonho e a conversa em balões. A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
+| **Conversas** | As sessões **pelo título** (o id fica como detalhe; as anteriores ao recurso, pela primeira mensagem), quantos turnos esperam o próximo sonho e a conversa em balões; o dono renomeia na conversa ([Título das conversas](titulos.md)). A resposta dela depois de ferramentas não aparece. Some com `dashboard.transcripts: false`. |
 | **Ocorrências** | Qualquer bug ou comportamento errado que você **registrou** (aqui ou por fala, com a tool `report_issue`), os vazamentos que você marcou com `/vazou` ou «isso vazou» (com as últimas 10 interações) e os que a [auditoria](vazamentos.md) detectou. A lista filtra por origem; o detalhe mostra a sessão, o canal e as mensagens ou o histórico, e cada tela tem o botão **Baixar planilha (.xlsx)**. Nos registros o dono muda o estado e a gravidade, anota e apaga ([Ocorrências e ações](ocorrencias.md)). Precisa do MongoDB: sem ele a tela explica. |
 | **Tarefas** | Só o dono. Roda o sonho (com ensaio) e a reindexação em segundo plano, uma por vez, com o resultado das últimas execuções. |
 | **Logs** | O log técnico (o de `juniper logs`): hoje, 3 ou 7 dias, só erros, por texto ou por evento, com segredos mascarados. |
@@ -106,6 +106,7 @@ pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_das
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Registro de atividade e Auditoria](atividade.md) (Documentação Técnica): A tela Auditoria: busca, filtros, linha do tempo, resumo e planilha do que a Juniper fez.
 - [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.

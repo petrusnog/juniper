@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +20,8 @@ class Sources:
     transcripts: bool = True  # dashboard.transcripts
     reports: Any | None = None  # the user's leak reports (``LeakReportStore``), MongoDB only
     audit: Any | None = None  # the automatic leak audit records (``LeakAuditStore``)
+    sessions: Any | None = None  # the conversation store (titles of the Conversas page)
+    rename: Callable[[str, str], Awaitable[bool]] | None = None  # ChatHandler.rename_session
     activity: Any | None = None  # the activity records (``ActivityStore``), MongoDB only
     health: Callable[[], dict[str, Any]] | None = None  # the server's own ``/health`` answer
     log_dir: Any | None = None  # where the technical log lives (``event_log.directory``)

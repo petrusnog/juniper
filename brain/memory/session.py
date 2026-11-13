@@ -16,12 +16,14 @@ import json
 import os
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from brain.config import settings
 from brain.core.session import Session
+from brain.core.title import SOURCES, clean_title
 from brain.llm.types import Message, ToolCall
 
 FORMAT_VERSION = 1
@@ -52,6 +54,8 @@ class SessionInfo:
     updated_at: str
     turns: int
     preview: str
+    title: str = ""  # T-225: what the lists show; "" for a conversation that has none (older ones)
+    title_source: str = ""
 
 
 class SessionStore(Protocol):
@@ -68,6 +72,11 @@ class SessionStore(Protocol):
 
     def list_sessions(self) -> list[SessionInfo]:
         """Saved sessions, most recently updated first."""
+
+    def set_title(self, session_id: str, title: str, source: str) -> bool:
+        """Name a saved session without touching when it was last used. ``False`` when there is
+        no such session, or when ``source`` is not ``"user"`` and the person already renamed it
+        (a title the person chose is never overwritten)."""
 
 
 def message_to_dict(message: Message) -> dict[str, Any]:
@@ -108,6 +117,8 @@ def session_to_dict(session: Session) -> dict[str, Any]:
         "updated_at": session.updated_at,
         "history": [message_to_dict(m) for m in session.history],
         "turns_total": session.turns_total,
+        "title": session.title,
+        "title_source": session.title_source,
     }
 
 
@@ -122,7 +133,28 @@ def session_from_dict(data: dict[str, Any]) -> Session:
     session.turns_total = int(
         data.get("turns_total", sum(1 for m in session.history if m.role == "user"))
     )
+    session.title, session.title_source = read_title(data)
     return session
+
+
+def read_title(data: dict[str, Any]) -> tuple[str, str]:
+    """The stored title and who made it; a save from before T-225 has neither."""
+    title = data.get("title")
+    source = data.get("title_source")
+    if not isinstance(title, str) or source not in SOURCES:
+        return "", ""
+    return title, str(source)
+
+
+def keep_users_title(session: Session, stored: dict[str, Any] | None) -> None:
+    """A title the person chose must survive a save made from a stale copy of the session
+    (the model finishes naming it, or another window renames it, while a turn is being saved):
+    when the stored one is the person's and this copy's is not, this copy takes the stored one."""
+    if not stored or session.title_source == "user":
+        return
+    title, source = read_title(stored)
+    if source == "user" and title:
+        session.title, session.title_source = title, source
 
 
 def session_info(session: Session) -> SessionInfo:
@@ -134,6 +166,8 @@ def session_info(session: Session) -> SessionInfo:
         updated_at=session.updated_at,
         turns=len(users),
         preview=first[:PREVIEW_CHARS],
+        title=session.title,
+        title_source=session.title_source,
     )
 
 
@@ -142,14 +176,22 @@ class FileSessionStore:
 
     def __init__(self, directory: Path | None = None) -> None:
         self.directory = directory if directory is not None else settings.memory.session.dir
+        # `save` and `set_title` rewrite the whole file: without this, a title written while a turn
+        # is being saved could put the older text back (the naming runs in a thread).
+        self._lock = threading.Lock()
 
     def _path(self, session_id: str) -> Path:
         return self.directory / f"{check_session_id(session_id)}.json"
 
     def save(self, session: Session) -> None:
+        with self._lock:
+            self._save(session)
+
+    def _save(self, session: Session) -> None:
         if not session.history:
             return
         path = self._path(session.id)
+        keep_users_title(session, self._stored_title(path))
         created = not self.directory.exists()
         self.directory.mkdir(parents=True, exist_ok=True)
         if created:
@@ -168,6 +210,46 @@ class FileSessionStore:
 
     def load(self, session_id: str) -> Session | None:
         return self._read(self._path(session_id))
+
+    @staticmethod
+    def _stored_title(path: Path) -> dict[str, Any] | None:
+        """Only the title fields of the saved file (None when there is none or it is damaged)."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def set_title(self, session_id: str, title: str, source: str) -> bool:
+        with self._lock:
+            return self._set_title(session_id, title, source)
+
+    def _set_title(self, session_id: str, title: str, source: str) -> bool:
+        path = self._path(session_id)
+        clean = clean_title(title)
+        if source not in SOURCES or not clean:
+            return False
+        try:
+            stat = path.stat()
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        if source != "user" and read_title(data)[1] == "user":
+            return False
+        data["title"], data["title_source"] = clean, source
+        fd, tmp = tempfile.mkstemp(dir=self.directory, prefix=".session-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False)
+            os.utime(tmp, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # renaming is not using it
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+        return True
 
     def _read(self, path: Path) -> Session | None:
         try:

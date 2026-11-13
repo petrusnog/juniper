@@ -210,7 +210,7 @@ async function detail(id) {
   const lang = new URLSearchParams(window.location.hash.split("?")[1] || "").get("lang") || "";
   const o = await api(`/activity/${encodeURIComponent(id)}`, { lang });
   const facts = [
-    ["Quando", o.clock], ["Registro", o.id], ["Ação", `${o.category} · ${o.action}`], ["Quem", o.actor],
+    ["Quando", o.clock], ["Conversa", o.session_title || null], ["Registro", o.id], ["Ação", `${o.category} · ${o.action}`], ["Quem", o.actor],
     ["Canal", o.channel ? `${o.channel}${o.voice ? " · voz" : ""}` : null],
     ["Provedor e modelo", o.provider || o.model ? `${o.provider || "?"}/${o.model || "?"}` : null],
     ["Ferramenta", o.tool ? `${o.tool}${o.tier ? ` (${o.tier})` : ""}` : null],

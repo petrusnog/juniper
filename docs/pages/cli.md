@@ -113,6 +113,7 @@ Depois das dicas vem uma linha "Detalhe técnico: ..." com a causa de cada provi
 | `juniper serve` | Sobe o brain como servidor WebSocket (`deployment.mode: server`; [Servidor WebSocket](servidor.md)). |
 | `juniper vazamentos [--vazados\|--resumo\|--relatos\|--ver <id>\|--apagar <id>]` | As respostas em que escapou maquinaria na fala (texto bruto do modelo) e os relatos que você marcou com `/vazou` ([Auditoria de vazamentos](vazamentos.md#consultar)). Lê o MongoDB do processo. |
 | `juniper atividade [--buscar <termo>\|--periodo\|--de\|--ate\|--modelo\|--tipo\|--acao\|--desfecho\|--sessao\|--idioma\|--ver <id>]` | O que a Juniper fez, em frases, com os horários em UTC-3 ([Registro de atividade](atividade.md#cli)). Lê o MongoDB do processo. |
+| `juniper conversas` · `juniper renomear <número\|id> <título>` | Lista as conversas pelo título e renomeia uma ([Título das conversas](titulos.md)). No chat, `/conversas`, `/renomear <título>` e `/retomar <número\|id>` fazem o mesmo. |
 | `juniper telegram [--health]` | Sobe o bot do Telegram, um cliente do brain remoto ([Telegram](telegram.md)). `--health` sai com 0 se o bot está vivo. |
 
 ### juniper memory {#memory kind=comando file=brain/clients/cli.py}
@@ -177,6 +178,7 @@ Cobrem: versão, mensagem única com streaming, colchetes literais, REPL até `/
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Registro de atividade e Auditoria](atividade.md) (Documentação Técnica): O que a Juniper fez, em frases pesquisáveis, e o `juniper atividade`.
 - [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
 - [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.

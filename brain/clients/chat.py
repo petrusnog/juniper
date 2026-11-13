@@ -33,6 +33,7 @@ from brain.core.dispatcher import Dispatcher
 from brain.core.leak_report import build_report, leak_command
 from brain.core.resume import NO_PREVIOUS_NOTE, resume_note
 from brain.core.session import Session, Turn
+from brain.core.title import clean_title
 from brain.eventlog import event_log
 from brain.llm.base import LLMProvider
 from brain.llm.errors import LLMError
@@ -76,6 +77,7 @@ VOICE_NO_EARS_MESSAGE = (
 )
 VOICE_BUSY_MESSAGE = "Já existe uma conversa de voz nesta conexão."
 VOICE_FIRST_MESSAGE = "Abra a conversa de voz primeiro (voice.start)."
+EMPTY_TITLE_MESSAGE = "Dê um título para a conversa (até 80 caracteres)."
 NO_CONVERSATION_MESSAGE = (
     "Esta conexão não tem uma conversa (outra conexão assumiu). Use session.new ou session.resume."
 )
@@ -276,6 +278,8 @@ class ChatHandler:
             await self._session_resume(conn, message)
         elif isinstance(message, p.SessionList):
             await self._session_list(conn, message)
+        elif isinstance(message, p.SessionRename):
+            await self._session_rename(conn, message)
         elif isinstance(message, p.ToolsRequest):
             await conn.send(self._tools_listed(message))
         elif isinstance(message, p.Register):
@@ -373,6 +377,7 @@ class ChatHandler:
             turn_sink=self._turn_sink,
             self_docs=self._self_docs,
             leak_sink=self._leak_sink,
+            title_sink=self._title_changed,
         )
         background: BackgroundExtractor | None = None
         if self._background:
@@ -433,6 +438,7 @@ class ChatHandler:
 
     async def _finalize(self, conversation: Conversation) -> None:
         try:
+            await conversation.agent.settle()  # a title still being made is not lost
             if conversation.background is not None:
                 summary = await conversation.background.finish()
                 event_log.log(
@@ -836,8 +842,16 @@ class ChatHandler:
                 turns=count_turns(session),
                 history=visible_history(session),
                 note=note,
+                title=session.title,
             )
         )
+
+    async def _title_changed(self, session_id: str, title: str, source: str) -> None:
+        """The agent named a conversation: tell the connection that has it open (T-225)."""
+        conversation = self._live.get(session_id)
+        owner = conversation.owner if conversation is not None else None
+        if owner is not None:
+            await owner.send(p.SessionTitled(session_id=session_id, title=title, source=source))
 
     async def _switch(self, conn: Connection, conversation: Conversation) -> None:
         conversation.agent.clear_pending()  # vale também para retomar a conversa em que já está
@@ -904,12 +918,65 @@ class ChatHandler:
                 reply_to=message.id,
                 sessions=[
                     p.SessionSummary(
-                        id=i.id, updated_at=i.updated_at, turns=i.turns, preview=i.preview
+                        id=i.id,
+                        updated_at=i.updated_at,
+                        turns=i.turns,
+                        preview=i.preview,
+                        title=i.title,
+                        title_source=i.title_source,
                     )
                     for i in infos[:limit]
                 ],
             )
         )
+
+    async def _session_rename(self, conn: Connection, message: p.SessionRename) -> None:
+        """Rename a conversation (T-225): the open one, or any saved one by id."""
+        title = clean_title(message.title)
+        if not title:
+            await conn.send(p.Error.from_code("bad_request", EMPTY_TITLE_MESSAGE, message.id))
+            return
+        live: Conversation | None = conn.state
+        session_id = message.session_id or (live.id if live is not None else "")
+        if not session_id:
+            await conn.send(p.Error.from_code("bad_request", NO_CONVERSATION_MESSAGE, message.id))
+            return
+        try:
+            found = await self.rename_session(session_id, title, asker=conn)
+        except (MemoryUnavailableError, OSError) as exc:
+            await conn.send(p.Error.from_exception(exc, str(exc), message.id))
+            return
+        if not found:
+            await conn.send(
+                p.Error.from_code("session_not_found", "Não achei essa conversa.", message.id)
+            )
+            return
+        await conn.send(p.SessionRenamed(reply_to=message.id, session_id=session_id, title=title))
+
+    async def rename_session(
+        self, session_id: str, title: str, asker: Connection | None = None
+    ) -> bool:
+        """The person renamed a conversation (any client, or the dashboard): the copy in memory
+        and the saved one take the title, and the window that has it open (if it is not the one
+        that asked) is told. ``False`` when no such conversation exists."""
+        title = clean_title(title)
+        if not title:
+            return False
+        live = self._live.get(session_id)
+        try:  # the store first: if it fails, nothing changed in memory either
+            stored = await asyncio.to_thread(self._store.set_title, session_id, title, "user")
+        except SessionStoreError:
+            stored = False
+        if live is not None:
+            live.agent.rename(title)  # its next save then keeps the title
+        elif not stored:
+            return False
+        event_log.log("session_titled", source="user", chars=len(title))
+        if live is not None and live.owner is not None and live.owner is not asker:
+            await live.owner.send(
+                p.SessionTitled(session_id=session_id, title=title, source="user")
+            )
+        return True
 
 
 def _registered_names() -> list[str]:
@@ -1026,6 +1093,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         reports=handler._reports,
         audit=handler._audit,
         activity=activity,
+        sessions=store,
+        rename=handler.rename_session,
         issues=issue_store,
         reminders=reminder_store,
         health=handler.health,

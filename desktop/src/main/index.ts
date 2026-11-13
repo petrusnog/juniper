@@ -100,6 +100,7 @@ function snapshot(): UiSnapshot {
     connectionHint: hintFor(detail),
     chat: chat?.getState() ?? {
       sessionId: null,
+      title: '',
       messages: [],
       activeTurn: null,
       pendingSend: null,
@@ -279,6 +280,7 @@ function registerIpc(): void {
   handle(CHANNELS.newChat, () => chat?.newConversation());
   handle(CHANNELS.sessions, () => chat?.refreshSessions());
   handle(CHANNELS.resume, (_e, id: string) => chat?.resume(id));
+  handle(CHANNELS.renameSession, (_e, id: string, title: string) => chat?.rename(title, id) ?? false);
   handle(CHANNELS.pauseFiles, (_e, paused: boolean) => {
     filesPaused = paused === true;
     executor?.setPaused(FILE_TOOLS_PREFIX, filesPaused);

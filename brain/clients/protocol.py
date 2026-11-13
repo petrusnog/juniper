@@ -328,6 +328,7 @@ class SessionState(_Message):
     turns: int
     history: list[HistoryItem] | None = None
     note: str = ""
+    title: str = ""  # T-225: the conversation's title ("" while it has none)
 
 
 class SessionSummary(_Message):
@@ -335,6 +336,35 @@ class SessionSummary(_Message):
     updated_at: str
     turns: int
     preview: str
+    title: str = ""  # T-225: shown instead of the preview when there is one
+    title_source: str = ""  # "draft", "auto" or "user" ("" for a conversation without a title)
+
+
+class SessionRename(_Message):
+    """Rename a conversation (T-225). Without ``session_id`` it is the one open on this
+    connection. A title the person sets is never changed by the model afterwards."""
+
+    type: Literal["session.rename"] = "session.rename"
+    id: str
+    title: str = Field(max_length=400)  # the server keeps 80; this only bounds what it parses
+    session_id: str | None = None
+
+
+class SessionRenamed(_Message):
+    type: Literal["session.renamed"] = "session.renamed"
+    reply_to: str
+    session_id: str
+    title: str
+
+
+class SessionTitled(_Message):
+    """Pushed when the title of the open conversation changes without a request from this
+    client: Juniper named it, or another window renamed it (T-225)."""
+
+    type: Literal["session.titled"] = "session.titled"
+    session_id: str
+    title: str
+    source: str
 
 
 class SessionListed(_Message):
@@ -660,6 +690,7 @@ ClientMessage = (
     | SessionNew
     | SessionResume
     | SessionList
+    | SessionRename
     | MemoryRequest
     | Register
     | Result
@@ -680,6 +711,8 @@ ServerMessage = (
     | ChatEnd
     | SessionState
     | SessionListed
+    | SessionRenamed
+    | SessionTitled
     | SessionDetached
     | MemoryResult
     | Registered
@@ -708,6 +741,7 @@ _CLIENT_TYPES: Final = frozenset(
         "session.new",
         "session.resume",
         "session.list",
+        "session.rename",
         "memory.request",
         "register",
         "result",
@@ -730,6 +764,8 @@ _SERVER_TYPES: Final = frozenset(
         "chat.end",
         "session.state",
         "session.listed",
+        "session.renamed",
+        "session.titled",
         "session.detached",
         "memory.result",
         "registered",

@@ -68,7 +68,7 @@ O comando recusa subir sem o token. Com a lista vazia ele avisa que ninguém est
 | **Queda no meio da resposta** | O turno termina no servidor; o bot recupera a resposta pelo histórico quando a conexão volta. |
 | **Mensagens encaminhadas, áudio, foto, arquivo** | Recebem um aviso ("só entendo texto") e não chegam ao cérebro. |
 
-Comandos: `/ajuda` (e `/start`) mostra a ajuda; `/novo` começa uma conversa nova; `/vazou [nota]` marca que uma resposta vazou instruções ou texto interno ([Auditoria de vazamentos](vazamentos.md#relato)): o servidor guarda as últimas 10 interações e o bot mostra a confirmação. Como o bot atende uma mensagem por vez, mande-o **depois** que a resposta terminar.
+Comandos: `/ajuda` (e `/start`) mostra a ajuda; `/novo` começa uma conversa nova; `/conversas` lista as conversas pelo título, `/renomear <título>` troca o da atual e `/retomar <número|id>` volta a uma da lista ([Título das conversas](titulos.md#comandos)); `/vazou [nota]` marca que uma resposta vazou instruções ou texto interno ([Auditoria de vazamentos](vazamentos.md#relato)): o servidor guarda as últimas 10 interações e o bot mostra a confirmação. Como o bot atende uma mensagem por vez, mande-o **depois** que a resposta terminar.
 
 ## Limites e proteções {#protecoes}
 
@@ -107,6 +107,7 @@ O bot escreve um sinal de vida a cada 15 s (`/tmp/telegram-health`). `juniper te
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Primeiros passos](primeiros-passos.md) (Ambiente Local): Tutorial completo do ambiente de desenvolvimento, do clone até a Juniper respondendo no terminal, no Telegram e no Android, com o código atualizando em tempo real.
 - [Onde conversar](produto-canais.md) (Produto): Os canais da Juniper (terminal, Telegram, app Android com texto e voz, painel web) e o que cada um faz de melhor.
 - [Servidor WebSocket](servidor.md) (Documentação Técnica): Como o cérebro atende os clientes no modo servidor: autenticação, handshake, conversas ligadas a conexões, turnos, executores, voz, saúde, tarefas diárias e desligamento.

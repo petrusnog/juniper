@@ -72,7 +72,7 @@ function renderMessages(s: UiSnapshot): void {
   lastSignature = signature;
 }
 
-function renderSessions(s: UiSnapshot, onPick: (id: string) => void): void {
+function renderSessions(s: UiSnapshot, onPick: (id: string) => void, onRename: (id: string, title: string) => void): void {
   const list = $('session-list');
   const sessions = s.chat.sessions ?? [];
   if (sessions.length === 0) {
@@ -88,18 +88,39 @@ function renderSessions(s: UiSnapshot, onPick: (id: string) => void): void {
       if (item.id === s.chat.sessionId) li.classList.add('current');
       const preview = document.createElement('div');
       preview.className = 'preview';
-      preview.textContent = item.preview || '(sem texto)';
+      preview.textContent = item.title || item.preview || '(sem texto)';
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.textContent = `${item.turns} ${item.turns === 1 ? 'turno' : 'turnos'} · ${formatDate(item.updated_at)}`;
-      li.append(preview, meta);
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'rename';
+      rename.textContent = 'Renomear';
+      rename.setAttribute('aria-label', `Renomear a conversa ${item.title || item.preview}`);
+      rename.addEventListener('click', event => {
+        event.stopPropagation(); // not a click on the line: do not open the conversation
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.maxLength = 80;
+        input.value = item.title ?? '';
+        input.setAttribute('aria-label', 'Novo título');
+        input.addEventListener('click', e => e.stopPropagation());
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') onRename(item.id, input.value);
+          if (e.key === 'Escape') input.replaceWith(preview);
+        });
+        preview.replaceWith(input);
+        input.focus();
+        input.select();
+      });
+      li.append(preview, meta, rename);
       li.addEventListener('click', () => onPick(item.id));
       return li;
     }),
   );
 }
 
-function render(s: UiSnapshot, onPick: (id: string) => void): void {
+function render(s: UiSnapshot, onPick: (id: string) => void, onRename: (id: string, title: string) => void): void {
   // A refused credential goes back to the form, so it can be fixed.
   document.body.dataset.view = s.hasCredential && s.connection !== 'unauthorized' ? 'chat' : 'login';
 
@@ -142,7 +163,7 @@ function render(s: UiSnapshot, onPick: (id: string) => void): void {
     .join('\n');
 
   renderMessages(s);
-  renderSessions(s, onPick);
+  renderSessions(s, onPick, onRename);
 }
 
 async function main(): Promise<void> {
@@ -154,9 +175,12 @@ async function main(): Promise<void> {
     void api.resume(id);
     closeDrawer();
   };
-  api.onEvent(s => render(s, pick));
+  const rename = (id: string, title: string) => {
+    void api.renameSession(id, title); // the list redraws itself with the new title
+  };
+  api.onEvent(s => render(s, pick, rename));
   startAudioEngine(api);
-  render(await api.snapshot(), pick);
+  render(await api.snapshot(), pick, rename);
 
   const text = $<HTMLTextAreaElement>('text');
   const grow = () => {

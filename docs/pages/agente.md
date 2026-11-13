@@ -113,6 +113,10 @@ Antes de cada pedido, `compact()` mantém o histórico dentro de dois tetos:
 
 Não há resumo por LLM: seria uma chamada a mais a cada estouro. O que importa de uma conversa antiga vira [memória de longo prazo](memoria-longo-prazo.md). Salvar e retomar conversas está em [Memória de sessão](memoria-sessao.md).
 
+### Título da conversa {#titulo}
+
+Terminado o primeiro turno, o `Agent` dá um título à conversa: um rascunho com as primeiras palavras, gravado com o turno, e o do modelo, pedido em segundo plano e avisado aos clientes (`title_sink`). Nunca atrasa nem derruba o turno, e um título que o usuário escolheu não é trocado ([Título das conversas](titulos.md)).
+
 ## Persona {#persona kind=conceito file=prompts/persona.core.md}
 
 A persona é o **núcleo fixo** `prompts/persona.core.md` (e uma versão curta em `prompts/persona.core.compact.md`, só para o Ollama), carregado por `brain/core/persona.py`. O núcleo é arquivo versionado no git e **nunca muda em execução**: nele estão as regras de ferramentas e confirmação, segurança, forma, a honestidade sobre o que ela é e os limites dos sentimentos ([ADR-017](../decisions/ADR-017.md)). O que varia com a experiência dela (opiniões, estado afetivo, traços) entra por **blocos** depois do núcleo (`build_system_prompt`), que nunca o substituem. O prompt de sistema é **fixo**: a data e a hora vão na mensagem do usuário, e o perfil e as memórias são mensagens separadas. Assim o começo do prompt é idêntico entre chamadas e o provider reaproveita o cache, o que poupa tokens do limite gratuito da Groq.
@@ -145,6 +149,7 @@ Usam um `FakeProvider` roteirizado e tools falsas, sem rede: resposta direta com
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
 - [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.

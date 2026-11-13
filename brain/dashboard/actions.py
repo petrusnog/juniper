@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from brain.auth import Principal
+from brain.core.title import clean_title
 from brain.dashboard.api import ApiError
 from brain.dashboard.jobs import JobBusyError, JobUnknownError
 from brain.dashboard.sources import Sources
@@ -57,6 +58,8 @@ class Actions:
 
     @staticmethod
     def handles(path: str) -> bool:
+        if path.startswith("/api/sessions/"):  # only the rename: the reads stay in the read API
+            return path.endswith("/rename")
         return path == "/api/issues" or path.startswith(PREFIXES)
 
     async def handle(self, method: str, path: str, query: Query, who: Principal) -> Result:
@@ -73,6 +76,8 @@ class Actions:
             return 400, {"error": str(exc)}, None
         except MemoryUnavailableError as exc:
             return 503, {"error": str(exc)}, None
+        except OSError as exc:  # a conversation file that cannot be written (regra 8)
+            return 503, {"error": f"não consegui gravar: {type(exc).__name__}"}, None
 
     async def _dispatch(self, parts: list[str], query: Query, who: Principal) -> Result:
         if parts[0] == "issues":
@@ -81,7 +86,30 @@ class Actions:
             return await self._memory(parts[1:], query, who)
         if parts[0] == "jobs":
             return await self._job(parts[1:], query, who)
+        if parts[0] == "sessions" and len(parts) == 3 and parts[2] == "rename":
+            return await self._rename_session(parts[1], query, who)
         return 404, {"error": "não existe"}, None
+
+    # --- conversations (T-229) ---------------------------------------------------------------
+
+    async def _rename_session(self, session_id: str, query: Query, who: Principal) -> Result:
+        """Rename a conversation: the same path as every other client (`session.rename`)."""
+        title = clean_title(_one(query, "title"))
+        if not title:
+            raise ApiError(400, "Dê um título para a conversa (até 80 caracteres).")
+        rename = self._sources.rename
+        if rename is not None:
+            found = await rename(session_id, title)
+        elif self._sources.sessions is not None:
+            found = await asyncio.to_thread(
+                self._sources.sessions.set_title, session_id, title, "user"
+            )
+        else:
+            raise ApiError(503, "as conversas não estão disponíveis neste servidor")
+        if not found:
+            raise ApiError(404, "conversa não encontrada")
+        self.audit(who, "session_renamed", session_id[:16])
+        return _ok(session_id=session_id, title=title)
 
     # --- shared ----------------------------------------------------------------------------------
 

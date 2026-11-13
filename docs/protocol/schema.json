@@ -1037,6 +1037,73 @@
       "title": "SessionNew",
       "type": "object"
     },
+    "SessionRename": {
+      "description": "Rename a conversation (T-225). Without ``session_id`` it is the one open on this\nconnection. A title the person sets is never changed by the model afterwards.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "title": {
+          "maxLength": 400,
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "const": "session.rename",
+          "default": "session.rename",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "SessionRename",
+      "type": "object"
+    },
+    "SessionRenamed": {
+      "properties": {
+        "reply_to": {
+          "title": "Reply To",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "const": "session.renamed",
+          "default": "session.renamed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply_to",
+        "session_id",
+        "title"
+      ],
+      "title": "SessionRenamed",
+      "type": "object"
+    },
     "SessionResume": {
       "properties": {
         "id": {
@@ -1110,6 +1177,11 @@
           "title": "Session Id",
           "type": "string"
         },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
         "turns": {
           "title": "Turns",
           "type": "integer"
@@ -1139,6 +1211,16 @@
           "title": "Preview",
           "type": "string"
         },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "title_source": {
+          "default": "",
+          "title": "Title Source",
+          "type": "string"
+        },
         "turns": {
           "title": "Turns",
           "type": "integer"
@@ -1155,6 +1237,36 @@
         "preview"
       ],
       "title": "SessionSummary",
+      "type": "object"
+    },
+    "SessionTitled": {
+      "description": "Pushed when the title of the open conversation changes without a request from this\nclient: Juniper named it, or another window renamed it (T-225).",
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "const": "session.titled",
+          "default": "session.titled",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "source"
+      ],
+      "title": "SessionTitled",
       "type": "object"
     },
     "ToolInfo": {
@@ -1881,8 +1993,11 @@
       "session.list": "#/$defs/SessionList",
       "session.listed": "#/$defs/SessionListed",
       "session.new": "#/$defs/SessionNew",
+      "session.rename": "#/$defs/SessionRename",
+      "session.renamed": "#/$defs/SessionRenamed",
       "session.resume": "#/$defs/SessionResume",
       "session.state": "#/$defs/SessionState",
+      "session.titled": "#/$defs/SessionTitled",
       "tools.listed": "#/$defs/ToolsListed",
       "tools.request": "#/$defs/ToolsRequest",
       "trace": "#/$defs/Trace",
@@ -1922,6 +2037,9 @@
     },
     {
       "$ref": "#/$defs/SessionList"
+    },
+    {
+      "$ref": "#/$defs/SessionRename"
     },
     {
       "discriminator": {
@@ -2010,6 +2128,12 @@
     },
     {
       "$ref": "#/$defs/SessionListed"
+    },
+    {
+      "$ref": "#/$defs/SessionRenamed"
+    },
+    {
+      "$ref": "#/$defs/SessionTitled"
     },
     {
       "$ref": "#/$defs/SessionDetached"

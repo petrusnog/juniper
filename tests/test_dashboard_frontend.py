@@ -249,3 +249,10 @@ def test_the_audit_page_shows_server_times_never_the_browsers() -> None:
     assert "when(" not in source  # the shared formatter uses the browser's zone
     app = (ASSETS / "app.js").read_text()
     assert 'split("?")[0]' in app  # a page may keep its filters in the hash query
+
+
+def test_the_conversations_page_shows_titles_and_renames_through_the_post_api() -> None:
+    source = (ASSETS / "pages" / "conversations.js").read_text()
+    assert "s.title || s.preview || s.session_id" in source  # the id is the last resort
+    assert "post(`/sessions/${encodeURIComponent(id)}/rename`" in source
+    assert "maxlength: 80" in source

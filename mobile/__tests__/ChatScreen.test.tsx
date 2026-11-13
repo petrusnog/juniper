@@ -111,6 +111,51 @@ test('offline: the text stays in the box and the user is told', () => {
   );
 });
 
+test('the list shows titles and a conversation can be renamed from it', () => {
+  const { fake, root } = mount();
+  ReactTestRenderer.act(() =>
+    root.findByProps({ testID: 'conversations' }).props.onPress(),
+  );
+  ReactTestRenderer.act(() => {
+    fake.listener?.({
+      type: 'session.listed',
+      reply_to: 'x',
+      sessions: [
+        {
+          id: 's-7',
+          preview: 'como faço um bolo de cenoura',
+          turns: 3,
+          updated_at: '2026-10-27T10:00:00Z',
+          title: 'Receita de bolo',
+          title_source: 'auto',
+        },
+      ],
+    });
+  });
+  const shown = root
+    .findByProps({ testID: 'session-s-7' })
+    .findAllByType('Text' as any)
+    .map(t => String(t.props.children))
+    .join(' ');
+  expect(shown).toContain('Receita de bolo');
+  ReactTestRenderer.act(() =>
+    root.findByProps({ testID: 'rename-s-7' }).props.onPress(),
+  );
+  ReactTestRenderer.act(() =>
+    root
+      .findByProps({ testID: 'rename-input' })
+      .props.onChangeText('Bolo da vó'),
+  );
+  ReactTestRenderer.act(() =>
+    root.findByProps({ testID: 'rename-save' }).props.onPress(),
+  );
+  expect(fake.sent.at(-1)).toMatchObject({
+    type: 'session.rename',
+    title: 'Bolo da vó',
+    session_id: 's-7',
+  });
+});
+
 test('the conversation list opens and resumes the one that was tapped', () => {
   const { fake, root } = mount();
   ReactTestRenderer.act(() =>

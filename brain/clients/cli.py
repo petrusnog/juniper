@@ -29,7 +29,7 @@ from rich.text import Text
 from typer.core import TyperGroup
 
 from brain import __version__
-from brain.clients import voice
+from brain.clients import conversations, voice
 from brain.config import settings
 from brain.core.agent import Agent
 from brain.core.dispatcher import Dispatcher
@@ -256,6 +256,40 @@ def build_router(provider: str | None) -> LLMRouter:
     return LLMRouter([PROVIDERS[provider]()])
 
 
+async def _conversation_command(agent: Agent, printer: Printer, command: tuple[str, str]) -> None:
+    """`/conversas`, `/renomear <título>` e `/retomar <n|id>` no terminal sem servidor (T-226)."""
+    action, argument = command
+    store = agent.store
+    if action == "rename":
+        title = conversations.new_title(argument)
+        if not title:
+            printer.say(conversations.RENAME_USAGE)
+            return
+        agent.rename(title)
+        if store is not None and hasattr(store, "set_title"):
+            await asyncio.to_thread(store.set_title, agent.session.id, title, "user")
+        printer.say(conversations.renamed_text(title))
+        return
+    if store is None:
+        printer.say(conversations.NO_CONVERSATIONS)
+        return
+    infos = await asyncio.to_thread(store.list_sessions)
+    entries = [conversations.Entry(i.id, i.title, i.preview, i.updated_at, i.turns) for i in infos]
+    if action == "list":
+        printer.say(conversations.format_list(entries, agent.session.id))
+        return
+    chosen, problem = conversations.resolve(argument, entries)
+    if chosen is None:
+        printer.say(problem)
+        return
+    session = await asyncio.to_thread(store.load, chosen.id)
+    if session is None:
+        printer.say(conversations.NOT_FOUND)
+        return
+    agent.switch_session(session)
+    printer.say(f"Voltei para «{session.title or chosen.label}». Pode continuar.")
+
+
 async def converse(
     agent: Agent,
     printer: Printer,
@@ -280,6 +314,13 @@ async def converse(
                 continue
         else:
             text = pending
+        if (command := conversations.parse(text)) is not None:  # T-226: títulos das conversas
+            await _conversation_command(agent, printer, command)
+            if message is not None:
+                return 0
+            console.print()
+            pending = None
+            continue
         message_trace.begin(f"conversa {agent.session.id} · modo local")
         message_trace.step(
             "Terminal (CLI)",
@@ -452,6 +493,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         console.print()
     try:
         code = await converse(agent, printer, reader, message, background)
+        await agent.settle(3.0)  # a one-shot message: let the title the model is making land
         await remember_conversation(agent, memory, printer, background)
         return code
     finally:
@@ -1139,6 +1181,10 @@ memory_v2_cli.install(app, memory_app, console)
 from brain.clients import leaks_cli  # noqa: E402
 
 leaks_cli.install(app, console)
+
+from brain.clients import conversations_cli  # noqa: E402
+
+conversations_cli.install(app, console)
 
 from brain.clients import activity_cli  # noqa: E402
 

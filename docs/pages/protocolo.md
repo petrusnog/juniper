@@ -94,9 +94,12 @@ Depois do upgrade, o cliente manda `hello` e espera `welcome`.
 |---|---|---|---|
 | cliente → servidor | `session.new` | `id` | Abre uma conversa nova (a atual fica salva). Responde `session.state`. |
 | cliente → servidor | `session.resume` | `id`, `session_id` ou `latest` | Retoma uma conversa. Responde `session.state`. |
-| servidor → cliente | `session.state` | `reply_to`, `session_id`, `turns`, `history?` [{`role`, `text`}], `note?` | O estado da conversa, para o cliente redesenhar a tela. |
+| servidor → cliente | `session.state` | `reply_to`, `session_id`, `turns`, `history?` [{`role`, `text`}], `note?`, `title?` | O estado da conversa, para o cliente redesenhar a tela. |
 | cliente → servidor | `session.list` | `id`, `limit?` | Pede a lista de conversas. |
-| servidor → cliente | `session.listed` | `reply_to`, `sessions` [{`id`, `updated_at`, `turns`, `preview`}] | As conversas, mais recentes primeiro. |
+| servidor → cliente | `session.listed` | `reply_to`, `sessions` [{`id`, `updated_at`, `turns`, `preview`, `title?`, `title_source?`}] | As conversas, mais recentes primeiro. `title` é o que as listas mostram ([Título das conversas](titulos.md)); vazio nas anteriores ao recurso. |
+| cliente → servidor | `session.rename` | `id`, `title`, `session_id?` | Renomeia a conversa (a aberta, sem `session_id`). Responde `session.renamed`. Um título do usuário nunca é trocado pela Juniper. |
+| servidor → cliente | `session.renamed` | `reply_to`, `session_id`, `title` | O título como ficou (limpo: uma linha, até 80 caracteres). |
+| servidor → cliente | `session.titled` | `session_id`, `title`, `source` | A Juniper nomeou a conversa aberta (`auto`) ou outra janela a renomeou (`user`). |
 | servidor → cliente | `session.detached` | `session_id`, `reason` | Outra conexão assumiu esta conversa. |
 
 Uma conversa fica ligada a **uma conexão** por vez. A confirmação pendente **não sobrevive** a uma queda, a um `session.resume` (inclusive da própria conversa) nem a outra conexão assumir a conversa.
@@ -232,6 +235,7 @@ Só é enviado se o `hello` pediu (`"trace": true`) **e** o servidor tem `trace.
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Glossário](glossario.md) (Produto): Os termos usados nesta documentação, explicados em uma ou duas frases.
 - [Visão geral da arquitetura](architecture.md) (Documentação Técnica): As camadas da Juniper, onde cada uma mora no código, as regras que as mantêm simples, os modos de execução e o caminho de uma mensagem.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
