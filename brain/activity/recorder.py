@@ -1,14 +1,16 @@
 """Turns every ``event_log`` event into an activity record and hands it to the store (T-219/T-221).
 
-``EventLog.log`` calls ``recorder.on_event`` after the legacy line is written, so the technical
-JSONL is exactly what it always was. The recorder translates (``catalog``), builds the document
-(``model``) and queues it; a daemon thread drains the queue into the store, because the store's
-driver blocks and the events are logged from the event loop. A full queue drops the new record
-(and counts it): auditing never slows down or breaks a conversation.
+``EventLog.log`` calls ``recorder.on_event`` once the legacy line is on disk, so the technical
+JSONL is exactly what it always was and never waits for the recorder. The recorder translates
+(``catalog``), builds the document (``model``) and queues it; a daemon thread drains the queue
+into the store, because the store's driver blocks and the events are logged from the event loop.
+A full queue drops the new record (and counts it): auditing never slows down or breaks a
+conversation.
 """
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import logging
 import queue
@@ -52,6 +54,8 @@ class Recorder:
         self._thread: threading.Thread | None = None
         self.dropped = 0
         self.failed = 0
+        self._stopping = threading.Event()
+        self._warned: set[str] = set()
 
     @property
     def active(self) -> bool:
@@ -61,10 +65,18 @@ class Recorder:
         """Begin recording into ``sink``. ``threaded=False`` writes inline (tests)."""
         self.stop()
         self._sink = sink
+        self._stopping = threading.Event()
+        self._warned = set()
+        self.dropped = self.failed = 0
         if not threaded:
             return
         self._queue = queue.Queue(maxsize=QUEUE_SIZE)
-        self._thread = threading.Thread(target=self._drain, name="activity-writer", daemon=True)
+        self._thread = threading.Thread(
+            target=self._drain,
+            args=(self._queue, sink, self._stopping),
+            name="activity-writer",
+            daemon=True,
+        )
         self._thread.start()
 
     def stop(self, timeout: float = 3.0) -> None:
@@ -73,7 +85,9 @@ class Recorder:
         self._sink = None
         self._thread = self._queue = None
         if worker is not None and pending is not None:
-            pending.put(None)
+            with contextlib.suppress(queue.Full):  # a full queue and a dead database: do not wait
+                pending.put_nowait(None)
+            self._stopping.set()
             worker.join(timeout)
 
     def flush(self, timeout: float = 3.0) -> None:
@@ -85,10 +99,23 @@ class Recorder:
         pending.put({"__flush__": done})
         done.wait(timeout)
 
-    def _drain(self) -> None:
-        pending, sink = self._queue, self._sink
-        while pending is not None and sink is not None:
-            item = pending.get()
+    def _warn(self, kind: str, message: str) -> None:
+        """One warning per kind and run: a database that is down must not flood the log."""
+        if kind not in self._warned:
+            self._warned.add(kind)
+            logger.warning(message)
+
+    def _drain(
+        self,
+        pending: queue.Queue[dict[str, Any] | None],
+        sink: Sink,
+        stopping: threading.Event,
+    ) -> None:
+        while not stopping.is_set():
+            try:
+                item = pending.get(timeout=0.5)
+            except queue.Empty:
+                continue
             if item is None:
                 return
             if "__flush__" in item:
@@ -96,20 +123,26 @@ class Recorder:
                 continue
             try:
                 sink(item)
-            except Exception:  # noqa: BLE001  (auditing must never take the app down)
+            except Exception as exc:  # noqa: BLE001  (auditing must never take the app down)
                 self.failed += 1
-                logger.debug("activity: gravação falhou", exc_info=True)
+                self._warn(
+                    "failed", f"registro de atividade: a gravação falhou ({type(exc).__name__})"
+                )
 
     def on_event(self, event: str, record: Mapping[str, Any]) -> None:
         """Called by the event log with the (masked) record it just wrote."""
         sink = self._sink
         if sink is None:
             return
+        if event == "timing":  # the last event of a turn: what follows belongs to no message
+            _turn.set("")
         try:
             self._record(sink, event, record)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.failed += 1
-            logger.debug("activity: evento ignorado", exc_info=True)
+            self._warn(
+                "failed", f"registro de atividade: um evento foi ignorado ({type(exc).__name__})"
+            )
 
     def _record(self, sink: Sink, event: str, record: Mapping[str, Any]) -> None:
         fields = {k: v for k, v in record.items() if k not in ("ts", "run", "event", "session")}
@@ -140,6 +173,7 @@ class Recorder:
             self._queue.put_nowait(document)
         except queue.Full:
             self.dropped += 1
+            self._warn("dropped", "registro de atividade: a fila encheu, registros descartados")
 
 
 recorder = Recorder()

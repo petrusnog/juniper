@@ -555,3 +555,74 @@ def test_the_cli_masks_secrets_like_the_dashboard() -> None:
     from brain.clients.activity_cli import _safe
 
     assert "abc123" not in _safe("senha: abc123")
+
+
+# --- architecture review: turn scope, stable pages, recorder health ------------------------------
+
+
+def test_an_event_after_the_turn_belongs_to_no_message(live: ActivityStore) -> None:
+    event_log.log("turn_start", input_chars=3)
+    event_log.log("timing", total_ms=10)  # the last event of a turn
+    event_log.log("server", action="start")
+    rows, _ = live.search(Filters(), oldest_first=True)
+    assert rows[0]["turn"].startswith("t-") and rows[-1]["turn"] is None
+
+
+def test_pages_are_stable_when_records_share_a_millisecond(store: ActivityStore) -> None:
+    moment = datetime(2026, 11, 13, 17, 0, tzinfo=UTC)
+    for _ in range(7):
+        store.add(
+            model.build(entry("turn_start", input_chars=1), {}, event="turn_start", now=moment)
+        )
+    seen: list[str] = []
+    for offset in range(0, 7, 3):
+        seen += [r["_id"] for r in store.search(Filters(), limit=3, offset=offset)[0]]
+    assert len(seen) == 7 and len(set(seen)) == 7  # none twice, none lost
+
+
+def test_a_deep_offset_is_capped() -> None:
+    from brain.memory.activity import MAX_OFFSET
+
+    assert MAX_OFFSET <= 100_000
+
+
+def test_a_full_queue_drops_and_warns_once_and_stop_never_blocks(
+    store: ActivityStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    import threading
+
+    gate = threading.Event()
+
+    def slow(record: dict[str, Any]) -> None:
+        gate.wait(5)
+
+    local = Recorder()
+    local.start(slow)
+    with caplog.at_level("WARNING"):
+        for index in range(5100):
+            local.on_event("turn_start", {"input_chars": index, "run": "r"})
+        assert local.dropped >= 90
+        assert sum("fila encheu" in r.message for r in caplog.records) == 1
+    local.stop(timeout=0.2)  # the queue is full and the writer stuck: stop returns anyway
+    gate.set()
+
+
+def test_a_failing_sink_is_counted_and_warned_once(caplog: pytest.LogCaptureFixture) -> None:
+    def broken(_: dict[str, Any]) -> None:
+        raise RuntimeError("mongo caiu")
+
+    local = Recorder()
+    local.start(broken, threaded=False)
+    with caplog.at_level("WARNING"):
+        for _ in range(3):
+            local.on_event("turn_start", {"input_chars": 1, "run": "r"})
+    assert (
+        local.failed == 3
+        and len([r for r in caplog.records if "registro de atividade" in r.message]) == 1
+    )
+
+
+def test_count_given_as_text_still_picks_the_plural() -> None:
+    key = "Added {count} track to a playlist"
+    assert i18n.render(key, {"count": "2"}, "pt_BR") == "Adicionei 2 faixas a uma playlist"
+    assert i18n.render(key, {"count": "abc"}, "pt_BR").startswith("Adicionei abc faixa")

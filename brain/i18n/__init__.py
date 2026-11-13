@@ -214,7 +214,12 @@ def render(key: str, params: Mapping[str, Any] | None = None, locale: str | None
     """The sentence for ``key`` in ``locale`` (English source when there is no translation)."""
     values = dict(params or {})
     raw_count = values.get(COUNT)
-    count = raw_count if isinstance(raw_count, int) and not isinstance(raw_count, bool) else None
+    count: int | None = None
+    if isinstance(raw_count, int | float | str) and not isinstance(raw_count, bool):
+        try:
+            count = int(raw_count)
+        except ValueError:
+            count = None
     wanted = normalize_locale(locale)
     template: str | None = None
     if wanted.split("_")[0] != SOURCE_LOCALE:

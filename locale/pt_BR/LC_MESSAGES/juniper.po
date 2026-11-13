@@ -245,9 +245,6 @@ msgstr "Li a página {url}"
 msgid "Reattached a Telegram conversation"
 msgstr "Reconectei uma conversa do Telegram"
 
-#: brain/activity/catalog.py
-msgid "Received your message ({chars} characters)"
-msgstr "Recebi sua mensagem ({chars} caracteres)"
 
 #: brain/activity/catalog.py
 msgid "Recorded the event {event}"
@@ -440,3 +437,9 @@ msgstr "{provider} respondeu em {seconds} s, e cortei um texto que não era para
 #: brain/activity/catalog.py
 msgid "{provider} failed ({error}), so I moved to the next provider"
 msgstr "{provider} falhou ({error}), então passei para o próximo provedor"
+
+#: brain/activity/catalog.py
+msgid "Received your message ({count} character)"
+msgid_plural "Received your message ({count} characters)"
+msgstr[0] "Recebi sua mensagem ({count} caractere)"
+msgstr[1] "Recebi sua mensagem ({count} caracteres)"

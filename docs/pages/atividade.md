@@ -75,7 +75,7 @@ Lê o MongoDB do processo onde roda (na VPS, dentro do contêiner do brain). `--
 
 ## API {#api kind=módulo file=brain/dashboard/activity.py}
 
-Somente leitura, com o login do dashboard: `GET /api/activity` (filtros `q`, `period`, `from`, `to`, `category`, `action`, `outcome`, `model`, `provider`, `channel`, `severity`, `actor`, `session`, `turn`, `tool`, `lang`, `limit`, `offset`; devolve itens, total e facetas), `/api/activity/summary`, `/api/activity/<id>` (com `raw` e os passos da mensagem) e `/api/activity/export.xlsx`. Data sem hora em `to` inclui o dia inteiro; data inválida é 400.
+Somente leitura, com o login do dashboard: `GET /api/activity` (filtros `q`, `period`, `from`, `to`, `category`, `action`, `outcome`, `model`, `provider`, `channel`, `severity`, `actor`, `session`, `turn`, `tool`, `lang`, `limit`, `offset`; devolve itens, total e facetas), `/api/activity/summary`, `/api/activity/<id>` (com `raw` e os passos da mensagem) e `/api/activity/export.xlsx`. Data sem hora em `to` inclui o dia inteiro; com hora, o fim é exclusivo (`to=…T14:30` não traz o que foi às 14:30); `from` vale mais que `period`; data inválida é 400. `/summary` traz também `recorder` (`dropped`, `failed`): o que o registro deixou de gravar desde que o servidor subiu.
 
 ## Configuração {#configuracao}
 

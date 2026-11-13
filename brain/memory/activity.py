@@ -25,6 +25,7 @@ from brain.memory.mongo import MongoConnection
 ACTIVITY_COLLECTION: Final = "activity"
 _INDEX_OPTIONS_CONFLICT = (85, 86)
 MAX_PAGE: Final = 200
+MAX_OFFSET: Final = 100_000  # a deeper skip scans the collection; narrow the filter instead
 MAX_EXPORT: Final = 5000
 MAX_SCAN: Final = 20000  # documents read to draw the charts and the rankings
 MAX_TERM_CHARS: Final = 200
@@ -142,7 +143,12 @@ class ActivityStore:
         with self.connection.guard():
             collection = self._collection()
             total = collection.count_documents(query)
-            cursor = collection.find(query).sort("ts", direction).skip(max(0, offset)).limit(size)
+            cursor = (
+                collection.find(query)
+                .sort([("ts", direction), ("_id", direction)])  # ties on ts keep a stable order
+                .skip(min(max(0, offset), MAX_OFFSET))
+                .limit(size)
+            )
             return list(cursor), int(total)
 
     def get(self, record_id: str) -> dict[str, Any] | None:

@@ -246,8 +246,10 @@ msgid "Reattached a Telegram conversation"
 msgstr ""
 
 #: brain/activity/catalog.py
-msgid "Received your message ({chars} characters)"
-msgstr ""
+msgid "Received your message ({count} character)"
+msgid_plural "Received your message ({count} characters)"
+msgstr[0] ""
+msgstr[1] ""
 
 #: brain/activity/catalog.py
 msgid "Recorded the event {event}"

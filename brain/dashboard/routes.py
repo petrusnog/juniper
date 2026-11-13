@@ -22,6 +22,7 @@ from brain.dashboard.serialize import contains, number, paged, sanitize
 from brain.dashboard.sources import Sources
 from brain.dashboard.xlsx import MIME as XLSX_MIME
 from brain.dashboard.xlsx import build_xlsx
+from brain.memory.activity import MAX_OFFSET
 from brain.memory.retrieval import estimate_tokens
 from brain.memory.v2.affect import AffectBook
 from brain.memory.v2.beliefs import BeliefBook
@@ -794,7 +795,7 @@ def build_api(sources: Sources) -> Api:
             filters = audit_panel.filters_from(query)
             locale = audit_panel.language(query)
             limit = number(query, "limit", 50, 1, 200)
-            offset = number(query, "offset", 0, 0, 10**9)
+            offset = number(query, "offset", 0, 0, MAX_OFFSET)
             rows, total = store.search(filters, limit=limit, offset=offset)
             out: dict[str, Any] = {
                 "total": total,
@@ -815,7 +816,10 @@ def build_api(sources: Sources) -> Api:
         def read() -> dict[str, Any]:
             store = need_activity()
             filters = audit_panel.filters_from(query)
-            return {**store.summary(filters), "utc": audit_panel.offset_label()}
+            from brain.activity.recorder import recorder
+
+            health = {"dropped": recorder.dropped, "failed": recorder.failed}
+            return {**store.summary(filters), "utc": audit_panel.offset_label(), "recorder": health}
 
         return await _blocking(read)
 

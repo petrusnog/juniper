@@ -995,8 +995,6 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         voice_services.glossary.add_source(_registered_names)  # people she should spell right
     leak_audit = open_leak_audit(store)
     activity = open_activity(store)
-    if activity is not None:
-        activity_recorder.start(activity.add)  # Observabilidade V2: o que ela fez, em frases
     handler = ChatHandler(
         store,
         router,
@@ -1027,6 +1025,8 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     )
     warm_up = asyncio.get_running_loop().create_task(handler.warm_up())
     try:
+        if activity is not None:
+            activity_recorder.start(activity.add)  # Observabilidade V2: o que ela fez, em frases
         yield handler
     finally:
         warm_up.cancel()

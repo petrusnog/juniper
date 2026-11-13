@@ -214,3 +214,18 @@ async def test_export_filters_like_the_screen(api: Api) -> None:
     )
     sheet = openpyxl.load_workbook(io.BytesIO(data)).active
     assert sheet.max_row == 2
+
+
+def test_from_wins_over_a_period_and_a_timed_end_is_exclusive() -> None:
+    filters = panel.filters_from({"period": ["today"], "from": ["2026-11-01"]})
+    assert filters.since == datetime(2026, 11, 1, 3, 0, tzinfo=UTC)
+    timed = panel.filters_from({"from": ["2026-11-13T10:00"], "to": ["2026-11-13T14:30"]})
+    assert timed.until == datetime(2026, 11, 13, 17, 30, tzinfo=UTC)  # 14:30 itself is out
+
+
+async def test_the_summary_tells_how_the_recorder_is_doing(api: Api) -> None:
+    body = (await ask(api, "/activity/summary", period=""))[1]
+    assert body["recorder"] == {"dropped": 0, "failed": 0} or set(body["recorder"]) == {
+        "dropped",
+        "failed",
+    }

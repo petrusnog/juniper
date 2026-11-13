@@ -156,13 +156,13 @@ class EventLog:
                 record["session"] = session
             record.update(redact(fields, limit=limit))
             _narrate(event, record)
-            _record_activity(event, record)
             line = json.dumps(record, ensure_ascii=False, default=str)
             self.directory.mkdir(parents=True, exist_ok=True)
             # 0600: the log holds what the user said and what the tools returned.
             fd = os.open(self.path_for(now), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             with os.fdopen(fd, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
+            _record_activity(event, record)  # after the legacy line: that log is never delayed
         except Exception:  # noqa: BLE001  (logging must never take the app down)
             return
 

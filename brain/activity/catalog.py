@@ -380,8 +380,11 @@ def turn_start(f: Fields) -> Entry:
     return Entry(
         "message",
         "message.received",
-        N_("Received your message ({chars} characters)"),
-        {"chars": f.get("input_chars") or 0},
+        N_(
+            "Received your message ({count} character)",
+            "Received your message ({count} characters)",
+        ),
+        {"count": int(f.get("input_chars") or 0)},
         actor="user",
     )
 
