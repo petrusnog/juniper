@@ -35,6 +35,7 @@ def learner() -> Learner | None:
 @register_tool
 class LearnTopic(Tool):
     name = "learn_topic"
+    reads_web = True  # it reads the web to learn (T-218)
     description = (
         "Aprende agora sobre um tema que você ainda não estudou (ou em que falta algo): procura "
         "na web, lê as fontes, grava notas de estudo na sua memória e devolve as notas. Chame "

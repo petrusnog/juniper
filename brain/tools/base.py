@@ -69,6 +69,14 @@ class Tool(ABC):
     # In a tainted turn this tool asks first (it could carry the content out) / is refused.
     asks_when_tainted: ClassVar[bool] = False
     blocked_when_tainted: ClassVar[bool] = False
+    # --- web text (T-218): a narrower guard than the file taint above ---
+    # A successful call puts text written by third parties (a web page, a search result) in the
+    # conversation. It does NOT use `taints_turn`: that one lasts the whole conversation and would
+    # block `remember` and make every later search ask. This flag only closes the tools that
+    # reshape what she hears and how she transcribes (the voice glossary), for the rest of the
+    # conversation, since the text stays in the history the model reads.
+    reads_web: ClassVar[bool] = False
+    blocked_when_web_read: ClassVar[bool] = False
     # A READ tool that still asks when the turn did not come from the device that runs it.
     asks_outside_origin: ClassVar[bool] = False
     # A "sim" to a question that merely named the subjects is not enough (destructive file tools).

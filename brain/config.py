@@ -252,6 +252,10 @@ class VoiceSTTSettings(BaseModel):
     contextual: bool = False
     # Quanto cabe da dica: o Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la.
     glossary_chars: int = Field(default=500, ge=50, le=1000)
+    # Quantos termos a própria Juniper pode guardar no vocabulário que ela aprende (T-218). Cheio,
+    # `glossary_add` recusa até alguém tirar algum. O que cabe na dica é só o começo da lista (os
+    # usados há menos tempo), limitado por `glossary_chars`.
+    learned_max: int = Field(default=100, ge=10, le=300)
     # Troca o trecho que soa como um termo do glossário por ele («mídia works» → «Media Works»).
     # Só põe termos do glossário; nunca reescreve a fala (ADR-034).
     correct_terms: bool = True

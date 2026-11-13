@@ -220,3 +220,17 @@ async def test_the_log_counts_corrections_and_only_keeps_the_words_when_asked(
     fix = next(kw for kw in seen if kw.get("action") == "correction")
     assert fix["original"] == "abra o projeto mídia works"
     assert fix["corrected"] == "abra o projeto Media Works"
+
+
+def test_a_confirmation_or_a_command_is_never_rewritten_by_a_term() -> None:
+    """A term that sounds like "sim" or "não" must not break an answer to a question (ADR-010)."""
+    assert not correct("sim", ["Sym", "Shim"], 0.9).changed
+    assert not correct("não", ["Naoh"], 0.9).changed
+    assert not correct("pare", ["Pari"], 0.9).changed
+    assert not correct("apague tudo", ["Apague Tudo Já"], 0.2).changed
+
+
+def test_a_phrase_without_protected_words_is_still_corrected_next_to_them() -> None:
+    assert correct("sim abra o projeto mídia works", ["Media Works"], 0.9).text == (
+        "sim abra o projeto Media Works"
+    )

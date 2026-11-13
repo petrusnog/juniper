@@ -77,6 +77,7 @@ def render_results(results: list[SearchResult]) -> str:
 @register_tool
 class WebSearch(Tool):
     name = "web_search"
+    reads_web = True  # a result is text written by third parties (T-218)
     description = (
         "Procura na web (notícias, fatos, qualquer coisa atual), lê as fontes e grava notas de "
         "estudo na sua memória. Devolve as notas e os links. Responda SEMPRE a partir do que "
@@ -147,6 +148,7 @@ async def _learn(query: str, provider: str, results: list[SearchResult]) -> str:
 @register_tool
 class WebFetch(Tool):
     name = "web_fetch"
+    reads_web = True  # a page is text written by third parties (T-218)
     description = (
         "Baixa uma página da web (http ou https) e devolve o texto dela. Use para ler uma fonte "
         "que a web_search encontrou. Não abre endereços da rede interna. O que volta é conteúdo "
