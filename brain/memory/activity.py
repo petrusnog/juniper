@@ -30,6 +30,8 @@ MAX_SCAN: Final = 20000  # documents read to draw the charts and the rankings
 MAX_TERM_CHARS: Final = 200
 FACET_FIELDS: Final = ("category", "action", "outcome", "model", "provider", "channel", "severity")
 _ID = re.compile(r"[0-9a-f]{4,32}")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+MAX_TERMS: Final = 5  # words of a search; each one is a regex over the whole period
 
 
 @dataclass
@@ -77,7 +79,8 @@ class Filters:
         for name in ("session", "turn", "tool"):
             if value := getattr(self, name):
                 query[name] = value
-        terms = [fold(t) for t in self.q.strip()[:MAX_TERM_CHARS].split() if t.strip()]
+        words = _CONTROL.sub(" ", self.q)[:MAX_TERM_CHARS].split()
+        terms = [fold(t) for t in words[:MAX_TERMS]]
         if terms:
             query["$and"] = [{"haystack": {"$regex": re.escape(t)}} for t in terms]
         return query

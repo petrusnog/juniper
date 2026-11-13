@@ -22,6 +22,7 @@ from brain.dashboard import activity as panel
 from brain.dashboard.api import ApiError
 from brain.memory.activity import ActivityStore
 from brain.memory.errors import MemoryUnavailableError
+from brain.memory.secretfilter import mask_secrets
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 _OUTCOME_STYLE = {"failed": "red", "pending": "yellow", "denied": "yellow", "partial": "cyan"}
@@ -29,7 +30,8 @@ _OUTCOME_STYLE = {"failed": "red", "pending": "yellow", "denied": "yellow", "par
 
 def _safe(value: object) -> str:
     """Any stored value as plain text: no Rich markup, no terminal control characters."""
-    return str(escape(_CONTROL.sub("�", str(value if value is not None else ""))))
+    text = mask_secrets(str(value if value is not None else ""))  # as the dashboard does
+    return str(escape(_CONTROL.sub("�", text)))
 
 
 def _open_store(console: Console) -> ActivityStore:

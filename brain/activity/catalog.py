@@ -47,6 +47,19 @@ def _domain(url: object) -> str:
     return host or text
 
 
+def _link(value: object, limit: int = 200) -> str:
+    """A link as it is safe to keep: no user:password@, no ?query and no #fragment (they carry
+    tokens and codes the secret filters cannot always recognise)."""
+    text = str(value or "").strip()
+    scheme, sep, rest = text.partition("://")
+    if not sep:
+        return _text(text.split("#", 1)[0].split("?", 1)[0], limit)
+    host_path = rest.split("#", 1)[0].split("?", 1)[0]
+    authority, slash, path = host_path.partition("/")
+    clean = f"{scheme}://{authority.rsplit('@', 1)[-1]}{slash}{path}"
+    return _text(clean, limit)
+
+
 def _tokens(usage: object) -> int | None:
     if isinstance(usage, Mapping):
         total = usage.get("total_tokens")
@@ -75,7 +88,7 @@ def _play_music(a: Fields) -> tuple[str, dict[str, Any], str | None]:
 
 
 def _open_url(a: Fields) -> tuple[str, dict[str, Any], str | None]:
-    url = _text(a.get("url"), 200)
+    url = _link(a.get("url"))
     return N_("Opened the link {url}"), {"url": url}, url
 
 
@@ -85,7 +98,7 @@ def _web_search(a: Fields) -> tuple[str, dict[str, Any], str | None]:
 
 
 def _web_fetch(a: Fields) -> tuple[str, dict[str, Any], str | None]:
-    url = _text(a.get("url"), 200)
+    url = _link(a.get("url"))
     return N_("Read the page {url}"), {"url": url}, url
 
 

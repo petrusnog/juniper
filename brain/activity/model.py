@@ -22,6 +22,7 @@ import brain
 from brain.config import settings
 from brain.eventlog import redact
 from brain.i18n import render
+from brain.memory.secretfilter import mask_secrets
 
 ID_CHARS: Final = 16
 OUTCOMES: Final = ("ok", "failed", "pending", "denied", "partial")
@@ -30,6 +31,33 @@ ACTORS: Final = ("user", "juniper", "scheduler", "system")
 # Longest value of a message parameter: a pasted page must not become a sentence.
 PARAM_CHARS: Final = 160
 HAYSTACK_RAW_CHARS: Final = 1500
+# Fields the builder owns: a fact of the same name must never overwrite them.
+RESERVED: Final = frozenset(
+    {
+        "_id",
+        "ts",
+        "ts_local",
+        "session",
+        "turn",
+        "run",
+        "actor",
+        "channel",
+        "voice",
+        "category",
+        "action",
+        "outcome",
+        "severity",
+        "msg_key",
+        "msg_params",
+        "locale",
+        "summary",
+        "event",
+        "version",
+        "commit",
+        "raw",
+        "haystack",
+    }
+)
 
 
 @dataclass
@@ -53,13 +81,17 @@ def fold(text: object) -> str:
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
+def _mask(value: Any) -> Any:
+    return mask_secrets(value) if isinstance(value, str) else value
+
+
 def clean_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Parameters safe to store: secrets masked, long text cut, one line each."""
     out: dict[str, Any] = {}
     for name, value in params.items():
         masked = redact(value, str(name), limit=PARAM_CHARS)
         if isinstance(masked, str):
-            masked = " ".join(masked.split())
+            masked = mask_secrets(" ".join(masked.split()))
         out[str(name)] = masked
     return out
 
@@ -79,8 +111,9 @@ def _haystack(
 ) -> str:
     parts = [summary, entry.category, entry.action, *map(str, facts.values())]
     parts += [str(v) for v in params.values()]
-    parts.append(str({k: v for k, v in raw.items() if k not in ("ts", "run")})[:HAYSTACK_RAW_CHARS])
-    return fold(" ".join(parts))
+    technical = str({k: v for k, v in raw.items() if k not in ("ts", "run")})
+    parts.append(mask_secrets(technical[:HAYSTACK_RAW_CHARS]))
+    return fold(mask_secrets(" ".join(parts)))
 
 
 def build(
@@ -100,8 +133,12 @@ def build(
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     params = clean_params(entry.params)
     language = locale or settings.activity.locale
-    summary = render(entry.key, params, language)
-    facts = {k: redact(v, k, limit=PARAM_CHARS) for k, v in entry.facts.items() if v is not None}
+    summary = mask_secrets(render(entry.key, params, language))
+    facts = {
+        k: _mask(redact(v, k, limit=PARAM_CHARS))
+        for k, v in entry.facts.items()
+        if v is not None and k not in RESERVED
+    }
     record: dict[str, Any] = {
         "_id": uuid.uuid4().hex[:ID_CHARS],
         "ts": moment,

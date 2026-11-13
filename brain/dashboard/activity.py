@@ -8,6 +8,7 @@ parameters, so the same history reads in any language that has a catalog.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
@@ -32,6 +33,7 @@ MULTI: Final = (
     "actor",
 )
 LOCAL_LABEL: Final = "UTC-3"
+RAW_CELL_CHARS: Final = 4000  # the technical log in a spreadsheet cell
 OUTCOME_LABELS: Final = {
     "ok": "ok",
     "failed": "falhou",
@@ -117,9 +119,14 @@ def filters_from(query: Query) -> Filters:
     return filters
 
 
+_LOCALE = re.compile(r"[a-z]{2,3}(_[A-Z]{2})?")
+
+
 def language(query: Query) -> str:
-    """The language the sentences are shown in (the configured one by default)."""
-    return i18n.normalize_locale(first(query, "lang") or settings.activity.locale)
+    """The language the sentences are shown in: the one asked when it is a well-formed locale
+    name (no catalog is not an error: English comes out), else the configured one."""
+    wanted = i18n.normalize_locale(first(query, "lang") or settings.activity.locale)
+    return wanted if _LOCALE.fullmatch(wanted) else i18n.normalize_locale(settings.activity.locale)
 
 
 def item(record: Mapping[str, Any], locale: str) -> dict[str, Any]:
@@ -175,7 +182,7 @@ def workbook(records: Sequence[Mapping[str, Any]], locale: str) -> list[Sheet]:
                 record.get("session") or "",
                 record.get("turn") or "",
                 record.get("severity") or "",
-                str(raw),
+                str(raw)[:RAW_CELL_CHARS],
             ]
         )
     header = [

@@ -499,3 +499,59 @@ def test_cli_lists_by_term_with_utc_minus_3_and_shows_the_technical_log(
     assert shown.exit_code == 0 and "Log técnico" in shown.output
     bad = runner.invoke(app, ["--de", "ontem"])
     assert bad.exit_code == 1 and "data inválida" in bad.output
+
+
+# --- security review: links, secrets, search term, reserved fields -------------------------------
+
+
+def test_a_link_is_kept_without_credentials_query_or_fragment() -> None:
+    for url in (
+        "https://bob:s3cr3t@host.com/x",
+        "https://host.com/x?code=abc123#access_token=zzz99",
+    ):
+        built = entry("tool_call", name="open_url", args={"url": url}, success=True)
+        record = model.build(built, {"args": {"url": url}}, event="tool_call")
+        assert "s3cr3t" not in record["summary"] and "abc123" not in record["summary"]
+        assert "access_token" not in record["summary"]
+        assert "s3cr3t" not in str(record["msg_params"]) and "s3cr3t" not in record["target"]
+    assert sentence(
+        "tool_call", name="open_url", args={"url": "https://a.com/p?q=1"}, success=True
+    ) == ("Abri o link https://a.com/p")
+
+
+def test_secrets_in_the_technical_event_are_not_searchable(store: ActivityStore) -> None:
+    built = entry("tool_call", name="fs_read", args={"path": "/x"}, success=True)
+    record = model.build(
+        built, {"output": "senha: abc123XYZ e cartão 4111 1111 1111 1111"}, event="tool_call"
+    )
+    store.add(record)
+    assert store.search(Filters(q="abc123xyz"))[1] == 0
+    assert store.search(Filters(q="4111"))[1] == 0
+
+
+def test_a_fact_can_never_overwrite_a_base_field() -> None:
+    built = entry("turn_start", input_chars=1)
+    built.facts.update(outcome="hacked", summary="falso", ts="x", model="llama")
+    record = model.build(built, {}, event="turn_start")
+    assert record["outcome"] == "ok" and record["summary"] != "falso" and record["model"] == "llama"
+
+
+def test_search_term_is_bounded_and_control_characters_are_dropped(store: ActivityStore) -> None:
+    seed(store)
+    assert store.search(Filters(q="evidencias\x00"))[1] == 1  # no 500 from a NUL byte
+    many = Filters(q=" ".join(["a"] * 50)).query()
+    assert len(many["$and"]) == 5
+
+
+def test_lang_cannot_point_outside_the_catalogs() -> None:
+    from brain.dashboard import activity as panel
+
+    assert panel.language({"lang": ["../../etc"]}) == "pt_BR"
+    assert panel.language({"lang": ["en"]}) == "en"
+    assert panel.language({"lang": ["fr"]}) == "fr"  # well-formed: English comes out
+
+
+def test_the_cli_masks_secrets_like_the_dashboard() -> None:
+    from brain.clients.activity_cli import _safe
+
+    assert "abc123" not in _safe("senha: abc123")
