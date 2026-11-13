@@ -1,0 +1,444 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Juniper\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: \n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: brain/activity/catalog.py
+msgid "A Telegram login expired"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A Telegram step failed in {where} ({error})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A client logged in"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A client was locked out after too many failed logins"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A connection closed"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A dashboard login failed"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A dashboard login was blocked: too many attempts"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A dashboard task ended ({state})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A dashboard task started"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A login failed"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "A reply showed internal text, so I kept that turn out of my memory"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Account event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Added a user ({role})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Added {count} track to a playlist"
+msgid_plural "Added {count} tracks to a playlist"
+msgstr[0] ""
+msgstr[1] ""
+
+#: brain/activity/catalog.py
+msgid "An administrator did {op} on the dashboard"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Asked you to repeat: I was not sure of what I heard"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Changed the calendar event {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Changed the reminder {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Cleaned {count} message of the conversation that carried internal text"
+msgid_plural "Cleaned {count} messages of the conversation that carried internal text"
+msgstr[0] ""
+msgstr[1] ""
+
+#: brain/activity/catalog.py
+msgid "Closed a connection that stopped answering"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Connection event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Copied {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Corrected a word I had misheard"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Could not send the reminder: Telegram is not set up"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Could not speak the reply"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Could not transcribe what you said"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Created the calendar event {title} for {start}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Created the folder {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Created the playlist {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Created the reminder {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Dashboard event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Deleted the calendar event {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Deleted the reminder {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Device event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Did not use {tool} on {target}: you denied the confirmation"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Did not use {tool}: you denied the confirmation"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Disabled a user"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Dropped something you said before it was understood"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Enabled a user"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Ended the voice conversation ({reason})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Forgot from your memory: {what}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Held back a Telegram message: too many in a row"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Ignored a Telegram message ({reason})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Ignored a Telegram user that is not allowed"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Listed the folder {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Listed your playlists"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Listed your reminders"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Logged in on Telegram"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Looked at your calendar from {start}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Looked in your memory and found {count} relevant memory"
+msgid_plural "Looked in your memory and found {count} relevant memories"
+msgstr[0] ""
+msgstr[1] ""
+
+#: brain/activity/catalog.py
+msgid "Looked in your memory for {query}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Measured the voice latency"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Moved {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Opened the link {url}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Played {query} on YouTube Music"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Read the file {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Read the page {url}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Reattached a Telegram conversation"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Received your message ({count} character)"
+msgid_plural "Received your message ({count} characters)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: brain/activity/catalog.py
+msgid "Recorded the event {event}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Recorded your opinion about {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Recovered the reminders that were due while I was off"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Refused a connection ({reason})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Refused a login on Telegram"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Registered the occurrence {title}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Rejected a connection: not authorized"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Reminded you by voice"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Reminder event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Replaced the file {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Revoked a client"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Rotated a client's secret"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Saved to your memory: {text}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Searched for files in {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Searched the documentation for {query}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Searched the web for {query}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Searched {query} on YouTube Music"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Sent you a reminder on Telegram"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Sent {path} to the trash"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Someone logged in to the dashboard"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Something failed in {where} ({error})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Spoke the reply ({chars} characters)"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Started a voice conversation"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Studied the topic {topic}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Telegram event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The Telegram bot started"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The Telegram bot stopped"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The accounts store is unavailable"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The dashboard started"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The dashboard stopped"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The model returned an empty answer"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The reminder job failed ({reason})"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The server started"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The server stopped"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "The web search with {provider} failed ({reason}), so I used another one"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Transcribed what you said"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Tried to use {tool} on {target}, but it failed: {error}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Tried to use {tool}, but it failed: {error}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Updated your profile"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Used the tool {tool}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Voice event: {action}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Wanted to use {tool} on {target}, but left it pending until you confirm"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Wanted to use {tool}, but left it pending until you confirm"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "Wrote the file {path}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "{provider} answered in {seconds} s and asked to use: {tools}"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "{provider} answered in {seconds} s with {chars} characters"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "{provider} answered in {seconds} s, and I cut text that was not meant for you"
+msgstr ""
+
+#: brain/activity/catalog.py
+msgid "{provider} failed ({error}), so I moved to the next provider"
+msgstr ""

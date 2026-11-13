@@ -108,6 +108,14 @@ def _narrate(event: str, record: dict[str, Any]) -> None:
         message_trace.on_event(event, fields)
 
 
+def _record_activity(event: str, record: dict[str, Any]) -> None:
+    """Passa o evento ao registro de atividade (Observabilidade V2), se estiver ligado."""
+    from brain.activity.recorder import recorder  # import tardio: o recorder importa este módulo
+
+    if recorder.active:
+        recorder.on_event(event, record)
+
+
 class EventLog:
     """Appends events to ``<directory>/YYYY-MM-DD.jsonl`` (directory resolved lazily)."""
 
@@ -154,6 +162,7 @@ class EventLog:
             fd = os.open(self.path_for(now), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             with os.fdopen(fd, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
+            _record_activity(event, record)  # after the legacy line: that log is never delayed
         except Exception:  # noqa: BLE001  (logging must never take the app down)
             return
 

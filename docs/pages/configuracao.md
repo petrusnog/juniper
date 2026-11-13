@@ -174,6 +174,16 @@ A auditoria de vazamentos na fala ([Auditoria de vazamentos](vazamentos.md)). Os
 | `leak_audit.retention_days` | `30` | Dias até cada registro expirar (de 1 a 365), por índice TTL. |
 | `leak_audit.echo_words` | `10` | Quantas palavras seguidas iguais a um bloco de sistema da chamada contam como eco do prompt (de 5 a 50). |
 
+## activity {#activity-config}
+
+O registro de atividade ([Registro de atividade e Auditoria](atividade.md)): uma frase pesquisável por ação, no MongoDB (coleção `activity`). Guarda o que foi dito e o que as tools devolveram (mascarado), por isso expira sozinho.
+
+| Opção | Padrão | O que faz |
+|---|---|---|
+| `activity.enabled` | `true` | Grava um registro por ação. Desligada, a tela Auditoria fica vazia e o log técnico segue igual. Sem MongoDB não há registro. |
+| `activity.retention_days` | `90` | Dias até cada registro expirar (de 1 a 730), por índice TTL. |
+| `activity.locale` | `pt_BR` | Idioma em que a frase é escrita ao gravar (a tela pode mostrar em outro; catálogos em `locale/`). |
+
 ## tools {#tools}
 
 | Opção | Padrão | O que faz |
@@ -340,6 +350,7 @@ Quem recebe o aviso no Telegram é a lista que já existe, `telegram.allowed_use
 
 ## Para saber mais {#para-saber-mais}
 
+- [Registro de atividade e Auditoria](atividade.md) (Documentação Técnica): O que `activity.*` liga, como a frase é traduzida e a tela Auditoria.
 - [Ambiente Docker](dev-docker.md) (Ambiente Local): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar logs e banco, e os problemas comuns.
 - [Instalação sem Docker (modo local)](install.md) (Ambiente Local): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
 - [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.

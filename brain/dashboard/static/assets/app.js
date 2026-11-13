@@ -5,8 +5,13 @@ import { pages } from "/assets/pages/index.js";
 const nav = document.getElementById("nav");
 const view = document.getElementById("view");
 
+// The part of the hash before "?": a page may keep its filters in the query (`#/auditoria?q=x`).
+function route() {
+  return window.location.hash.replace(/^#\//, "").split("?")[0];
+}
+
 function current() {
-  const id = window.location.hash.replace(/^#\//, "").split("/")[0];
+  const id = route().split("/")[0];
   return pages.find((p) => p.id === id) || pages[0];
 }
 
@@ -30,7 +35,7 @@ async function render() {
   clear(view).append(h("p", { class: "muted", text: "Carregando…" }));
   try {
     const module = await import(page.module);
-    const rest = window.location.hash.replace(/^#\//, "").split("/").slice(1);
+    const rest = route().split("/").slice(1);
     const content = await module.render(rest);
     clear(view).append(content);
   } catch (error) {

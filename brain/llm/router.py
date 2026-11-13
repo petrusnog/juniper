@@ -39,6 +39,11 @@ _served: ContextVar[tuple[str, str | None] | None] = ContextVar("llm_served", de
 _FAILOVER_ERRORS = (LLMUnavailableError, LLMTimeoutError, LLMRateLimitError, LLMAuthError)
 
 
+def served_in_task() -> tuple[str, str | None] | None:
+    """Provider and model that served the latest call of the current task (None before one)."""
+    return _served.get()
+
+
 class LLMRouter(LLMProvider):
     """Same interface as a provider; tries each one in priority order.
 

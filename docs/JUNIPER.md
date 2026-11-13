@@ -47,6 +47,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Auditoria de vazamentos | Detector amplo em modo sombra sobre o texto bruto e o entregue do LLM; registros no MongoDB (`leak_audit`, TTL 30 dias); `juniper vazamentos`; turno com vazamento de alta precisão fica fora da memória e do sonho; `/vazou` e «isso vazou» (voz) gravam um relato com as últimas 10 interações (`leak_reports`) | #239 (T-165), #244 (T-167) | — | [Auditoria de vazamentos](pages/vazamentos.md) |
 | Usuários e credenciais | Usuário (`owner`/`tester`) e credencial `client_id`+`client_secret` por dispositivo, com o segredo visto uma vez e só o hash (HMAC com *pepper*) no MongoDB; espelho do dono para o banco fora do ar; `juniper users/login/logout`; página Usuários no dashboard (primeira escrita, com CSRF e confirmação); login do WebSocket, do dashboard, do Telegram (`/login`) e do app; revogação derruba a conexão. **Sem isolamento por usuário ainda** | branch `claude/blissful-knuth-xxtci9` | 027 | [Usuários e credenciais](pages/usuarios.md) |
 | Dashboard V2 | Ocorrências de qualquer tipo (coleção `issues`, estado, gravidade, notas) e a tool `report_issue` (WRITE com confirmação); ações do dono na memória (esquecer, peso, personalidade, sentimentos); tarefas em segundo plano (sonho e reindexação, uma por vez); leituras de logs, custos e saúde | branch `claude/dashboard-v2-features` | 028 | [Ocorrências e ações](pages/ocorrencias.md), [Dashboard](pages/dashboard.md) |
+| Observabilidade V2 | Registro de atividade: cada evento do log técnico vira também um registro pesquisável no MongoDB (`activity`, TTL 90 dias) com a frase do que ela fez, data e hora em UTC-3, categoria, ação, desfecho, modelo, tokens, duração e o evento técnico original; textos como chave + parâmetros, traduzíveis por catálogos `.pot`/`.po` (`locale/`, `scripts/i18n.py`; só pt_BR hoje); tela **Auditoria** no dashboard (busca, filtros, resumo, linha do tempo por mensagem, planilha), `juniper atividade` e `/api/activity`. Os logs legados não mudaram. | #314 a #319 (T-219 a T-224) | 035 | [Registro de atividade e Auditoria](pages/atividade.md) |
 | Lembretes pessoais | CRUD isolado por dono no MongoDB (`reminders`); agenda vinculada (`create_event(reminder=true)` e sincronia ao alterar/apagar); verificação a cada minuto e aviso no horário escolhido (`notify_at`), com recibos independentes de Telegram (para `telegram.allowed_user_ids`) e voz; abertura da voz anuncia os pendentes; retenção dos vencidos; aba Lembretes no dashboard. O CLI local sem login não oferece as tools. **Verificado com dublês e `mongomock`; Telegram, TTS e MongoDB reais não foram exercitados** | T-192, T-193 | 032 | [Lembretes](pages/lembretes.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
 
@@ -124,6 +125,8 @@ Tool sem classificação = **WRITE**. Conteúdo vindo da web, de memórias e da 
 juniper/
 ├── brain/
 │   ├── config.py · eventlog.py · trace.py · scheduler.py · ...   # config única, logs, diário, agendador
+│   ├── activity/   model · catalog · recorder                  (ADR-035: registro de atividade)
+│   ├── i18n/       leitor de .po, plural, render                (ADR-035; catálogos em locale/)
 │   ├── core/       agent · dispatcher · session · consent · persona · clock · resume · style
 │   ├── llm/        base · types · router · deepinfra/groq/ollama_provider · compact
 │   ├── tools/      base · registry · google_calendar · memory · music · open_url · juniper_cmds · docs · url_policy
@@ -138,7 +141,8 @@ juniper/
 ├── .github/workflows/   tests · docker · docs · deploy · mobile · mobile-release (ADR-026)
 ├── prompts/        persona.core.md · persona.core.compact.md
 ├── docker/ · Dockerfile · docker-compose{,.dev,.prod}.yml · config.yaml.example
-├── scripts/        build_docs · docs_search · deploy · install · healthcheck · backup/restore · export_protocol_schema · publish_app (ADR-026)
+├── locale/         juniper.pot · <idioma>/LC_MESSAGES/juniper.po (ADR-035)
+├── scripts/        i18n · build_docs · docs_search · deploy · install · healthcheck · backup/restore · export_protocol_schema · publish_app (ADR-026)
 ├── shell/          wrapper legado (gitgrep, deployfeature)
 ├── docs/           JUNIPER.md (este) · MAPA.md · pages/ · decisions/ · protocol/ · html/ (gerado)
 └── tests/
@@ -216,6 +220,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [032](decisions/ADR-032.md) | Lembretes pessoais: coleção `reminders` por dono, recibos por canal, aviso no horário escolhido (job a cada minuto) e envio direto do brain ao Telegram como exceção ao ADR-016 (aceito). |
 | [033](decisions/ADR-033.md) | App desktop (Electron, Windows) como cliente fino e executor: `open_url` e tools `fs_*` na home inteira, com lista de bloqueio, caminhos canônicos e Lixeira (proposto). |
 | [034](decisions/ADR-034.md) | STT V2: wake word «Juniper» local (livekit-wakeword), identidade por voz no cérebro (só vozes conhecidas; não é autenticação), transcrição com glossário e correção restrita, VAD e fim de turno, arbitragem entre aparelhos, fala dentro do orçamento (proposto). |
+| [035](decisions/ADR-035.md) | Observabilidade V2: registro de atividade no MongoDB (uma frase por ação, `ts` UTC e `ts_local` UTC-3), texto como chave + parâmetros com catálogos `.po` lidos direto, busca por data, termo, modelo, ação e desfecho, gravação em thread (aceito). |
 
 ---
 

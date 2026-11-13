@@ -20,6 +20,7 @@ class Sources:
     transcripts: bool = True  # dashboard.transcripts
     reports: Any | None = None  # the user's leak reports (``LeakReportStore``), MongoDB only
     audit: Any | None = None  # the automatic leak audit records (``LeakAuditStore``)
+    activity: Any | None = None  # the activity records (``ActivityStore``), MongoDB only
     health: Callable[[], dict[str, Any]] | None = None  # the server's own ``/health`` answer
     log_dir: Any | None = None  # where the technical log lives (``event_log.directory``)
     started: float = field(default_factory=time.monotonic)

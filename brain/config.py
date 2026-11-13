@@ -902,6 +902,19 @@ class LeakAuditSettings(BaseModel):
     echo_words: int = Field(default=10, ge=5, le=50)
 
 
+class ActivitySettings(BaseModel):
+    """O registro de atividade (Observabilidade V2): o que a Juniper fez, em frases pesquisáveis."""
+
+    # Cada evento do log técnico vira também um registro no MongoDB (coleção `activity`), com o
+    # texto amigável, os campos de busca e o evento técnico original. Some sozinho depois de
+    # `retention_days`. Sem MongoDB não há registro de atividade (o log técnico segue igual).
+    enabled: bool = True
+    retention_days: int = Field(default=90, ge=1, le=730)
+    # Idioma em que o texto amigável é escrito (a tela pode mostrar em outro: o registro guarda a
+    # chave e os parâmetros). Catálogos em locale/<idioma>/LC_MESSAGES/juniper.po.
+    locale: str = "pt_BR"
+
+
 class ReminderSettings(BaseModel):
     """Lembretes pessoais persistidos no MongoDB e avisados no horário escolhido (ADR-032)."""
 
@@ -1013,6 +1026,7 @@ class Settings(BaseSettings):
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     reminders: ReminderSettings = Field(default_factory=ReminderSettings)
     leak_audit: LeakAuditSettings = Field(default_factory=LeakAuditSettings)
+    activity: ActivitySettings = Field(default_factory=ActivitySettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     app_update: AppUpdateSettings = Field(default_factory=AppUpdateSettings)
     metadocs: MetadocsSettings = Field(default_factory=MetadocsSettings)

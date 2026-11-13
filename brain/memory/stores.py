@@ -9,6 +9,7 @@ from brain.memory.errors import MemoryUnavailableError
 from brain.memory.session import FileSessionStore, SessionStore
 
 if TYPE_CHECKING:
+    from brain.memory.activity import ActivityStore
     from brain.memory.issues import IssueStore
     from brain.memory.leak_audit import LeakAuditStore, LeakReportStore
     from brain.reminders.store import ReminderStore
@@ -60,6 +61,17 @@ def open_leak_audit(store: SessionStore) -> LeakAuditStore | None:
     from brain.memory.leak_audit import LeakAuditStore
 
     return LeakAuditStore(connection)
+
+
+def open_activity(store: SessionStore) -> ActivityStore | None:
+    """Where the activity records go (Observabilidade V2): MongoDB, on the session store's
+    connection. None when the activity log is off or the conversations are in files."""
+    connection = getattr(store, "connection", None)
+    if not settings.activity.enabled or connection is None:
+        return None
+    from brain.memory.activity import ActivityStore
+
+    return ActivityStore(connection)
 
 
 def open_issue_store(store: SessionStore) -> IssueStore | None:

@@ -32,6 +32,8 @@ O navegador nunca fala com o MongoDB: tudo passa pela [API HTTP](api-http.md#das
 
 A interface é responsiva e *mobile first* (de 360 px a telas largas; barra inferior no celular, menu lateral no computador) e tem navegação por teclado. Não usa biblioteca externa: os gráficos são SVG simples.
 
+A página **Auditoria** mostra tudo o que a Juniper fez, em frases, com busca por data, termo, modelo, tipo de ação e desfecho e horários em UTC-3: [Registro de atividade e Auditoria](atividade.md#tela). Ela depende do MongoDB; sem ele a página explica o motivo. A página **Logs** continua sendo o log técnico cru.
+
 ## Identidade visual {#visual kind=conceito file=brain/dashboard/static/assets/app.css}
 
 O dashboard, o [livro de bolso](index.md#como-e-feita) e o [app do celular](mobile.md) têm o **mesmo visual de terminal**, num tema único e escuro, qualquer que seja o tema do sistema:
@@ -104,6 +106,7 @@ pytest tests/test_dashboard_server.py tests/test_dashboard_api.py tests/test_das
 
 ## Para saber mais {#para-saber-mais}
 
+- [Registro de atividade e Auditoria](atividade.md) (Documentação Técnica): A tela Auditoria: busca, filtros, linha do tempo, resumo e planilha do que a Juniper fez.
 - [Ocorrências e ações do dashboard](ocorrencias.md) (Documentação Técnica): Registrar qualquer bug (pelo dashboard ou por fala, com a tool report_issue), acompanhar cada ocorrência, as ações de memória e as tarefas do dashboard.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), como marcar um vazamento na hora com /vazou (texto e voz), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Observabilidade](observabilidade.md) (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), `juniper logs`, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.

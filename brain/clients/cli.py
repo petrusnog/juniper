@@ -1140,6 +1140,10 @@ from brain.clients import leaks_cli  # noqa: E402
 
 leaks_cli.install(app, console)
 
+from brain.clients import activity_cli  # noqa: E402
+
+activity_cli.install(app, console)
+
 from brain.clients import music_cli  # noqa: E402
 
 music_cli.install(app, console)
