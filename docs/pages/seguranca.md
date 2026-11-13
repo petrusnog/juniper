@@ -25,7 +25,7 @@ Regras:
 
 - **Tool sem classificação = `WRITE`.** Esquecer de classificar não pode significar executar sem pedir.
 - **A confirmação mostra o que será feito**, não um resumo vago: "Posso apagar «Teste 1» (03:00–03:30) e «Teste 2»? É irreversível."
-- **Só `WRITE` pode dispensar a confirmação** (`confirm = False`). Hoje só `remember` e `update_profile` fazem isso (veja [memória silenciosa](#memoria-silenciosa)). Uma tool `DESTRUCTIVE` que tente é recusada ao ser carregada.
+- **Só `WRITE` pode dispensar a confirmação** (`confirm = False`). Hoje só `remember`, `update_profile` e as ferramentas do vocabulário de voz (`glossary_add`, `glossary_remove`) fazem isso (veja [memória silenciosa](#memoria-silenciosa) e [vocabulário de voz](#vocabulario)). Uma tool `DESTRUCTIVE` que tente é recusada ao ser carregada.
 
 ## Confirmação na conversa {#confirmacao}
 
@@ -59,6 +59,17 @@ Tudo que a Juniper grava com conteúdo seu tem permissão restrita: a pasta de c
 ## Memória silenciosa {#memoria-silenciosa}
 
 `remember` e `update_profile` gravam **sem pedir permissão**, para a conversa fluir. O risco aceito: como ninguém aprova, algo plantado numa página da web que o LLM leu poderia virar memória. Ele é limitado por três coisas: o filtro de segredos e de "ordens para uma IA" (segredos, ordens e texto grande são recusados mesmo sem perguntar), as memórias entrarem no prompt sempre como dado, e você poder auditar (`juniper memory list`) e apagar (`forget`, que pergunta) quando quiser. Apagar é irreversível e por isso **sempre** pergunta.
+
+## Vocabulário de voz {#vocabulario kind=conceito file=brain/tools/glossary.py}
+
+A Juniper cuida sozinha do vocabulário que ajuda a transcrição a acertar nomes (`glossary_add`, `glossary_remove`; `glossary_list` só lê). Como um termo errado **troca o que a pessoa disse** em toda transcrição seguinte e vai na dica da Groq, texto de fora não pode ensinar uma palavra a ela. As defesas:
+
+- **Trava da web, por conversa.** Depois que uma ferramenta que traz texto de terceiros (`web_search`, `web_fetch`, `learn_topic`) tem sucesso, as ferramentas de escrita do vocabulário são recusadas pelo resto da conversa (`web_blocked` no log), porque o texto continua no histórico que o modelo lê. É uma trava **própria** (`reads_web` e `blocked_when_web_read`), e não a marca de arquivo: essa dura a conversa inteira e fecharia também `remember` e `update_profile` depois de qualquer busca.
+- **Trava de arquivo.** Depois de ler um arquivo também são recusadas (`blocked_when_tainted`, [ADR-033](../decisions/ADR-033.md)).
+- **Só nomes simples.** Um termo tem até 60 caracteres e 5 palavras, só letras, números, espaço e `. ' & + -`: sem `<`, `>`, `/`, `:`, crases, `$` nem caractere de controle (uma quebra de linha vira espaço). A lista tem teto (`voice.stt.learned_max`) e, cheia, recusa em vez de apagar o que já está.
+- **Auditável.** Cada adição e remoção vai ao log (`glossary_add`, `glossary_remove`, com o termo, nunca a fala), `glossary_list` mostra a lista e a CLI a apaga.
+
+O que a trava **não** cobre: texto de terceiros que entra sem uma ferramenta nesta conversa, como o título de um convite de agenda criado por outra pessoa (`list_events`) ou uma nota de estudo da web guardada antes e relida pelo bloco `<conhecimento>`. O estrago possível é limitado (um termo curto e simples, visível em `glossary_list`), e a CLI é a saída: `juniper voice glossary list` e `remove`.
 
 ## Comandos de shell {#shell}
 

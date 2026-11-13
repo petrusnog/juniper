@@ -155,6 +155,8 @@ class Dispatcher:
         self.pending: PendingBatch | None = None
         # A file tool already returned text in this turn (ADR-033): what could carry it out asks.
         self._tainted = False
+        # Web text is in this conversation (T-218): the voice glossary tools are closed.
+        self._web_read = False
         self._registry = tool_registry or default_registry
         self._timeout = (
             confirmation_timeout
@@ -170,6 +172,11 @@ class Dispatcher:
         in which the user says "sim", so the taint is never reset between turns.
         """
         return self._tainted
+
+    @property
+    def web_read(self) -> bool:
+        """Web text is in this conversation (T-218); like the file taint, it is never reset."""
+        return self._web_read
 
     async def dispatch(self, call: ToolCall) -> Message:
         """Execute one ``call`` and wrap the outcome as a ``role="tool"`` message."""
@@ -270,6 +277,14 @@ class Dispatcher:
                 "tainted_blocked",
             )
 
+        if self._web_read and tool_cls.blocked_when_web_read:
+            return settle(
+                "recusado: nesta conversa você leu a web, e um texto de fora poderia estar "
+                "tentando mudar o meu vocabulário. Peça numa conversa nova, ou use "
+                "`juniper voice glossary add`.",
+                "web_blocked",
+            )
+
         try:
             plan.tool = tool_cls()
             # Fail early: never ask the user to approve something bound to fail (ADR-006).
@@ -318,6 +333,8 @@ class Dispatcher:
                 result = await plan.tool.run(**plan.call.arguments)
             if result.success and plan.tool_cls.taints_turn:
                 self._tainted = True
+            if result.success and plan.tool_cls.reads_web:
+                self._web_read = True
             return result, decision
         except Exception as exc:  # type only, never the message: it may hold secrets
             return self._crashed(plan.call, exc), "crashed"
