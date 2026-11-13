@@ -26,14 +26,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
+from pymongo.errors import DuplicateKeyError
+
 from brain.memory.mongo import MongoConnection
+from brain.voice.correction import PROTECTED_WORDS
 from brain.voice.stt import normalise
 
 COLLECTION: Final = "voice_glossary"
 MAX_TERM_CHARS: Final = 60
-MAX_TERM_WORDS: Final = 5
-# What a name or a project may be made of: letters (any language), digits, space and . ' & + -
-_ALLOWED: Final = re.compile(r"^(?:[^\W_]|[ .'&+\-])+$", re.UNICODE)
+MAX_TERM_WORDS: Final = 3
+# What a name or a project may be made of: Latin letters (with accents), digits, space and
+# . ' & + - . Other alphabets are refused: a Cyrillic "А" looks like an "A" but is not one, and the
+# corrector compares by sound after dropping what it cannot map (T-218 security review).
+_ALLOWED: Final = re.compile(r"^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF0-9 .'&+\-]+$")
 
 
 class GlossaryError(Exception):
@@ -57,6 +62,13 @@ def clean_term(term: object) -> str:
         raise GlossaryError("o termo precisa ter ao menos uma letra")
     if len(text.split()) > MAX_TERM_WORDS:
         raise GlossaryError(f"o termo passa de {MAX_TERM_WORDS} palavras: é um nome, não uma frase")
+    key = normalise(text)
+    if sum(c.isalnum() for c in text) != len(key.replace(" ", "")):
+        raise GlossaryError("o termo tem uma letra que a transcrição não distingue")
+    if len(key.replace(" ", "")) < 2:
+        raise GlossaryError("o termo é curto demais")
+    if any(word in PROTECTED_WORDS for word in key.split()):
+        raise GlossaryError("o termo tem uma palavra de comando ou de confirmação")
     return text
 
 
@@ -95,15 +107,18 @@ class GlossaryStore:
                 return AddOutcome("exists", text)
             if collection.count_documents({}) >= self.max_terms:
                 return AddOutcome("full", text)
-            collection.insert_one(
-                {
-                    "_id": key,
-                    "term": text,
-                    "added_by": added_by,
-                    "created_at": now,
-                    "last_used": now,
-                }
-            )
+            try:
+                collection.insert_one(
+                    {
+                        "_id": key,
+                        "term": text,
+                        "added_by": added_by,
+                        "created_at": now,
+                        "last_used": now,
+                    }
+                )
+            except DuplicateKeyError:  # another writer added it between the check and now
+                return AddOutcome("exists", text)
         return AddOutcome("added", text)
 
     def remove(self, term: str) -> bool:
@@ -117,7 +132,13 @@ class GlossaryStore:
         """The learned terms, the most recently used first (what fits the hint is the head)."""
         with self.connection.guard():
             docs = list(self._collection().find({}).sort("last_used", -1))
-        return [str(doc["term"]) for doc in docs]
+        kept: list[str] = []
+        for doc in docs:
+            try:
+                kept.append(clean_term(doc.get("term")))  # edited in the database? checked again
+            except GlossaryError:
+                continue
+        return kept
 
     def info(self) -> list[dict[str, Any]]:
         with self.connection.guard():

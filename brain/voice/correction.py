@@ -25,6 +25,18 @@ from typing import Final
 from brain.voice.stt import normalise
 
 _WORD: Final = re.compile(r"\w+", re.UNICODE)
+# Words the corrector never touches and a learned term may never contain: the answers to a
+# confirmation (ADR-010), the spoken commands, and verbs that act. A term made of them could turn
+# "liste os eventos" into "apague os eventos", or break a "sim" (T-218).
+_PROTECTED_TEXT: Final = """
+sim nao ok claro pode certo confirmo confirma confirmar cancela cancele cancelar
+nunca jamais pare parar para encerrar encerra encerre termine terminar tchau
+apague apagar apaga exclua excluir exclui delete deletar remova remover remove
+envie enviar manda mande desative desativar desliga desligue ative ativar
+execute executar rode rodar instale instalar pague pagar transfira transferir
+compre comprar senha
+"""
+PROTECTED_WORDS: Final = frozenset(_PROTECTED_TEXT.split())
 MIN_FUZZY_CHARS: Final = 5  # shorter terms only match when they sound exactly the same
 AMBIGUITY_GAP: Final = 0.04  # two terms this close for the same words: do not choose
 
@@ -154,6 +166,8 @@ def _best_match(
             words = tokens[start : start + width]
             if any(any(c.isdigit() for c in w.group()) for w in words):
                 continue  # a number is never "corrected"
+            if any(normalise(w.group()) in PROTECTED_WORDS for w in words):
+                continue  # nor a confirmation or a command
             heard = " ".join(w.group() for w in words)
             score = similarity(heard, term)
             if score < 1.0 and not fuzzy:

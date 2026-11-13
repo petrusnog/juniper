@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from brain.auth.context import current_client, current_user
+from brain.auth.context import current_client, current_role, current_user
 from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
@@ -264,6 +264,7 @@ class ChatHandler:
     async def handle(self, conn: Connection, message: p.ClientMessage) -> None:
         # Who is speaking, for the tasks this message spawns (a tool stamps its records with it).
         current_user.set(conn.principal.user_id if conn.principal else None)
+        current_role.set(conn.principal.role if conn.principal else None)
         current_client.set(conn.kind)
         if isinstance(message, p.ChatSend):
             await self._chat_send(conn, message)
@@ -360,6 +361,8 @@ class ChatHandler:
         dispatcher = Dispatcher(
             conversational=True, tool_registry=self._registry, gateway=self.executors
         )
+        if session is not None:
+            dispatcher.restore_web_guard(session.history)  # a resumed chat may have read the web
         agent = Agent(
             self._provider,
             dispatcher,

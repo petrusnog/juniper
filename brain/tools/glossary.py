@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from brain.auth.context import current_user
+from brain.auth.context import current_role, current_user
 from brain.config import settings
 from brain.eventlog import event_log
 from brain.memory.errors import MemoryUnavailableError
@@ -46,6 +46,16 @@ def bind(store: GlossaryStore | None, glossary: Glossary | None = None) -> None:
 def _refresh() -> None:
     if _glossary is not None:
         _glossary.invalidate()  # the next utterance already uses the change
+
+
+ONLY_OWNER = (
+    "Só o dono altera o vocabulário de voz: ele muda como a transcrição do dono é entendida."
+)
+
+
+def _may_write() -> bool:
+    """The owner (or the legacy token and the local terminal, which are the owner's)."""
+    return current_role.get() in (None, "owner")
 
 
 class _GlossaryTool(Tool):
@@ -91,6 +101,8 @@ class GlossaryAdd(_GlossaryTool):
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         if _store is None:
             return ToolResult(success=False, error=OFF)
+        if not _may_write():
+            return ToolResult(success=False, error=ONLY_OWNER)
         try:
             clean_term(kwargs.get("term"))
         except GlossaryError as exc:
@@ -143,6 +155,8 @@ class GlossaryRemove(_GlossaryTool):
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         if _store is None:
             return ToolResult(success=False, error=OFF)
+        if not _may_write():
+            return ToolResult(success=False, error=ONLY_OWNER)
         return None
 
     async def describe(self, **kwargs: Any) -> str | None:

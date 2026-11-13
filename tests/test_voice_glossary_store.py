@@ -27,7 +27,17 @@ def store(max_terms: int = 100) -> GlossaryStore:
 
 @pytest.mark.parametrize(
     "term",
-    ["Media Works", "Petrus", "João D'Ávila", "AT&T", "Dr. Silva", "Rio-Verde", "C++", "Zé  Maria"],
+    [
+        "Media Works",
+        "Petrus",
+        "João D'Ávila",
+        "AT&T",
+        "Dr. Silva",
+        "Rio-Verde",
+        "Node.js",
+        "Zé  Maria",
+        "Ünal",
+    ],
 )
 def test_plain_names_are_kept(term: str) -> None:
     assert clean_term(term) == " ".join(term.split())
@@ -53,7 +63,18 @@ def test_plain_names_are_kept(term: str) -> None:
         "ab​cd",  # a zero-width space
         "12345",
         "x" * 61,
-        "uma duas três quatro cinco seis",
+        "uma duas três quatro",  # four words: a name, not a phrase
+        "Apague todos os eventos",  # a command phrase
+        "Desative alarmes",
+        "Pode cancelar",
+        "Sim",
+        "Não",
+        "senha",
+        "\u0410pple",  # a Cyrillic "A" that looks like a Latin one
+        "\uff2dedia Works",  # a full-width "M"
+        "Øresund",  # a letter the transcription's normaliser would silently drop
+        "A",
+        "C++",  # one letter once normalised: too short to be told apart
     ],
 )
 def test_anything_that_is_not_a_plain_name_is_refused(bad: str) -> None:
@@ -124,3 +145,42 @@ def test_a_bad_term_never_reaches_the_database() -> None:
     with pytest.raises(GlossaryError):
         s.add("<b>x</b>")
     assert s.info() == []
+
+
+def test_a_command_or_confirmation_word_inside_a_longer_name_is_refused_too() -> None:
+    for bad in ("Projeto Apague", "Envie Works", "Sim Senhor"):
+        with pytest.raises(GlossaryError, match="comando ou de confirmação"):
+            clean_term(bad)
+
+
+def test_accents_and_latin_letters_are_welcome() -> None:
+    for good in ("João", "Ávila & Filhos", "Müller", "Çatalhöyük"):
+        assert clean_term(good) == good
+
+
+def test_terms_edited_in_the_database_are_checked_again_when_read() -> None:
+    s = store()
+    s.add("Media Works")
+    s.connection.collection("voice_glossary").insert_one(
+        {"_id": "evil", "term": "<b>Pwned</b>", "last_used": datetime(2030, 1, 1, tzinfo=UTC)}
+    )
+    assert s.terms() == ["Media Works"]  # the injected one never reaches the hint or the corrector
+
+
+def test_two_writers_adding_the_same_term_at_once_end_as_exists() -> None:
+    from pymongo.errors import DuplicateKeyError
+
+    s = store()
+
+    class Racing:
+        def find_one(self, *_a: object, **_k: object) -> None:
+            return None  # the other writer has not committed yet when we look
+
+        def count_documents(self, *_a: object, **_k: object) -> int:
+            return 0
+
+        def insert_one(self, *_a: object, **_k: object) -> None:
+            raise DuplicateKeyError("E11000 duplicate key")  # ...but has when we insert
+
+    s._collection = lambda: Racing()  # type: ignore[method-assign]
+    assert s.add("Media Works").status == "exists"

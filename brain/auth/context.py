@@ -10,4 +10,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 
 current_user: ContextVar[str | None] = ContextVar("juniper_current_user", default=None)
+# The role of that user ("owner", "tester"); None for the legacy token and the local terminal,
+# which are the owner's.
+current_role: ContextVar[str | None] = ContextVar("juniper_current_role", default=None)
 current_client: ContextVar[str | None] = ContextVar("juniper_current_client", default=None)

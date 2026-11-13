@@ -66,7 +66,7 @@ Em `brain/voice/vad.py` e `stt.py`:
 Além dos termos fixos de `voice.stt.glossary`, a Juniper cuida de uma lista própria ([ADR-034](../decisions/ADR-034.md)). Quando você pede («anota que o projeto se chama Media Works») ou corrige uma transcrição («não, é Media Works»), o modelo chama `glossary_add`, sem pedir o seu «sim», e ela avisa em uma frase. O termo vale **a partir da próxima fala**, sem reiniciar: a lista é recarregada na hora, e tanto a dica da Groq (com `voice.stt.contextual` ligado) quanto o corretor passam a usá-lo.
 
 - **Quem entra primeiro na dica:** os termos fixos, depois os aprendidos (os usados há menos tempo por último, e cada correção feita com um termo o traz para a frente) e por fim os nomes dos usuários. O teto da dica (`voice.stt.glossary_chars`) corta pela ponta.
-- **Segurança:** não funciona depois que a conversa leu a web ou um arquivo, e só aceita nomes simples. Veja [Vocabulário de voz](seguranca.md#vocabulario).
+- **Segurança:** não funciona depois que a conversa leu a web ou um arquivo (mesmo ao retomá-la), só o dono altera, e só aceita nomes simples de até 3 palavras, sem palavra de comando. Veja [Vocabulário de voz](seguranca.md#vocabulario).
 - **Ver e apagar:** `glossary_list` e `glossary_remove` por conversa, ou pela CLI. A CLI também é o caminho quando a conversa está travada pela web; no servidor que já está rodando, vale em até 5 minutos.
 
 ```bash

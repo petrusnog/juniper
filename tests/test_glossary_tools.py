@@ -267,3 +267,84 @@ def test_the_cli_lists_adds_and_removes(monkeypatch: pytest.MonkeyPatch) -> None
     assert run("remove", "Media Works")[0] == 0
     code, out = run("remove", "Media Works")
     assert code == 1 and "não está" in out
+
+
+# --- a resumed conversation still has the web text in its history ------------------------------
+
+
+def _history(*, tool: str, content: str = "texto da página") -> list:
+    from brain.llm.types import Message
+
+    call = ToolCall("c1", tool, {})
+    return [
+        Message("user", "pesquisa isso"),
+        Message("assistant", None, tool_calls=(call,)),
+        Message("tool", content, tool_call_id="c1", name=tool),
+    ]
+
+
+async def test_a_resumed_conversation_that_read_the_web_starts_locked(rig) -> None:  # type: ignore[no-untyped-def]
+    fresh = Dispatcher(confirm=None, tool_registry=rig.disp._registry)
+    fresh.restore_web_guard(_history(tool="fake_web"))
+    assert fresh.web_read
+    plan = await fresh._prepare(ToolCall("k", "glossary_add", {"term": "Media Works"}))
+    assert plan.decision == "web_blocked"
+
+
+async def test_a_resumed_conversation_without_web_text_is_not_locked(rig) -> None:  # type: ignore[no-untyped-def]
+    clean = Dispatcher(confirm=None, tool_registry=rig.disp._registry)
+    clean.restore_web_guard(_history(tool="glossary_list"))  # a tool that reads nothing external
+    assert not clean.web_read
+    clean.restore_web_guard(_history(tool="fake_web", content="ERRO: sem rede"))  # it failed
+    assert not clean.web_read
+    clean.restore_web_guard([])
+    assert not clean.web_read
+
+
+async def test_the_chat_handler_rebuilds_the_lock_when_it_loads_a_saved_conversation(
+    tmp_path,  # type: ignore[no-untyped-def]
+) -> None:
+    from brain.clients.chat import ChatHandler
+    from brain.core.session import Session
+    from brain.memory.session import FileSessionStore
+    from tests.test_agent import FakeProvider
+
+    handler = ChatHandler(FileSessionStore(tmp_path / "sessions"), FakeProvider([]))
+    session = Session(session_id="s1")
+    for message in _history(tool="web_search"):
+        session.add(message)
+    resumed = handler._new_conversation(session)
+    assert resumed.agent._dispatcher.web_read  # the real web_search tool, by name
+    assert not handler._new_conversation().agent._dispatcher.web_read
+
+
+# --- only the owner may change how the owner is heard ------------------------------------------
+
+
+async def test_a_tester_cannot_change_the_vocabulary_but_the_owner_and_local_use_can(rig) -> None:  # type: ignore[no-untyped-def]
+    from brain.auth.context import current_role
+
+    await rig.call("glossary_add", term="Media Works")
+    for role, allowed in (("tester", False), ("owner", True), (None, True)):
+        token = current_role.set(role)
+        try:
+            add = await rig.plan("glossary_add", term="Novo Termo")
+            remove = await rig.plan("glossary_remove", term="Media Works")
+        finally:
+            current_role.reset(token)
+        if allowed:
+            assert add.early is None and remove.early is None, role
+        else:
+            assert add.early is not None and "Só o dono" in (add.early.error or "")
+            assert remove.early is not None and "Só o dono" in (remove.early.error or "")
+    assert rig.store.terms() == ["Media Works"]  # the tester changed nothing
+
+
+async def test_a_tester_may_still_read_the_list(rig) -> None:  # type: ignore[no-untyped-def]
+    from brain.auth.context import current_role
+
+    token = current_role.set("tester")
+    try:
+        assert (await rig.call("glossary_list")).success
+    finally:
+        current_role.reset(token)

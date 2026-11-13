@@ -18,7 +18,7 @@ import asyncio
 import hashlib
 import logging
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
@@ -172,6 +172,25 @@ class Dispatcher:
         in which the user says "sim", so the taint is never reset between turns.
         """
         return self._tainted
+
+    def restore_web_guard(self, messages: Iterable[Message]) -> None:
+        """A resumed conversation still holds what its earlier tool calls brought (T-218).
+
+        The guard lives in this object, and a conversation loaded from the store gets a new one,
+        but the web text is in the history the model reads: so it is rebuilt from the history, by
+        the name of each tool that answered successfully.
+        """
+        for message in messages:
+            if message.role != "tool" or not message.name:
+                continue
+            tool_cls = self._registry.get(message.name)
+            if (
+                tool_cls is not None
+                and tool_cls.reads_web
+                and not (message.content or "").startswith("ERRO:")
+            ):
+                self._web_read = True
+                return
 
     @property
     def web_read(self) -> bool:
