@@ -626,3 +626,12 @@ def test_count_given_as_text_still_picks_the_plural() -> None:
     key = "Added {count} track to a playlist"
     assert i18n.render(key, {"count": "2"}, "pt_BR") == "Adicionei 2 faixas a uma playlist"
     assert i18n.render(key, {"count": "abc"}, "pt_BR").startswith("Adicionei abc faixa")
+
+
+def test_records_of_the_same_millisecond_keep_the_order_they_happened(live: ActivityStore) -> None:
+    for index in range(40):
+        event_log.log("turn_start", input_chars=index)
+    rows, _ = live.search(Filters(), limit=100, oldest_first=True)
+    assert [r["msg_params"]["count"] for r in rows] == list(range(40))
+    newest, _ = live.search(Filters(), limit=100)
+    assert [r["msg_params"]["count"] for r in newest] == list(range(39, -1, -1))

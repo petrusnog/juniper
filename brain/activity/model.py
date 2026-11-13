@@ -9,6 +9,7 @@ and ``ts_local`` (ISO text with the offset, UTC-3 for the configured ``agent.tim
 
 from __future__ import annotations
 
+import itertools
 import os
 import unicodedata
 import uuid
@@ -25,6 +26,8 @@ from brain.i18n import render
 from brain.memory.secretfilter import mask_secrets
 
 ID_CHARS: Final = 16
+# Emission order inside this process: records of the same millisecond keep the order they happened.
+_SEQ = itertools.count()
 OUTCOMES: Final = ("ok", "failed", "pending", "denied", "partial")
 SEVERITIES: Final = ("info", "warn", "error")
 ACTORS: Final = ("user", "juniper", "scheduler", "system")
@@ -56,6 +59,7 @@ RESERVED: Final = frozenset(
         "commit",
         "raw",
         "haystack",
+        "seq",
     }
 )
 
@@ -143,6 +147,7 @@ def build(
         "_id": uuid.uuid4().hex[:ID_CHARS],
         "ts": moment,
         "ts_local": local_text(moment),
+        "seq": next(_SEQ),
         "session": session or None,
         "turn": turn or None,
         "run": run or None,
@@ -169,7 +174,7 @@ def build(
 
 def public(record: Mapping[str, Any], locale: str | None = None) -> dict[str, Any]:
     """A record as the API shows it: no ``haystack``, the sentence rendered in ``locale``."""
-    out = {k: v for k, v in record.items() if k != "haystack"}
+    out = {k: v for k, v in record.items() if k not in ("haystack", "seq")}
     out["id"] = str(out.pop("_id", ""))
     if locale:
         out["summary"] = render(out.get("msg_key") or "", out.get("msg_params") or {}, locale)

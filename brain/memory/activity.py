@@ -145,7 +145,7 @@ class ActivityStore:
             total = collection.count_documents(query)
             cursor = (
                 collection.find(query)
-                .sort([("ts", direction), ("_id", direction)])  # ties on ts keep a stable order
+                .sort([("ts", direction), ("seq", direction), ("_id", direction)])  # stable ties
                 .skip(min(max(0, offset), MAX_OFFSET))
                 .limit(size)
             )
@@ -168,7 +168,12 @@ class ActivityStore:
         if not turn_id:
             return []
         with self.connection.guard():
-            cursor = self._collection().find({"turn": turn_id}).sort("ts", 1).limit(limit)
+            cursor = (
+                self._collection()
+                .find({"turn": turn_id})
+                .sort([("ts", 1), ("seq", 1)])
+                .limit(limit)
+            )
             return list(cursor)
 
     def facets(self, filters: Filters) -> dict[str, list[tuple[str, int]]]:
