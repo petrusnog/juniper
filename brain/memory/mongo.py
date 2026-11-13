@@ -24,6 +24,7 @@ from pymongo.errors import (
 
 from brain.config import MongoSettings, settings
 from brain.core.session import Session
+from brain.core.title import SOURCES, clean_title
 from brain.memory.errors import MemoryUnavailableError
 from brain.memory.profile import (
     PROFILE_COLLECTION,
@@ -37,6 +38,8 @@ from brain.memory.session import (
     SessionInfo,
     SessionStoreError,
     check_session_id,
+    keep_users_title,
+    read_title,
     session_from_dict,
     session_info,
     session_to_dict,
@@ -155,13 +158,33 @@ class MongoSessionStore:
         info = session_info(session)
         document = session_to_dict(session)
         del document["id"]
-        document.update(
-            turns=info.turns,
-            preview=info.preview,
-            saved_at=datetime.now(UTC).isoformat(timespec="microseconds"),
-        )
         with self.connection.guard():
-            self._sessions().replace_one({"_id": session_id}, document, upsert=True)
+            sessions = self._sessions()
+            # The person's own title survives a save from a stale copy (T-225).
+            keep_users_title(
+                session, sessions.find_one({"_id": session_id}, {"title": 1, "title_source": 1})
+            )
+            document["title"], document["title_source"] = session.title, session.title_source
+            document.update(
+                turns=info.turns,
+                preview=info.preview,
+                saved_at=datetime.now(UTC).isoformat(timespec="microseconds"),
+            )
+            sessions.replace_one({"_id": session_id}, document, upsert=True)
+
+    def set_title(self, session_id: str, title: str, source: str) -> bool:
+        check_session_id(session_id)
+        clean = clean_title(title)
+        if source not in SOURCES or not clean:
+            return False
+        query: dict[str, Any] = {"_id": session_id}
+        if source != "user":  # the model never overwrites what the person chose
+            query["title_source"] = {"$ne": "user"}
+        with self.connection.guard():
+            result = self._sessions().update_one(
+                query, {"$set": {"title": clean, "title_source": source}}
+            )
+        return bool(result.matched_count)
 
     def load(self, session_id: str) -> Session | None:
         check_session_id(session_id)
@@ -196,6 +219,8 @@ class MongoSessionStore:
                         updated_at=str(document["updated_at"]),
                         turns=int(document["turns"]),
                         preview=str(document["preview"]),
+                        title=read_title(document)[0],
+                        title_source=read_title(document)[1],
                     )
                 )
             except (KeyError, TypeError, ValueError):

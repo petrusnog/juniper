@@ -28,6 +28,7 @@ export const CHANNELS = {
   newChat: 'juniper:new',
   sessions: 'juniper:sessions',
   resume: 'juniper:resume',
+  renameSession: 'juniper:rename-session',
   login: 'juniper:login',
   logout: 'juniper:logout',
   pauseFiles: 'juniper:pause-files',
@@ -56,6 +57,8 @@ export interface JuniperBridge {
   /** Asks the brain for the list of conversations (it arrives in the next snapshot). */
   sessions(): Promise<void>;
   resume(sessionId: string): Promise<void>;
+  /** Renames a conversation (T-225); the new title arrives in the next snapshot. */
+  renameSession(sessionId: string, title: string): Promise<boolean>;
   login(input: LoginInput): Promise<{ ok: boolean; error?: string }>;
   logout(): Promise<void>;
   pauseFiles(paused: boolean): Promise<void>;

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
+from brain.clients import conversations
 from brain.clients import protocol as p
 from brain.clients.remote import (
     UNAVAILABLE_MESSAGE,
@@ -57,6 +58,9 @@ HELP_TEXT: Final = (
     "/novo: começa uma conversa nova\n"
     "/login <client_id> <client_secret>: entra (quando o servidor pede login)\n"
     "/sair: encerra a sessão\n"
+    "/conversas: lista as conversas pelo título\n"
+    "/renomear <título>: renomeia a conversa atual\n"
+    "/retomar <número|id>: volta a uma conversa da lista\n"
     "/vazou [nota]: marca que uma resposta minha vazou instruções ou texto interno\n"
     "/ajuda: mostra esta mensagem\n\n"
     "Por aqui só entendo texto. Quando uma ação muda algo (como criar um evento), eu pergunto "
@@ -350,6 +354,8 @@ class TelegramBridge:
             await self._new_conversation(msg)
         elif name == "vazou":  # the server stores the report and answers (T-167)
             await self._turn(msg, text, counts=False)
+        elif (command := conversations.parse(text)) is not None:  # T-226: títulos das conversas
+            await self._conversations(msg, *command)
         else:
             await self._say(msg.chat_id, UNKNOWN_COMMAND)
 
@@ -409,6 +415,34 @@ class TelegramBridge:
             event_log.log("telegram", action="login", user_id=msg.user_id)
             who = welcome.user.name if welcome.user else ""
             await self._say(msg.chat_id, f"Entrei{', ' + who if who else ''}. Pode falar.")
+
+    async def _conversations(self, msg: Incoming, action: str, argument: str) -> None:
+        """`/conversas`, `/renomear <título>` e `/retomar <n|id>`: as conversas pelo título."""
+        user = self._user(msg.user_id)
+        if user.lock.locked():
+            await self._say(msg.chat_id, BUSY_TEXT)
+            return
+        async with user.lock:
+            client = await self._connected(user, msg)
+            if client is None:
+                return
+            try:
+                reply = await self._conversation_action(client, user, action, argument)
+            except ServerError as exc:
+                reply = _friendly(exc.error.message)
+            except RemoteError as exc:
+                reply = _friendly(str(exc)) or UNAVAILABLE_TEXT
+            await self._say(msg.chat_id, reply)
+
+    async def _conversation_action(
+        self, client: BrainClient, user: _User, action: str, argument: str
+    ) -> str:
+        outcome = await conversations.run(
+            client.request, action, argument, getattr(client, "session_id", None)
+        )
+        if outcome.resumed is not None:
+            user.known_turns = outcome.resumed.turns
+        return outcome.text
 
     async def _new_conversation(self, msg: Incoming) -> None:
         user = self._user(msg.user_id)

@@ -20,10 +20,15 @@ export interface SessionInfo {
   preview: string;
   turns: number;
   updated_at: string;
+  /** What the list shows (T-225): Juniper names a conversation, the person can rename it. */
+  title?: string;
+  title_source?: string;
 }
 
 export interface ChatState {
   sessionId: string | null;
+  /** The title of the open conversation ('' while it has none). */
+  title: string;
   messages: ChatMessage[];
   /** The turn the brain is answering now (null when idle). */
   activeTurn: string | null;
@@ -34,6 +39,7 @@ export interface ChatState {
 
 export const initialChat: ChatState = {
   sessionId: null,
+  title: '',
   messages: [],
   activeTurn: null,
   pendingSend: null,
@@ -54,6 +60,23 @@ function patchTurn(
   return messages.map(m =>
     m.turnId === turnId && m.role === 'assistant' ? patch(m) : m,
   );
+}
+
+/** A new title for one conversation: the open one and its line in the list. */
+function withTitle(
+  state: ChatState,
+  sessionId: string,
+  title: string,
+  source: string,
+): ChatState {
+  return {
+    ...state,
+    title: state.sessionId === sessionId ? title : state.title,
+    sessions:
+      state.sessions?.map(s =>
+        s.id === sessionId ? { ...s, title, title_source: source } : s,
+      ) ?? null,
+  };
 }
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -167,10 +190,17 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     return {
       ...state,
       sessionId: message.session_id,
+      title: message.title ?? '',
       activeTurn: null,
       pendingSend: null,
       messages: history,
     };
+  }
+  if (isType(message, 'session.renamed')) {
+    return withTitle(state, message.session_id, message.title, 'user');
+  }
+  if (isType(message, 'session.titled')) {
+    return withTitle(state, message.session_id, message.title, message.source);
   }
   if (isType(message, 'session.listed')) {
     return { ...state, sessions: message.sessions };

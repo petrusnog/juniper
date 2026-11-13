@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-from brain.clients import cli, voice
+from brain.clients import cli, conversations, voice
 from brain.clients import protocol as p
 from brain.clients.remote import (
     UNAVAILABLE_MESSAGE,
@@ -239,12 +239,45 @@ async def converse(
                 continue
         else:
             text = pending
+        if (command := conversations.parse(text)) is not None:  # T-226: títulos das conversas
+            known_turns = await _conversation_command(client, printer, command, known_turns)
+            if message is not None:
+                return 0
+            printer.out.print()
+            pending = None
+            continue
         code = await _turn(client, printer, text, known_turns)
         known_turns += 1
         if message is not None:
             return code
         printer.out.print()
         pending = None
+
+
+async def _conversation_command(
+    client: RemoteClient, printer: cli.Printer, command: tuple[str, str], known_turns: int
+) -> int:
+    """`/conversas`, `/renomear <título>`, `/retomar <n|id>`; returns the turns the open one has."""
+    try:
+        outcome = await conversations.run(client.request, *command, client.session_id)
+    except ServerError as exc:
+        printer.say(exc.error.message, "red")
+        return known_turns
+    except RemoteError as exc:
+        printer.say(str(exc), "red")
+        return known_turns
+    printer.say(outcome.text)
+    if outcome.resumed is not None:
+        _show_history(printer, outcome.resumed)
+        return outcome.resumed.turns
+    return known_turns
+
+
+def _show_history(printer: cli.Printer, state: p.SessionState) -> None:
+    """The last exchanges of a conversation just resumed, so the person sees where it stopped."""
+    for item in (state.history or [])[-4:]:
+        who = "Você" if item.role == "user" else "Juniper"
+        printer.say(f"{who}: {item.text}")
 
 
 async def _turn(client: RemoteClient, printer: cli.Printer, text: str, known_turns: int) -> int:

@@ -11,6 +11,7 @@ const bridge: JuniperBridge = {
   newChat: () => ipcRenderer.invoke(CHANNELS.newChat),
   sessions: () => ipcRenderer.invoke(CHANNELS.sessions),
   resume: id => ipcRenderer.invoke(CHANNELS.resume, String(id)),
+  renameSession: (id, title) => ipcRenderer.invoke(CHANNELS.renameSession, String(id), String(title)),
   login: input =>
     ipcRenderer.invoke(CHANNELS.login, {
       url: String(input.url),

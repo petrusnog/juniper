@@ -112,6 +112,8 @@ input[type="checkbox"] { accent-color: var(--accent); }
 #session-list li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
 #session-list li:hover, #session-list li.current { background: var(--card); }
 #session-list li.current .preview::before { content: "> "; color: var(--accent); }
+.rename { margin-top: 4px; padding: 2px 8px; font-size: 12px; }
+#session-list input[type="text"] { width: 100%; }
 .preview { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { color: var(--muted); font-size: 12px; }
 

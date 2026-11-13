@@ -352,6 +352,9 @@ async def test_conversations_are_listed_and_read_in_order(world: World) -> None:
         "turns": 4,
         "read_by_dream": 1,
         "last_turn_at": NOW.isoformat(),
+        "title": "",  # no conversation store behind this page: ids, as before the titles (T-229)
+        "title_source": "",
+        "preview": "",
     }
     _, turns = await world.get("/sessions/sessA")
     assert [t["user"] for t in turns["items"]] == ["oi", "tudo bem?", "e você?", "usa tool"]

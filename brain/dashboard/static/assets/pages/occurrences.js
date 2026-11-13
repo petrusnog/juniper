@@ -155,7 +155,7 @@ function issueControls(o) {
 async function detail(id) {
   const o = await api(`/occurrences/${encodeURIComponent(id)}`);
   const facts = h("ul", { class: "plain" },
-    h("li", {}, h("span", { class: "label", text: "Sessão " }), h("a", { href: `#/conversas/${encodeURIComponent(o.session)}`, text: o.session })),
+    h("li", {}, h("span", { class: "label", text: "Sessão " }), h("a", { href: `#/conversas/${encodeURIComponent(o.session)}`, text: o.session_title ? `${o.session_title} (${o.session})` : o.session })),
     h("li", {}, h("span", { class: "label", text: "Quando " }), `${when(o.at)} (${ago(o.at)})`),
     h("li", {}, h("span", { class: "label", text: "Canal " }), where(o)),
   );

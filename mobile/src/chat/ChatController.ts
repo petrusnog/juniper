@@ -107,6 +107,20 @@ export class ChatController {
     });
   }
 
+  /** Rename a conversation (the open one when `sessionId` is omitted). */
+  rename(title: string, sessionId?: string): boolean {
+    const clean = title.trim();
+    if (!clean) {
+      return false;
+    }
+    return this.send_({
+      type: 'session.rename',
+      id: this.newId(),
+      title: clean,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    });
+  }
+
   refreshSessions(): void {
     this.send_({ type: 'session.list', id: this.newId(), limit: 50 });
   }

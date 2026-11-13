@@ -1,7 +1,28 @@
-import { api } from "/assets/api.js";
+import { api, post } from "/assets/api.js";
 import { ago, badge, card, clear, empty, h, when } from "/assets/ui.js";
 
 const SIZE = 50;
+
+// What a conversation is called: its title, else its first message, else the id (older ones).
+const label = (s) => s.title || s.preview || s.session_id;
+
+function renameForm(id, current, onDone) {
+  const title = h("input", { type: "text", maxlength: 80, value: current || "", "aria-label": "Novo título", placeholder: "Novo título" });
+  const error = h("p", { class: "error small", role: "alert", hidden: true });
+  const form = h("form", { class: "audit-search" }, title, h("button", { type: "submit", text: "Renomear" }), error);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    try {
+      await post(`/sessions/${encodeURIComponent(id)}/rename`, { title: title.value });
+      await onDone();
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+    }
+  });
+  return form;
+}
 
 async function thread(id) {
   const probe = await api(`/sessions/${encodeURIComponent(id)}`, { limit: 1 });
@@ -28,7 +49,13 @@ async function thread(id) {
     );
   }
   await draw();
-  return h("div", {}, h("p", {}, h("a", { href: "#/conversas", text: "‹ Todas as conversas" })), h("h1", { text: "Conversa" }), h("p", { class: "muted small", text: id }), card("", box, pager));
+  const heading = h("h1", { text: probe.title || probe.preview || "Conversa" });
+  const rename = renameForm(id, probe.title, async () => {
+    window.dispatchEvent(new HashChangeEvent("hashchange")); // reload the page with the new title
+  });
+  return h("div", {}, h("p", {}, h("a", { href: "#/conversas", text: "‹ Todas as conversas" })), heading,
+    h("p", { class: "muted small", text: `${probe.title_source === "user" ? "título escolhido por você" : probe.title ? "título dado pela Juniper" : "sem título"} · ${id}` }),
+    card("Título", rename), card("", box, pager));
 }
 
 export async function render(rest) {
@@ -41,7 +68,8 @@ export async function render(rest) {
       const pending = s.turns - s.read_by_dream;
       list.append(
         h("a", { class: "mem-item", href: `#/conversas/${encodeURIComponent(s.session_id)}` },
-          h("span", { class: "mem-text", text: s.session_id }),
+          h("span", { class: "mem-text", text: label(s) }),
+          s.title || s.preview ? h("span", { class: "muted small mem-context", text: s.session_id }) : null,
           h("span", { class: "mem-meta" },
             badge(`${s.turns} turno(s)`),
             pending > 0 ? badge(`${pending} para o próximo sonho`, "warn") : badge("lida pelo sonho"),

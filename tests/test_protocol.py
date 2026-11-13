@@ -90,6 +90,7 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
             "turns": 2,
             "history": [{"role": "user", "text": "oi"}, {"role": "assistant", "text": "olá"}],
             "note": "Conversa retomada.",
+            "title": "Receita de bolo",
         },
     ),
     (
@@ -98,9 +99,25 @@ EXAMPLES: list[tuple[str, dict[str, Any]]] = [
             "type": "session.listed",
             "reply_to": "s-3",
             "sessions": [
-                {"id": "s", "updated_at": "2026-10-15T10:15:00Z", "turns": 6, "preview": "oi"}
+                {
+                    "id": "s",
+                    "updated_at": "2026-10-15T10:15:00Z",
+                    "turns": 6,
+                    "preview": "oi",
+                    "title": "Receita de bolo",
+                    "title_source": "auto",
+                }
             ],
         },
+    ),
+    ("client", {"type": "session.rename", "id": "s-4", "title": "Bolo", "session_id": "s"}),
+    (
+        "server",
+        {"type": "session.renamed", "reply_to": "s-4", "session_id": "s", "title": "Bolo"},
+    ),
+    (
+        "server",
+        {"type": "session.titled", "session_id": "s", "title": "Receita de bolo", "source": "auto"},
     ),
     ("server", {"type": "session.detached", "session_id": "s", "reason": "taken"}),
     (

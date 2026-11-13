@@ -665,6 +665,21 @@ def build_api(sources: Sources) -> Api:
             raise ApiError(404, "as conversas estão desligadas (dashboard.transcripts)")
         return need_v2()
 
+    def titles() -> dict[str, Any]:
+        """``{session id: SessionInfo}`` of the saved conversations (their title and first
+        message); empty when the store is out of reach: the page then shows ids, as before."""
+        if sources.sessions is None:
+            return {}
+        try:
+            return {i.id: i for i in sources.sessions.list_sessions()}
+        except Exception:  # noqa: BLE001  (a title is never worth the page)
+            return {}
+
+    def session_title(session_id: Any) -> str:
+        """The title of one conversation ("" when it has none or is not saved)."""
+        info = titles().get(str(session_id or ""))
+        return getattr(info, "title", "") or getattr(info, "preview", "") or ""
+
     async def sessions(query: Query) -> Any:
         store = need_transcripts()
 
@@ -674,6 +689,7 @@ def build_api(sources: Sources) -> Api:
                 key=lambda m: m.last_turn_at or m.updated_at,
                 reverse=True,
             )
+            known = titles()
             return paged(
                 [
                     {
@@ -681,6 +697,9 @@ def build_api(sources: Sources) -> Api:
                         "turns": m.turns_total,
                         "read_by_dream": m.turns_read,
                         "last_turn_at": m.last_turn_at,
+                        "title": getattr(known.get(m.session_id), "title", "") or "",
+                        "title_source": getattr(known.get(m.session_id), "title_source", "") or "",
+                        "preview": getattr(known.get(m.session_id), "preview", "") or "",
                     }
                     for m in marks
                 ],
@@ -709,7 +728,14 @@ def build_api(sources: Sources) -> Api:
                 }
                 for t in turns
             ]
-            return {"session_id": session_id, **paged(rows, query)}
+            info = titles().get(session_id)
+            return {
+                "session_id": session_id,
+                "title": getattr(info, "title", "") or "",
+                "title_source": getattr(info, "title_source", "") or "",
+                "preview": getattr(info, "preview", "") or "",
+                **paged(rows, query),
+            }
 
         return await _blocking(read)
 
@@ -764,7 +790,9 @@ def build_api(sources: Sources) -> Api:
     async def occurrence_detail(query: Query) -> Any:
         def read() -> dict[str, Any]:
             kind, doc = find(query["_id"][0])
-            return occurrences.detail(kind, doc)
+            out = occurrences.detail(kind, doc)
+            out["session_title"] = session_title(doc.get("session"))
+            return out
 
         return await _blocking(read)
 
@@ -830,7 +858,9 @@ def build_api(sources: Sources) -> Api:
             if record is None:
                 raise ApiError(404, "registro não encontrado")
             steps = store.turn(record.get("turn") or "") if record.get("turn") else []
-            return audit_panel.detail(record, audit_panel.language(query), steps)
+            out = audit_panel.detail(record, audit_panel.language(query), steps)
+            out["session_title"] = session_title(record.get("session"))
+            return out
 
         return await _blocking(read)
 

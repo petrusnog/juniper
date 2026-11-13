@@ -73,6 +73,11 @@ export function ChatScreen({
   const state = useChat(chat);
   const [text, setText] = useState('');
   const [listOpen, setListOpen] = useState(false);
+  // The conversation being renamed (its line in the list, or the open one) and the draft title.
+  const [renaming, setRenaming] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const list = useRef<FlatList<ChatMessage>>(null);
   const busy = isBusy(state);
   const connected = connection === 'connected';
@@ -102,6 +107,15 @@ export function ChatScreen({
           >
             {statusText(connection)}
           </Text>
+          {state.title ? (
+            <Text
+              testID="conversation-title"
+              numberOfLines={1}
+              style={[styles.small, { color: theme.ink }]}
+            >
+              {state.title}
+            </Text>
+          ) : null}
         </View>
         {connection === 'offline' || connection === 'replaced' ? (
           <Pressable
@@ -234,15 +248,78 @@ export function ChatScreen({
                   numberOfLines={2}
                   style={[styles.body, { color: theme.ink }]}
                 >
-                  {item.preview || '(sem texto)'}
+                  {item.title || item.preview || '(sem texto)'}
                 </Text>
                 <Text style={[styles.small, { color: theme.muted }]}>
                   {item.turns} mensagem(ns) ·{' '}
                   {item.updated_at.slice(0, 16).replace('T', ' ')}
                 </Text>
+                <Pressable
+                  testID={`rename-${item.id}`}
+                  onPress={() =>
+                    setRenaming({
+                      id: item.id,
+                      title: item.title || '',
+                    })
+                  }
+                  style={styles.headerButton}
+                >
+                  <Text style={{ color: theme.accent }}>Renomear</Text>
+                </Pressable>
               </Pressable>
             )}
           />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={renaming !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenaming(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[styles.body, { color: theme.ink }]}>
+              Novo título da conversa
+            </Text>
+            <TextInput
+              testID="rename-input"
+              value={renaming?.title ?? ''}
+              onChangeText={t => setRenaming(r => (r ? { ...r, title: t } : r))}
+              maxLength={80}
+              autoFocus
+              style={[
+                styles.renameInput,
+                { color: theme.ink, borderColor: theme.border },
+              ]}
+            />
+            <View style={styles.modalButtons}>
+              <Pressable
+                testID="rename-cancel"
+                onPress={() => setRenaming(null)}
+                style={styles.headerButton}
+              >
+                <Text style={{ color: theme.muted }}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                testID="rename-save"
+                onPress={() => {
+                  if (renaming && chat.rename(renaming.title, renaming.id)) {
+                    setRenaming(null);
+                  }
+                }}
+                style={styles.headerButton}
+              >
+                <Text style={{ color: theme.accent }}>Salvar</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -287,6 +364,29 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
   },
   sendText: { color: '#000000', fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  modalCard: {
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderRadius: radius.card,
+    gap: spacing.md,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
   session: {
     padding: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
