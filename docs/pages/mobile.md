@@ -16,7 +16,7 @@ O app é um **cliente fino** ([Arquitetura](architecture.md#regras)): captura en
 
 | Aba | O que faz |
 |---|---|
-| **Texto** | Lista de conversas, retomar, nova conversa, resposta em *streaming*, cancelar. O "sim" de uma confirmação é uma mensagem comum ([Agente](agente.md#confirmacao)). |
+| **Texto** | Lista de conversas **pelo título** (e renomear, [Título das conversas](titulos.md)), retomar, nova conversa, resposta em *streaming*, cancelar. O "sim" de uma confirmação é uma mensagem comum ([Agente](agente.md#confirmacao)). |
 | **Voz** | Uma conversa contínua: o microfone fica aberto, a Juniper entende, responde e fala, com legenda e interrupção ([Voz por áudio](voz-audio.md)). |
 
 ## Decisões {#decisoes}
@@ -110,6 +110,7 @@ cd mobile && npm test && npm run typecheck && npx eslint .
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [App desktop](desktop.md) (Documentação Técnica): O app desktop da Juniper (Electron, Windows): conexão e login, chat de texto, executor open_url e as tools de arquivo, com a fronteira de plataforma e as proteções de caminho.
 - [API HTTP](api-http.md) (Referência): As rotas HTTP do cérebro: a saúde do servidor, o download do app Android e a API de leitura do dashboard, com autenticação, paginação, filtros e códigos de resposta.
 - [Ambiente mobile](mobile-dev.md) (Ambiente Local): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e gerar um APK.

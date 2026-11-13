@@ -1057,6 +1057,7 @@
           "title": "Session Id"
         },
         "title": {
+          "maxLength": 400,
           "title": "Title",
           "type": "string"
         },

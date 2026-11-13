@@ -346,7 +346,7 @@ class SessionRename(_Message):
 
     type: Literal["session.rename"] = "session.rename"
     id: str
-    title: str
+    title: str = Field(max_length=400)  # the server keeps 80; this only bounds what it parses
     session_id: str | None = None
 
 

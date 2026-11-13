@@ -31,7 +31,7 @@ O `core` não importa Electron nem `fs`/`os`/`path`, e só `src/main/platform/` 
 
 O app tem o **mesmo visual de terminal** do [dashboard](dashboard.md#visual) e do [app mobile](mobile.md): fundo preto, o verde neon da logo (`#39e639`) como cor principal e a paleta Tango para o resto (ciano, âmbar, vermelho, verde claro). As cores de `desktop/src/renderer/app.css` são exatamente as de `mobile/src/theme/tokens.ts` (um teste confere), assim como o logo (`logo.png` idêntico ao de `mobile/branding/`, que também é o ícone da janela e do instalador). A fonte é a monoespaçada do sistema (Consolas, Cascadia Mono...), sem baixar nada. Cantos retos, brilho verde no foco, `>` antes dos títulos e do item atual da lista, e a **marca animada** no canto superior esquerdo: logo + **Juniper** + cursor `_` que pisca (550 ms ligado, 550 ms desligado; parado quando o sistema pede menos movimento). Na primeira execução a marca aparece grande, com **JUNIPER** em caixa alta.
 
-O chat de texto segue o do celular: balões com borda (o seu à direita, em verde neon; os dela à esquerda, em cartão escuro; erros em vermelho; avisos em âmbar), `▍` na resposta que ainda está sendo escrita, «(interrompida)» quando você corta, «Escreva uma mensagem para começar.» quando está vazio, **Enviar** (verde) que vira **Parar** (âmbar) enquanto ela responde, e **Enter** envia (Shift+Enter quebra a linha). O botão **Conversas** abre a lista (prévia, número de turnos e data) para retomar uma conversa, e **Nova conversa** começa outra. **Opções** guarda «pausar arquivos», «uso fone», a versão e **Sair**. O app instalado não tem a barra de menus do Electron.
+O chat de texto segue o do celular: balões com borda (o seu à direita, em verde neon; os dela à esquerda, em cartão escuro; erros em vermelho; avisos em âmbar), `▍` na resposta que ainda está sendo escrita, «(interrompida)» quando você corta, «Escreva uma mensagem para começar.» quando está vazio, **Enviar** (verde) que vira **Parar** (âmbar) enquanto ela responde, e **Enter** envia (Shift+Enter quebra a linha). O botão **Conversas** abre a lista (título, número de turnos e data; **Renomear** em cada linha, [Título das conversas](titulos.md)) para retomar uma conversa, e **Nova conversa** começa outra. **Opções** guarda «pausar arquivos», «uso fone», a versão e **Sair**. O app instalado não tem a barra de menus do Electron.
 
 ## Conexão e login {#conexao}
 
@@ -108,6 +108,7 @@ Em **outro PC**, copie o `juniper-signing.cer` (só a parte pública) e rode `de
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Executor](executor.md) (Documentação Técnica): O dispositivo como corpo da Juniper: comandos estruturados, revalidação local e a tool open_url.
 - [App mobile](mobile.md) (Documentação Técnica): O app Android da Juniper (React Native): conexão, chat de texto, chat de voz contínuo, executor open_url com autoplay de música e o roteiro de aceite no aparelho.
 - [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.

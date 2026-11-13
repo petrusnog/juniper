@@ -81,6 +81,8 @@ class Agent:
         # the clients that show it can update their list.
         self._title_sink = title_sink
         self._background: set[asyncio.Task[None]] = set()
+        # The first naming was tried: a draft that came out empty is not retried on every turn.
+        self._title_tried = False
         # Stores the evidence of a suspicious answer (T-165, core/leak_audit.py); None = log only.
         self._leak_sink = leak_sink
         self._dispatcher = dispatcher
@@ -249,7 +251,13 @@ class Agent:
         session = self.session
         if session.title_source == "user":
             return
-        if not session.title and self._recent and session.turns_total >= 1:
+        if (
+            not session.title
+            and not self._title_tried
+            and self._recent
+            and session.turns_total >= 1
+        ):
+            self._title_tried = True
             draft = draft_title(self._recent[0].user if self._recent else "")
             if draft:
                 session.title, session.title_source = draft, "draft"

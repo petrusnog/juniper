@@ -331,3 +331,40 @@ def test_the_json_schema_lists_the_new_messages() -> None:
     for name in ("SessionRename", "SessionRenamed", "SessionTitled"):
         assert name in schema["$defs"]
     assert "title" in schema["$defs"]["SessionSummary"]["properties"]
+
+
+# --- security review -----------------------------------------------------------------------------
+
+
+def test_secrets_with_underscores_never_reach_a_title() -> None:
+    for text in (
+        "a chave sk_live_abcdefghijklmnop1234 é nova",
+        "a senha: Abc_123_xyz9 por favor",
+        "meu token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    ):
+        for made in (T.clean_title(text), T.draft_title(text)):
+            assert "abcdefghijklmnop" not in made and "Abc_123" not in made
+            assert "Abc123" not in made and "xyz9" not in made
+
+
+def test_a_title_cannot_flip_or_hide_the_line() -> None:
+    assert T.clean_title("‮abc⁦x​‏y z") == "abcxyz"
+    assert T.clean_title("snake_case_ok") == "snake_case_ok"
+
+
+async def test_an_unusable_first_message_is_not_retried_every_turn() -> None:
+    provider = Namer([say("a"), say("b"), say("c")], ["", "", ""])
+    agent = agent_with(provider)
+    for text in ("<b></b>", "<i></i>", "<u></u>"):
+        await agent.run(text)
+        await agent.settle()
+    assert len(provider.naming) == 1  # one try, not one model call per turn
+
+
+def test_the_rename_message_bounds_what_the_server_parses() -> None:
+    import json
+
+    with pytest.raises(Exception):  # noqa: B017  (pydantic's ValidationError)
+        p.parse_message(
+            json.dumps({"type": "session.rename", "id": "x", "title": "a" * 401}), source="client"
+        )

@@ -38,7 +38,10 @@ THIN_WORDS: Final = 4
 
 _TAG = re.compile(r"<[^>]*>")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
-_MARKUP = re.compile(r"[*_`#>~]+")
+# Direction and zero-width characters: a title must not be able to flip or hide the line around it.
+_INVISIBLE = re.compile("[\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]")
+# No underscore here: `sk_live_...` and `senha_do_banco=...` are secrets the filter reads by it.
+_MARKUP = re.compile(r"[*`#>~]+")
 _PREFIX = re.compile(r"^\s*(t[ií]tulo|title)\s*[:\-–—]\s*", re.I)
 _DATE_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
 _QUOTES = "\"'“”‘’«»`"
@@ -59,7 +62,8 @@ def clean_title(text: object, limit: int = TITLE_CHARS) -> str:
 
     Returns ``""`` when nothing usable is left (the caller then keeps what it had).
     """
-    raw = _CONTROL.sub(" ", str(text or ""))
+    raw = _CONTROL.sub(" ", _INVISIBLE.sub("", str(text or "")))
+    raw = mask_secrets(raw)  # first, on the text as written: stripping markup can break a secret
     raw = _TAG.sub(" ", raw)
     raw = _MARKUP.sub("", raw)
     flat = " ".join(raw.split()).strip(_QUOTES + " ")

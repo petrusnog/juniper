@@ -39,11 +39,15 @@ Primeiro vale o teto de turnos (`max_turns`). Depois, se o histórico ainda pass
 
 ### SessionStore {#sessionstore kind=interface file=brain/memory/session.py}
 
-A interface de persistência (`typing.Protocol`): `save`, `load`, `latest` e `list_sessions` (e não `list`, que conflitaria com o tipo `list[...]` no mypy estrito). O resto da Juniper só conhece ela, então trocar arquivos por MongoDB não mexe em mais nada.
+A interface de persistência (`typing.Protocol`): `save`, `load`, `latest`, `list_sessions` e `set_title` (e não `list`, que conflitaria com o tipo `list[...]` no mypy estrito). O resto da Juniper só conhece ela, então trocar arquivos por MongoDB não mexe em mais nada.
 
 ### FileSessionStore {#filesessionstore kind=classe file=brain/memory/session.py}
 
 Um arquivo JSON por conversa em `~/.juniper/sessions/`. A pasta é só sua (permissão `700`, arquivos `600`) e a escrita é **atômica**: uma queda no meio deixa a versão anterior, nunca um arquivo pela metade. O id vira nome de arquivo, então é validado (`[A-Za-z0-9_-]`) e um id como `../algo` não escapa da pasta. Um arquivo corrompido é ignorado ao buscar a conversa mais recente.
+
+### Título {#titulo}
+
+Cada sessão guarda `title` e `title_source` (`draft`, `auto` ou `user`; vazios nas conversas anteriores ao recurso), e `list_sessions` os devolve. `set_title` dá nome a uma conversa já salva **sem mudar `updated_at`** (renomear não é usar: a ordem da lista e o `latest` ficam) e recusa trocar um título `user` por um do modelo. `save` faz a mesma defesa: se o título gravado é do usuário e a cópia em memória ainda tem o antigo, ela adota o gravado. Como o título nasce e muda ([Título das conversas](titulos.md)).
 
 ### Ao retomar {#retomar}
 
@@ -170,6 +174,7 @@ Os de integração rodam o mesmo contrato do `FileSessionStore` contra o `MongoS
 
 ## Para saber mais {#para-saber-mais}
 
+- [Título das conversas](titulos.md) (Documentação Técnica): Como cada conversa ganha um título, onde ele aparece em cada cliente e os comandos /conversas, /renomear e /retomar.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [Memória](memoria.md) (Documentação Técnica): Visão geral das duas camadas de memória, como elas se encaixam e como validar tudo na sua máquina.
 - [Memória de longo prazo](memoria-longo-prazo.md) (Documentação Técnica): Embeddings locais, VectorStore, extração em segundo plano, recuperação (RAG), perfil do usuário e as tools de memória.
