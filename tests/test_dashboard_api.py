@@ -261,6 +261,15 @@ def add_study(world: World) -> Interest:
     return interest
 
 
+async def test_the_interests_are_paged_nine_at_a_time(world: World) -> None:
+    for n in range(12):
+        world.data.interests.save(Interest(f"tema-{n:02d}", origin=Evidence("observation", "s", 1)))
+    _, first = await world.get("/interests", limit=9, offset=0)
+    _, second = await world.get("/interests", limit=9, offset=9)
+    assert first["total"] == 12 and len(first["items"]) == 9 and len(second["items"]) == 3
+    assert not {i["id"] for i in first["items"]} & {i["id"] for i in second["items"]}
+
+
 async def test_interests_and_every_note_with_its_uncertainty_and_source(world: World) -> None:
     interest = add_study(world)
 
