@@ -923,6 +923,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     Levanta `MemoryUnavailableError` (com mensagem para o usuário) se o MongoDB não responde:
     é o healthcheck de partida.
     """
+    from brain.activity.recorder import recorder as activity_recorder
     from brain.llm.router import LLMRouter
     from brain.memory.longterm import (
         long_term_enabled,
@@ -931,6 +932,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     )
     from brain.memory.stores import (
         close_session_store,
+        open_activity,
         open_issue_store,
         open_leak_audit,
         open_leak_reports,
@@ -992,6 +994,9 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     if voice_services is not None:
         voice_services.glossary.add_source(_registered_names)  # people she should spell right
     leak_audit = open_leak_audit(store)
+    activity = open_activity(store)
+    if activity is not None:
+        activity_recorder.start(activity.add)  # Observabilidade V2: o que ela fez, em frases
     handler = ChatHandler(
         store,
         router,
@@ -1011,6 +1016,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     handler.sources = Sources(
         reports=handler._reports,
         audit=handler._audit,
+        activity=activity,
         issues=issue_store,
         reminders=reminder_store,
         health=handler.health,
@@ -1026,6 +1032,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         warm_up.cancel()
         await asyncio.gather(warm_up, return_exceptions=True)
         await handler.shutdown()
+        activity_recorder.stop()
         if v2 is not None:
             v2.close()
         memory_tools.bind(None)

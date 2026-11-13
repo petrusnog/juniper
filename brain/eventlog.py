@@ -108,6 +108,14 @@ def _narrate(event: str, record: dict[str, Any]) -> None:
         message_trace.on_event(event, fields)
 
 
+def _record_activity(event: str, record: dict[str, Any]) -> None:
+    """Passa o evento ao registro de atividade (Observabilidade V2), se estiver ligado."""
+    from brain.activity.recorder import recorder  # import tardio: o recorder importa este módulo
+
+    if recorder.active:
+        recorder.on_event(event, record)
+
+
 class EventLog:
     """Appends events to ``<directory>/YYYY-MM-DD.jsonl`` (directory resolved lazily)."""
 
@@ -148,6 +156,7 @@ class EventLog:
                 record["session"] = session
             record.update(redact(fields, limit=limit))
             _narrate(event, record)
+            _record_activity(event, record)
             line = json.dumps(record, ensure_ascii=False, default=str)
             self.directory.mkdir(parents=True, exist_ok=True)
             # 0600: the log holds what the user said and what the tools returned.

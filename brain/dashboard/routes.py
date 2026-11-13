@@ -11,8 +11,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
+from brain import i18n
 from brain.config import settings
 from brain.core.persona import load_core
+from brain.dashboard import activity as audit_panel
 from brain.dashboard import occurrences, ops
 from brain.dashboard.api import Api, ApiError, Query, first
 from brain.dashboard.search import SEARCH_TYPES, run_search
@@ -40,9 +42,11 @@ MAX_PROMPT_CHARS = 2000
 MAX_QUERY_CHARS = 200
 OFF_V1 = {"enabled": False, "reason": "a memória de longo prazo está desligada"}
 OFF_V2 = {"enabled": False, "reason": "a Memória V2 está desligada"}
+OFF_ACTIVITY = "a auditoria precisa do MongoDB (memory.session.store: mongo)"
 OFF_LEAKS = "as ocorrências precisam do MongoDB (memory.session.store: mongo)"
 MAX_OCCURRENCES = 500  # per source, in the list
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+MAX_EXPORT_ACTIVITY = 5000  # records in the audit spreadsheet
 MAX_EXPORTED = 200  # per source, in the spreadsheet: it holds every message of every occurrence
 
 
@@ -777,6 +781,70 @@ def build_api(sources: Sources) -> Api:
 
     api.file_route("/occurrences/export.xlsx", occurrence_export)
 
+    # --- activity: what Juniper did, in sentences (Observabilidade V2) ---------------------------
+
+    def need_activity() -> Any:
+        if sources.activity is None:
+            raise ApiError(503, OFF_ACTIVITY)
+        return sources.activity
+
+    async def activity_list(query: Query) -> Any:
+        def read() -> dict[str, Any]:
+            store = need_activity()
+            filters = audit_panel.filters_from(query)
+            locale = audit_panel.language(query)
+            limit = number(query, "limit", 50, 1, 200)
+            offset = number(query, "offset", 0, 0, 10**9)
+            rows, total = store.search(filters, limit=limit, offset=offset)
+            out: dict[str, Any] = {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "lang": locale,
+                "languages": i18n.available(),
+                "utc": audit_panel.offset_label(),
+                "items": [audit_panel.item(r, locale) for r in rows],
+            }
+            if first(query, "facets", "1") != "0":
+                out["facets"] = {k: [list(p) for p in v] for k, v in store.facets(filters).items()}
+            return out
+
+        return await _blocking(read)
+
+    async def activity_summary(query: Query) -> Any:
+        def read() -> dict[str, Any]:
+            store = need_activity()
+            filters = audit_panel.filters_from(query)
+            return {**store.summary(filters), "utc": audit_panel.offset_label()}
+
+        return await _blocking(read)
+
+    async def activity_detail(query: Query) -> Any:
+        def read() -> dict[str, Any]:
+            store = need_activity()
+            record = store.get(query["_id"][0].strip().lower())
+            if record is None:
+                raise ApiError(404, "registro não encontrado")
+            steps = store.turn(record.get("turn") or "") if record.get("turn") else []
+            return audit_panel.detail(record, audit_panel.language(query), steps)
+
+        return await _blocking(read)
+
+    async def activity_export(query: Query) -> tuple[str, str, bytes]:
+        def read() -> tuple[str, str, bytes]:
+            store = need_activity()
+            filters = audit_panel.filters_from(query)
+            rows, _ = store.search(filters, limit=MAX_EXPORT_ACTIVITY, oldest_first=True)
+            sheets = audit_panel.workbook(rows, audit_panel.language(query))
+            for sheet in sheets:  # the same masking as every other answer of the dashboard
+                sheet.rows = [[sanitize(cell) for cell in row] for row in sheet.rows]
+            stamp = utcnow().astimezone().strftime("%Y%m%d-%H%M")
+            return f"atividade-juniper-{stamp}.xlsx", XLSX_MIME, build_xlsx(sheets)
+
+        return await _blocking(read)
+
+    api.file_route("/activity/export.xlsx", activity_export)
+
     # --- logs, costs and health (ADR-028) ---------------------------------------------------------
 
     def log_dir() -> Any:
@@ -838,6 +906,9 @@ def build_api(sources: Sources) -> Api:
         "/journal": journal,
         "/sessions": sessions,
         "/sessions/": session_turns,
+        "/activity": activity_list,
+        "/activity/summary": activity_summary,
+        "/activity/": activity_detail,
         "/occurrences": occurrence_list,
         "/occurrences/": occurrence_detail,
     }.items():

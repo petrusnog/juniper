@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Registro de atividade e Auditoria — Livro de bolso Juniper</title>
+<meta name="description" content="O que a Juniper fez, em frases pesquisáveis (data em UTC-3, termo, modelo, tipo de ação, desfecho), como cada texto é traduzível por catálogos .po e como usar a tela Auditoria, juniper atividade e a planilha.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/atividade.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Documentação Técnica / Núcleo / Registro de atividade e Auditoria</div>
+<h1>Registro de atividade e Auditoria <span class="tag g">pronta</span></h1>
+<p class="lead">O que a Juniper fez, em frases pesquisáveis (data em UTC-3, termo, modelo, tipo de ação, desfecho), como cada texto é traduzível por catálogos .po e como usar a tela Auditoria, <code>juniper atividade</code> e a planilha.</p>
+<h2 id="visao-geral">Visão geral</h2>
+<p>O <a href="observabilidade.html">log técnico</a> diz o que o código fez. O <strong>registro de atividade</strong> diz o que a Juniper fez por você, numa frase: «Pesquisei «Evidências» no YouTube Music», «Abri o link https://…», «Quis usar delete_event em «Dentista», mas deixei pendente até você confirmar». Cada registro guarda também o evento técnico original, na aba <strong>Técnico</strong>, e fica no MongoDB (coleção <code>activity</code>) por <code>activity.retention_days</code> (90 dias). Os logs legados não mudam (<a href="adr-035.html">ADR-035</a>).</p>
+<p>Sem MongoDB (<code>memory.session.store: file</code>) não há registro de atividade; o log técnico segue como sempre.</p>
+<h2 id="registro">O registro</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Grupo</th><th>Campos</th></tr></thead><tbody><tr><td>Quando</td><td><code>ts</code> (UTC, indexado) e <code>ts_local</code> (ISO com o deslocamento, por exemplo <code>2026-11-13T14:32:08.412-03:00</code>)</td></tr><tr><td>Onde</td><td><code>session</code>, <code>turn</code> (liga os passos de uma mesma mensagem), <code>run</code>, <code>channel</code>, <code>voice</code></td></tr><tr><td>Quem e o quê</td><td><code>actor</code> (<code>user</code>, <code>juniper</code>, <code>scheduler</code>, <code>system</code>), <code>category</code> (música, web, memória, llm…), <code>action</code> (<code>music.play_music</code>), <code>severity</code></td></tr><tr><td>Desfecho</td><td><code>outcome</code>: <code>ok</code>, <code>failed</code>, <code>pending</code> (esperando você confirmar), <code>denied</code> (você negou) ou <code>partial</code></td></tr><tr><td>Técnico</td><td><code>provider</code>, <code>model</code>, <code>tokens</code>, <code>duration_ms</code>, <code>tool</code>, <code>tier</code>, <code>decision</code>, <code>target</code>, <code>error_type</code>, <code>version</code>, <code>commit</code>, e <code>raw</code> (o evento do log, já mascarado)</td></tr><tr><td>Texto</td><td><code>msg_key</code>, <code>msg_params</code>, <code>locale</code>, <code>summary</code></td></tr></tbody></table></div>
+<p><strong>Horários:</strong> toda tela, exportação e comando mostra <code>13/11/2026 14:32:08 (UTC-3)</code>. O fuso vem de <code>agent.timezone</code>. Filtros por data também são lidos nele: «13/11» vai das 00:00 às 23:59 de Brasília, não do UTC.</p>
+<h2 id="catalogo">De evento a frase</h2>
+<p><code>EventLog.log</code> escreve a linha de sempre e, depois, entrega o evento ao <code>recorder</code> (<code>brain/activity/recorder.py</code>), que o traduz (<code>catalog.translate</code>), monta o registro e o enfileira; uma thread grava no MongoDB, para o driver bloqueante nunca parar a conversa. Uma tool sem frase própria vira «Usei a ferramenta X»; um evento desconhecido, «Registrei o evento X»; tempos, embeddings e HTTP cru não entram. Para dar frase a uma tool nova, acrescente-a em <code>TOOLS</code> (<code>catalog.py</code>) e rode <code>python scripts/i18n.py update</code>.</p>
+<p>Um teste confere que o JSONL com o recorder ligado tem exatamente os mesmos campos de sempre.</p>
+<h2 id="idiomas">Idiomas</h2>
+<p>O registro guarda a <strong>chave e os parâmetros</strong> (<code>msg_key</code>: o texto-fonte em inglês; <code>msg_params</code>) além do <code>summary</code> já escrito em <code>activity.locale</code>. A tela e a planilha escrevem a frase de novo no idioma pedido (<code>?lang=en</code>, seletor da tela, <code>--idioma</code>). Sem catálogo para o idioma, sai o inglês; um parâmetro que falta fica visível como <code>{nome}</code>, nunca quebra.</p>
+<pre><code class="lang-text">locale/juniper.pot                          # modelo, gerado do código
+locale/pt_BR/LC_MESSAGES/juniper.po         # a tradução</code></pre>
+<pre><code class="lang-bash">python scripts/i18n.py extract   # reescreve o .pot a partir das chamadas N_() em brain/
+python scripts/i18n.py update    # acrescenta os textos novos (vazios) em cada .po
+python scripts/i18n.py check     # falha se o .pot está velho ou falta/erra uma tradução</code></pre>
+<p>Para um idioma novo, copie o <code>.pot</code> para <code>locale/&lt;idioma&gt;/LC_MESSAGES/juniper.po</code>, ajuste o cabeçalho (<code>Language</code>, <code>Plural-Forms</code>) e traduza; qualquer ferramenta de tradução serve. O plural segue a regra do cabeçalho: <code>msgstr[0]</code>, <code>msgstr[1]</code>…, escolhidos pelo parâmetro <code>count</code>. O <code>.po</code> é lido direto, sem compilar.</p>
+<h2 id="tela">A tela Auditoria</h2>
+<p>No <a href="dashboard.html">dashboard</a>: <strong>Auditoria</strong> (<code>#/auditoria</code>).</p>
+<ul><li><strong>Busca e período:</strong> caixa de texto (casa o texto amigável e o técnico, sem diferença de maiúsculas ou acento; todas as palavras precisam aparecer), atalhos (última hora, hoje, ontem, 7 e 30 dias, tudo) e um intervalo livre com data e hora em UTC-3.</li><li><strong>Filtros em chips</strong>, combináveis, com a contagem de cada valor dentro do filtro atual: tipo de ação, desfecho, modelo, provedor, canal, severidade, quem. As ações mais comuns também são chips. Tudo fica no endereço (<code>#/auditoria?outcome=failed&amp;q=youtube</code>): dá para guardar ou mandar o link.</li><li><strong>Resumo do período:</strong> registros, falhas, pendentes, negadas e trocas de provedor; gráfico por hora (ou por dia, em períodos longos) com as falhas em vermelho (clicar numa barra filtra aquele intervalo); ranking dos modelos (chamadas, tempo médio, tokens).</li><li><strong>Linha do tempo:</strong> hora (UTC-3), a frase, o desfecho, o modelo e o canal. Os passos de uma mesma mensagem ficam numa linha que se abre («Mensagem das 14:32: 6 passos, 1 com falha»).</li><li><strong>Detalhe de um registro:</strong> todos os campos, o evento técnico (com botão de copiar) e os outros passos da mensagem; atalhos para ver tudo da mensagem, tudo da sessão e a conversa.</li><li><strong>Planilha (.xlsx):</strong> o resultado filtrado, mais antigo primeiro, até 5.000 registros, com a frase e o log técnico lado a lado; o texto nunca vira fórmula e passa pelo mesmo mascaramento do resto do dashboard.</li></ul>
+<h2 id="cli">No terminal</h2>
+<pre><code class="lang-bash">juniper atividade                                  # hoje
+juniper atividade -b &quot;youtube&quot; --periodo 7d        # por termo
+juniper atividade --modelo llama --desfecho failed # por modelo e desfecho
+juniper atividade --de 2026-11-13 --ate 2026-11-13T18:00 --tipo music
+juniper atividade --ver 3f9a2c10                   # um registro, com o log técnico</code></pre>
+<p>Lê o MongoDB do processo onde roda (na VPS, dentro do contêiner do brain). <code>--idioma en</code> mostra as frases em inglês.</p>
+<h2 id="api">API</h2>
+<p>Somente leitura, com o login do dashboard: <code>GET /api/activity</code> (filtros <code>q</code>, <code>period</code>, <code>from</code>, <code>to</code>, <code>category</code>, <code>action</code>, <code>outcome</code>, <code>model</code>, <code>provider</code>, <code>channel</code>, <code>severity</code>, <code>actor</code>, <code>session</code>, <code>turn</code>, <code>tool</code>, <code>lang</code>, <code>limit</code>, <code>offset</code>; devolve itens, total e facetas), <code>/api/activity/summary</code>, <code>/api/activity/&lt;id&gt;</code> (com <code>raw</code> e os passos da mensagem) e <code>/api/activity/export.xlsx</code>. Data sem hora em <code>to</code> inclui o dia inteiro; data inválida é 400.</p>
+<h2 id="configuracao">Configuração</h2>
+<p><code>activity.enabled</code> (padrão <code>true</code>), <code>activity.retention_days</code> (90) e <code>activity.locale</code> (<code>pt_BR</code>): <a href="configuracao.html#activity-config">Configuração</a>.</p>
+<h2 id="limitacoes">Limitações</h2>
+<ul><li>O modelo de um registro vem do router da conversa em curso; eventos que nascem fora de uma conversa (agendador, login) não têm modelo.</li><li>A busca por termo varre o período filtrado; o resumo lê no máximo os 20 mil registros mais novos.</li><li>Só o português tem catálogo; outros idiomas caem no inglês até alguém traduzir.</li><li>O registro vai para a fila e é gravado por uma thread: ao desligar o servidor, o que ainda estava na fila tem alguns segundos para sair.</li></ul>
+<h2 id="testes">Testes</h2>
+<pre><code class="lang-bash">pytest tests/test_activity.py tests/test_dashboard_activity.py tests/test_dashboard_frontend.py -v
+python scripts/i18n.py check</code></pre>
+<p>Cobrem a leitura do <code>.po</code> (plural, texto fuzzy, linhas longas), o catálogo de frases (ferramenta que deu certo, ficou pendente, foi negada, falhou, desconhecida), o horário em UTC-3, o mascaramento de segredos, o JSONL legado intacto, a busca por termo (acentos, caracteres de regex), data, modelo, desfecho e canal, as facetas, o resumo sem buracos no eixo, a API, a planilha, o <code>juniper atividade</code> e a tela.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="observabilidade.html">Observabilidade</a> (Documentação Técnica): O log técnico (JSONL, um arquivo por dia), <code>juniper logs</code>, a captura das requisições HTTP, a rotação diária e a medição de tempo por etapa.</li><li><a href="dashboard.html">Dashboard</a> (Documentação Técnica): O painel web da Juniper: memórias, afetos, estudos, sonhos, conversas e pesquisa, somente leitura, servido pelo próprio cérebro.</li><li><a href="vazamentos.html">Auditoria de vazamentos</a> (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria, o que cada registro guarda e como consultar com <code>juniper vazamentos</code>.</li><li><a href="cli.html">CLI</a> (Documentação Técnica): Os comandos do <code>juniper</code>, o modo remoto e os erros em português.</li><li><a href="configuracao.html">Configuração</a> (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.</li><li><a href="adr-035.html">ADR-035</a> (Decisões): Por que o registro fica no MongoDB, por que o texto é chave mais parâmetros e por que o <code>.po</code> é lido direto.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

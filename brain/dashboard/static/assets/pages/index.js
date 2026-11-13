@@ -12,6 +12,7 @@ export const pages = [
   { id: "afetos", title: "Afetos", module: "/assets/pages/affects.js" },
   { id: "evolucao", title: "Evolução", module: "/assets/pages/evolution.js" },
   { id: "tarefas", title: "Tarefas", module: "/assets/pages/jobs.js" },
+  { id: "auditoria", title: "Auditoria", module: "/assets/pages/audit.js" },
   { id: "logs", title: "Logs", module: "/assets/pages/logs.js" },
   { id: "saude", title: "Saúde e custos", module: "/assets/pages/health.js" },
   { id: "usuarios", title: "Usuários", module: "/assets/pages/users.js" },

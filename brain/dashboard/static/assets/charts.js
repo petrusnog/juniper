@@ -67,3 +67,36 @@ export function radarChart(traits, { label = "traços" } = {}) {
   shape("value", "now");
   return root;
 }
+
+// buckets: [{label, count, failed, from, to}]. Bars are clickable: `onPick(bucket)` filters the
+// panel to that hour/day. Failures are drawn over the bar in red.
+export function barChart(buckets, { label = "atividade", onPick = null } = {}) {
+  const host = document.getElementById("view");
+  const width = Math.min(720, Math.max(300, (host ? host.clientWidth : 640) - 34)), height = 150, pad = { l: 30, r: 6, t: 8, b: 20 };
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart", role: "img", "aria-label": label });
+  const innerW = width - pad.l - pad.r, innerH = height - pad.t - pad.b;
+  const top = Math.max(1, ...buckets.map((b) => b.count));
+  root.append(svg("line", { x1: pad.l, x2: width - pad.r, y1: pad.t + innerH, y2: pad.t + innerH, class: "axis" }));
+  root.append(text(pad.l - 4, pad.t + 8, String(top), "tick", "end"), text(pad.l - 4, pad.t + innerH, "0", "tick", "end"));
+  const slot = innerW / Math.max(1, buckets.length), barW = Math.max(2, slot * 0.7);
+  buckets.forEach((bucket, index) => {
+    const x = pad.l + index * slot + (slot - barW) / 2;
+    const bar = innerH * (bucket.count / top);
+    const group = svg("g", { class: onPick ? "bar-hit" : "", tabindex: onPick ? "0" : "-1", role: onPick ? "button" : "img", "aria-label": `${bucket.label}: ${bucket.count} registros, ${bucket.failed} falhas` });
+    group.append(svg("rect", { x, y: pad.t + innerH - bar, width: barW, height: bar, class: "col" }));
+    if (bucket.failed) {
+      const red = innerH * (bucket.failed / top);
+      group.append(svg("rect", { x, y: pad.t + innerH - red, width: barW, height: red, class: "col bad" }));
+    }
+    group.append(svg("rect", { x: pad.l + index * slot, y: pad.t, width: slot, height: innerH, class: "hit" }));
+    if (onPick) {
+      group.addEventListener("click", () => onPick(bucket));
+      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPick(bucket); } });
+    }
+    root.append(group);
+  });
+  if (buckets.length) {
+    root.append(text(pad.l, height - 4, buckets[0].label, "tick", "start"), text(width - pad.r, height - 4, buckets.at(-1).label, "tick", "end"));
+  }
+  return root;
+}

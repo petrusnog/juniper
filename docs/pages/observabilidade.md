@@ -10,6 +10,8 @@ tags: log eventlog timing jsonl show_timing eventos latência jq logs http wire 
 
 ## Visão geral {#visao-geral}
 
+> **Para ler o que ela fez em frases, com busca por data, termo, modelo e tipo de ação:** o [Registro de atividade e a tela Auditoria](atividade.md) ([ADR-035](../decisions/ADR-035.md)). Ele nasce deste log, sem alterá-lo: cada evento daqui também vira um registro pesquisável no MongoDB.
+
 Tudo que a Juniper faz fica registrado: cada chamada ao LLM, cada tool, cada troca de provider e cada erro. É **uma linha JSON por evento, um arquivo por dia**, com segredos mascarados. Além disso, ela mede onde o tempo de cada resposta vai, para você saber o que está lento (o embedding local, o LLM, o banco) em vez de adivinhar.
 
 ## Log estruturado {#log kind=módulo file=brain/eventlog.py}
@@ -217,6 +219,7 @@ Cobrem o mascaramento (chaves, valores, chave configurada, contadores de token),
 
 ## Para saber mais {#para-saber-mais}
 
+- [Registro de atividade e Auditoria](atividade.md) (Documentação Técnica): O que a Juniper fez, em frases pesquisáveis e traduzíveis, com data em UTC-3, a tela Auditoria, `juniper atividade` e a planilha.
 - [Auditoria de vazamentos](vazamentos.md) (Documentação Técnica): Como a Juniper registra as respostas em que escapou maquinaria (tags, instruções, trechos do prompt), o que cada registro guarda, como consultar com `juniper vazamentos` e por que esses turnos ficam fora da memória.
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [LLM](llm.md) (Documentação Técnica): O contrato LLMProvider, os tipos, os erros, os três providers, o streaming e o LLMRouter com failover.

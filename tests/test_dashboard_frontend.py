@@ -42,7 +42,8 @@ def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     ids = [p[0] for p in pages]
     assert ids == [
         "visao", "memorias", "central", "estudos", "sonhos", "conversas", "lembretes",
-        "ocorrencias", "pesquisa", "afetos", "evolucao", "tarefas", "logs", "saude", "usuarios",
+        "ocorrencias", "pesquisa", "afetos", "evolucao", "tarefas", "auditoria", "logs", "saude",
+        "usuarios",
     ]  # fmt: skip
     assert len({p[0] for p in pages}) == len(pages)  # unique ids
     for _, module in pages:
@@ -231,3 +232,14 @@ def test_the_evolution_page_shows_the_voice_the_mood_the_aspects_and_the_belief_
     assert "Sobre mim" in page and "Sobre o mundo" in page  # the three layers
     assert "lineChart" in page and "Por que mudei" in page or "por que mudei" in page
     assert "innerHTML" not in page
+
+
+def test_the_audit_page_shows_server_times_never_the_browsers() -> None:
+    """Every audit time is written by the server in UTC-3 (``clock``): the browser's own time
+    zone must not decide what hour a record shows."""
+    source = (ASSETS / "pages" / "audit.js").read_text()
+    assert "item.clock" in source and "o.clock" in source
+    assert "toLocale" not in source and "Intl." not in source
+    assert "when(" not in source  # the shared formatter uses the browser's zone
+    app = (ASSETS / "app.js").read_text()
+    assert 'split("?")[0]' in app  # a page may keep its filters in the hash query
