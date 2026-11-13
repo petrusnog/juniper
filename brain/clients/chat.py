@@ -963,13 +963,13 @@ class ChatHandler:
         if not title:
             return False
         live = self._live.get(session_id)
-        if live is not None:
-            live.agent.rename(title)  # the copy in memory first: its next save keeps the title
-        try:
+        try:  # the store first: if it fails, nothing changed in memory either
             stored = await asyncio.to_thread(self._store.set_title, session_id, title, "user")
         except SessionStoreError:
             stored = False
-        if not stored and live is None:
+        if live is not None:
+            live.agent.rename(title)  # its next save then keeps the title
+        elif not stored:
             return False
         event_log.log("session_titled", source="user", chars=len(title))
         if live is not None and live.owner is not None and live.owner is not asker:

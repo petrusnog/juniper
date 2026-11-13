@@ -222,3 +222,63 @@ def test_conversas_and_renomear_commands(tmp_path: Path, monkeypatch: pytest.Mon
     assert runner.invoke(app, ["renomear", "9", "x"]).exit_code == 1
     assert runner.invoke(app, ["renomear", "1", "   "]).exit_code == 1
     assert settings.deployment.mode == "local" and cli and RemoteClient
+
+
+# --- the remote terminal -------------------------------------------------------------------------
+
+
+async def test_the_remote_terminal_runs_the_three_commands_through_the_protocol() -> None:
+    from brain.clients import protocol as p
+    from brain.clients import remote_cli
+
+    sent: list[dict[str, Any]] = []
+
+    class Stub:
+        session_id = "20261113-100000-aaaaaa"
+
+        async def request(self, frame: dict[str, Any]) -> Any:
+            sent.append(frame)
+            if frame["type"] == "session.list":
+                return p.SessionListed(
+                    reply_to="r",
+                    sessions=[
+                        p.SessionSummary(
+                            id="20261113-100000-aaaaaa",
+                            updated_at=NOW.isoformat(),
+                            turns=2,
+                            preview="oi",
+                            title="Receita de bolo",
+                        ),
+                        p.SessionSummary(
+                            id="20261113-090000-bbbbbb",
+                            updated_at=NOW.isoformat(),
+                            turns=4,
+                            preview="carro",
+                            title="Óleo do carro",
+                        ),
+                    ],
+                )
+            if frame["type"] == "session.rename":
+                return p.SessionRenamed(
+                    reply_to="r", session_id=self.session_id, title=frame["title"]
+                )
+            return p.SessionState(
+                reply_to="r",
+                session_id=frame["session_id"],
+                turns=4,
+                history=[
+                    p.HistoryItem(role="user", text="meu carro precisa de óleo?"),
+                    p.HistoryItem(role="assistant", text="Sim, a cada 10 mil km."),
+                ],
+                title="Óleo do carro",
+            )
+
+    printer = Quiet()
+    client: Any = Stub()
+    turns = await remote_cli._conversation_command(client, printer, ("list", ""), 2)  # type: ignore[arg-type]
+    assert turns == 2 and "Receita de bolo" in printer.said[-1] and "← esta" in printer.said[-1]
+    await remote_cli._conversation_command(client, printer, ("rename", "Meu bolo"), 2)  # type: ignore[arg-type]
+    assert sent[-1] == {"type": "session.rename", "title": "Meu bolo"}
+    turns = await remote_cli._conversation_command(client, printer, ("resume", "2"), 2)  # type: ignore[arg-type]
+    assert turns == 4 and sent[-1]["session_id"] == "20261113-090000-bbbbbb"
+    assert any("Sim, a cada 10 mil km." in line for line in printer.said)

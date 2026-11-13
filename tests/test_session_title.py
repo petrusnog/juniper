@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from pathlib import Path
@@ -368,3 +369,118 @@ def test_the_rename_message_bounds_what_the_server_parses() -> None:
         p.parse_message(
             json.dumps({"type": "session.rename", "id": "x", "title": "a" * 401}), source="client"
         )
+
+
+# --- architecture review -----------------------------------------------------------------------
+
+
+def test_a_title_written_while_a_turn_is_saved_never_puts_the_older_text_back(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    store = FileSessionStore(tmp_path / "s")
+    session = saved_session(store, "A", "auto")
+    stop = threading.Event()
+
+    def renamer() -> None:
+        index = 0
+        while not stop.is_set():
+            index += 1
+            store.set_title(session.id, f"Nome {index}", "auto")
+
+    thread = threading.Thread(target=renamer)
+    thread.start()
+    try:
+        for turn in range(40):
+            session.add_user(f"pergunta {turn}")
+            session.add(Message("assistant", f"resposta {turn}"))
+            store.save(session)
+    finally:
+        stop.set()
+        thread.join()
+    saved = store.load(session.id)
+    assert saved is not None and len(saved.history) == len(session.history)  # no turn was lost
+
+
+def test_a_mongo_conversation_from_before_titles_gets_its_draft_on_the_next_save() -> None:
+    store = mongo_store()
+    session = saved_session(store)
+    store.connection.collection("sessions").update_one(
+        {"_id": session.id}, {"$unset": {"title": "", "title_source": ""}}
+    )
+    session.add_user("outra pergunta")
+    session.title, session.title_source = "Rascunho", "draft"
+    store.save(session)
+    assert [(i.title, i.title_source) for i in store.list_sessions()] == [("Rascunho", "draft")]
+
+
+async def test_a_resumed_old_conversation_is_named_from_the_start_of_what_it_kept(
+    store: Any,
+) -> None:
+    old = Session("persona")
+    for index in range(14):  # longer than the ten exchanges the agent keeps for leak reports
+        old.add_user(f"pergunta {index} sobre jardinagem" if index else "como podar rosas")
+        old.add(Message("assistant", f"resposta {index}"))
+        old.turns_total += 1
+    store.save(old)
+    agent = agent_with(Namer([say("ok")], ["Podar rosas"]), store, session=old)
+    await agent.run("e as orquídeas?")
+    first_kept = next(m for m in agent.session.history if m.role == "user")
+    assert agent.session.title == T.draft_title(first_kept.content or "")  # not the last turn's
+    await agent.settle()
+    assert agent.session.title == "Podar rosas"
+
+
+async def test_settle_cancels_a_naming_that_takes_too_long() -> None:
+    class Slow(Namer):
+        async def chat(self, messages: list[Message], **kwargs: Any) -> LLMResponse:
+            await asyncio.sleep(30)
+            return LLMResponse(Message("assistant", "tarde"), "m", "fake")
+
+    agent = agent_with(Slow([say("ok")], []))
+    await agent.run("preciso de ajuda com o orçamento")
+    started = time.monotonic()
+    await agent.settle(0.1)
+    assert time.monotonic() - started < 2 and agent.session.title_source == "draft"
+
+
+async def test_two_conversations_at_once_each_get_their_own_title() -> None:
+    first = agent_with(Namer([say("a")], ["Título da primeira"]))
+    second = agent_with(Namer([say("b")], ["Título da segunda"]))
+    await asyncio.gather(
+        first.run("assunto da primeira conversa"), second.run("assunto da segunda")
+    )
+    await asyncio.gather(first.settle(), second.settle())
+    assert first.session.title == "Título da primeira"
+    assert second.session.title == "Título da segunda"
+
+
+async def test_a_failing_store_changes_nothing_in_memory_and_an_unsaved_one_still_renames(
+    tmp_path: Path,
+) -> None:
+    from brain.memory.errors import MemoryUnavailableError
+
+    class Down(FileSessionStore):
+        def set_title(self, session_id: str, title: str, source: str) -> bool:
+            raise MemoryUnavailableError("banco fora")
+
+    async with Scenario(Namer([say("a")], ["X"]), tmp_path) as scenario:
+        scenario.handler._store = Down(tmp_path / "down")
+        client = await connect_client(scenario.server)
+        sid = client.welcome.session.id
+        live = scenario.handler._live[sid]
+        await client.send(type="session.rename", id="x-1", title="Novo nome")
+        error = (await client.until(p.Error))[-1]
+        assert isinstance(error, p.Error)
+        assert live.agent.session.title_source == ""  # the store failed first: nothing changed
+
+    async with Scenario(Namer([say("a")], ["X"]), tmp_path / "ok") as scenario:
+        client = await connect_client(scenario.server)
+        await client.send(type="session.rename", id="x-2", title="Antes da primeira mensagem")
+        renamed = (await client.until(p.SessionRenamed))[-1]
+        assert isinstance(renamed, p.SessionRenamed)  # nothing saved yet, still renamed
+        await client.chat("e agora?")
+        saved = scenario.store.load(client.welcome.session.id)
+        assert saved is not None and saved.title == "Antes da primeira mensagem"
+        assert saved.title_source == "user"

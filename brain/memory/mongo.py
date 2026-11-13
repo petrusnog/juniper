@@ -161,16 +161,32 @@ class MongoSessionStore:
         with self.connection.guard():
             sessions = self._sessions()
             # The person's own title survives a save from a stale copy (T-225).
-            keep_users_title(
-                session, sessions.find_one({"_id": session_id}, {"title": 1, "title_source": 1})
-            )
-            document["title"], document["title_source"] = session.title, session.title_source
+            stored = sessions.find_one({"_id": session_id}, {"title": 1, "title_source": 1})
+            keep_users_title(session, stored)
+            title, source = document.pop("title", ""), document.pop("title_source", "")
             document.update(
                 turns=info.turns,
                 preview=info.preview,
                 saved_at=datetime.now(UTC).isoformat(timespec="microseconds"),
             )
-            sessions.replace_one({"_id": session_id}, document, upsert=True)
+            # Everything but the title is rewritten; the title is set on the first save and from
+            # then on only by `set_title`, so a rename that lands between the read above and this
+            # write cannot be undone by it.
+            sessions.update_one(
+                {"_id": session_id},
+                {"$set": document, "$setOnInsert": {"title": title, "title_source": source}},
+                upsert=True,
+            )
+            if title and stored is not None and not read_title(stored)[1]:
+                # a conversation saved before titles existed gets its first (draft) title now;
+                # the filter keeps this from ever touching a title that is already set
+                sessions.update_one(
+                    {
+                        "_id": session_id,
+                        "$or": [{"title_source": {"$exists": False}}, {"title_source": ""}],
+                    },
+                    {"$set": {"title": title, "title_source": source}},
+                )
 
     def set_title(self, session_id: str, title: str, source: str) -> bool:
         check_session_id(session_id)

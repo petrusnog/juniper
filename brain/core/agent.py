@@ -251,28 +251,25 @@ class Agent:
         session = self.session
         if session.title_source == "user":
             return
-        if (
-            not session.title
-            and not self._title_tried
-            and self._recent
-            and session.turns_total >= 1
-        ):
+        if not session.title and not self._title_tried and session.turns_total >= 1:
             self._title_tried = True
-            draft = draft_title(self._recent[0].user if self._recent else "")
+            first = self._exchanges(1)
+            draft = draft_title(first[0][0] if first else "")
             if draft:
                 session.title, session.title_source = draft, "draft"
             self._spawn_title(self._exchanges(1))
         elif (
             session.turns_total == 3
             and session.title_source in ("draft", "auto")
-            and self._recent
-            and is_thin(self._recent[0].user)
+            and (first := self._exchanges(1))
+            and is_thin(first[0][0])
         ):
             self._spawn_title(self._exchanges(3))
 
     def _exchanges(self, count: int) -> list[tuple[str, str]]:
-        """The first ``count`` exchanges of the conversation as (user, reply)."""
-        return [(e.user, e.assistant) for e in list(self._recent)[:count]]
+        """The first ``count`` exchanges of the conversation as (user, reply), from the history
+        (not from the last ten the agent remembers: a resumed conversation can be longer)."""
+        return [(e.user, e.assistant) for e in exchanges_from_history(self.session.history)[:count]]
 
     def _spawn_title(self, exchanges: list[tuple[str, str]]) -> None:
         try:
@@ -309,7 +306,10 @@ class Agent:
         """Wait for the naming still in flight (the conversation is being closed, or a test)."""
         pending = [t for t in self._background if not t.done()]
         if pending:
-            await asyncio.wait(pending, timeout=timeout)
+            _, late = await asyncio.wait(pending, timeout=timeout)
+            for task in late:  # too slow: the draft stays, and nothing runs on after the close
+                task.cancel()
+            await asyncio.gather(*late, return_exceptions=True)
 
     @property
     def store(self) -> SessionStore | None:

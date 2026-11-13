@@ -114,3 +114,17 @@ async def test_the_audit_detail_shows_the_conversation_title(env: TitleEnv) -> N
     assert (await api.handle(f"/activity/{plain}", {}))[1]["session_title"] == (
         "como configuro o wifi?"  # an older conversation: its first message
     )
+
+
+async def test_a_disk_problem_on_rename_is_a_typed_answer_not_a_dropped_request(
+    env: TitleEnv,
+) -> None:
+    sid = env.conversation("A", "auto")
+
+    async def broken(session_id: str, title: str) -> bool:
+        raise PermissionError("sem permissão")
+
+    env.server._actions._sources.rename = broken  # type: ignore[union-attr]
+    cookie, csrf = await env.session(env.owner.bearer)
+    status, body = await env.post(f"/api/sessions/{sid}/rename?title=Novo", cookie, csrf)
+    assert status == 503 and "PermissionError" in body["error"]

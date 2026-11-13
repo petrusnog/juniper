@@ -76,6 +76,8 @@ class Actions:
             return 400, {"error": str(exc)}, None
         except MemoryUnavailableError as exc:
             return 503, {"error": str(exc)}, None
+        except OSError as exc:  # a conversation file that cannot be written (regra 8)
+            return 503, {"error": f"não consegui gravar: {type(exc).__name__}"}, None
 
     async def _dispatch(self, parts: list[str], query: Query, who: Principal) -> Result:
         if parts[0] == "issues":

@@ -493,6 +493,7 @@ async def _chat(message: str | None, provider: str | None, resume: bool = False)
         console.print()
     try:
         code = await converse(agent, printer, reader, message, background)
+        await agent.settle(3.0)  # a one-shot message: let the title the model is making land
         await remember_conversation(agent, memory, printer, background)
         return code
     finally:

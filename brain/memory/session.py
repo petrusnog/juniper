@@ -16,6 +16,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -175,11 +176,18 @@ class FileSessionStore:
 
     def __init__(self, directory: Path | None = None) -> None:
         self.directory = directory if directory is not None else settings.memory.session.dir
+        # `save` and `set_title` rewrite the whole file: without this, a title written while a turn
+        # is being saved could put the older text back (the naming runs in a thread).
+        self._lock = threading.Lock()
 
     def _path(self, session_id: str) -> Path:
         return self.directory / f"{check_session_id(session_id)}.json"
 
     def save(self, session: Session) -> None:
+        with self._lock:
+            self._save(session)
+
+    def _save(self, session: Session) -> None:
         if not session.history:
             return
         path = self._path(session.id)
@@ -213,6 +221,10 @@ class FileSessionStore:
         return data if isinstance(data, dict) else None
 
     def set_title(self, session_id: str, title: str, source: str) -> bool:
+        with self._lock:
+            return self._set_title(session_id, title, source)
+
+    def _set_title(self, session_id: str, title: str, source: str) -> bool:
         path = self._path(session_id)
         clean = clean_title(title)
         if source not in SOURCES or not clean:
