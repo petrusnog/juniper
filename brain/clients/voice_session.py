@@ -30,6 +30,7 @@ from typing import Final, Literal
 from brain.clients import protocol as p
 from brain.eventlog import event_log
 from brain.voice.commands import is_end_command, is_leak_command, is_stop_command
+from brain.voice.correction import Corrected, correct, should_ask
 from brain.voice.services import VoiceServices
 from brain.voice.speech import Notice
 from brain.voice.text import SentenceChunker
@@ -46,6 +47,7 @@ GREETINGS: Final = (
     "Oi, Petrus! Pode pedir.",
 )
 CANT_HEAR_MESSAGE = "Não consegui te ouvir agora. Pode repetir?"
+NOT_SURE_MESSAGE = "Não tenho certeza se entendi direito. Pode repetir?"
 MAX_UTTERANCES_QUEUED: Final = 4
 ECHO_TAIL_SECONDS: Final = 1.0  # speaker: keep ignoring the microphone this long after she ends
 END_PLAYBACK_PAD_SECONDS: Final = 0.4  # after her last word, before the session closes
@@ -140,6 +142,7 @@ class VoiceSession:
         self._submitting = asyncio.Lock()  # one utterance at a time between marks and the turn
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
+        self._warmup: asyncio.Task[str] | None = None
         self._open = False
         self._closed = False
         self._broken = False  # the connection stopped taking messages: nothing more to send
@@ -156,6 +159,8 @@ class VoiceSession:
         self._open = True
         self._worker = asyncio.get_running_loop().create_task(self._listen_loop())
         self._watchdog = asyncio.get_running_loop().create_task(self._watch())
+        # load the vocabulary hint now, so the first phrase does not wait for the sources
+        self._warmup = asyncio.get_running_loop().create_task(self._services.glossary.prompt())
         stt_cloud = self._services.stt.cloud
         tts_cloud = self._services.speech.mode == "cloud"
         await self._send(
@@ -200,7 +205,7 @@ class VoiceSession:
         self._closed = True
         self._open = False
         current = asyncio.current_task()
-        for task in (self._watchdog, self._worker):
+        for task in (self._watchdog, self._worker, self._warmup):
             if task is not None and task is not current:
                 task.cancel()
         self._drop_speech()
@@ -506,7 +511,7 @@ class VoiceSession:
 
     async def _transcribe(self, pcm: bytes, speech_end: float) -> None:
         await self._state("thinking")
-        heard = await self._services.stt.listen(pcm, VAD_RATE)
+        heard = await self._services.stt.listen(pcm, VAD_RATE, await self._glossary_prompt())
         marks = _Marks(speech_end, self._clock())
         for notice in heard.notices:
             await self._fallback("stt", notice)
@@ -516,8 +521,49 @@ class VoiceSession:
             elif self._speech is None and not self._turn_active():
                 await self._state("listening")
             return
-        await self._guarded_send(p.VoiceTranscript(text=heard.text))
-        await self._heard(heard.text, marks)
+        fixed = await self._fix(heard.text, heard.confidence)
+        if not fixed.changed and should_ask(
+            fixed.text, heard.confidence, self._services.repeat_below
+        ):
+            # so unsure, and no term to explain it: asking beats guessing (ADR-034)
+            event_log.log("voice", action="asked_repeat", confidence=round(heard.confidence, 2))
+            await self._say_standalone(NOT_SURE_MESSAGE)
+            if self._speech is None and not self._turn_active():
+                await self._state("listening")
+            return
+        await self._guarded_send(
+            p.VoiceTranscript(text=fixed.text, original=fixed.original if fixed.changed else None)
+        )
+        await self._heard(fixed.text, marks)
+
+    async def _fix(self, text: str, confidence: float | None) -> Corrected:
+        """The text with sound-alikes of glossary terms put right; never an error."""
+        if not self._services.correct_terms:
+            return Corrected(text, text)
+        try:
+            fixed = correct(text, await self._services.glossary.terms(), confidence)
+        except Exception as exc:  # noqa: BLE001 - a bug here must not cost the user the phrase
+            event_log.log("error", where="voice.correct", type=type(exc).__name__)
+            return Corrected(text, text)
+        if fixed.changed:
+            fields: dict[str, object] = {
+                "fixes": len(fixed.fixes),
+                "similarity": [f.similarity for f in fixed.fixes],
+            }
+            if self._services.debug_transcripts:
+                fields.update(original=fixed.original, corrected=fixed.text)
+            event_log.log("voice", action="correction", **fields)
+        return fixed
+
+    async def _glossary_prompt(self) -> str:
+        """The vocabulary hint for this utterance; never an error (no hint is just no hint)."""
+        if not self._services.contextual:
+            return ""  # the hint is only sent when voice.stt.contextual is on
+        try:
+            return await self._services.glossary.prompt()
+        except Exception as exc:  # noqa: BLE001 - the phrase must be transcribed anyway
+            event_log.log("error", where="voice.glossary", type=type(exc).__name__)
+            return ""
 
     async def _heard(self, text: str, marks: _Marks | None = None) -> None:
         """One utterance of text, from either STT: a command, or a turn of chat."""

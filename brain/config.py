@@ -241,6 +241,26 @@ class VoiceSTTSettings(BaseModel):
     # Quanto tempo a nuvem fica de molho depois de um limite de uso (429) sem retry-after.
     cooldown_seconds: int = Field(default=3600, ge=60, le=86_400)
     timeout: float = Field(default=20.0, ge=1.0, le=120.0)
+    # Nomes próprios e termos que a transcrição deve acertar («Media Works», nomes de pessoas):
+    # vão ao Whisper como dica de vocabulário (ADR-034). Os primeiros têm prioridade se faltar
+    # espaço.
+    glossary: list[str] = Field(default_factory=list, max_length=200)
+    # Liga o que pede mais da Groq (ADR-034): a dica de vocabulário (`prompt`) e a resposta
+    # `verbose_json`, que traz a confiança da transcrição. Desligado, a requisição é a de sempre
+    # (`json`, sem dica) e a confiança fica desconhecida: o corretor só troca sons quase idênticos
+    # e ela nunca pede para repetir por confiança baixa. Ligue depois de ver a Groq aceitar.
+    contextual: bool = False
+    # Quanto cabe da dica: o Whisper lê cerca de 224 tokens, e uma dica longa o faz repeti-la.
+    glossary_chars: int = Field(default=500, ge=50, le=1000)
+    # Troca o trecho que soa como um termo do glossário por ele («mídia works» → «Media Works»).
+    # Só põe termos do glossário; nunca reescreve a fala (ADR-034).
+    correct_terms: bool = True
+    # Abaixo desta confiança (0 a 1) e sem termo que explique, ela pede para repetir em vez de
+    # adivinhar. 0 desliga o pedido.
+    repeat_below_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Grava no log o par «ouvido → corrigido». Desligado, o log só conta as correções (a fala é
+    # dado pessoal).
+    debug_transcripts: bool = False
 
 
 class VoiceVADSettings(BaseModel):
@@ -259,6 +279,10 @@ class VoiceSettings(BaseModel):
     enabled: bool = False
     # Quanto de uma resposta é lido em voz alta; o resto fica só na tela.
     max_spoken_chars: int = Field(default=800, ge=100, le=5000)
+    # Quanto o modelo é orientado a escrever numa resposta falada (ADR-034). Sem valor, 75% do
+    # `max_spoken_chars`: sobra folga para a frase que passar um pouco, e o corte de segurança do
+    # `max_spoken_chars` fica como fallback, não como comportamento normal.
+    reply_budget_chars: int | None = Field(default=None, ge=100, le=5000)
     # Silêncio (sem ninguém falar) que encerra a conversa de voz.
     idle_timeout_seconds: int = Field(default=60, ge=10, le=3600)
     # O mesmo, para a conversa aberta pela palavra de ativação: sem pedido depois da saudação, ela
@@ -276,6 +300,22 @@ class VoiceSettings(BaseModel):
     @classmethod
     def _expand_usage(cls, v: Path) -> Path:
         return v.expanduser()
+
+    @model_validator(mode="after")
+    def _budget_fits_the_limit(self) -> VoiceSettings:
+        if self.reply_budget_chars is not None and self.reply_budget_chars > self.max_spoken_chars:
+            raise ValueError(
+                "voice.reply_budget_chars não pode passar de voice.max_spoken_chars "
+                f"({self.reply_budget_chars} > {self.max_spoken_chars})"
+            )
+        return self
+
+    @property
+    def reply_budget(self) -> int:
+        """The characters a spoken reply is asked to stay within."""
+        if self.reply_budget_chars is not None:
+            return self.reply_budget_chars
+        return max(100, self.max_spoken_chars * 3 // 4)
 
 
 class MusicSettings(BaseModel):

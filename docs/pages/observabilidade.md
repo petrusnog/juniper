@@ -46,7 +46,7 @@ Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma exe
 | `web_fetch` | Uma página baixada no servidor | `domain`, `bytes`, `truncated`, `ms` |
 | `knowledge_hit` | O bloco `<conhecimento>` trouxe notas dela para a conversa | `topics` |
 | `knowledge_learn` | Ela aprendeu na hora (`learn_topic` ou o estudo do sonho) | `provider`, `sources`, `added`, `corroborated`, `ms` |
-| `voice` | A sessão de voz: cada STT, cada falha dele e, por turno, `latency` (`stt_ms`, `think_ms`, `speak_ms`, `total_ms`, `silence_ms`) e `truncated` (`spoken_chars`, `max_chars`); nunca o texto falado ([Avaliar a voz](voz-avaliacao.md#eventos)) | `action`, mais os campos da ação |
+| `voice` | A sessão de voz: cada STT, cada falha dele e, por turno, `stt` (`chars`, `prompt_chars`, `confidence`), `correction` (`fixes`, `similarity`), `asked_repeat` (`confidence`), `latency` (`stt_ms`, `think_ms`, `speak_ms`, `total_ms`, `silence_ms`) e `truncated` (`spoken_chars`, `max_chars`); nunca o texto falado ([Avaliar a voz](voz-avaliacao.md#eventos)) | `action`, mais os campos da ação |
 | `mood_forced` | `juniper mood set` | `mood`, `degree`, `hours` |
 
 Valores de `decision` em `tool_call`:

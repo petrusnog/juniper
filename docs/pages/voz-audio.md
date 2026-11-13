@@ -33,6 +33,12 @@ app ◄──áudio (PCM 24 kHz)── cérebro: frases → TTS (Google, voz Led
 - **A voz não autentica:** a sessão herda a autenticação da conexão ([Login com MFA](login.md)).
 - **Dados que saem da máquina:** o áudio do usuário vai à Groq e o texto das respostas ao Google. A política de retenção de cada um precisa ser conferida antes do uso diário.
 
+## Resposta curta para ser ouvida {#orcamento-fala}
+
+O limite de `voice.max_spoken_chars` é um corte **depois** da geração. Para ele deixar de ser o comportamento normal, o turno de voz leva na nota de canal um orçamento (`voice.reply_budget_chars`, 75% do limite se não for definido) e a instrução de responder em poucas frases completas, sem lista, código nem link, oferecendo detalhar quando o assunto for maior ([ADR-034](../decisions/ADR-034.md)). Turnos de texto não mudam e continuam com a resposta completa.
+
+Isso é uma orientação ao modelo, não uma garantia: se a resposta passar do limite, o `SentenceChunker` corta no fim de uma frase, diz «O resto está na tela.» e o evento `truncated` registra o caso ([Avaliar a voz](voz-avaliacao.md#eventos)). A meta é ele ficar raro, não impossível.
+
 ## Falar: texto preparado e o sintetizador {#falar}
 
 O que o cérebro faz com a resposta antes de ela virar voz (módulo `brain/voice`):
@@ -51,8 +57,21 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Detector de fala** (`Vad`): recebe PCM 16 bits, 16 kHz, mono, em pedaços de qualquer tamanho (quadros de 20 ms; sobra de um pedaço entra no seguinte). A fala começa quando a energia fica acima de 3 vezes o piso de ruído por `voice.vad.speech_start_ms`; termina após `silence_ms` de silêncio ou ao chegar em `max_utterance_seconds` (o que continuar sendo dito vira a fala seguinte). Entram na fala os 300 ms anteriores (para não cortar a primeira sílaba). Falas abaixo de `min_utterance_ms` de voz (um estalo, uma tosse) são descartadas. O piso de ruído acompanha o ambiente: desce rápido e sobe devagar, então uma sala barulhenta deixa de contar como fala, mas a voz continua se destacando.
 - **Interromper** (`set_playing(True)` enquanto ela fala): o limiar sobe (6 vezes o piso, no mínimo 900) e são exigidos `barge_in_ms` de fala contínua. Um sopro ou a própria voz dela vazando no microfone não a corta. O evento é `barge_in`, no lugar de `speech_start`; a fala segue sendo gravada.
 - **Transcrição** (`GroqTranscriber`): cada fala vai como WAV mono para `/audio/transcriptions` (`whisper-large-v3-turbo`, `pt`, temperatura 0) com a chave `JUNIPER_GROQ_API_KEY` (cabeçalho `authorization`, que o log mascara). Erros tipados, sem a resposta crua do provedor: 429 vira `quota` (com o `retry-after`, se for razoável), 401/403 `not_configured`, 400/413/422 `invalid_audio`, o resto `api_error`/`network_error`. Fala acima de 24 MB nem é enviada.
-- **Alucinações** (`is_hallucination`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
+- **Vocabulário e confiança** ([ADR-034](../decisions/ADR-034.md)): a cada fala o `Glossary` (`brain/voice/glossary.py`) monta a dica `Vocabulário: Media Works, Petrus.` com os termos de `voice.stt.glossary` e os nomes dos usuários cadastrados (consultados no máximo a cada 5 minutos, fora do laço de eventos; uma fonte que falha só perde os próprios termos) e, com `voice.stt.contextual: true`, a envia como `prompt` do Whisper (desligado, que é o padrão, a requisição à Groq é a de sempre e a dica não sai). Ligado, a resposta vem em `verbose_json`: a confiança (0 a 1, `exp(avg_logprob)` ponderado pelo tamanho dos segmentos) chega ao `Heard.confidence`. Campo ausente ou estranho é confiança desconhecida, nunca erro.
+- **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
+
+## Correção com o glossário {#correcao kind=módulo file=brain/voice/correction.py}
+
+Depois da transcrição e **antes** de o texto virar pedido, o cérebro troca por um termo do glossário o trecho que soa como ele: «abra o projeto mídia works» vira «abra o projeto Media Works» ([ADR-034](../decisions/ADR-034.md)). É um corretor determinístico e local, sem LLM, e foi desenhado para não conseguir inventar:
+
+- **Só entra texto do glossário.** Nenhuma outra palavra é acrescentada ou removida; números nunca são tocados, e um termo que contém dígito só entra se o som for idêntico.
+- **Som parecido, não sentido parecido.** A comparação usa uma chave de som em pt-BR (sem acento, caixa nem espaço; «ph»/«f», «k»/«c», «h» mudo). Aceita palavras coladas («mediaworks») ou separadas («me dia works»).
+- **Parecido o bastante basta; mais ou menos exige dúvida.** Semelhança de 0,88 ou mais corrige sempre (o Whisper costuma estar confiante no erro); entre 0,80 e 0,88 só se a confiança da transcrição for menor que 0,8 (confiança desconhecida conta como alta). Termos de até 4 letras só casam com o mesmo som.
+- **Empate não é escolha.** Se dois termos servem quase igualmente, nada é trocado.
+- **Sem termo e sem certeza, ela pergunta.** Confiança abaixo de `voice.stt.repeat_below_confidence` e nenhuma correção: «Não tenho certeza se entendi direito. Pode repetir?», sem abrir turno. Uma palavra só (um «sim», um «não») passa direto.
+
+O `voice.transcript` leva o `text` corrigido e, quando houve troca, o `original`. O log conta as correções e a semelhança de cada uma; o par de frases só vai para ele com `voice.stt.debug_transcripts`. Para desligar tudo: `voice.stt.correct_terms: false`. O risco que sobra é uma palavra comum parecida com um termo («contato», «Contabo») em fala de baixa confiança; por isso o glossário deve ter os termos que importam, e não tudo.
 
 ## Viva-voz, fone e música tocando {#viva-voz}
 

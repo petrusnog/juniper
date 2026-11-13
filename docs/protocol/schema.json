@@ -1703,6 +1703,18 @@
           "title": "Final",
           "type": "boolean"
         },
+        "original": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original"
+        },
         "text": {
           "title": "Text",
           "type": "string"

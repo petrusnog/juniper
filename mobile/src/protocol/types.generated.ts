@@ -240,6 +240,7 @@ export type State = 'listening' | 'thinking' | 'speaking' | 'idle';
 export type TurnId5 = string | null;
 export type Type39 = 'voice.state';
 export type Final = boolean;
+export type Original = string | null;
 export type Text6 = string;
 export type Type40 = 'voice.transcript';
 export type Last1 = boolean | null;
@@ -584,6 +585,7 @@ export interface VoiceState {
  */
 export interface VoiceTranscript {
   final?: Final;
+  original?: Original;
   text: Text6;
   type?: Type40;
 }
