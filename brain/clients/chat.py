@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from brain.auth.context import current_client, current_user
+from brain.auth.context import current_client, current_role, current_user
 from brain.clients import protocol as p
 from brain.clients.executors import ExecutorHub, ExecutorToolRegistry, current_origin
 from brain.clients.memory_service import MemoryService
@@ -264,6 +264,7 @@ class ChatHandler:
     async def handle(self, conn: Connection, message: p.ClientMessage) -> None:
         # Who is speaking, for the tasks this message spawns (a tool stamps its records with it).
         current_user.set(conn.principal.user_id if conn.principal else None)
+        current_role.set(conn.principal.role if conn.principal else None)
         current_client.set(conn.kind)
         if isinstance(message, p.ChatSend):
             await self._chat_send(conn, message)
@@ -360,6 +361,8 @@ class ChatHandler:
         dispatcher = Dispatcher(
             conversational=True, tool_registry=self._registry, gateway=self.executors
         )
+        if session is not None:
+            dispatcher.restore_web_guard(session.history)  # a resumed chat may have read the web
         agent = Agent(
             self._provider,
             dispatcher,
@@ -940,6 +943,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         open_session_store,
     )
     from brain.memory.v2 import open_v2_runtime
+    from brain.tools import glossary as glossary_tools
     from brain.tools import issues as issue_tools
     from brain.tools import knowledge as knowledge_tools
     from brain.tools import memory as memory_tools
@@ -947,6 +951,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
     from brain.tools import reminders as reminder_tools
     from brain.tools import web as web_tools
     from brain.tools.registry import registry
+    from brain.voice.glossary_store import GlossaryStore
     from brain.voice.services import open_voice_services
 
     registry.discover()
@@ -992,7 +997,13 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         )
     voice_services = open_voice_services() if settings.voice.enabled else None
     if voice_services is not None:
-        voice_services.glossary.add_source(_registered_names)  # people she should spell right
+        # What she learned herself, most recently used first, then the people she should spell
+        # right; the budget of the hint cuts from the tail (T-218).
+        learned = GlossaryStore(max_terms=settings.voice.stt.learned_max)
+        voice_services.learned = learned
+        voice_services.glossary.add_source(learned.terms)
+        glossary_tools.bind(learned, voice_services.glossary)
+        voice_services.glossary.add_source(_registered_names)
     leak_audit = open_leak_audit(store)
     activity = open_activity(store)
     handler = ChatHandler(
@@ -1039,6 +1050,7 @@ async def open_chat_handler() -> AsyncIterator[ChatHandler]:
         issue_tools.bind(None)
         reminder_tools.bind(None)
         knowledge_tools.bind(None)
+        glossary_tools.bind(None)
         await music_tools.close()
         await web_tools.close()
         if voice_services is not None:

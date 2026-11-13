@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from brain.config import settings
 from brain.voice.budget import VoiceBudget
 from brain.voice.glossary import Glossary
+from brain.voice.glossary_store import GlossaryStore
 from brain.voice.speech import SpeechService
 from brain.voice.stt import GroqTranscriber, SpeechToText, Transcriber
 from brain.voice.tts import GoogleSynthesizer, Synthesizer
@@ -30,6 +31,7 @@ class VoiceServices:
     contextual: bool = False  # send the vocabulary hint and ask for the confidence (off: as before)
     repeat_below: float = 0.3  # ask to repeat under this confidence; 0 never asks
     debug_transcripts: bool = False  # log the heard → corrected pair (personal data)
+    learned: GlossaryStore | None = None  # the terms she learned herself (T-218), for `touch`
     _closers: tuple[Synthesizer | Transcriber, ...] = ()
 
     async def aclose(self) -> None:

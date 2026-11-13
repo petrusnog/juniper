@@ -123,6 +123,6 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Aceito) · `configuracao`, `dashboard`, `memoria-v2`, `memoria-v3`
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `desktop`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
 - [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `lembretes`
-- [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`, `desktop`
+- [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`, `desktop`, `seguranca`
 - [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `configuracao`, `voz-audio`, `voz-avaliacao`
 - [ADR-035](decisions/ADR-035.md): Observabilidade V2: registro de atividade pesquisável e textos internacionalizáveis (Aceito) · `atividade`, `observabilidade`

@@ -37,6 +37,12 @@ def test_the_menu_icons_are_drawn_with_the_dom_and_follow_the_text_color() -> No
     assert "icon(page.id)" in (ASSETS / "app.js").read_text()
 
 
+def test_the_studies_screen_asks_for_nine_themes_per_page() -> None:
+    source = (ASSETS / "pages" / "studies.js").read_text()
+    assert "TOPICS_PER_PAGE = 9" in source
+    assert 'api("/interests", { limit: 200' not in source  # no longer loads everything at once
+
+
 def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
     ids = [p[0] for p in pages]

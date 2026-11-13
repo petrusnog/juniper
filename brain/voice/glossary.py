@@ -46,6 +46,10 @@ class Glossary:
         self._dynamic: list[str] = []
         self._lock = asyncio.Lock()
 
+    def invalidate(self) -> None:
+        """Ask the sources again on the next use (a term was added or removed)."""
+        self._loaded_at = None
+
     def add_source(self, source: Source) -> None:
         """Another place to ask for names (called off the event loop; may raise)."""
         self._sources.append(source)

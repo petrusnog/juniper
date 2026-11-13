@@ -61,6 +61,20 @@ Em `brain/voice/vad.py` e `stt.py`:
 - **Alucinações** (`is_hallucination`, `is_prompt_echo`): texto vazio, frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org", "Obrigado por assistir"...) e a mesma palavra repetida são descartados antes de virar turno. Um "obrigado" sozinho também cai; dentro de uma frase real ("obrigado, Juniper, toca uma música") ele passa.
 - **Cota e volta** (`SpeechToText`): ao bater no limite da Groq, o cérebro manda `voice.fallback` (`stt` → `local`), fica quieto pelo `retry-after` (ou `voice.stt.cooldown_seconds`) e o app passa a transcrever sozinho (`voice.text`). A fala que estourou o limite se perde (o app não guarda o áudio): a sessão pede para repetir. Como o app para de enviar áudio, é o cérebro que avisa quando vale tentar de novo (`recovered()`); se falhar outra vez, volta ao aparelho com novo aviso. Só tamanhos vão ao log, nunca as palavras.
 
+## O vocabulário que ela aprende {#vocabulario-aprendido kind=módulo file=brain/tools/glossary.py}
+
+Além dos termos fixos de `voice.stt.glossary`, a Juniper cuida de uma lista própria ([ADR-034](../decisions/ADR-034.md)). Quando você pede («anota que o projeto se chama Media Works») ou corrige uma transcrição («não, é Media Works»), o modelo chama `glossary_add`, sem pedir o seu «sim», e ela avisa em uma frase. O termo vale **a partir da próxima fala**, sem reiniciar: a lista é recarregada na hora, e tanto a dica da Groq (com `voice.stt.contextual` ligado) quanto o corretor passam a usá-lo.
+
+- **Quem entra primeiro na dica:** os termos fixos, depois os aprendidos (os usados há menos tempo por último, e cada correção feita com um termo o traz para a frente) e por fim os nomes dos usuários. O teto da dica (`voice.stt.glossary_chars`) corta pela ponta.
+- **Segurança:** não funciona depois que a conversa leu a web ou um arquivo (mesmo ao retomá-la), só o dono altera, e só aceita nomes simples de até 3 palavras, sem palavra de comando. Veja [Vocabulário de voz](seguranca.md#vocabulario).
+- **Ver e apagar:** `glossary_list` e `glossary_remove` por conversa, ou pela CLI. A CLI também é o caminho quando a conversa está travada pela web; no servidor que já está rodando, vale em até 5 minutos.
+
+```bash
+juniper voice glossary list
+juniper voice glossary add "Media Works"
+juniper voice glossary remove "Media Works"
+```
+
 ## Correção com o glossário {#correcao kind=módulo file=brain/voice/correction.py}
 
 Depois da transcrição e **antes** de o texto virar pedido, o cérebro troca por um termo do glossário o trecho que soa como ele: «abra o projeto mídia works» vira «abra o projeto Media Works» ([ADR-034](../decisions/ADR-034.md)). É um corretor determinístico e local, sem LLM, e foi desenhado para não conseguir inventar:

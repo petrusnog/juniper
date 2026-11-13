@@ -188,6 +188,10 @@ Cobrem: classe não instanciável, `to_schema()` igual ao formato do ADR-002 (e 
 - [Música](musica.md) (Documentação Técnica): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
 - [Comandos git](git.md) (Documentação Técnica): search e deploy no terminal e pelo agente (git_search e git_deploy).
 
+### Vocabulário de voz
+
+Com a voz ligada, `glossary_add` e `glossary_remove` guardam nomes próprios no vocabulário da transcrição **sem pedir confirmação** (como `remember`), e `glossary_list` os mostra. São recusadas depois que a conversa leu a web ou um arquivo. Detalhes em [Vocabulário de voz](seguranca.md#vocabulario) e em [Voz por áudio](voz-audio.md#vocabulario-aprendido).
+
 ### Lembretes pessoais
 
 Com MongoDB e `reminders.enabled`, `create_reminder` e `update_reminder` guardam pedidos explícitos sem confirmação adicional; `list_reminders` lê os ids e os status; `delete_reminder` pede confirmação e preserva o evento. `create_event(reminder=true)` combina evento e lembrete na confirmação da agenda. Veja [Lembretes](lembretes.md) para os prazos, destinatários do Telegram e recibos de voz.

@@ -8,6 +8,8 @@ const UNCERTAINTY = {
   alta: ["incerta", "warn"],
 };
 const PAGE = 25;
+const TOPICS_PER_PAGE = 9;
+const topics = { offset: 0 };
 const all = { interest: "", uncertainty: "", source: "", kind: "", q: "", offset: 0 };
 
 function chip(label, active, onclick) {
@@ -113,22 +115,42 @@ async function everyNote() {
     h("h1", { text: "Todas as notas" }), card("", search, filters, list, pager));
 }
 
+function topicCard(t) {
+  return h("a", { class: "card topic", href: `#/estudos/${t.id}` },
+    h("h2", { text: t.topic }),
+    h("p", {}, badge(`passo ${t.level}`), " ", badge(t.stance_words, t.stance === "dislike" ? "warn" : "")),
+    h("div", { class: "row" }, h("span", { class: "label", text: "Intensidade" }), bar(t.intensity), h("span", { class: "muted small", text: t.intensity.toFixed(2) })),
+    h("p", { class: "muted small", text: `${t.notes} nota(s) · ${t.questions} pergunta(s) em aberto · ${t.last_studied_at ? `estudado ${when(t.last_studied_at)}` : "ainda não estudado"}` }),
+  );
+}
+
 export async function render(rest) {
   if (rest[0] === "notas") return everyNote();
   if (rest[0]) return topic(rest[0]);
-  const data = await api("/interests", { limit: 200 });
-  const list = h("div", { class: "grid" });
-  if (!data.items.length) list.append(empty("Ela ainda não estuda nenhum tema. Os temas nascem das conversas, ou de `juniper study add`."));
-  for (const t of data.items) {
-    list.append(
-      h("a", { class: "card topic", href: `#/estudos/${t.id}` },
-        h("h2", { text: t.topic }),
-        h("p", {}, badge(`passo ${t.level}`), " ", badge(t.stance_words, t.stance === "dislike" ? "warn" : "")),
-        h("div", { class: "row" }, h("span", { class: "label", text: "Intensidade" }), bar(t.intensity), h("span", { class: "muted small", text: t.intensity.toFixed(2) })),
-        h("p", { class: "muted small", text: `${t.notes} nota(s) · ${t.questions} pergunta(s) em aberto · ${t.last_studied_at ? `estudado ${when(t.last_studied_at)}` : "ainda não estudado"}` }),
-      ),
-    );
+  const holder = h("div", {});
+
+  async function draw() {
+    let data = await api("/interests", { limit: TOPICS_PER_PAGE, offset: topics.offset });
+    if (!data.items.length && topics.offset > 0) {
+      // The page vanished (a theme was forgotten): go back to the last one that exists.
+      topics.offset = Math.max(0, (Math.ceil(data.total / TOPICS_PER_PAGE) - 1) * TOPICS_PER_PAGE);
+      data = await api("/interests", { limit: TOPICS_PER_PAGE, offset: topics.offset });
+    }
+    const list = h("div", { class: "grid" });
+    if (!data.items.length) list.append(empty("Ela ainda não estuda nenhum tema. Os temas nascem das conversas, ou de `juniper study add`."));
+    for (const t of data.items) list.append(topicCard(t));
+    const go = async (offset) => { topics.offset = Math.max(0, offset); await draw(); };
+    const first = data.total ? topics.offset + 1 : 0;
+    const pager = data.total > TOPICS_PER_PAGE
+      ? h("div", { class: "pager" },
+          h("button", { type: "button", class: "ghost", disabled: topics.offset === 0, onclick: () => go(topics.offset - TOPICS_PER_PAGE), text: "‹ Anteriores" }),
+          h("span", { class: "muted small", text: `${first}–${Math.min(topics.offset + TOPICS_PER_PAGE, data.total)} de ${data.total}` }),
+          h("button", { type: "button", class: "ghost", disabled: topics.offset + TOPICS_PER_PAGE >= data.total, onclick: () => go(topics.offset + TOPICS_PER_PAGE), text: "Seguintes ›" }))
+      : null;
+    clear(holder).append(list, pager);
   }
+
+  await draw();
   return h("div", {}, h("h1", { text: "Estudos" }),
-    h("p", {}, h("a", { href: "#/estudos/notas", text: "Ver todas as notas, de todos os temas ›" })), list);
+    h("p", {}, h("a", { href: "#/estudos/notas", text: "Ver todas as notas, de todos os temas ›" })), holder);
 }

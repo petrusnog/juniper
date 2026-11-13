@@ -48,7 +48,7 @@ Cada linha tem `ts` (com fuso), `run` (id curto que agrupa os eventos de uma exe
 | `web_fetch` | Uma página baixada no servidor | `domain`, `bytes`, `truncated`, `ms` |
 | `knowledge_hit` | O bloco `<conhecimento>` trouxe notas dela para a conversa | `topics` |
 | `knowledge_learn` | Ela aprendeu na hora (`learn_topic` ou o estudo do sonho) | `provider`, `sources`, `added`, `corroborated`, `ms` |
-| `voice` | A sessão de voz: cada STT, cada falha dele e, por turno, `stt` (`chars`, `prompt_chars`, `confidence`), `correction` (`fixes`, `similarity`), `asked_repeat` (`confidence`), `latency` (`stt_ms`, `think_ms`, `speak_ms`, `total_ms`, `silence_ms`) e `truncated` (`spoken_chars`, `max_chars`); nunca o texto falado ([Avaliar a voz](voz-avaliacao.md#eventos)) | `action`, mais os campos da ação |
+| `voice` | A sessão de voz: cada STT, cada falha dele e, por turno, `stt` (`chars`, `prompt_chars`, `confidence`), `correction` (`fixes`, `similarity`), `glossary_add` (`status`, `term`), `glossary_remove` (`term`), `asked_repeat` (`confidence`), `latency` (`stt_ms`, `think_ms`, `speak_ms`, `total_ms`, `silence_ms`) e `truncated` (`spoken_chars`, `max_chars`); nunca o texto falado ([Avaliar a voz](voz-avaliacao.md#eventos)) | `action`, mais os campos da ação |
 | `mood_forced` | `juniper mood set` | `mood`, `degree`, `hours` |
 
 Valores de `decision` em `tool_call`:
@@ -61,6 +61,7 @@ Valores de `decision` em `tool_call`:
 | `forbidden`, `unknown`, `invalid` | Tool proibida, nome inventado pelo LLM ou argumentos errados. |
 | `precheck_failed` | A tool recusou antes de te perguntar (ex.: conflito na agenda). |
 | `crashed` | A tool levantou exceção (também gera um `error`). |
+| `tainted_blocked`, `web_blocked` | Uma tool de escrita foi recusada porque a conversa já leu um arquivo (`tainted_blocked`) ou a web (`web_blocked`), como as do vocabulário de voz. |
 
 ### Segredos no log {#segredos}
 

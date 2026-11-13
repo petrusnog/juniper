@@ -143,6 +143,7 @@ class VoiceSession:
         self._worker: asyncio.Task[None] | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._warmup: asyncio.Task[str] | None = None
+        self._touches: set[asyncio.Task[None]] = set()
         self._open = False
         self._closed = False
         self._broken = False  # the connection stopped taking messages: nothing more to send
@@ -546,6 +547,7 @@ class VoiceSession:
             event_log.log("error", where="voice.correct", type=type(exc).__name__)
             return Corrected(text, text)
         if fixed.changed:
+            self._touch_learned([f.term for f in fixed.fixes])
             fields: dict[str, object] = {
                 "fixes": len(fixed.fixes),
                 "similarity": [f.similarity for f in fixed.fixes],
@@ -554,6 +556,24 @@ class VoiceSession:
                 fields.update(original=fixed.original, corrected=fixed.text)
             event_log.log("voice", action="correction", **fields)
         return fixed
+
+    def _touch_learned(self, terms: list[str]) -> None:
+        """Best effort, off the critical path: terms in use stay near the head of the hint."""
+        learned = self._services.learned
+        if learned is None:
+            return
+
+        async def touch() -> None:
+            for term in terms:
+                try:
+                    await asyncio.to_thread(learned.touch, term)
+                except Exception as exc:  # noqa: BLE001 - recency is a courtesy
+                    event_log.log("error", where="voice.glossary_touch", type=type(exc).__name__)
+                    return
+
+        task = asyncio.get_running_loop().create_task(touch())
+        self._touches.add(task)
+        task.add_done_callback(self._touches.discard)
 
     async def _glossary_prompt(self) -> str:
         """The vocabulary hint for this utterance; never an error (no hint is just no hint)."""
