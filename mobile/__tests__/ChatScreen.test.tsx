@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { KeyboardAvoidingView, Text } from 'react-native';
+import { Keyboard, Text } from 'react-native';
 import { ChatController } from '../src/chat/ChatController';
 import type { BrainConnection } from '../src/connection/BrainConnection';
 import { ChatScreen } from '../src/ui/ChatScreen';
@@ -42,15 +42,59 @@ function mount(connection: 'connected' | 'offline' = 'connected') {
     );
   });
   const root = tree.root;
+  // The window position of the screen: it ends at y = 700 (the keyboard is measured from it).
+  // (The react-native jest mock of View ignores `createNodeMock`, so the instance is patched.)
+  const frame = root
+    .findAllByProps({ testID: 'chat-frame' })
+    .find(node => node.instance);
+  if (frame) {
+    frame.instance.measureInWindow = (cb: (...n: number[]) => void) =>
+      cb(0, 24, 360, 676);
+  }
   const texts = () =>
     root.findAllByType(Text).map(t => [t.props.children].flat().join(''));
   return { fake, chat, root, texts };
 }
 
-test('the screen lifts the message box above the keyboard on Android too', () => {
-  // With edge-to-edge (Android 15+) `adjustResize` does nothing: the screen has to make room.
+function frameBottomPadding(root: ReactTestRenderer.ReactTestInstance) {
+  const style = root.findByProps({ testID: 'chat-frame' }).props.style;
+  return (style as { paddingBottom?: number }[]).find(
+    s => s && s.paddingBottom !== undefined,
+  )?.paddingBottom;
+}
+
+function keyboardEvent(height: number, screenY = 800 - height) {
+  return { endCoordinates: { height, screenY, width: 360, screenX: 0 } };
+}
+
+test('the message box rises by exactly what the keyboard covers, whatever its size', () => {
+  const listeners: Record<string, (e: unknown) => void> = {};
+  jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+    name: string,
+    cb: (e: unknown) => void,
+  ) => {
+    listeners[name] = cb;
+    return { remove: jest.fn() };
+  }) as never);
   const { root } = mount();
-  expect(root.findByType(KeyboardAvoidingView).props.behavior).toBe('padding');
+  expect(frameBottomPadding(root)).toBe(0);
+  // The screen is 800 high and the screen of the app ends at 700: a 300 keyboard covers 200.
+  ReactTestRenderer.act(() => listeners.keyboardDidShow(keyboardEvent(300)));
+  expect(frameBottomPadding(root)).toBe(200);
+  // The user's own, taller keyboard: more room is made.
+  ReactTestRenderer.act(() =>
+    listeners.keyboardDidChangeFrame(keyboardEvent(420)),
+  );
+  expect(frameBottomPadding(root)).toBe(320);
+  // A keyboard that does not reach the box leaves it alone.
+  ReactTestRenderer.act(() =>
+    listeners.keyboardDidChangeFrame(keyboardEvent(60)),
+  );
+  expect(frameBottomPadding(root)).toBe(0);
+  ReactTestRenderer.act(() => listeners.keyboardDidShow(keyboardEvent(300)));
+  ReactTestRenderer.act(() => listeners.keyboardDidHide({}));
+  expect(frameBottomPadding(root)).toBe(0);
+  jest.restoreAllMocks();
 });
 
 test('typing and sending shows the message and clears the box', () => {

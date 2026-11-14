@@ -1,12 +1,6 @@
-import React, { useRef, useState } from 'react';
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
+import type { HostInstance } from 'react-native';
 import { Text, TextInput } from '../theme/Text';
 import { ChatController } from '../chat/ChatController';
 import { ChatMessage, isBusy } from '../chat/state';
@@ -15,6 +9,7 @@ import { isProblem, statusText } from '../connection/status';
 import { ConnectionState } from '../connection/BrainConnection';
 import { mono, Palette, radius, spacing } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
+import { useKeyboardInset } from './useKeyboardInset';
 
 interface Props {
   chat: ChatController;
@@ -79,6 +74,15 @@ export function ChatScreen({
     title: string;
   } | null>(null);
   const list = useRef<FlatList<ChatMessage>>(null);
+  // The keyboard's size is the user's own (Android lets them change it): measure what it covers.
+  const frame = useRef<HostInstance>(null);
+  const keyboard = useKeyboardInset(frame);
+  const keyboardInset = keyboard.inset;
+  useEffect(() => {
+    if (keyboardInset > 0) {
+      list.current?.scrollToEnd({ animated: true }); // keep the last message in sight
+    }
+  }, [keyboardInset]);
   const busy = isBusy(state);
   const connected = connection === 'connected';
 
@@ -89,7 +93,12 @@ export function ChatScreen({
   };
 
   return (
-    <KeyboardAvoidingView style={styles.fill} behavior="padding">
+    <View
+      ref={frame}
+      testID="chat-frame"
+      onLayout={keyboard.onLayout}
+      style={[styles.fill, { paddingBottom: keyboard.inset }]}
+    >
       <View style={[styles.header, { borderColor: theme.border }]}>
         <View style={styles.fill}>
           <Text
@@ -322,7 +331,7 @@ export function ChatScreen({
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
