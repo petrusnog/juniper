@@ -105,3 +105,4 @@ pytest tests/test_metadocs.py -v
 - [Agente](agente.md) (Documentação Técnica): O loop que decide, chama tools e reavalia: Agent, Dispatcher, Session e a confirmação na conversa.
 - [Tools](tools.md) (Documentação Técnica): Como uma tool é definida, registrada e executada: Tool, ToolResult, Tier, Locality e o registry.
 - [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
+- [Base de conhecimento](base-conhecimento.md) (Ambiente Local): A documentação em notas no Postgres com busca vetorial, para os agentes do orquestrador.

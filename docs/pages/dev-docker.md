@@ -111,3 +111,4 @@ rm -rf .juniper-dev                                  # zera o token e os logs
 - [Configuração](configuracao.md) (Referência): Onde ficam config.yaml e .env, a precedência e a referência de todas as opções.
 - [Visão geral da produção](producao.md) (Produção): Como a Juniper roda em produção num servidor qualquer: topologia, requisitos, modelo de segurança, configuração, dados e o roteiro das páginas seguintes.
 - [Deploy contínuo](deploy-continuo.md) (Produção): Cada merge em master vira deploy: imagem no registro de contêineres, entrada temporária do CI na rede privada, SSH, backup, troca de versão, healthcheck e rollback automático.
+- [Base de conhecimento](base-conhecimento.md) (Ambiente Local): O Postgres com pgvector e o servidor MCP que servem a documentação aos agentes do orquestrador.
