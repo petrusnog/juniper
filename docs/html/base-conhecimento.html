@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Base de conhecimento — Livro de bolso Juniper</title>
+<meta name="description" content="Notas no Postgres, busca vetorial e MCP para os agentes.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/favicon-neon.png">
+<!-- GERADO por scripts/build_docs.py a partir de docs/pages/base-conhecimento.md. Não edite este arquivo. -->
+</head>
+<body>
+<main id="content">
+<div class="crumb"><a href="index.html">Início</a> / Ambiente Local / Base de conhecimento</div>
+<h1>Base de conhecimento <span class="tag g">pronta</span></h1>
+<p class="lead">Notas no Postgres, busca vetorial e MCP para os agentes.</p>
+<div class="callout info"><p><strong>Nota:</strong> esta página detalha o <a href="adr-037.html">ADR-037</a>. Código em <code>tools/knowledge/</code>. Serve ao orquestrador de agentes (<a href="adr-038.html">ADR-038</a>); a Juniper em produção continua com a <a href="metadocs.html">busca local</a>.</p></div>
+<h2 id="visao-geral">Visão geral</h2>
+<p>Um agente que precisa de <strong>uma informação pontual</strong> da documentação não deve ler uma página de milhares de tokens. A base de conhecimento guarda cada seção (<code>##</code>/<code>###</code>) de <code>docs/pages</code> e <code>docs/decisions</code> como uma <strong>nota</strong> num Postgres e a devolve por busca que entende <strong>significado e palavras exatas</strong>, dentro de um orçamento de tokens.</p>
+<pre><code class="lang-text">docs/*.md ──► index (parse → embeddings locais → upsert por hash) ──► Postgres + pgvector
+                                                                         ▲
+agente (Claude, Codex...) ──MCP stdio──► search_notes / get_note / neighbors</code></pre>
+<p>Os MDs continuam a fonte da verdade; o banco é um <strong>índice derivado</strong>. Mudou um MD? Rode <code>index</code> de novo: só o que mudou é reprocessado.</p>
+<h2 id="subir">Subir e indexar</h2>
+<pre><code class="lang-bash">cd tools/knowledge
+cp .env.example .env              # defina KNOWLEDGE_PG_PASSWORD
+docker compose up -d              # Postgres 17 + pgvector em 127.0.0.1:5433
+ollama pull bge-m3                # embeddings locais
+.venv/bin/python -m knowledge index        # incremental; --force reindexa tudo
+.venv/bin/python -m knowledge search &quot;como a confirmação é interpretada&quot;</code></pre>
+<p>A primeira indexação embute todas as notas (minutos, na CPU). Depois, <code>index</code> com nada novo leva segundos. O <code>README.md</code> da pasta tem a instalação do ambiente Python.</p>
+<h2 id="modelo">O modelo de dados</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tabela</th><th>O que guarda</th></tr></thead><tbody><tr><td><code>documents</code></td><td>Um por arquivo: <code>source</code>, <code>kind</code> (<code>page</code> ou <code>adr</code>), título, grupo, descrição, status, tags e o hash do conteúdo.</td></tr><tr><td><code>notes</code></td><td>Uma por seção: <code>anchor</code>, título da seção, texto em Markdown, <code>tokens_est</code>, <code>tsvector</code> em português, <code>embedding vector(1024)</code> e o <code>kind</code>/<code>file</code> de títulos técnicos.</td></tr><tr><td><code>links</code></td><td>O grafo: os links entre notas e a marca <code>related</code> para os de "Para saber mais".</td></tr></tbody></table></div>
+<p>Índices: HNSW (cosseno) nos vetores, GIN no <code>tsvector</code> e nas tags. O schema é idempotente (<code>CREATE ... IF NOT EXISTS</code>).</p>
+<h2 id="parser">O parser</h2>
+<p>Divide cada arquivo em notas pelos títulos <code>##</code> e <code>###</code>, com o texto de abertura como a primeira. Mantém o Markdown (código e tabelas), descarta blocos <code>html-raw</code>, lê o cabeçalho (<code>title</code>, <code>group</code>, <code>description</code>, <code>tags</code>...) e o <code>kind=</code>/<code>file=</code> dos títulos técnicos, resolve os links relativos para <code>.md</code> e deduplica âncoras repetidas (<code>x</code>, <code>x-2</code>). Seguir um link simbólico para fora de <code>docs/</code> é proibido.</p>
+<h2 id="indexador">O indexador</h2>
+<ul><li>Documento com o mesmo hash: <strong>pulado</strong>.</li><li>Documento alterado: só as notas cujo texto mudou são embutidas de novo; notas que sumiram são apagadas.</li><li>Arquivo que sumiu de <code>docs/</code>: o documento sai do banco.</li><li>Link para um documento que não está indexado vira <strong>aviso</strong> no fim da execução.</li></ul>
+<p>O texto embutido é <code>título da página › título da seção</code>, a descrição e o corpo (o contexto afina o vetor). Os embeddings vêm do Ollama (<code>bge-m3</code>, configurável por <code>KNOWLEDGE_EMBED_MODEL</code> e <code>KNOWLEDGE_OLLAMA_URL</code>) em <code>knowledge/embed.py</code>.</p>
+<h2 id="busca">A busca</h2>
+<ol><li>Os 30 vizinhos mais próximos por cosseno e as 30 melhores notas por full-text em português (consulta com OR entre as palavras).</li><li><strong>RRF</strong> (<code>1 / (60 + posição)</code>) funde as duas listas: uma nota que as duas acham sobe. Não é preciso calibrar pesos entre pontuações de natureza diferente.</li><li>No máximo 2 notas por documento; filtros opcionais por <code>kind</code> (<code>page</code> ou <code>adr</code>), <code>tag</code> e grupo.</li><li>Cada nota volta como <strong>trecho</strong>: os parágrafos que mais casam com a pergunta, dentro de <code>max_tokens</code> dividido entre as notas, sempre pelo filtro de segredos da Juniper.</li></ol>
+<h2 id="mcp">O servidor MCP</h2>
+<p>Somente leitura, por <strong>stdio</strong> (nenhuma porta). Serve Claude, Codex ou qualquer cliente MCP.</p>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Tool</th><th>Para quê</th></tr></thead><tbody><tr><td><code>search_notes(query, limit, max_tokens, kind, tag)</code></td><td>A busca acima; devolve trechos curtos com <code>ref</code> (<code>docs/pages/x.md#ancora</code>) e o custo da nota inteira.</td></tr><tr><td><code>get_note(ref, max_tokens)</code></td><td>A nota inteira, com o arquivo de código quando o título é técnico. Sem âncora, lista as seções do documento (o sumário, barato).</td></tr><tr><td><code>neighbors(source)</code></td><td>Para onde o documento aponta (as de "Para saber mais" primeiro) e quem o cita.</td></tr><tr><td><code>list_documents(kind, tag, group)</code></td><td>Arquivo, título e descrição de cada documento.</td></tr></tbody></table></div>
+<p>Registrar no Claude Code: <code>claude mcp add juniper-knowledge -- &lt;repo&gt;/tools/knowledge/.venv/bin/python -m knowledge serve</code>; no Codex, uma entrada <code>[mcp_servers.juniper-knowledge]</code> em <code>~/.codex/config.toml</code> com o mesmo comando. Rode com o diretório de trabalho em <code>tools/knowledge</code>.</p>
+<p>Falhas esperadas (banco fora, Ollama fora, nota inexistente) voltam como <strong>texto</strong> para o agente, nunca como exceção.</p>
+<h2 id="seguranca">Segurança</h2>
+<div class="tablewrap"><table class="tbl"><thead><tr><th>Risco</th><th>Defesa</th></tr></thead><tbody><tr><td>Segredo escrito por engano na documentação</td><td>Todo texto devolvido passa por <code>mask_secrets</code> (o mesmo filtro da Juniper).</td></tr><tr><td>Ler arquivos fora da documentação</td><td>O indexador só lê <code>docs/pages</code> e <code>docs/decisions</code> (links simbólicos para fora são ignorados) e o servidor MCP não tem parâmetro de caminho.</td></tr><tr><td>Escrita pelo agente</td><td>O servidor MCP só lê. Quem escreve no banco é o <code>index</code>, rodado por você.</td></tr><tr><td>Exposição de rede</td><td>O Postgres escuta só em <code>127.0.0.1</code>; a senha vem do <code>.env</code> (fora do Git).</td></tr></tbody></table></div>
+<h2 id="testes">Testes</h2>
+<p>Os testes ficam na pasta <code>tests/</code> da própria ferramenta (dentro de <code>tools/knowledge/</code>, fora do <code>pytest</code> da Juniper) e cobrem o parser (seções, âncoras duplicadas, títulos técnicos, <code>html-raw</code>, links), o RRF, a consulta full-text, o recorte de trechos com máscara de segredos e, num banco descartável (<code>knowledge_test</code>, com um embedder falso), a indexação idempotente e incremental, a busca híbrida, <code>get_note</code> e <code>neighbors</code>. Rode <code>cd tools/knowledge &amp;&amp; .venv/bin/python -m pytest tests -q</code>. O <code>python -m knowledge.bench</code> mede a economia de tokens.</p>
+<h2 id="para-saber-mais">Para saber mais</h2>
+<ul><li><a href="metadocs.html">Metadocumentação</a> (Documentação Técnica): A busca BM25 local com que a Juniper responde sobre si mesma; continua como está.</li><li><a href="contribuindo.html">Como contribuir</a> (Ambiente Local): O fluxo de trabalho, os testes exigidos e como manter a documentação.</li><li><a href="dev-docker.html">Ambiente Docker</a> (Ambiente Local): A mesma topologia da produção, com o código montado por volume.</li><li><a href="tools.html">Tools</a> (Documentação Técnica): O formato das tools, para comparar com as tools do servidor MCP.</li></ul>
+</main>
+<script src="assets/docs-data.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/search.js"></script>
+</body>
+</html>

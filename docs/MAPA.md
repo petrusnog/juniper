@@ -15,6 +15,7 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 - [Ambiente Docker](pages/dev-docker.md): Referência do ambiente de desenvolvimento em contêineres: serviços, portas, variáveis, o que recarrega sozinho, como acompanhar…
 - [Ambiente mobile](pages/mobile-dev.md): Como preparar o Android SDK, rodar o app num emulador ou celular com recarga ao vivo, testar, regenerar os tipos do protocolo e…
 - [Instalação sem Docker (modo local)](pages/install.md): O instalador da Juniper: o cérebro dentro do próprio terminal (modo local), sem contêineres, a partir de uma máquina limpa.
+- [Base de conhecimento](pages/base-conhecimento.md): Notas no Postgres, busca vetorial e MCP para os agentes.
 
 ## Produto
 
@@ -128,3 +129,5 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `configuracao`, `voz-audio`, `voz-avaliacao`
 - [ADR-035](decisions/ADR-035.md): Observabilidade V2: registro de atividade pesquisável e textos internacionalizáveis (Aceito) · `atividade`, `observabilidade`
 - [ADR-036](decisions/ADR-036.md): Título das conversas: a Juniper nomeia, o usuário renomeia, todos os clientes mostram (Aceito) · `titulos`
+- [ADR-037](decisions/ADR-037.md): Base de conhecimento: notas no Postgres com busca vetorial (Aceito) · `base-conhecimento`
+- [ADR-038](decisions/ADR-038.md): Kanbai: orquestrador de agentes em kanban (Proposto) · `base-conhecimento`

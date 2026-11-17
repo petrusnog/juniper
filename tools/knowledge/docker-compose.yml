@@ -1,0 +1,26 @@
+# Base de conhecimento (Postgres + pgvector) para os agentes do orquestrador.
+#   docker compose up -d      # sobe o banco (só em 127.0.0.1)
+#   docker compose down       # desliga (os dados ficam no volume; `down -v` APAGA)
+# A senha vem do .env desta pasta (veja .env.example). Nenhuma porta pública.
+name: juniper-knowledge
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: knowledge
+      POSTGRES_DB: knowledge
+      POSTGRES_PASSWORD: ${KNOWLEDGE_PG_PASSWORD:?defina KNOWLEDGE_PG_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:${KNOWLEDGE_PG_PORT:-5433}:5432"
+    volumes:
+      - knowledge-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  knowledge-pg-data:

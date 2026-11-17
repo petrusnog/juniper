@@ -2,7 +2,7 @@
 
 > **Propósito:** o estado atual do projeto, em uma página, para quem vai trabalhar nele (gente ou agente). Detalhes ficam nas notas ligadas: comece pelo [mapa da documentação](MAPA.md) e vá só ao que precisa.
 > **Idioma:** documentação em PT-BR. Código, comentários, docstrings e logs em inglês. Mensagens ao usuário final em PT-BR.
-> **Última atualização:** 2026-11-09 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
+> **Última atualização:** 2026-11-17 · **Branch:** `master` · **Repo:** https://github.com/petrusnog/juniper · **Autor:** Petrus Rennan (pnogueira)
 
 ---
 
@@ -21,7 +21,7 @@ Juniper é um agente autônomo pessoal inspirado no J.A.R.V.I.S. Objetivos:
 
 ---
 
-## 2. Estado Atual (2026-11-09)
+## 2. Estado Atual (2026-11-17)
 
 Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `master`, com a exceção do login com MFA (abaixo). As issues abertas no GitHub (#90 a #214) correspondem a trabalho já entregue cujo merge não as fechou; o estado verdadeiro é o desta tabela.
 
@@ -51,6 +51,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Título das conversas | Cada conversa ganha um título: rascunho com as primeiras palavras e, em segundo plano, o do modelo; o usuário renomeia e o dele nunca é trocado. Aparece e se renomeia no app, no desktop, no dashboard, no Telegram (`/conversas`, `/renomear`, `/retomar`) e no terminal (também `juniper conversas`/`renomear`). Protocolo: `session.rename`, `session.renamed`, `session.titled`, `title` em `SessionSummary` e `SessionState` (compatível, `protocol_version` 1). | #322 a #326 (T-225 a T-229) | 036 | [Título das conversas](pages/titulos.md) |
 | Lembretes pessoais | CRUD isolado por dono no MongoDB (`reminders`); agenda vinculada (`create_event(reminder=true)` e sincronia ao alterar/apagar); verificação a cada minuto e aviso no horário escolhido (`notify_at`), com recibos independentes de Telegram (para `telegram.allowed_user_ids`) e voz; abertura da voz anuncia os pendentes; retenção dos vencidos; aba Lembretes no dashboard. O CLI local sem login não oferece as tools. **Verificado com dublês e `mongomock`; Telegram, TTS e MongoDB reais não foram exercitados** | T-192, T-193 | 032 | [Lembretes](pages/lembretes.md) |
 | Documentação | Livro de bolso em seis trilhas, ADRs, mapa gerado, busca local e grafo no Obsidian | PR #228 e seguintes | — | [Mapa](MAPA.md) |
+| Base de conhecimento (orquestrador) | A documentação em notas (uma por seção) num Postgres com pgvector: busca híbrida (vetor `bge-m3` local + full-text em português, fundidos por RRF), indexação incremental por hash e servidor MCP somente leitura (`search_notes`, `get_note`, `neighbors`, `list_documents`) para Claude e Codex. **Exclusiva do orquestrador:** a Juniper em produção segue com o BM25 do ADR-025. Código em `tools/knowledge/` | sem issue | [037](decisions/ADR-037.md) | [Base de conhecimento](pages/base-conhecimento.md) |
 
 **Tools registradas (35):** `list_events`, `create_event`, `update_event`, `delete_event` (agenda); `remember`, `update_profile`, `recall`, `forget` (memória); `music_search`, `play_music`, `music_playlists`, `music_playlist_create`, `music_playlist_add`, `music_feedback` (música); `open_url` (executor); `git_search`, `git_deploy` (git); `docs_search` (documentação); `report_issue` (ocorrências); `web_search`, `web_fetch`, `learn_topic` (web e conhecimento, ADR-031); `create_reminder`, `list_reminders`, `update_reminder`, `delete_reminder` (lembretes pessoais, ADR-032); `fs_list`, `fs_search`, `fs_read`, `fs_write`, `fs_mkdir`, `fs_move`, `fs_copy`, `fs_replace`, `fs_trash` (arquivos do desktop, ADR-033).
 
@@ -64,6 +65,7 @@ Todas as épicas e tasks planejadas até aqui foram entregues e mergeadas em `ma
 | Memória V3: o que falta verificar | A busca e a leitura de páginas **reais** (Tavily, DuckDuckGo, SearXNG), o **contêiner do SearXNG**, o plano gratuito do Tavily, o comportamento do **modelo real** diante das ordens de tom e a medição do fundamento e da bajulação contra um modelo real. Tudo foi testado com modelos e provedores roteirizados ([Memória V3](pages/memoria-v3.md#limites)). Em aberto, do ADR-029: o que fazer se ela recusar uma reversão. |
 | Desktop: verificação em Windows real (ADR-033) | Abrir a janela, o microfone e o alto-falante; rodar o job `windows-latest`; o workflow «Desktop release» só executou até a trava do certificado (um push sem certificado agora só pula) e precisa do certificado de assinatura (`WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, variável `JUNIPER_PUBLISHER`). Sem o certificado o app instalado não se atualiza. |
 | STT V2 ([ADR-034](decisions/ADR-034.md)) | **Proposta; só a medição (T-203) está entregue:** wake word «Juniper» no aparelho (livekit-wakeword), identidade por voz (só vozes conhecidas), transcrição com glossário e confiança, fim de fala melhor, arbitragem entre aparelhos e fala dentro do orçamento. Épica #292, tasks #293 a #305 (T-203 a T-215). **Entregue até agora:** a medição (T-203: `scripts/voice_eval.py` para WER/CER/termos e os eventos `latency` e `truncated` no log; [Avaliar a voz](pages/voz-avaliacao.md)); a linha de base com voz real ainda não foi medida (T-216, #308). **T-204:** o turno de voz leva o orçamento de fala (`voice.reply_budget_chars`) na nota de canal. **T-205:** glossário (`voice.stt.glossary`, nomes dos usuários) como `prompt` do Whisper e confiança da transcrição, mas só com `voice.stt.contextual` ligado (padrão desligado, até a Groq aceitar a requisição); medição do ganho depende da T-216. **T-218:** a Juniper cuida do próprio vocabulário (`glossary_add`, `glossary_remove`, `glossary_list`; silenciosas, travadas depois de ler a web ou um arquivo) e `juniper voice glossary`. **T-206:** correção restrita ao glossário (`voice.stt.correct_terms`), `original` em `voice.transcript` e pedido de repetição com confiança muito baixa. |
+| Kanbai (orquestrador de agentes) | **Só a especificação**, no [ADR-038](decisions/ADR-038.md) (inclui o pedido do Petrus na íntegra). Nenhum código. Projeto à parte, em repositório próprio, que roda local em Docker; consome a base de conhecimento por MCP. Ponto de partida para quem for construir: `tools/knowledge/HANDOFF.md`. |
 | Iniciativa e scheduler de proatividade | Roadmap (§10). |
 | Auto-atualização do app (ADR-026) | Há código e testes (servidor, Jest), mas **não verificado**: o módulo Kotlin nunca foi compilado nem rodado num aparelho; o workflow «Mobile release» nunca rodou (primeiro disparo é manual; pode precisar de ajustes de licenças/NDK do Android SDK); a dispensa da confirmação do Android 12+ nas atualizações seguintes é comportamento do sistema, não confirmado. O app instalado hoje precisa de um APK novo instalado à mão uma vez. |
 
@@ -138,6 +140,7 @@ juniper/
 │   ├── auth/       credentials · service · store · limiter   (ADR-027)
 │   ├── dashboard/  api · routes · server · admin · actions · jobs · ops · static/   (ADR-020, 027, 028)
 │   └── metadocs/   index · detect · context                   (ADR-025)
+├── tools/knowledge/  base de conhecimento do orquestrador: Postgres+pgvector, indexador, busca híbrida, MCP (ADR-037)
 ├── mobile/         app React Native (Android); update/ = auto-atualização (ADR-026)
 ├── .github/workflows/   tests · docker · docs · deploy · mobile · mobile-release (ADR-026)
 ├── prompts/        persona.core.md · persona.core.compact.md
@@ -223,6 +226,8 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [034](decisions/ADR-034.md) | STT V2: wake word «Juniper» local (livekit-wakeword), identidade por voz no cérebro (só vozes conhecidas; não é autenticação), transcrição com glossário e correção restrita, VAD e fim de turno, arbitragem entre aparelhos, fala dentro do orçamento (proposto). |
 | [035](decisions/ADR-035.md) | Observabilidade V2: registro de atividade no MongoDB (uma frase por ação, `ts` UTC e `ts_local` UTC-3), texto como chave + parâmetros com catálogos `.po` lidos direto, busca por data, termo, modelo, ação e desfecho, gravação em thread (aceito). |
 | [036](decisions/ADR-036.md) | Título das conversas: campo da sessão (`draft`, `auto`, `user`), rascunho na hora e título do modelo em segundo plano, o do usuário é intocável, mensagens novas e compatíveis no protocolo, comandos de texto para o Telegram e o terminal (aceito). |
+| [037](decisions/ADR-037.md) | Base de conhecimento: a documentação em notas no Postgres com pgvector, busca híbrida (vetor + full-text, RRF), embeddings locais (`bge-m3`) e MCP somente leitura; os MDs seguem como fonte e o BM25 da Juniper não muda (aceito).
+| [038](decisions/ADR-038.md) | Kanbai: orquestrador de agentes de IA em quadro kanban (delegadora, executora, QA; KAIs como commits; PR sem merge), com o pedido original na íntegra (proposto, sem código).
 
 ---
 
@@ -249,6 +254,8 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 | Validar o desktop no Windows (ADR-033) | Abrir o app num Windows real, conectar ao cérebro, conferir a CI `windows-latest` e o roteiro de aceite (texto, voz, arquivos, atualização); obter o certificado de assinatura e disparar o «Desktop release» à mão. |
 | Tools de sistema (`run_shell`, `open_app`) | Política pronta (ADR-006); implementação pendente. |
 | STT V2 ([ADR-034](decisions/ADR-034.md)) | Proposta, com issues (épica #292; #293 a #305, T-203 a T-215; a T-203, a medição, está entregue): linha de base, fala dentro do orçamento, transcrição com contexto, VAD, wake word «Juniper» (livekit-wakeword; substitui o plano com openWakeWord), identidade por voz. Hoje: abrir a voz por toque (`juniper://voz`). |
+| Kanbai ([ADR-038](decisions/ADR-038.md)) | Especificado, nada implementado. Fases: backend e regras do quadro, servidor MCP do quadro, interface anime, agentes (delegadora, executora, QA) e a integração Git/GitHub. Começar por `tools/knowledge/HANDOFF.md`. |
+| Reindexação automática da base de conhecimento | Hoje o `index` é manual (barato quando nada mudou); falta um gatilho (hook de git ou CI). |
 | Iniciativa e scheduler (proatividade supervisionada) | Existe o agendador do sonho (`brain/scheduler.py`, tarefas diárias); proatividade em si não iniciada. |
 | Calibração da Memória V2 | Os valores numéricos seguem **[a calibrar]** com uso real (ADR-017). |
 
