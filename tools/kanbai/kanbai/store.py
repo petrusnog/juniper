@@ -6,6 +6,7 @@ The Postgres implementation will satisfy the same ``Store`` protocol, so the rul
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import replace
 from typing import Protocol
 
@@ -28,6 +29,9 @@ class Store(Protocol):
     def add_event(self, event: Event) -> None: ...
     def list_events(self) -> list[Event]: ...
     def next_id(self, kind: str) -> int: ...
+    def find_agent_by_token_hash(self, token_hash: str) -> Agent | None: ...
+    def save(self, obj: Agent | Task | Kai) -> None: ...  # persists in-place changes
+    def transaction(self) -> AbstractContextManager[None]: ...
 
 
 class MemoryStore:
@@ -90,3 +94,15 @@ class MemoryStore:
 
     def list_events(self) -> list[Event]:
         return list(self._events)
+
+    def find_agent_by_token_hash(self, token_hash: str) -> Agent | None:
+        for agent in self._agents.values():
+            if agent.token_hash and agent.token_hash == token_hash:
+                return agent
+        return None
+
+    def save(self, obj: Agent | Task | Kai) -> None:
+        """No-op: objects are kept by reference."""
+
+    def transaction(self) -> AbstractContextManager[None]:
+        return nullcontext()

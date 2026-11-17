@@ -7,8 +7,11 @@ wrong role, limit reached) is ``Result.fail(...)``, never an exception. Git and 
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from kanbai.domain import (
@@ -36,6 +39,10 @@ Committer = Callable[[Project, Task, Kai], str]  # returns the commit hash; rais
 PrOpener = Callable[[Project, Task], str]  # returns the PR url (opened, never merged)
 
 
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def commit_message(task: Task, kai: Kai) -> str:
     """git-flow message: ``feature(T256): what the KAI did``."""
     return f"feature({task.key}): {kai.title}"
@@ -59,11 +66,50 @@ class Board:
         self.max_executors = max_executors
         self.clock = clock
         self._lock = threading.RLock()  # agents call in parallel; every mutation is serialized
+        self._dirty: list[Agent | Task | Kai] = []
+
+    @contextmanager
+    def _tx(self) -> Iterator[None]:
+        """Serializes the operation, wraps it in a store transaction and persists whatever the
+        operation changed in place (``_touch``) just before the commit."""
+        with self._lock, self.store.transaction():
+            self._dirty = []
+            try:
+                yield
+                self._flush()
+            finally:
+                self._dirty = []
+
+    def _flush(self) -> None:
+        """Persists pending in-place changes (also called before reads that depend on them)."""
+        dirty, self._dirty = self._dirty, []
+        for obj in dirty:
+            self.store.save(obj)
+
+    def _touch(self, *objs: Agent | Task | Kai) -> None:
+        self._dirty.extend(objs)
+
+    def issue_token(self, agent_id: int) -> Result:
+        """New bearer token for an agent (replaces the old one). Shown once; only its hash is kept."""
+        with self._tx():
+            agent = self.store.get_agent(agent_id)
+            if not agent:
+                return Result.fail(f"Agente {agent_id} não existe.")
+            token = secrets.token_urlsafe(32)
+            agent.token_hash = hash_token(token)
+            self._touch(agent)
+            return Result.success(token)
+
+    def actor_for_token(self, token: str) -> Actor | None:
+        agent = self.store.find_agent_by_token_hash(hash_token(token)) if token else None
+        if not agent or agent.state == AgentState.ENDED:
+            return None
+        return Actor(agent.role, agent.id)
 
     # ---- setup -----------------------------------------------------------------------
 
     def create_project(self, project: Project) -> Result:
-        with self._lock:
+        with self._tx():
             if self.store.get_project(project.id):
                 return Result.fail(f"Projeto '{project.id}' já existe.")
             self.store.add_project(project)
@@ -72,7 +118,7 @@ class Board:
     def register_agent(self, name: str, role: Role, image_url: str = "") -> Result:
         if role == Role.HUMAN:
             return Result.fail("O humano não é uma agente.")
-        with self._lock:
+        with self._tx():
             model = self.models.qa.model if role == Role.QA else ""
             agent = Agent(self.store.next_id("agent"), name, role, image_url, model)
             return Result.success(self.store.add_agent(agent))
@@ -96,7 +142,7 @@ class Board:
         key = key.strip()
         if not key or not title.strip():
             return Result.fail("A tarefa precisa de chave (ex.: T256) e título.")
-        with self._lock:
+        with self._tx():
             project = self.store.get_project(project_id)
             if not project:
                 return Result.fail(f"Projeto '{project_id}' não existe.")
@@ -127,7 +173,7 @@ class Board:
             return Result.fail(f"Story points devem ser da escala {list(STORY_POINTS)}.")
         if not title.strip() or not description.strip():
             return Result.fail("O KAI precisa de título e descrição.")
-        with self._lock:
+        with self._tx():
             task = self.store.get_task(task_id)
             if not task:
                 return Result.fail(f"Tarefa {task_id} não existe.")
@@ -145,7 +191,7 @@ class Board:
 
     def start_kai(self, actor: Actor, kai_id: int) -> Result:
         """A fazer -> Fazendo (IA). The points pick the model; the limit counts new launches."""
-        with self._lock:
+        with self._tx():
             found = self._kai_for(actor, Role.EXECUTOR, kai_id)
             if isinstance(found, Result):
                 return found
@@ -159,15 +205,17 @@ class Board:
             choice = self.models.for_points(kai.points)
             kai.model = f"{choice.provider}:{choice.model}"
             kai.executor_id = agent.id
+            self._touch(kai)
             agent.model = kai.model
             agent.state = AgentState.WORKING
             agent.current_kai = kai.id
+            self._touch(agent)
             self._move(kai, Column.DOING, actor)
             return Result.success(kai)
 
     def submit(self, actor: Actor, kai_id: int, report: str) -> Result:
         """Fazendo (IA) or Correção -> Revisando (IA). The report goes as a comment."""
-        with self._lock:
+        with self._tx():
             found = self._kai_for(actor, Role.EXECUTOR, kai_id)
             if isinstance(found, Result):
                 return found
@@ -184,7 +232,7 @@ class Board:
 
     def review(self, actor: Actor, kai_id: int, approved: bool, verdict: str) -> Result:
         """Revisando (IA) -> Revisão Humana (approved) or Correção (failures found)."""
-        with self._lock:
+        with self._tx():
             found = self._kai_for(actor, Role.QA, kai_id)
             if isinstance(found, Result):
                 return found
@@ -199,7 +247,7 @@ class Board:
 
     def set_human_summary(self, actor: Actor, kai_id: int, summary: str) -> Result:
         """The simple summary for the human review (QA or delegator writes it)."""
-        with self._lock:
+        with self._tx():
             if actor.role not in (Role.QA, Role.DELEGATOR):
                 return Result.fail("Só a QA ou a delegadora escrevem o resumo da revisão humana.")
             kai = self.store.get_kai(kai_id)
@@ -213,7 +261,7 @@ class Board:
 
     def human_decision(self, actor: Actor, kai_id: int, approve: bool, note: str = "") -> Result:
         """Revisão Humana -> Feito (the Kanbai commits) or Correção. Only the human."""
-        with self._lock:
+        with self._tx():
             if actor.role != Role.HUMAN:
                 return Result.fail("Só o humano decide na Revisão Humana.")
             kai = self.store.get_kai(kai_id)
@@ -281,15 +329,18 @@ class Board:
             return Result.fail("Nenhum commiter configurado; o KAI continua em Revisão Humana.")
         try:
             kai.commit_hash = self.committer(project, task, kai)
+            self._touch(kai)
         except Exception as exc:  # noqa: BLE001 - a git failure must not break the board
             return Result.fail(f"Commit falhou ({type(exc).__name__}): {exc}. O KAI continua em Revisão Humana.")
         self._move(kai, Column.DONE, actor)
         if kai.executor_id is not None and (agent := self.store.get_agent(kai.executor_id)):
             agent.state, agent.current_kai = AgentState.ENDED, None  # approved: she is done
+            self._touch(agent)
         self._maybe_open_pr(actor, project, task)
         return Result.success(kai)
 
     def _maybe_open_pr(self, actor: Actor, project: Project, task: Task) -> None:
+        self._flush()  # the KAI that just became Done must be visible to the query below
         kais = self.store.list_kais(task.id)
         if task.status != TaskStatus.BACKLOG or not kais or any(k.column != Column.DONE for k in kais):
             return
@@ -300,13 +351,16 @@ class Board:
         except Exception:  # noqa: BLE001 - the KAIs are done; the PR can be retried
             return
         task.status = TaskStatus.PR_OPEN
+        self._touch(task)
         self._event(None, task.id, actor, TaskStatus.BACKLOG, TaskStatus.PR_OPEN)
 
     def _comment(self, kai: Kai, kind: CommentKind, author: str, text: str) -> None:
         kai.comments.append(Comment(kind, author, text, self.clock()))
+        self._touch(kai)
 
     def _move(self, kai: Kai, target: Column, actor: Actor) -> None:
         source, kai.column = kai.column, target
+        self._touch(kai)
         self._event(kai.id, kai.task_id, actor, source, target)
 
     def _event(self, kai_id: int | None, task_id: int | None, actor: Actor, source: object, target: object) -> None:

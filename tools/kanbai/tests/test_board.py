@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from kanbai.board import Board, commit_message
@@ -12,12 +14,26 @@ from kanbai.store import MemoryStore
 HUMAN = Actor(Role.HUMAN)
 
 
+def _make_store():  # type: ignore[no-untyped-def]
+    """Memory by default. With KANBAI_TEST_DATABASE_URL the same tests run on Postgres (run
+    pytest twice), so the two stores keep the same behaviour."""
+    url = os.environ.get("KANBAI_TEST_DATABASE_URL")
+    if not url:
+        return MemoryStore()
+    from kanbai.pgstore import PgStore
+
+    store = PgStore(url)
+    store.migrate()
+    store.reset()
+    return store
+
+
 class Env:
-    def __init__(self, **kw) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, store=None, **kw) -> None:  # type: ignore[no-untyped-def]
         self.commits: list[str] = []
         self.prs: list[str] = []
         self.board = Board(
-            MemoryStore(),
+            store or _make_store(),
             ModelMap.load(),
             committer=lambda p, t, k: (self.commits.append(commit_message(t, k)) or f"sha{k.id}"),
             pr_opener=lambda p, t: (self.prs.append(t.branch) or f"https://gh/pr/{t.key}"),
@@ -42,7 +58,7 @@ def test_create_task_is_idempotent_and_derives_branch() -> None:
     env = Env()
     first = env.board.create_task(HUMAN, "juniper", "T-256", "A", source_url="https://gh/issues/256")
     again = env.board.create_task(HUMAN, "juniper", "T-256", "A de novo")
-    assert first.ok and again.ok and first.data is again.data
+    assert first.ok and again.ok and first.data == again.data
     assert first.data.branch == "feature/T256"  # type: ignore[attr-defined]
     assert len(env.board.store.list_tasks()) == 1
 
@@ -52,7 +68,7 @@ def test_same_key_in_two_projects_is_two_tasks() -> None:
     env.board.create_project(Project("outro", "Outro", "/x", base_branch="main", branch_prefix="feat/"))
     a = env.board.create_task(HUMAN, "juniper", "T1", "A").data
     b = env.board.create_task(HUMAN, "outro", "T1", "B").data
-    assert a is not b and b.branch == "feat/T1"  # type: ignore[attr-defined]
+    assert a != b and b.branch == "feat/T1"  # type: ignore[attr-defined]
 
 
 def test_executor_cannot_create_tasks_or_kais() -> None:
@@ -194,6 +210,7 @@ def test_pr_opens_only_when_all_kais_are_done() -> None:
     task = env.board.store.get_task(tid)
     assert task.status == TaskStatus.BACKLOG and env.prs == []  # type: ignore[union-attr]
     env.board.human_decision(HUMAN, k2, True)
+    task = env.board.store.get_task(tid)  # re-read: a database store hands out fresh objects
     assert task.status == TaskStatus.PR_OPEN and task.pr_url.endswith("T256")  # type: ignore[union-attr]
     assert env.prs == ["feature/T256"]
     assert not env.board.create_kai(env.delegator, tid, "t", "d", 1).ok  # closed to new KAIs
@@ -205,3 +222,38 @@ def test_events_record_every_move() -> None:
     _to_review(env, kid)
     moves = [(e.source, e.target) for e in env.board.store.list_events() if e.kai_id == kid]
     assert moves == [("-", "a_fazer"), ("a_fazer", "fazendo"), ("fazendo", "revisando")]
+
+
+def test_token_identifies_the_agent_and_only_the_hash_is_stored() -> None:
+    env = Env()
+    ex = env.agent("Mika", Role.EXECUTOR)
+    token = env.board.issue_token(ex.agent_id).data  # type: ignore[arg-type]
+    assert env.board.actor_for_token(token) == ex
+    assert env.board.actor_for_token("errado") is None and env.board.actor_for_token("") is None
+    assert token not in str(env.board.store.get_agent(ex.agent_id).__dict__)  # type: ignore[arg-type]
+    new = env.board.issue_token(ex.agent_id).data  # type: ignore[arg-type]
+    assert env.board.actor_for_token(token) is None and env.board.actor_for_token(new) == ex
+
+
+def test_ended_agent_token_stops_working() -> None:
+    env = Env()
+    kid = env.kai(env.task())
+    ex = _to_review(env, kid)
+    token = env.board.issue_token(ex.agent_id).data  # type: ignore[arg-type]
+    env.board.review(env.qa, kid, True, "ok")
+    env.board.human_decision(HUMAN, kid, True)
+    assert env.board.actor_for_token(token) is None
+
+
+@pytest.mark.skipif(not os.environ.get("KANBAI_TEST_DATABASE_URL"), reason="needs Postgres")
+def test_state_survives_a_new_connection() -> None:
+    env = Env()
+    kid = env.kai(env.task())
+    _to_review(env, kid)
+    from kanbai.pgstore import PgStore
+
+    other = PgStore(os.environ["KANBAI_TEST_DATABASE_URL"])
+    kai = other.get_kai(kid)
+    assert kai.column == Column.REVIEWING and kai.comments[0].kind == CommentKind.REPORT  # type: ignore[union-attr]
+    assert other.get_agent(kai.executor_id).state == AgentState.WORKING  # type: ignore[union-attr,arg-type]
+    other.close()

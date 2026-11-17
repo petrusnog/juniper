@@ -1,0 +1,22 @@
+# Kanbai database (Postgres), loopback only. The service itself joins this compose in a later phase.
+#   cp .env.example .env && docker compose up -d     # `down -v` ERASES the data
+name: kanbai
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kanbai
+      POSTGRES_DB: kanbai
+      POSTGRES_PASSWORD: ${KANBAI_PG_PASSWORD:?set KANBAI_PG_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${KANBAI_PG_PORT:-5434}:5432"
+    volumes:
+      - kanbai-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanbai -d kanbai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  kanbai-pg-data:

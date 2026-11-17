@@ -64,6 +64,7 @@ class Agent:
     model: str = ""
     state: AgentState = AgentState.IDLE
     current_kai: int | None = None
+    token_hash: str = ""  # sha256 of the MCP bearer token; the token itself is never stored
 
 
 @dataclass
