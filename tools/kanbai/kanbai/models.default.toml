@@ -1,0 +1,16 @@
+# Story points -> model. Fibonacci scale; each tier covers points up to `max_points`
+# (the last one also catches anything larger). The model ids are placeholders: edit freely.
+[[executor]]
+max_points = 2
+provider = "claude"
+model = "claude-haiku-5-5"
+
+[[executor]]
+max_points = 13
+provider = "claude"
+model = "claude-sonnet-5-5"
+
+# The QA always runs on the strongest model, whatever the points.
+[qa]
+provider = "claude"
+model = "claude-opus-5-5"
