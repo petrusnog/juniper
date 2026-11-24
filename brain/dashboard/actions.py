@@ -49,9 +49,6 @@ class Actions:
     serves_get = False
 
     def __init__(self, sources: Sources, jobs: Any | None = None) -> None:
-        from brain.dashboard.reminders import ReminderApi
-
-        self.reminders = ReminderApi(sources)
         self._sources = sources
         self._jobs = jobs
         self._memory_routes: dict[str, Callable[[str, Query, Principal], Result]] = {}

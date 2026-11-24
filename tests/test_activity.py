@@ -208,7 +208,6 @@ def test_llm_and_failover_sentences_carry_provider_tokens_and_time() -> None:
 def test_every_event_the_code_logs_has_a_sentence_or_a_generic_one() -> None:
     for event in (
         "voice",
-        "reminder",
         "auth",
         "telegram",
         "dashboard",

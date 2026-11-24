@@ -915,16 +915,6 @@ class ActivitySettings(BaseModel):
     locale: str = "pt_BR"
 
 
-class ReminderSettings(BaseModel):
-    """Lembretes pessoais persistidos no MongoDB e avisados no horário escolhido (ADR-032)."""
-
-    enabled: bool = True
-    # Dias que um lembrete vencido fica no histórico antes de a limpeza diária apagá-lo.
-    retention_days: int = Field(default=90, ge=1, le=3650)
-    # Depois de um tempo fora do ar, o aviso atrasado ainda sai até N horas depois do prazo.
-    grace_hours: float = Field(default=12.0, ge=0.0, le=168.0)
-
-
 class TelegramSettings(BaseModel):
     """O bot do Telegram, um cliente do protocolo (ADR-016). O token do bot fica no .env."""
 
@@ -1024,7 +1014,6 @@ class Settings(BaseSettings):
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
-    reminders: ReminderSettings = Field(default_factory=ReminderSettings)
     leak_audit: LeakAuditSettings = Field(default_factory=LeakAuditSettings)
     activity: ActivitySettings = Field(default_factory=ActivitySettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)

@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from brain.memory.activity import ActivityStore
     from brain.memory.issues import IssueStore
     from brain.memory.leak_audit import LeakAuditStore, LeakReportStore
-    from brain.reminders.store import ReminderStore
 
 
 def open_session_store() -> SessionStore:
@@ -85,15 +84,6 @@ def open_issue_store(store: SessionStore) -> IssueStore | None:
     from brain.memory.issues import IssueStore
 
     return IssueStore(connection)
-
-
-def open_reminder_store(store: SessionStore) -> ReminderStore | None:
-    from brain.reminders.store import ReminderStore
-
-    connection = getattr(store, "connection", None)
-    return (
-        ReminderStore(connection) if settings.reminders.enabled and connection is not None else None
-    )
 
 
 def open_leak_reports(store: SessionStore) -> LeakReportStore | None:

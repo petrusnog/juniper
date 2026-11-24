@@ -78,10 +78,6 @@ msgid "Changed the calendar event {title}"
 msgstr "Alterei o evento «{title}» da agenda"
 
 #: brain/activity/catalog.py
-msgid "Changed the reminder {title}"
-msgstr "Alterei o lembrete «{title}»"
-
-#: brain/activity/catalog.py
 msgid "Cleaned {count} message of the conversation that carried internal text"
 msgid_plural "Cleaned {count} messages of the conversation that carried internal text"
 msgstr[0] "Limpei {count} mensagem da conversa que trazia texto interno"
@@ -104,10 +100,6 @@ msgid "Corrected a word I had misheard"
 msgstr "Corrigi uma palavra que eu tinha ouvido errado"
 
 #: brain/activity/catalog.py
-msgid "Could not send the reminder: Telegram is not set up"
-msgstr "Não consegui enviar o lembrete: o Telegram não está configurado"
-
-#: brain/activity/catalog.py
 msgid "Could not speak the reply"
 msgstr "Não consegui falar a resposta"
 
@@ -128,20 +120,12 @@ msgid "Created the playlist {title}"
 msgstr "Criei a playlist «{title}»"
 
 #: brain/activity/catalog.py
-msgid "Created the reminder {title}"
-msgstr "Criei o lembrete «{title}»"
-
-#: brain/activity/catalog.py
 msgid "Dashboard event: {action}"
 msgstr "Evento do dashboard: {action}"
 
 #: brain/activity/catalog.py
 msgid "Deleted the calendar event {title}"
 msgstr "Apaguei o evento «{title}» da agenda"
-
-#: brain/activity/catalog.py
-msgid "Deleted the reminder {title}"
-msgstr "Apaguei o lembrete «{title}»"
 
 #: brain/activity/catalog.py
 msgid "Device event: {action}"
@@ -194,10 +178,6 @@ msgstr "Listei a pasta «{path}»"
 #: brain/activity/catalog.py
 msgid "Listed your playlists"
 msgstr "Listei suas playlists"
-
-#: brain/activity/catalog.py
-msgid "Listed your reminders"
-msgstr "Listei seus lembretes"
 
 #: brain/activity/catalog.py
 msgid "Logged in on Telegram"
@@ -255,10 +235,6 @@ msgid "Recorded your opinion about {title}"
 msgstr "Anotei sua opinião sobre «{title}»"
 
 #: brain/activity/catalog.py
-msgid "Recovered the reminders that were due while I was off"
-msgstr "Recuperei os lembretes que venceram enquanto eu estava desligada"
-
-#: brain/activity/catalog.py
 msgid "Refused a connection ({reason})"
 msgstr "Recusei uma conexão ({reason})"
 
@@ -273,14 +249,6 @@ msgstr "Registrei a ocorrência «{title}»"
 #: brain/activity/catalog.py
 msgid "Rejected a connection: not authorized"
 msgstr "Rejeitei uma conexão: sem autorização"
-
-#: brain/activity/catalog.py
-msgid "Reminded you by voice"
-msgstr "Avisei você por voz de um lembrete"
-
-#: brain/activity/catalog.py
-msgid "Reminder event: {action}"
-msgstr "Evento de lembrete: {action}"
 
 #: brain/activity/catalog.py
 msgid "Replaced the file {path}"
@@ -313,10 +281,6 @@ msgstr "Pesquisei «{query}» na web"
 #: brain/activity/catalog.py
 msgid "Searched {query} on YouTube Music"
 msgstr "Pesquisei «{query}» no YouTube Music"
-
-#: brain/activity/catalog.py
-msgid "Sent you a reminder on Telegram"
-msgstr "Enviei um lembrete para você no Telegram"
 
 #: brain/activity/catalog.py
 msgid "Sent {path} to the trash"
@@ -369,10 +333,6 @@ msgstr "O dashboard parou"
 #: brain/activity/catalog.py
 msgid "The model returned an empty answer"
 msgstr "O modelo devolveu uma resposta vazia"
-
-#: brain/activity/catalog.py
-msgid "The reminder job failed ({reason})"
-msgstr "A rotina de lembretes falhou ({reason})"
 
 #: brain/activity/catalog.py
 msgid "The server started"

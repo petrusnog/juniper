@@ -23,10 +23,6 @@ from googleapiclient.errors import HttpError
 from brain.config import settings
 from brain.core import clock
 from brain.httplog import LoggedHttp
-from brain.memory.errors import MemoryUnavailableError
-from brain.reminders.store import ReminderError
-from brain.reminders.store import fields as reminder_fields
-from brain.tools import reminders
 from brain.tools.base import Locality, Tier, Tool, ToolResult
 from brain.tools.registry import register_tool
 
@@ -441,18 +437,12 @@ def _conflict_result(
 class CreateEvent(Tool):
     name = "create_event"
     description = (
-        "Cria um EVENTO NA AGENDA (compromisso no calendário); checa conflitos e, se houver, NÃO "
-        "cria. Chame direto. Só um aviso, sem compromisso: use create_reminder. Evento + aviso: "
-        "reminder=true e reminder_at, numa só confirmação. Sem pedido de aviso, omita reminder."
+        "Marca um compromisso. Chame direto, sem listar antes: ele checa conflitos em todas as "
+        "agendas e, se houver, NÃO cria e informa o que já existe."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "reminder": {"type": "boolean", "description": "Criar também o aviso (lembrete)."},
-            "reminder_at": {
-                "type": "string",
-                "description": "Quando avisar (ISO com hora; padrão: no início).",
-            },
             "title": {"type": "string", "description": "Ex.: 'Dentista'."},
             "start": {"type": "string", "description": "ISO 8601 local, ex.: '2026-10-12T16:00'."},
             "end": {"type": "string", "description": "Fim, ISO 8601 (opcional)."},
@@ -500,12 +490,8 @@ class CreateEvent(Tool):
     async def precheck(self, **kwargs: Any) -> ToolResult | None:
         """Report bad input or a conflict before the user is asked to confirm."""
         try:
-            client, _, title, start, _, conflicts = await self._plan(kwargs)
-            if kwargs.get("reminder"):
-                reminders.store()
-                reminders.owner()
-                reminder_fields(title, start.isoformat(), kwargs.get("reminder_at"))
-        except (CalendarError, ReminderError) as exc:
+            client, _, _, _, _, conflicts = await self._plan(kwargs)
+        except CalendarError as exc:
             return ToolResult(success=False, error=str(exc))
         return _conflict_result(client, conflicts, "criado") if conflicts else None
 
@@ -518,16 +504,9 @@ class CreateEvent(Tool):
             client, calendar_id, title, start, end, _ = await self._plan(kwargs)
         except CalendarError:
             return None
-        extra = " e criar o aviso (lembrete) deste evento" if kwargs.get("reminder") else ""
-        return (
-            f"marcar «{title}», {_fmt_range(start, end)}, na {_where(client, calendar_id)}{extra}"
-        )
+        return f"marcar «{title}», {_fmt_range(start, end)}, na {_where(client, calendar_id)}"
 
     async def run(self, **kwargs: Any) -> ToolResult:
-        if kwargs.get("reminder"):
-            check = await self.precheck(**kwargs)
-            if check is not None:
-                return check
         try:
             client, calendar_id, title, start, end, conflicts = await self._plan(kwargs)
             if conflicts:  # re-checked: the calendar may have changed since precheck
@@ -539,43 +518,13 @@ class CreateEvent(Tool):
             )
         except CalendarError as exc:
             return ToolResult(success=False, error=str(exc))
-        metadata: dict[str, Any] = {
-            "event_id": event.id,
-            "calendar_id": event.calendar_id,
-            "start": event.start.isoformat(),
-            "title": event.title,
-        }
-        extra = ""
-        if kwargs.get("reminder"):
-            try:
-                saved = await asyncio.to_thread(
-                    reminders.store().create,
-                    reminders.owner(),
-                    title=event.title,
-                    due_at=event.start.isoformat(),
-                    notify_at=kwargs.get("reminder_at"),
-                    event_id=event.id,
-                    calendar_id=event.calendar_id,
-                )
-                metadata["reminder_id"] = saved["id"]
-                extra = " Aviso (lembrete) salvo também."
-            except (ReminderError, MemoryUnavailableError) as exc:
-                metadata["reminder_error"] = str(exc)
-                extra = (
-                    " O evento foi criado, mas NÃO consegui salvar o lembrete: "
-                    + str(exc)
-                    + ". Não recrie o evento; tente create_reminder com os ids retornados."
-                )
-        elif "reminder" not in kwargs and reminders.usable():
-            extra = " Pergunte à pessoa se quer um aviso (lembrete) para esse evento e a que horas."
-            metadata["offer_reminder"] = True
         return ToolResult(
             success=True,
             output=(
                 f"Marcado: «{event.title}», {_span(event)} "
-                f"({_where(client, event.calendar_id)}, id={event.id}).{extra}"
+                f"({_where(client, event.calendar_id)}, id={event.id})."
             ),
-            metadata=metadata,
+            metadata={"event_id": event.id},
         )
 
 
@@ -591,32 +540,6 @@ async def _locate(client: CalendarClient, kwargs: dict[str, Any]) -> CalendarEve
             "use list_events para ver os ids)"
         )
     return event
-
-
-async def _sync_reminder(
-    event: CalendarEvent, *, deleted: bool = False, moved: bool = False, renamed: bool = False
-) -> str:
-    """The Google write has succeeded: report partial failures without repeating it."""
-    if not reminders.usable():
-        return ""
-    try:
-        store = reminders.store()
-        doc = await asyncio.to_thread(store.linked, reminders.owner(), event.calendar_id, event.id)
-        if doc is None:
-            return ""
-        if deleted:
-            await asyncio.to_thread(store.delete, reminders.owner(), doc["_id"])
-        else:
-            changes: dict[str, Any] = {}
-            if renamed:
-                changes["title"] = event.title
-            if moved:  # the store keeps the lead time between the notice and the new start
-                changes["due_at"] = event.start.isoformat()
-            if changes:
-                await asyncio.to_thread(store.update, reminders.owner(), doc["_id"], **changes)
-        return " O lembrete vinculado também foi " + ("excluído." if deleted else "atualizado.")
-    except (ReminderError, MemoryUnavailableError) as exc:
-        return f" A agenda foi alterada, mas o lembrete NÃO foi sincronizado: {exc}"
 
 
 @register_tool
@@ -709,12 +632,11 @@ class UpdateEvent(Tool):
             )
         except CalendarError as exc:
             return ToolResult(success=False, error=str(exc))
-        reminder_note = await _sync_reminder(updated, moved=changes_time, renamed=title is not None)
         return ToolResult(
             success=True,
             output=(
                 f"Alterado: «{updated.title}», {_span(updated)} "
-                f"({_where(client, updated.calendar_id)}).{reminder_note}"
+                f"({_where(client, updated.calendar_id)})."
             ),
             metadata={"event_id": updated.id},
         )
@@ -749,19 +671,7 @@ class DeleteEvent(Tool):
             event = await _locate(client, kwargs)
         except CalendarError:
             return None
-        extra = ""
-        if reminders.usable():
-            try:
-                linked = await asyncio.to_thread(
-                    reminders.store().linked, reminders.owner(), event.calendar_id, event.id
-                )
-                if linked:
-                    extra = " e excluir o lembrete vinculado"
-            except (ReminderError, MemoryUnavailableError):
-                extra = " e, se houver, excluir o lembrete vinculado"
-        return (
-            f"apagar «{event.title}», {_span(event)}, da {_where(client, event.calendar_id)}{extra}"
-        )
+        return f"apagar «{event.title}», {_span(event)}, da {_where(client, event.calendar_id)}"
 
     async def run(self, **kwargs: Any) -> ToolResult:
         try:
@@ -770,11 +680,10 @@ class DeleteEvent(Tool):
             await client.delete_event(event.id, event.calendar_id)
         except CalendarError as exc:
             return ToolResult(success=False, error=f"não consegui apagar: {exc}")
-        reminder_note = await _sync_reminder(event, deleted=True)
         return ToolResult(
             success=True,
             output=(
                 f"Desmarcado: «{event.title}», {_span(event)} "
-                f"({_where(client, event.calendar_id)}).{reminder_note}"
+                f"({_where(client, event.calendar_id)})."
             ),
         )
