@@ -78,10 +78,6 @@ msgid "Changed the calendar event {title}"
 msgstr ""
 
 #: brain/activity/catalog.py
-msgid "Changed the reminder {title}"
-msgstr ""
-
-#: brain/activity/catalog.py
 msgid "Cleaned {count} message of the conversation that carried internal text"
 msgid_plural "Cleaned {count} messages of the conversation that carried internal text"
 msgstr[0] ""
@@ -101,10 +97,6 @@ msgstr ""
 
 #: brain/activity/catalog.py
 msgid "Corrected a word I had misheard"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Could not send the reminder: Telegram is not set up"
 msgstr ""
 
 #: brain/activity/catalog.py
@@ -128,19 +120,11 @@ msgid "Created the playlist {title}"
 msgstr ""
 
 #: brain/activity/catalog.py
-msgid "Created the reminder {title}"
-msgstr ""
-
-#: brain/activity/catalog.py
 msgid "Dashboard event: {action}"
 msgstr ""
 
 #: brain/activity/catalog.py
 msgid "Deleted the calendar event {title}"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Deleted the reminder {title}"
 msgstr ""
 
 #: brain/activity/catalog.py
@@ -193,10 +177,6 @@ msgstr ""
 
 #: brain/activity/catalog.py
 msgid "Listed your playlists"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Listed your reminders"
 msgstr ""
 
 #: brain/activity/catalog.py
@@ -260,10 +240,6 @@ msgid "Recorded your opinion about {title}"
 msgstr ""
 
 #: brain/activity/catalog.py
-msgid "Recovered the reminders that were due while I was off"
-msgstr ""
-
-#: brain/activity/catalog.py
 msgid "Refused a connection ({reason})"
 msgstr ""
 
@@ -277,14 +253,6 @@ msgstr ""
 
 #: brain/activity/catalog.py
 msgid "Rejected a connection: not authorized"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Reminded you by voice"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Reminder event: {action}"
 msgstr ""
 
 #: brain/activity/catalog.py
@@ -317,10 +285,6 @@ msgstr ""
 
 #: brain/activity/catalog.py
 msgid "Searched {query} on YouTube Music"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "Sent you a reminder on Telegram"
 msgstr ""
 
 #: brain/activity/catalog.py
@@ -373,10 +337,6 @@ msgstr ""
 
 #: brain/activity/catalog.py
 msgid "The model returned an empty answer"
-msgstr ""
-
-#: brain/activity/catalog.py
-msgid "The reminder job failed ({reason})"
 msgstr ""
 
 #: brain/activity/catalog.py

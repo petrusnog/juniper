@@ -48,7 +48,6 @@ Estado atual do projeto (marcos entregues, o que não existe, dívidas): [JUNIPE
 ### Integrações
 
 - [Agenda Google](pages/google-calendar.md): Ler, marcar, alterar e desmarcar compromissos no Google Calendar, com checagem de conflitos.
-- [Lembretes](pages/lembretes.md): Lembretes pessoais no MongoDB, avisados no horário escolhido por Telegram e voz, e a diferença entre lembrete e evento da agenda.
 - [Música](pages/musica.md): Achar e tocar músicas pelo YouTube Music do celular, criar playlists e aprender o gosto musical, pela YouTube Data API oficial.
 - [Comandos git](pages/git.md): search e deploy no terminal e pelo agente (git_search e git_deploy).
 ### Memória
@@ -123,7 +122,7 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-029](decisions/ADR-029.md): Livre arbítrio: expressão livre, ação protegida (Aceito) · `agente`, `memoria-v2`, `memoria-v3`, `produto-personalidade`
 - [ADR-030](decisions/ADR-030.md): Memória V3: emoção, humor, personalidade e crenças vivas (Aceito) · `configuracao`, `dashboard`, `memoria-v2`, `memoria-v3`
 - [ADR-031](decisions/ADR-031.md): Conhecimento fundamentado: a memória fala, a web ensina (Aceito) · `configuracao`, `desktop`, `memoria-v2`, `memoria-v3`, `observabilidade`, `producao`, `seguranca`
-- [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `lembretes`
+- [ADR-032](decisions/ADR-032.md): Lembretes pessoais e entrega matinal () · `google-calendar`
 - [ADR-033](decisions/ADR-033.md): App desktop da Juniper (Electron, Windows) e o executor de arquivos (Proposto) · `architecture`, `desktop`, `seguranca`
 - [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `configuracao`, `voz-audio`, `voz-avaliacao`
 - [ADR-035](decisions/ADR-035.md): Observabilidade V2: registro de atividade pesquisável e textos internacionalizáveis (Aceito) · `atividade`, `observabilidade`

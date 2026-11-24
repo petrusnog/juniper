@@ -47,7 +47,7 @@ def test_every_registered_page_has_its_module_and_a_render_function() -> None:
     pages = pages_registry()
     ids = [p[0] for p in pages]
     assert ids == [
-        "visao", "memorias", "central", "estudos", "sonhos", "conversas", "lembretes",
+        "visao", "memorias", "central", "estudos", "sonhos", "conversas",
         "ocorrencias", "pesquisa", "afetos", "evolucao", "tarefas", "auditoria", "logs", "saude",
         "usuarios",
     ]  # fmt: skip

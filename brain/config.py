@@ -915,34 +915,6 @@ class ActivitySettings(BaseModel):
     locale: str = "pt_BR"
 
 
-class ReminderSettings(BaseModel):
-    """Lembretes pessoais persistidos no MongoDB e resumo matinal."""
-
-    enabled: bool = True
-    morning_at: str = "08:00"
-    retention_days: int = Field(default=90, ge=1, le=3650)
-    # Juniper user_id -> private Telegram chat_id. Never broadcast to the allowlist.
-    telegram_chat_ids: dict[str, int] = Field(default_factory=dict)
-
-    @field_validator("morning_at")
-    @classmethod
-    def _morning(cls, value: str) -> str:
-        try:
-            hour, minute = map(int, value.split(":"))
-            if not (0 <= hour < 24 and 0 <= minute < 60):
-                raise ValueError
-        except ValueError:
-            raise ValueError("reminders.morning_at deve ser HH:MM") from None
-        return f"{hour:02d}:{minute:02d}"
-
-    @field_validator("telegram_chat_ids")
-    @classmethod
-    def _private_chats(cls, value: dict[str, int]) -> dict[str, int]:
-        if any(not owner.strip() or chat <= 0 for owner, chat in value.items()):
-            raise ValueError("Use user_id e chat_id privado positivo para cada destinatário")
-        return value
-
-
 class TelegramSettings(BaseModel):
     """O bot do Telegram, um cliente do protocolo (ADR-016). O token do bot fica no .env."""
 
@@ -1042,7 +1014,6 @@ class Settings(BaseSettings):
     trace: TraceSettings = Field(default_factory=TraceSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
-    reminders: ReminderSettings = Field(default_factory=ReminderSettings)
     leak_audit: LeakAuditSettings = Field(default_factory=LeakAuditSettings)
     activity: ActivitySettings = Field(default_factory=ActivitySettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)

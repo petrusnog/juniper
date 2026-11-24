@@ -121,25 +121,6 @@ def _update_profile(_: Fields) -> tuple[str, dict[str, Any], str | None]:
     return N_("Updated your profile"), {}, None
 
 
-def _create_reminder(a: Fields) -> tuple[str, dict[str, Any], str | None]:
-    title = _text(a.get("title") or a.get("text"))
-    return N_("Created the reminder {title}"), {"title": title}, title
-
-
-def _list_reminders(_: Fields) -> tuple[str, dict[str, Any], str | None]:
-    return N_("Listed your reminders"), {}, None
-
-
-def _update_reminder(a: Fields) -> tuple[str, dict[str, Any], str | None]:
-    title = _text(a.get("title") or a.get("reminder_id"))
-    return N_("Changed the reminder {title}"), {"title": title}, title
-
-
-def _delete_reminder(a: Fields) -> tuple[str, dict[str, Any], str | None]:
-    title = _text(a.get("reminder_id"))
-    return N_("Deleted the reminder {title}"), {"title": title}, title
-
-
 def _list_events(a: Fields) -> tuple[str, dict[str, Any], str | None]:
     start = _text(a.get("start_date"))
     return N_("Looked at your calendar from {start}"), {"start": start or "?"}, start or None
@@ -221,10 +202,6 @@ TOOLS: Final[dict[str, tuple[str, Tool | None]]] = {
     "forget": ("memory", _forget),
     "update_profile": ("memory", _update_profile),
     "learn_topic": ("memory", _learn_topic),
-    "create_reminder": ("reminder", _create_reminder),
-    "list_reminders": ("reminder", _list_reminders),
-    "update_reminder": ("reminder", _update_reminder),
-    "delete_reminder": ("reminder", _delete_reminder),
     "list_events": ("calendar", _list_events),
     "create_event": ("calendar", _create_event),
     "update_event": ("calendar", _update_event),
@@ -441,7 +418,7 @@ def error(f: Fields) -> Entry:
     )
 
 
-# --- voice, reminders, accounts, clients ---------------------------------------------------------
+# --- voice, accounts, clients ---------------------------------------------------------
 
 
 def voice(f: Fields) -> Entry:
@@ -479,33 +456,6 @@ def voice(f: Fields) -> Entry:
         severity,
         "juniper",
         {"duration_ms": f.get("total_ms")},
-    )
-
-
-_REMINDERS: Final = {
-    "telegram_sent": (N_("Sent you a reminder on Telegram"), "ok", "info"),
-    "voice_reminded": (N_("Reminded you by voice"), "ok", "info"),
-    "telegram_unconfigured": (
-        N_("Could not send the reminder: Telegram is not set up"),
-        "failed",
-        "warn",
-    ),
-    "job_recovered": (N_("Recovered the reminders that were due while I was off"), "ok", "info"),
-    "job_failed": (N_("The reminder job failed ({reason})"), "failed", "error"),
-}
-
-
-def reminder(f: Fields) -> Entry:
-    action = str(f.get("action") or "")
-    key, outcome, severity = _REMINDERS.get(action, (N_("Reminder event: {action}"), "ok", "info"))
-    return Entry(
-        "reminder",
-        f"reminder.{action}",
-        key,
-        {"action": action, "reason": f.get("reason") or "?"},
-        outcome,
-        severity,
-        "scheduler",
     )
 
 
@@ -678,7 +628,6 @@ _BY_EVENT: Final[dict[str, Callable[[Fields], Entry]]] = {
     "history_scrubbed": history_scrubbed,
     "error": error,
     "voice": voice,
-    "reminder": reminder,
     "auth": auth,
     "telegram": telegram,
     "dashboard": dashboard,
