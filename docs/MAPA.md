@@ -127,3 +127,4 @@ Cada ADR, o status e as páginas que o citam.
 - [ADR-034](decisions/ADR-034.md): STT V2: wake word «Juniper», identidade por voz, transcrição com contexto e fala dentro do orçamento () · `configuracao`, `voz-audio`, `voz-avaliacao`
 - [ADR-035](decisions/ADR-035.md): Observabilidade V2: registro de atividade pesquisável e textos internacionalizáveis (Aceito) · `atividade`, `observabilidade`
 - [ADR-036](decisions/ADR-036.md): Título das conversas: a Juniper nomeia, o usuário renomeia, todos os clientes mostram (Aceito) · `titulos`
+- [ADR-037](decisions/ADR-037.md): Tarefas com prazo, ligadas à agenda, concluídas por voz e referidas por ID (Proposto) · `google-calendar`

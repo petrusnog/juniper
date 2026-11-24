@@ -222,6 +222,7 @@ O texto de cada ADR está em `decisions/`; o índice por assunto e as páginas q
 | [034](decisions/ADR-034.md) | STT V2: wake word «Juniper» local (livekit-wakeword), identidade por voz no cérebro (só vozes conhecidas; não é autenticação), transcrição com glossário e correção restrita, VAD e fim de turno, arbitragem entre aparelhos, fala dentro do orçamento (proposto). |
 | [035](decisions/ADR-035.md) | Observabilidade V2: registro de atividade no MongoDB (uma frase por ação, `ts` UTC e `ts_local` UTC-3), texto como chave + parâmetros com catálogos `.po` lidos direto, busca por data, termo, modelo, ação e desfecho, gravação em thread (aceito). |
 | [036](decisions/ADR-036.md) | Título das conversas: campo da sessão (`draft`, `auto`, `user`), rascunho na hora e título do modelo em segundo plano, o do usuário é intocável, mensagens novas e compatíveis no protocolo, comandos de texto para o Telegram e o terminal (aceito). |
+| [037](decisions/ADR-037.md) | Tarefas com prazo: coleção `tasks` por dono, id inteiro curto e nunca reaproveitado, vínculo opcional com a agenda, sem aviso proativo, conclusão por voz, desambiguação por id com confirmação única e lixeira (proposto). |
 
 ---
 
@@ -239,6 +240,7 @@ Os sprints 1 a 5 (agente, memória, servidor e produção, voz, executores e app
 
 | Foco | Situação |
 |---|---|
+| Tarefas com prazo ([ADR-037](decisions/ADR-037.md)) | Proposto, sem código. Fatias: medir o loop de confirmação, renomear a página Tarefas para Processos, núcleo, lixeira e escolha pendente, agenda, abertura e voz, painel e CLI. |
 | Corpo nas escritas do dashboard | Hoje os `POST` levam tudo na *query* (textos longos não cabem). Aceitar corpo exige trocar o transporte (a `websockets` em `process_request`, ADR-020): task própria, com ADR e revisão de segurança. Destrava também o `study add`. |
 | Login com MFA (épica #177, ADR-021) | Desenhado; falta o TOTP, as sessões de MFA, o `auth.login` no protocolo e o código nas telas (o `brain/auth/` e o `/login` do Telegram já existem, para `client_id`/`client_secret`). Nada liga o MFA por padrão. |
 | Isolamento por usuário (depois do ADR-027) | Filtrar leituras e escritas por `owner_id`; só então liberar `tester` de verdade (beta). |
