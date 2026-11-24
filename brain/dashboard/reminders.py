@@ -49,7 +49,7 @@ class ReminderApi:
         parts = path.removeprefix("/api/reminders").strip("/").split("/")
         fields = {
             k: (first(query, k) or "").strip()
-            for k in ("title", "due_at", "notify_at", "notes")
+            for k in ("title", "due_at", "notify_on", "notes")
             if k in query
         }
         if len(fields.get("notes", "")) > MAX_NOTES:
@@ -77,7 +77,7 @@ class ReminderApi:
                     who.user_id,
                     title=fields.get("title"),
                     due_at=fields.get("due_at"),
-                    notify_at=fields.get("notify_at"),
+                    notify_on=fields.get("notify_on"),
                     notes=fields.get("notes", ""),
                 )
                 action = "created"
