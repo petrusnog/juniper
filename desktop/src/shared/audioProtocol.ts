@@ -13,7 +13,9 @@ export type AudioEvent =
   | { kind: 'ack'; id: number; ok: boolean; error?: string }
   | { kind: 'chunk'; data: string }
   | { kind: 'stop-requested' }
-  | { kind: 'headset'; value: boolean };
+  | { kind: 'headset'; value: boolean }
+  /** The speaker became busy (`true`) or idle (`false`): the real edge of her voice. */
+  | { kind: 'playback'; playing: boolean };
 
 const MAX_CHUNK_CHARS = 64 * 1024; // 100 ms of 16 kHz PCM16 is about 4 KB of base64
 
@@ -39,6 +41,8 @@ export function parseAudioEvent(value: unknown): AudioEvent | null {
       return { kind: 'stop-requested' };
     case 'headset':
       return typeof e.value === 'boolean' ? { kind: 'headset', value: e.value } : null;
+    case 'playback':
+      return typeof e.playing === 'boolean' ? { kind: 'playback', playing: e.playing } : null;
     default:
       return null;
   }

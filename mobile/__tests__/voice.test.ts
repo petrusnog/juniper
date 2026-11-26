@@ -65,6 +65,13 @@ class FakeAudio implements AudioDevice {
       this.stopRequested = null;
     };
   }
+  playbackListener: ((playing: boolean) => void) | null = null;
+  onPlayback(l: (playing: boolean) => void) {
+    this.playbackListener = l;
+    return () => {
+      this.playbackListener = null;
+    };
+  }
   headset = false;
   routes: boolean[] = [];
   routeListener: ((headset: boolean) => void) | null = null;
@@ -492,6 +499,16 @@ test('plugging headphones in during the conversation switches the route and tell
     type: 'voice.route',
     route: 'speaker',
   });
+});
+
+test('her voice starting and stopping on the device is told to the brain, edge by edge', async () => {
+  const { connection, audio } = await open();
+  audio.playbackListener?.(true);
+  audio.playbackListener?.(false);
+  expect(connection.sentOfType('voice.playback')).toEqual([
+    { type: 'voice.playback', state: 'started' },
+    { type: 'voice.playback', state: 'finished' },
+  ]);
 });
 
 test('hold-to-talk: the microphone stays closed until the button goes down', async () => {

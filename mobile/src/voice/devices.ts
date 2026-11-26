@@ -25,6 +25,8 @@ export interface AudioDevice {
   applyRoute(speaker: boolean): Promise<void>;
   /** Headphones plugged in or out. Returns the unsubscribe function. */
   onRouteChange(listener: (headset: boolean) => void): () => void;
+  /** Her voice became audible (`true`) or went quiet (`false`), as the speaker really plays it. */
+  onPlayback?(listener: (playing: boolean) => void): () => void;
   openPlayer(sampleRate: number): Promise<void>;
   /** Queues PCM for playback, after what is already queued. */
   play(base64Pcm: string): void;
